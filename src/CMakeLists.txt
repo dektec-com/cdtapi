@@ -29,9 +29,9 @@ target_sources(cdtapi
 # Set target include directories
 target_include_directories(cdtapi
   PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated">
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/generated>
   PUBLIC
-    $<INSTALL_INTERFACE:"include">
+    $<INSTALL_INTERFACE:include>
 )
 
 # Link to DTAPI
@@ -61,6 +61,12 @@ install(TARGETS cdtapi
 install(EXPORT cdtapiTargets
         NAMESPACE cdtapi::       # Prefix to identify the target in find_package
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME})
+        
+# Install the config files
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/cdtapiConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/cdtapiConfig.cmake"
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME})
 
 # Install include files
 install(FILES
