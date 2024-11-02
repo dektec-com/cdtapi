@@ -40,27 +40,24 @@ target_link_libraries(cdtapi PRIVATE DTAPI::DTAPI)
 # Enable c++17
 target_compile_features(cdtapi PRIVATE cxx_std_17)
 
-# Include the GNUInstallDirs module to define standard install directories
-include(GNUInstallDirs)
-
 # Export the library target so it can be used by other projects with find_package
 install(TARGETS cdtapi
         EXPORT cdtapiTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
+        INCLUDES DESTINATION ${CURRENT_PACKAGES_DIR}/include/${PROJECT_NAME})
 
 # Export the targets to a CMake file
 install(EXPORT cdtapiTargets
         NAMESPACE cdtapi::       # Prefix to identify the target in find_package
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME})
+        DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PROJECT_NAME})
 
 # Install include files
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/generated/cdtapi_version.h"
     "cdtapi.h"
     "cdtapi_avfifo.h"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
+    DESTINATION ${CURRENT_PACKAGES_DIR}/include/${PROJECT_NAME})
 
 # Generate a version file
 write_basic_package_version_file(
