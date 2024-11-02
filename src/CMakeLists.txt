@@ -46,15 +46,14 @@ include(GNUInstallDirs)
 # Export the library target so it can be used by other projects with find_package
 install(TARGETS cdtapi
         EXPORT cdtapiTargets
-        ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib
-        RUNTIME DESTINATION bin
-        INCLUDES DESTINATION "include/${PROJECT_NAME}")
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
 
 # Export the targets to a CMake file
 install(EXPORT cdtapiTargets
         NAMESPACE cdtapi::       # Prefix to identify the target in find_package
-        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}")
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME})
 
 # Install include files
 install(FILES
