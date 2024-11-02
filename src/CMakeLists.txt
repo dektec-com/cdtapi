@@ -51,7 +51,7 @@ install(TARGETS cdtapi
 # Export the targets to a CMake file
 install(EXPORT cdtapiTargets
         NAMESPACE cdtapi::       # Prefix to identify the target in find_package
-        DESTINATION share/dtapi)
+        DESTINATION share/cdtapi)
 
 # Install include files
 install(FILES
