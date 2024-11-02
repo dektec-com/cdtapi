@@ -1,0 +1,10 @@
+{
+  "registries": [
+    {
+      "kind": "git",
+      "baseline": "e86e6cc0188fb63debaf82c0b5c56b6d7195281e",
+      "repository": "https://github.com/dektec-projects/dektec-vcpkg-registry.git",
+      "packages": [ "dtapi" ]
+    }
+  ]
+}

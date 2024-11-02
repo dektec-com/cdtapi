@@ -1,0 +1,13 @@
+{
+    "name": "cdtapi",
+    "version": "1.1.0",
+    "builtin-baseline": "c82f74667287d3dc386bce81e44964370c91a289",
+    "dependencies": [
+        {
+            "name": "dtapi",
+            "features": [ "vc17" ],
+            "version>=": "6.6.0#2",
+            "platform": "(windows & x64) | (windows & x86) | (linux & x64) | (linux & x86)"
+        }
+    ]
+}

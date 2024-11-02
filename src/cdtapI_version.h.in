@@ -1,0 +1,13 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* cdtapi_version.h *#*#*#*#*#*#*# (C) 2022-2024 DekTec
+//
+// This file is generated DO NOT EDIT!
+//
+#ifndef CDTAPI_VERSION_H
+#define CDTAPI_VERSION_H
+
+#define CDTAPI_VERSION "@PROJECT_VERSION@"
+#define CDTAPI_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define CDTAPI_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define CDTAPI_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+#endif // #ifndef CDTAPI_VERSION_H
