@@ -12,6 +12,6 @@ if(NOT CMAKE_INSTALL_PREFIX)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/export" CACHE PATH "Installation Directory" FORCE)
 endif()
 
-project("cdtapi" VERSION 1.0.1 LANGUAGES CXX)
+project("cdtapi" VERSION 1.1.0 LANGUAGES CXX)
 
 add_subdirectory(src)
