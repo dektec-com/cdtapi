@@ -46,9 +46,9 @@ include(GNUInstallDirs)
 # Export the library target so it can be used by other projects with find_package
 install(TARGETS cdtapi
         EXPORT cdtapiTargets
-        ARCHIVE DESTINATION $<IF:$<CONFIG:Debug>,debug/lib,lib>
-        LIBRARY DESTINATION $<IF:$<CONFIG:Debug>,debug/lib,lib>
-        RUNTIME DESTINATION $<IF:$<CONFIG:Debug>,debug/bin,bin>
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
         INCLUDES DESTINATION "include/${PROJECT_NAME}")
 
 # Export the targets to a CMake file
@@ -61,7 +61,7 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/generated/cdtapi_version.h"
     "cdtapi.h"
     "cdtapi_avfifo.h"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
 
 # Generate a version file
 write_basic_package_version_file(
