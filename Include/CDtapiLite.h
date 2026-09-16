@@ -384,6 +384,7 @@ CDTAPILITE_API unsigned int DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, i
                                                      int Value, int SubValue);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
+// Receiving in the 8-bit mode fails with DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI.
 CDTAPILITE_API unsigned int DtInpChannel_SetRxControl(DtInpChannel* InpChannel,
                                                       int RxControl);
 

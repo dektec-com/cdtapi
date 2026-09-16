@@ -403,22 +403,22 @@ DT_TEST(OwnHandle)
     Fixture Fix;
 
     if (!Start(&Fix, DtFailures) ||
-        !Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL, DtFailures))
+        !Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
+                 DtFailures))
     {
         return;
     }
     DT_ASSERT_OK(DtDevice_Detach(Fix.Device));
-    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 8, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
     FINISH(Fix);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Consecutive frames, bit for bit, in every format, for SD and HD.
+// Consecutive frames, bit for bit, with 10- and 16-bit symbols, for SD and HD.
 DT_TEST(ReadsFramesBitForBit)
 {
-    static const int Modes[] = {DTAPI_RXMODE_SDI_FULL,
-                                DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B,
+    static const int Modes[] = {DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B,
                                 DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B};
     static const int Standards[] = {DTAPI_VIDSTD_625I50, DTAPI_VIDSTD_525I59_94,
                                     DTAPI_VIDSTD_720P50, DTAPI_VIDSTD_1080I50};
@@ -504,13 +504,14 @@ DT_TEST(RecoversFromFaults)
         if (!Start(&Fix, DtFailures))
             return;
         SimDtPcieLimitRxRing(8 * 1024 * 1024);
-        if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL, DtFailures))
+        if (!Receive(&Fix, DTAPI_VIDSTD_625I50,
+                     DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B, DtFailures))
             return;
-        DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 8, DtFailures));
+        DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
         SimDtPcieInjectRxFault(PORT - 1, Cases[i].Fault);
-        DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next, 8, DtFailures));
+        DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next, 16, DtFailures));
         DT_ASSERT(
-            ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next + 1, 8, DtFailures));
+            ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next + 1, 16, DtFailures));
         FINISH(Fix);
     }
 }
@@ -527,10 +528,11 @@ DT_TEST(FullRingSetsOverflow)
         return;
     DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
     SimDtPcieLimitRxRing(5 * DtSdiFrameCodedSize(&Layout) / 2);
-    if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL, DtFailures))
+    if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
+                 DtFailures))
         return;
 
-    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 8, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT_EQ(Flags, 0);
     DT_ASSERT_EQ(Latched, 0);
@@ -538,11 +540,11 @@ DT_TEST(FullRingSetsOverflow)
     // Two whole frames wait.
     SimDtPcieRunRxEvents(PORT - 1, 8);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
-    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 8));
+    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 16));
 
     // Three more do not fit.
     SimDtPcieRunRxEvents(PORT - 1, 12);
-    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 8, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT_EQ(Latched, DTAPI_RX_FIFO_OVF);
 
@@ -693,6 +695,13 @@ DT_TEST(ReceiveModes)
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_STAT));
 
+    // The 8-bit mode is set, but receiving in it fails and leaves the channel idle.
+    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_1080I50);
+    DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
+                 DTAPI_E_CONFIG_RAW_SDI);
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
+
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     DT_ASSERT_EQ(DtInpChannel_SetRxMode(Fix.Channel, DTAPI_RXMODE_SDI_FULL),
                  DTAPI_E_NOT_IDLE);
@@ -730,9 +739,10 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_625I50));
     SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
-    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel, DTAPI_RXMODE_SDI_FULL));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
-    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 8, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
                  DTAPI_E_NOT_IDLE);
@@ -746,7 +756,7 @@ DT_TEST(IoConfiguration)
     SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_720P50);
     SimDtPcieGetRxState(PORT - 1, &State);
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
-    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_720P50, State.NextFrame, 8, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_720P50, State.NextFrame, 16, DtFailures));
 
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Value));
     DT_ASSERT_EQ(Value, 48 * 1024 * 1024);

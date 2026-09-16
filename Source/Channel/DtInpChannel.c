@@ -435,7 +435,10 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // SdiRxImpl_Bb2::SetRxControl: anything but idle receives, and the value is kept as
-// given. Receiving starts reading at the start of the ring, as DtPalCHSDIRX does.
+// given. Receiving starts reading at the start of the ring, as DtPalCHSDIRX does. With
+// 8-bit symbols receiving fails as the Matrix's row validation fails it
+// (MxPreProcess::ValidateRowConfigRaw accepts only 10- and 16-bit raw data), before the
+// channel runs.
 //
 static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
 {
@@ -448,6 +451,8 @@ static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
     if (RxControl == DTAPI_RXCTRL_IDLE)
         Result =
             DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
+    else if (Chan->SymbolBits == 8)
+        return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
         Chan->ReadOffset = 0;
