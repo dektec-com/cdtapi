@@ -11,6 +11,7 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // CDtapiLite includes
@@ -72,9 +73,9 @@ unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
 // for one of its ports, such as the capability 3GSDI. It is always read for the device
 // behind Drv, with its own hardware revision and firmware, as DTAPI's Device class does.
 //
-// Both functions set *Value to zero or false first, and fail with DTAPI_E_BUF_TOO_SMALL
-// for a name longer than the driver accepts and with DTAPI_E_NOT_FOUND for a property
-// the device does not have.
+// The functions clear their output first, and fail with DTAPI_E_BUF_TOO_SMALL for a name
+// longer than the driver accepts and with DTAPI_E_NOT_FOUND for a property the device
+// does not have.
 //
 
 // The port index of a property that belongs to the device rather than to a port.
@@ -86,6 +87,16 @@ unsigned int DtDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, in
 // Reads a boolean property. PortIndex counts from zero, or is DT_PROPERTY_DEVICE.
 unsigned int DtDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
                                   bool* Value);
+
+// The size of a buffer that holds every string property, terminator included: the
+// driver answers with at most 96 characters.
+#define DT_PROPERTY_STR_SIZE 97
+
+// Reads a string property into Str, which holds Size bytes. PortIndex counts from zero,
+// or is DT_PROPERTY_DEVICE. Fails with DTAPI_E_BUF_TOO_SMALL, leaving Str empty, when
+// the string does not fit.
+unsigned int DtDrvGetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex, char* Str,
+                                 size_t Size);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- I/O configuration -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -117,5 +128,38 @@ unsigned int DtDrvSetIoConfig(OsDrv* Drv, const DtIoConfig* Config);
 
 // Reads the device's time-of-day clock.
 unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI receiver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A command for a driver function rather than for the device goes to the function's UUID,
+// which the device layer reads from the function's properties, and to the index of the
+// port the function belongs to.
+//
+
+// What an SDI receiver reports of its input, converted as DTAPI's SDIRX proxy does.
+typedef struct DtSdiRxStatus
+{
+    bool CarrierDetect;
+    bool SdiLock;       // Locked to the SDI stream
+    bool LineLock;      // Locked to the lines
+    bool Valid;         // The counters below describe the input
+    int NumSymsHanc;    // Symbols per line in HANC, EAV and SAV included
+    int NumSymsVidVanc; // Symbols per line in the active part
+    int NumLinesF1;
+    int NumLinesF2;
+    bool IsLevelB;      // 3G level B
+    uint32_t PayloadId; // The SMPTE 352 VPID, 0 for none
+    double FrameRate;   // Frames per second, 0 when the driver reports no frame period
+    int SdiRate;        // -1 unknown, 0 SD, 1 HD, 2 3G, 3 6G, 4 12G
+} DtSdiRxStatus;
+
+// True when the driver is new enough for the SDI receiver function: 1.4.0.111 or later,
+// build number included (DtProxy.cpp, PROXY_SDIRX).
+bool DtDrvVersionSupportsSdiRx(const DtDriverVersion* Version);
+
+// Reads the status of the SDI receiver with this UUID in the port with this index.
+// Clears *Status first.
+unsigned int DtDrvSdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                 DtSdiRxStatus* Status);
 
 #endif // CDTAPILITE_DT_DRV_H

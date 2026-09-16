@@ -100,7 +100,7 @@ cdtapilite_add_test(Abi Abi/AbiSizes.c)
 
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
-foreach(SimSuite SimDevice SimCommands SimApi)
+foreach(SimSuite SimDevice SimCommands SimSdiRx SimApi)
     cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")

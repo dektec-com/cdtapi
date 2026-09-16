@@ -4,10 +4,14 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Not yet built or run: no Linux machine is available to the project. The deadline
-// arithmetic the timed wait depends on is in LinTime.c and is tested on every platform.
+// The deadline arithmetic the timed wait depends on is in LinTime.c and is tested on
+// every platform.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// With -std=c11 the C library declares only ISO C. Asked for before any header, this
+// also exposes the POSIX and Linux calls the backend makes.
+#define _GNU_SOURCE
 
 // Standard includes
 #include <errno.h>

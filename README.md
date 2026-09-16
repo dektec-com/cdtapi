@@ -38,10 +38,10 @@ Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It re
 
 ### Platform status
 
-Windows is the platform the build is currently verified on: Visual Studio 2026
-with the `windows-*` presets. The Linux presets and the Linux driver backend are
-written but **not yet built or run anywhere** — no Linux machine is available to
-the project yet. Treat them as unverified until CI or a Linux host says otherwise.
+The build and every test suite are verified on Windows, with Visual Studio 2026 and the
+`windows-*` presets, and on Linux (Ubuntu, gcc 15) with the `linux-*` presets. The
+Linux driver backend has also talked to a DTA-2178: it reads the card's identity,
+properties, I/O configuration and SDI receiver status.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and

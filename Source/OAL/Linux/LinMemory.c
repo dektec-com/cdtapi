@@ -3,10 +3,12 @@
 // CDtapiLite - Page size and fork protection on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
-//
-// Not yet built or run: no Linux machine is available to the project.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// With -std=c11 the C library declares only ISO C. Asked for before any header, this
+// also exposes the POSIX and Linux calls the backend makes.
+#define _GNU_SOURCE
 
 // Standard includes
 #include <sys/mman.h>

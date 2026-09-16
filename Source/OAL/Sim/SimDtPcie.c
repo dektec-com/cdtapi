@@ -56,10 +56,12 @@ typedef struct SimFault
 typedef struct SimOverride
 {
     bool Active;
+    bool IsString; // Replaces a string property rather than a value
     char Name[PROPERTY_NAME_MAX_SIZE];
     int PortIndex;
     bool Present;
     uint64_t Value;
+    char Str[PROPERTY_STR_MAX_SIZE];
 } SimOverride;
 
 // The card's state, shared by every handle. See the test controls in SimDtPcie.h.
@@ -73,6 +75,7 @@ static struct
     SimOverride Overrides[SIM_MAX_OVERRIDES];
     SimConfig Config[SIM_PORT_COUNT][SIM_IOCONFIG_COUNT];
     SimFault Faults[SIM_MAX_FAULTS];
+    SimSdiSignal Signals[SIM_SDI_PORT_COUNT];
     int LastFunctionCode;
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
@@ -128,9 +131,9 @@ static void AddFault(int FunctionCode, bool Short, uint32_t Status)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindOverride -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The override of a property, or NULL when it is not overridden.
+// The override of a value or string property, or NULL when it is not overridden.
 //
-static SimOverride* FindOverride(const char* Name, int PortIndex)
+static SimOverride* FindOverride(const char* Name, int PortIndex, bool IsString)
 {
     int i;
 
@@ -138,13 +141,41 @@ static SimOverride* FindOverride(const char* Name, int PortIndex)
     {
         SimOverride* Override = &g_Sim.Overrides[i];
 
-        if (Override->Active && Override->PortIndex == PortIndex &&
-            strcmp(Override->Name, Name) == 0)
+        if (Override->Active && Override->IsString == IsString &&
+            Override->PortIndex == PortIndex && strcmp(Override->Name, Name) == 0)
         {
             return Override;
         }
     }
     return NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddOverride -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The slot for an override: the one that already replaces this property, or a free one.
+// NULL when all are taken, which is a mistake in the test and is then ignored.
+//
+static SimOverride* AddOverride(const char* Name, int PortIndex, bool IsString)
+{
+    SimOverride* Override;
+    int i;
+
+    EnsureState();
+    Override = FindOverride(Name, PortIndex, IsString);
+    for (i = 0; Override == NULL && i < SIM_MAX_OVERRIDES; i++)
+    {
+        if (!g_Sim.Overrides[i].Active)
+            Override = &g_Sim.Overrides[i];
+    }
+    if (Override == NULL)
+        return NULL;
+
+    memset(Override, 0, sizeof(*Override));
+    snprintf(Override->Name, sizeof(Override->Name), "%s", Name);
+    Override->PortIndex = PortIndex;
+    Override->IsString = IsString;
+    Override->Active = true;
+    return Override;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Checks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -277,7 +308,54 @@ static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PropertyCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Only reading a value is modelled; strings and tables are refused as unknown commands.
+// Reading a string: an override, or the card's string property with that name. The
+// string is copied into the fixed field, which it may fill without a terminator.
+//
+static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* Out,
+                          size_t* OutSize, uint32_t* DrvStatus)
+{
+    DtIoctlPropCmdGetStrInput Request;
+    DtIoctlPropCmdGetStrOutput* Answer;
+    const SimOverride* Override;
+    const char* Str = NULL;
+    size_t Length;
+    int Outcome;
+
+    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlPropCmdGetStrInput), Out, OutSize,
+                         sizeof(DtIoctlPropCmdGetStrOutput), DrvStatus);
+    if (Outcome != OS_IOCTL_OK)
+        return Outcome;
+
+    memcpy(&Request, In, sizeof(Request));
+    Request.m_Name[sizeof(Request.m_Name) - 1] = '\0';
+
+    Answer = (DtIoctlPropCmdGetStrOutput*)Out;
+    memset(Answer, 0, sizeof(*Answer));
+
+    Override = FindOverride(Request.m_Name, Request.m_PortIndex, true);
+    if (Override != NULL)
+    {
+        if (!Override->Present)
+            return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
+        memcpy(Answer->m_Str, Override->Str, sizeof(Answer->m_Str));
+    }
+    else if (SimDta2178GetString(Request.m_Name, Request.m_PortIndex, &Str))
+    {
+        Length = strlen(Str);
+        memcpy(Answer->m_Str, Str,
+               Length < sizeof(Answer->m_Str) ? Length : sizeof(Answer->m_Str));
+    }
+    else
+        return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
+
+    Answer->m_Scope = (DtPropertyScope)(PROPERTY_SCOPE_DTAPI | PROPERTY_SCOPE_DRIVER);
+    *OutSize = sizeof(DtIoctlPropCmdGetStrOutput);
+    return OS_IOCTL_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PropertyCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Reading a value and a string are modelled; tables are refused as unknown commands.
 //
 static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, void* Out,
                        size_t* OutSize, uint32_t* DrvStatus)
@@ -288,6 +366,9 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     uint64_t Value = 0;
     int Type = 0;
     int Outcome;
+
+    if (Cmd == DT_PROP_CMD_GET_STR)
+        return PropertyGetStr(Dev, In, InSize, Out, OutSize, DrvStatus);
 
     if (Cmd != DT_PROP_CMD_GET_VALUE)
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
@@ -300,7 +381,7 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     memcpy(&Request, In, sizeof(Request));
     Request.m_Name[sizeof(Request.m_Name) - 1] = '\0';
 
-    Override = FindOverride(Request.m_Name, Request.m_PortIndex);
+    Override = FindOverride(Request.m_Name, Request.m_PortIndex, false);
     if (Override != NULL)
     {
         if (!Override->Present)
@@ -508,6 +589,55 @@ static int TodCmd(SimDevice* Dev, int Cmd, size_t InSize, void* Out, size_t* Out
     return OS_IOCTL_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The SDI receiver of the port at PortIndex. Only reading its status is modelled. Its
+// sizes are checked first, then whether the function is enabled, which it is while the
+// port is an input (DtDfSdiRx_GetSdiStatus). In ASI mode only the carrier is reported.
+//
+static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void* Out,
+                    size_t* OutSize, uint32_t* DrvStatus)
+{
+    const SimSdiSignal* Signal = &g_Sim.Signals[PortIndex];
+    DtIoctlSdiRxCmdGetSdiStatusOutput2* Answer;
+    int Outcome;
+
+    if (Cmd != DT_SDIRX_CMD_GET_SDI_STATUS2)
+        return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
+
+    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlSdiRxCmdGetSdiStatusInput), Out,
+                         OutSize, sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2), DrvStatus);
+    if (Outcome != OS_IOCTL_OK)
+        return Outcome;
+
+    if (g_Sim.Config[PortIndex][DTAPI_IOCONFIG_IODIR].Value != DTAPI_IOCONFIG_INPUT)
+        return SimFail(Dev, DT_STATUS_NOT_ENABLED, DrvStatus);
+
+    Answer = (DtIoctlSdiRxCmdGetSdiStatusOutput2*)Out;
+    memset(Answer, 0, sizeof(*Answer));
+    Answer->m_CarrierDetect = Signal->CarrierDetect;
+
+    if (g_Sim.Config[PortIndex][DTAPI_IOCONFIG_IOSTD].Value == DTAPI_IOCONFIG_ASI)
+        Answer->m_SdiRate = DT_DRV_SDIRATE_UNKNOWN;
+    else
+    {
+        Answer->m_SdiLock = Signal->SdiLock;
+        Answer->m_LineLock = Signal->LineLock;
+        Answer->m_Valid = Signal->Valid;
+        Answer->m_NumSymsHanc = Signal->NumSymsHanc;
+        Answer->m_NumSymsVidVanc = Signal->NumSymsVidVanc;
+        Answer->m_NumLinesF1 = Signal->NumLinesF1;
+        Answer->m_NumLinesF2 = Signal->NumLinesF2;
+        Answer->m_IsLevelB = Signal->IsLevelB;
+        Answer->m_PayloadId = Signal->PayloadId;
+        Answer->m_FramePeriod = Signal->FramePeriod;
+        Answer->m_SdiRate = Signal->SdiRate;
+    }
+
+    *OutSize = sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2);
+    return OS_IOCTL_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -544,13 +674,38 @@ static void SimClose(void* State)
 // driver does. On Linux the number also encodes the argument size, so matching on it
 // would accept only the one structure size this build happened to be compiled with.
 //
-// A command the emulator does not model is refused with DT_STATUS_NOT_SUPPORTED before
-// its sizes are looked at, as the driver refuses a command it does not know.
+// The header's UUID picks the target first, as in DtCore_Ioctl: 0 is the device itself,
+// which must be addressed with port index -1; a UUID flagged as a building block or
+// driver function is looked up by its index, whatever the port index says; anything
+// else, and a UUID the card does not have, has no I/O stub. A target refuses a command it
+// does not handle with DT_STATUS_NOT_SUPPORTED, before its sizes are looked at, as the
+// driver does.
 //
 static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
                     void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
-    int Cmd = ((const DtIoctlInputDataHdr*)In)->m_Cmd;
+    const DtIoctlInputDataHdr* Hdr = (const DtIoctlInputDataHdr*)In;
+    int Cmd = Hdr->m_Cmd;
+    int PortIndex, Type;
+
+    if (Hdr->m_Uuid != DT_UUID_CORE)
+    {
+        if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 ||
+            !SimDta2178FindFunction(Hdr->m_Uuid, &PortIndex, &Type))
+        {
+            return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
+        }
+
+        if ((Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0 && Type == DT_FUNC_TYPE_SDIRX &&
+            FunctionCode == DT_FUNC_CODE_SDIRX_CMD)
+        {
+            return SdiRxCmd(Dev, PortIndex, Cmd, InSize, Out, OutSize, DrvStatus);
+        }
+        return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
+    }
+
+    if (Hdr->m_PortIndex != -1)
+        return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
 
     switch (FunctionCode)
     {
@@ -638,6 +793,11 @@ void SimDtPcieReset(void)
     for (j = 0; j < SIM_MAX_OVERRIDES; j++)
         g_Sim.Overrides[j].Active = false;
 
+    // Initialised before the signals are cleared, which checks it.
+    g_Sim.Initialised = true;
+    for (j = 0; j < SIM_SDI_PORT_COUNT; j++)
+        SimDtPcieSetSdiSignal(j, NULL);
+
     g_Sim.Index = SIM_DEVICE_INDEX;
     g_Sim.FirmwareStatus = DT_FWSTATUS_UPTODATE;
     g_Sim.DriverVersion.m_Major = SIM_DRIVER_MAJOR;
@@ -685,26 +845,55 @@ void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro)
 void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
                                uint64_t Value)
 {
-    SimOverride* Override;
-    int i;
+    SimOverride* Override = AddOverride(Name, PortIndex, false);
 
-    EnsureState();
-    Override = FindOverride(Name, PortIndex);
-    for (i = 0; Override == NULL && i < SIM_MAX_OVERRIDES; i++)
-    {
-        if (!g_Sim.Overrides[i].Active)
-            Override = &g_Sim.Overrides[i];
-    }
-
-    // More overrides than there are slots is a mistake in the test, and is ignored.
     if (Override == NULL)
         return;
-
-    snprintf(Override->Name, sizeof(Override->Name), "%s", Name);
-    Override->PortIndex = PortIndex;
     Override->Present = Present;
     Override->Value = Value;
-    Override->Active = true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOverrideString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The driver's string field holds PROPERTY_STR_MAX_SIZE characters and need not be
+// terminated when full, so the override keeps up to that many.
+//
+void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
+                             const char* Value)
+{
+    SimOverride* Override = AddOverride(Name, PortIndex, true);
+    size_t Length;
+
+    if (Override == NULL)
+        return;
+    Override->Present = Present;
+    if (!Present || Value == NULL)
+        return;
+
+    Length = strlen(Value);
+    if (Length > sizeof(Override->Str))
+        Length = sizeof(Override->Str);
+    memcpy(Override->Str, Value, Length);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
+{
+    SimSdiSignal* Port;
+
+    EnsureState();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return;
+
+    Port = &g_Sim.Signals[PortIndex];
+    if (Signal != NULL)
+    {
+        *Port = *Signal;
+        return;
+    }
+    memset(Port, 0, sizeof(*Port));
+    Port->SdiRate = DT_DRV_SDIRATE_UNKNOWN;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

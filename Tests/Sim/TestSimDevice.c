@@ -185,6 +185,7 @@ DT_TEST(OutputBufferTooSmallIsRefused)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
                             sizeof(In), Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
@@ -248,6 +249,7 @@ DT_TEST(DeviceInfoOutputTooSmallIsRefused)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
                             Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
@@ -272,6 +274,7 @@ DT_TEST(UnmodelledCommandIsRefused)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,
                             &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);

@@ -802,6 +802,7 @@ DT_TEST(PropertyRequestSizesAreChecked)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_CmdHdr.m_PortIndex = -1;
     In.m_CmdHdr.m_Cmd = DT_PROP_CMD_GET_VALUE;
     snprintf(In.m_Name, sizeof(In.m_Name), "%s", "PORT_COUNT");
     In.m_PortIndex = -1;
@@ -819,7 +820,7 @@ DT_TEST(PropertyRequestSizesAreChecked)
 
     // Unmodelled commands of a modelled IOCTL are unknown commands.
     OutSize = sizeof(Out);
-    In.m_CmdHdr.m_Cmd = DT_PROP_CMD_GET_STR;
+    In.m_CmdHdr.m_Cmd = DT_PROP_CMD_GET_TABLE;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
@@ -841,6 +842,7 @@ DT_TEST(IoConfigRequestSizesFollowTheCount)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_CmdHdr.m_PortIndex = -1;
     In.m_CmdHdr.m_Cmd = DT_IOCONFIG_CMD_GET_IOCONFIG;
     In.m_IoConfigCount = 2;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "IODIR");
@@ -875,6 +877,7 @@ static void RawSetInit(RawSetIn* In, const char* Group, const char* Value,
                        const char* SubValue)
 {
     memset(In, 0, sizeof(*In));
+    In->m_CmdHdr.m_PortIndex = -1;
     In->m_CmdHdr.m_Cmd = DT_IOCONFIG_CMD_SET_IOCONFIG;
     In->m_IoConfigCount = 1;
     In->m_IoCfgPars.m_PortIndex = 0;
@@ -954,6 +957,7 @@ DT_TEST(GetRequestsAreChecked)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_CmdHdr.m_PortIndex = -1;
     In.m_CmdHdr.m_Cmd = DT_IOCONFIG_CMD_GET_IOCONFIG;
     In.m_IoConfigCount = 1;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "BOGUS");
@@ -1021,6 +1025,7 @@ DT_TEST(TodRequestSizesAreChecked)
         return;
 
     memset(&In, 0, sizeof(In));
+    In.m_PortIndex = -1;
     In.m_Cmd = DT_TOD_CMD_GET_TIME;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
                             &OutSize, &Status),

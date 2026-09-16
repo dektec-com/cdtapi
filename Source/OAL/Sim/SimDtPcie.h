@@ -80,6 +80,36 @@ void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro);
 void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
                                uint64_t Value);
 
+// Replaces a string property of the card the same way, sharing the eight slots. An
+// override of one kind leaves the property of the other kind with that name as it is.
+// Value is ignored when Present is false, and is cut to what the driver can answer.
+void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
+                             const char* Value);
+
+// What the SDI receiver of a port reports, in the driver's terms: the fields of
+// DT_SDIRX_CMD_GET_SDI_STATUS2, with its flags as integers, 0 for false.
+typedef struct SimSdiSignal
+{
+    int CarrierDetect;
+    int SdiLock;
+    int LineLock;
+    int Valid;
+    int NumSymsHanc;    // Symbols per line in HANC, EAV and SAV included
+    int NumSymsVidVanc; // Symbols per line in the active part
+    int NumLinesF1;
+    int NumLinesF2;
+    int IsLevelB;
+    uint32_t PayloadId; // The VPID, 0 for none
+    int FramePeriod;    // Nanoseconds, 0 for unknown
+    int SdiRate;        // A DT_DRV_SDIRATE_ value
+} SimSdiSignal;
+
+// Feeds the input of the SDI port at PortIndex, 0 to SIM_SDI_PORT_COUNT - 1, with Signal;
+// NULL, as after a reset, leaves it without a signal: nothing detected and the SDI rate
+// unknown. The receiver reports the signal only while the port is an input; on a port
+// configured for ASI it reports the carrier alone, as the driver does.
+void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal);
+
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.
 void SimDtPcieSetIndex(int Index);

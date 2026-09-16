@@ -6,10 +6,13 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <stddef.h>
+
 // CDtapiLite includes
-#include "DtVidStd.h"   // Interface being implemented.
 #include "CDtapiLite.h" // Public constants and the function being implemented.
 #include "DtSmpte352.h" // VPID fields.
+#include "DtVidStd.h"   // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

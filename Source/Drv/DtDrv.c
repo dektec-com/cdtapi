@@ -82,19 +82,28 @@ _Static_assert(sizeof(IoConfigSetIn) ==
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeaderFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Fills the header every command starts with, for the driver function or building block
+// with this UUID in the port with this index.
+//
+static void InitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex)
+{
+    memset(Hdr, 0, sizeof(*Hdr));
+    Hdr->m_Uuid = Uuid;
+    Hdr->m_PortIndex = PortIndex;
+    Hdr->m_Cmd = Cmd;
+    Hdr->m_CmdEx = DT_IOCTL_CMD_NOP;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Fills the header every command starts with. A device-level command addresses no
-// building block, so Uuid is zero and PortIndex is -1, which the driver reads as "the
-// device itself".
+// The header of a device-level command. That addresses no function, so Uuid is zero and
+// PortIndex is -1, which the driver reads as "the device itself".
 //
 static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {
-    memset(Hdr, 0, sizeof(*Hdr));
-    Hdr->m_Uuid = 0;
-    Hdr->m_PortIndex = -1;
-    Hdr->m_Cmd = Cmd;
-    Hdr->m_CmdEx = DT_IOCTL_CMD_NOP;
+    InitHeaderFor(Hdr, Cmd, 0, -1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Issue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -127,12 +136,41 @@ static unsigned int Issue(OsDrv* Drv, unsigned long Code, const void* In, size_t
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitPropertyInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Fills a property request. The filter fields ask for the device behind Drv as it is:
+// type number -1 selects the attached device, and a hardware revision and firmware
+// version of zero with firmware variant -1 leave the driver to use the device's own, as
+// DTAPI's Device::PropertyGet* do by default.
+//
+static unsigned int InitPropertyInput(DtIoctlPropCmdCommonInput* In, int Cmd,
+                                      const char* Name, int PortIndex)
+{
+    size_t NameLength;
+
+    memset(In, 0, sizeof(*In));
+    InitHeader(&In->m_CmdHdr, Cmd);
+    In->m_TypeNumber = -1;
+    In->m_SubDvc = -1;
+    In->m_SubType = -1;
+    In->m_HardwareRevision = 0;
+    In->m_FirmwareVersion = 0;
+    In->m_FirmwareVariant = -1;
+    In->m_PortIndex = PortIndex;
+    In->m_DtapiMaj = DT_DTAPI_MAJOR;
+    In->m_DtapiMin = DT_DTAPI_MINOR;
+    In->m_DtapiBugfix = DT_DTAPI_BUGFIX;
+
+    NameLength = strlen(Name);
+    if (NameLength + 1 > sizeof(In->m_Name))
+        return DTAPI_E_BUF_TOO_SMALL;
+    memcpy(In->m_Name, Name, NameLength + 1);
+    return DTAPI_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetPropertyValue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads a property as the raw 64-bit value the driver stores. The filter fields ask for
-// the device behind Drv as it is: type number -1 selects the attached device, and a
-// hardware revision and firmware version of zero with firmware variant -1 leave the
-// driver to use the device's own, as DTAPI's Device::PropertyGet* do by default.
+// Reads a property as the raw 64-bit value the driver stores.
 //
 // DTAPI checks the scope and type of the answer only with debug assertions, and so does
 // not reject a mismatch in a release build. Neither does this.
@@ -142,26 +180,11 @@ static unsigned int GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex
 {
     DtIoctlPropCmdGetValueInput In;
     DtIoctlPropCmdGetValueOutput Out;
-    size_t NameLength;
     unsigned int Result;
 
-    memset(&In, 0, sizeof(In));
-    InitHeader(&In.m_CmdHdr, DT_PROP_CMD_GET_VALUE);
-    In.m_TypeNumber = -1;
-    In.m_SubDvc = -1;
-    In.m_SubType = -1;
-    In.m_HardwareRevision = 0;
-    In.m_FirmwareVersion = 0;
-    In.m_FirmwareVariant = -1;
-    In.m_PortIndex = PortIndex;
-    In.m_DtapiMaj = DT_DTAPI_MAJOR;
-    In.m_DtapiMin = DT_DTAPI_MINOR;
-    In.m_DtapiBugfix = DT_DTAPI_BUGFIX;
-
-    NameLength = strlen(Name);
-    if (NameLength + 1 > sizeof(In.m_Name))
-        return DTAPI_E_BUF_TOO_SMALL;
-    memcpy(In.m_Name, Name, NameLength + 1);
+    Result = InitPropertyInput(&In, DT_PROP_CMD_GET_VALUE, Name, PortIndex);
+    if (!DT_SUCCEEDED(Result))
+        return Result;
 
     memset(&Out, 0, sizeof(Out));
     Result =
@@ -380,6 +403,46 @@ unsigned int DtDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetPropertyStr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The driver fills a fixed field and need not terminate a string that fills it, so the
+// length is taken within the field. DTAPI checks the scope only with a debug assertion,
+// and this does not check it.
+//
+unsigned int DtDrvGetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex, char* Str,
+                                 size_t Size)
+{
+    DtIoctlPropCmdGetStrInput In;
+    DtIoctlPropCmdGetStrOutput Out;
+    size_t Length;
+    unsigned int Result;
+
+    if (Str != NULL && Size > 0)
+        Str[0] = '\0';
+
+    if (Drv == NULL || Name == NULL || Str == NULL || Size == 0)
+        return DTAPI_E_INVALID_ARG;
+
+    Result = InitPropertyInput(&In, DT_PROP_CMD_GET_STR, Name, PortIndex);
+    if (!DT_SUCCEEDED(Result))
+        return Result;
+
+    memset(&Out, 0, sizeof(Out));
+    Result =
+        Issue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
+        return Result;
+
+    for (Length = 0; Length < sizeof(Out.m_Str) && Out.m_Str[Length] != '\0'; Length++)
+        ;
+    if (Length + 1 > Size)
+        return DTAPI_E_BUF_TOO_SMALL;
+
+    memcpy(Str, Out.m_Str, Length);
+    Str[Length] = '\0';
+    return DTAPI_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 unsigned int DtDrvGetIoConfig(OsDrv* Drv, DtIoConfig* Config)
@@ -471,5 +534,74 @@ unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseco
 
     *Seconds = Out.m_Time.m_Seconds;
     *Nanoseconds = Out.m_Time.m_Nanoseconds;
+    return DTAPI_OK;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDI receiver +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvVersionSupportsSdiRx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDrvVersionSupportsSdiRx(const DtDriverVersion* Version)
+{
+    if (Version->Major != 1)
+        return Version->Major > 1;
+    if (Version->Minor != 4)
+        return Version->Minor > 4;
+    if (Version->Micro != 0)
+        return Version->Micro > 0;
+    return Version->Build >= 111;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiRxGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// DT_SDIRX_CMD_GET_SDI_STATUS2, converted as DtProxySDIRX::GetSdiStatus does: the flags
+// to booleans, the frame period in nanoseconds to a rate, and an SDI rate the driver does
+// not define to unknown.
+//
+unsigned int DtDrvSdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                 DtSdiRxStatus* Status)
+{
+    DtIoctlSdiRxCmdGetSdiStatusInput In;
+    DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
+    unsigned int Result;
+
+    if (Status != NULL)
+        memset(Status, 0, sizeof(*Status));
+
+    if (Drv == NULL || Status == NULL)
+        return DTAPI_E_INVALID_ARG;
+
+    InitHeaderFor(&In, DT_SDIRX_CMD_GET_SDI_STATUS2, Uuid, PortIndex);
+    memset(&Out, 0, sizeof(Out));
+
+    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_SDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
+        return Result;
+
+    Status->CarrierDetect = Out.m_CarrierDetect != 0;
+    Status->SdiLock = Out.m_SdiLock != 0;
+    Status->LineLock = Out.m_LineLock != 0;
+    Status->Valid = Out.m_Valid != 0;
+    Status->NumSymsHanc = Out.m_NumSymsHanc;
+    Status->NumSymsVidVanc = Out.m_NumSymsVidVanc;
+    Status->NumLinesF1 = Out.m_NumLinesF1;
+    Status->NumLinesF2 = Out.m_NumLinesF2;
+    Status->IsLevelB = Out.m_IsLevelB != 0;
+    Status->PayloadId = Out.m_PayloadId;
+    Status->FrameRate = Out.m_FramePeriod > 0 ? 1e9 / Out.m_FramePeriod : 0.0;
+
+    switch (Out.m_SdiRate)
+    {
+    case DT_DRV_SDIRATE_SD:
+    case DT_DRV_SDIRATE_HD:
+    case DT_DRV_SDIRATE_3G:
+    case DT_DRV_SDIRATE_6G:
+    case DT_DRV_SDIRATE_12G:
+        Status->SdiRate = Out.m_SdiRate;
+        break;
+    default:
+        Status->SdiRate = DT_DRV_SDIRATE_UNKNOWN;
+        break;
+    }
     return DTAPI_OK;
 }

@@ -4,11 +4,14 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Not yet built or run: no Linux machine is available to the project. The buffer layout
-// this backend depends on is in LinIoctlBuffer.c and is unit-tested on every platform;
-// what remains untested here is the open, close and ioctl system calls themselves.
+// The buffer layout this backend depends on is in LinIoctlBuffer.c and is unit-tested on
+// every platform; the open, close and ioctl system calls need a card.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// With -std=c11 the C library declares only ISO C. Asked for before any header, this
+// also exposes the POSIX and Linux calls the backend makes.
+#define _GNU_SOURCE
 
 // Standard includes
 #include <errno.h>
