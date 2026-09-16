@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# #*#*#*#*#*#*#*#*#*#*#*#*#* compare_device_scan.sh *#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+# #*#*#*#*#*#*#*#*#*#*#*#* compare_device_scan.sh *#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
 # CDtapiLite - Compares CDtapiLite's device scan with DTAPI's on a machine with a card
 #
