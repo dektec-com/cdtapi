@@ -263,9 +263,9 @@ static bool CodeFromName(const char* Field, int* Code)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True when the port has the capability named after Code, as CAP_<name>. The callers
-// pass valid codes only; a name lookup that failed anyway would leave the bare prefix,
-// which is no capability.
+// True when the port has the capability named after Code, as CAP_<name>, overridden or
+// not. The callers pass valid codes only; a name lookup that failed anyway would leave
+// the bare prefix, which is no capability.
 //
 static bool IsSupported(int PortIndex, int Code)
 {
@@ -273,8 +273,13 @@ static bool IsSupported(int PortIndex, int Code)
     uint64_t Value = 0;
     int Type;
 
+    const SimOverride* Override;
+
     memcpy(CapName, "CAP_", 4);
     DtIoConfigGetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
+    Override = FindOverride(CapName, PortIndex, false);
+    if (Override != NULL)
+        return Override->Status == 0 && Override->Present && Override->Value != 0;
     return SimDta2178GetProperty(CapName, PortIndex, &Type, &Value) && Value != 0;
 }
 

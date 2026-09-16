@@ -189,6 +189,7 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     // DtapiIoStd2VidStd: the sub-value of an SDI standard is its video standard.
     if (!DtFramePropsInit(&Frame, Chan->IoStdSubValue))
         return DTAPI_E_INVALID_VIDSTD;
+    Chan->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
 
     // DtPalCHSDIRX::Attach: the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
@@ -204,6 +205,16 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     Chan->ChannelAttached = true;
 
     Result = DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
+
+    // A 4K standard, which DTAPI's raw row does not take, attaches without a ring; see
+    // SetRxControl.
+    if (Result == DTAPI_OK &&
+        (Chan->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
+         Chan->IoStdValue == DTAPI_IOCONFIG_12GSDI || DtVidStdIs4k(Chan->IoStdSubValue)))
+    {
+        return DTAPI_OK;
+    }
+
     if (Result == DTAPI_OK)
         Result = DtDrvChSdiRxGetProps(Drv, Chan->Uuid, Chan->PortIndex, &Props);
     if (Result == DTAPI_OK &&
@@ -436,9 +447,9 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
 //
 // SdiRxImpl_Bb2::SetRxControl: anything but idle receives, and the value is kept as
 // given. Receiving starts reading at the start of the ring, as DtPalCHSDIRX does. With
-// 8-bit symbols receiving fails as the Matrix's row validation fails it
-// (MxPreProcess::ValidateRowConfigRaw accepts only 10- and 16-bit raw data), before the
-// channel runs.
+// 8-bit symbols or a 4K standard receiving fails as the Matrix's row validation fails it
+// (MxPreProcess::ValidateRowConfigRaw accepts only 10- and 16-bit raw data of one logical
+// link), before the channel runs.
 //
 static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
 {
@@ -451,7 +462,7 @@ static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
     if (RxControl == DTAPI_RXCTRL_IDLE)
         Result =
             DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
-    else if (Chan->SymbolBits == 8)
+    else if (Chan->SymbolBits == 8 || Chan->Ring == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
@@ -608,8 +619,7 @@ static unsigned int Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
     Result = DtDrvGetIoConfig(Chan->Device.Drv, &Config);
     if (Result != DTAPI_OK)
         goto Failed;
-    if (Config.Value == DTAPI_IOCONFIG_ASI || Config.Value == DTAPI_IOCONFIG_6GSDI ||
-        Config.Value == DTAPI_IOCONFIG_12GSDI || DtVidStdIs4k(Config.SubValue))
+    if (Config.Value == DTAPI_IOCONFIG_ASI)
     {
         Result = DTAPI_E_NOT_SUPPORTED;
         goto Failed;
@@ -895,11 +905,8 @@ unsigned int DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int V
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (InpChannel->RxControl != DTAPI_RXCTRL_IDLE)
         Result = DTAPI_E_NOT_IDLE;
-    else if (Group == DTAPI_IOCONFIG_IOSTD &&
-             (Value == DTAPI_IOCONFIG_ASI || DtVidStdIs4k(SubValue)))
-    {
+    else if (Group == DTAPI_IOCONFIG_IOSTD && Value == DTAPI_IOCONFIG_ASI)
         Result = DTAPI_E_NOT_SUPPORTED;
-    }
     else
     {
         Config.Port = InpChannel->Port;

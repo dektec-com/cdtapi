@@ -312,9 +312,10 @@ CDTAPILITE_API unsigned int DtDevice_GetTimeOfDay(const DtDevice* Device,
 // ring of the card's receive channel, without a thread of its own: ReadFrame waits for
 // the card's format events and assembles each frame straight into the caller's buffer.
 //
-// SD, HD and 3G standards are received; 4K, ASI, active-video-only and compressed modes
-// are not. A channel attaches exclusively and is configured for the port's I/O standard
-// when it attaches and whenever that standard is set through the channel.
+// SD, HD and 3G standards are received; 4K, ASI, 8-bit symbols, active-video-only and
+// compressed modes are not. A channel attaches exclusively and is configured for the
+// port's I/O standard when it attaches and whenever that standard is set through the
+// channel.
 //
 // Every function taking a DtInpChannel returns DTAPI_E_INVALID_ARG for a null pointer,
 // and DTAPI_E_NOT_ATTACHED when the channel is not attached.
@@ -337,7 +338,7 @@ CDTAPILITE_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 // Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT
 // for a port that cannot be, or is not configured as, an input; DTAPI_E_NOT_SUPPORTED for
-// a port without an ASI/SDI receiver and for an I/O standard of ASI, 6G, 12G or 4K;
+// a port without an ASI/SDI receiver and for an ASI I/O standard;
 // DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a receiver the driver does not describe
 // or is too old for; DTAPI_E_IN_USE when another user has the port; and the driver's
 // result of any command.
@@ -384,7 +385,8 @@ CDTAPILITE_API unsigned int DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, i
                                                      int Value, int SubValue);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
-// Receiving in the 8-bit mode fails with DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI.
+// Receiving in the 8-bit mode, or on a port configured for 4K, fails with
+// DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI.
 CDTAPILITE_API unsigned int DtInpChannel_SetRxControl(DtInpChannel* InpChannel,
                                                       int RxControl);
 

@@ -344,6 +344,24 @@ DT_TEST(AttachRefusals)
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_DRIVER_INCOMP);
 
+    // A 4K standard attaches, but does not receive.
+    SimDtPcieReset();
+    SimDtPcieOverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcieOverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
+                 DTAPI_E_CONFIG_RAW_SDI);
+    {
+        int Size = BUFFER_SIZE;
+        DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
+                     DTAPI_E_TIMEOUT);
+    }
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+
     SimDtPcieReset();
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
