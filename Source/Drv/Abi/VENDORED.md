@@ -8,6 +8,7 @@ driver-ABI update a copy rather than a merge.
 | File | Copied from | Licence |
 |---|---|---|
 | `DtCommon.h` | `SDK/Common/Source/DtCommon.h` | BSD-2-Clause, DekTec Digital Video B.V. |
+| `DtPcieCommon.h` | `SDK/Common/Source/DtPcieCommon.h` | BSD-2-Clause, DekTec Digital Video B.V. |
 
 `.clang-format` in this directory sets `DisableFormat: true`, and the directory is
 excluded from clang-tidy and from `Scripts/check_style.sh`.
@@ -15,6 +16,7 @@ excluded from clang-tidy and from `Scripts/check_style.sh`.
 ## Refreshing a vendored file
 
     cp <sdk>/Common/Source/DtCommon.h Source/Drv/Abi/DtCommon.h
+    cp <sdk>/Common/Source/DtPcieCommon.h Source/Drv/Abi/DtPcieCommon.h
     cmake --build Build/<preset> --target cdtapilite_abi_check
 
 The ABI check compiles the header standalone as C11 and turns every `ASSERT_SIZE` in it

@@ -40,7 +40,26 @@ set(CDTAPILITE_SOURCES
     Source/Core/DtlBuf.c
     Source/Core/DtlRing.c
     Source/Core/DtlStr.c
-    Source/Core/DtlVec.c)
+    Source/Core/DtlVec.c
+    Source/Drv/DtlDrv.c
+    Source/OAL/OsDispatch.c
+    Source/OAL/Sim/SimDtPcie.c)
+
+# The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
+# that it is unit-tested on every platform even though its only user is the Linux backend.
+list(APPEND CDTAPILITE_SOURCES Source/OAL/Linux/LinIoctlBuffer.c)
+
+# The real driver backend for this platform, or a stand-in that finds no hardware.
+if(CDTAPILITE_SIM_ONLY)
+    list(APPEND CDTAPILITE_SOURCES Source/OAL/OsNoPlatform.c)
+elseif(WIN32)
+    list(APPEND CDTAPILITE_SOURCES Source/OAL/Windows/WinDtPcie.c)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND CDTAPILITE_SOURCES Source/OAL/Linux/LinDtPcie.c)
+else()
+    message(FATAL_ERROR "CDtapiLite supports Windows and Linux; "
+                        "use CDTAPILITE_SIM_ONLY=ON to build for emulation elsewhere.")
+endif()
 
 if(CDTAPILITE_BUILD_SHARED)
     add_library(cdtapilite SHARED ${CDTAPILITE_SOURCES})
@@ -71,6 +90,9 @@ target_include_directories(cdtapilite
 
 if(CDTAPILITE_SIM_ONLY)
     target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_SIM_ONLY=1)
+elseif(WIN32)
+    # SetupAPI enumerates the DtPcie device interfaces.
+    target_link_libraries(cdtapilite PRIVATE setupapi)
 endif()
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Warnings -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

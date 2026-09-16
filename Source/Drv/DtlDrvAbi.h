@@ -41,14 +41,8 @@
 
 #include "Abi/DtCommon.h"
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Linux IOCTL dispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// On Linux the size of the argument structure is encoded into the IOCTL number, so the
-// number changes whenever a structure grows. Match on the function code alone, exactly
-// as the driver does. DtCommon.h documents this at its DT_IOCTL_TO_FUNCTION definition.
-//
-#if !defined(WINBUILD) && !defined(DT_IOCTL_TO_FUNCTION)
-    #define DT_IOCTL_TO_FUNCTION(IoctlCode) ((UInt32)_IOC_NR(IoctlCode))
-#endif
+// The DtPcie driver's own header carries the device interface GUID that the Windows
+// backend enumerates by. Including it for every platform keeps one include order.
+#include "Abi/DtPcieCommon.h"
 
 #endif // CDTAPILITE_DTL_DRV_ABI_H

@@ -45,6 +45,11 @@ Run them locally:
 
     Scripts/build.sh --lint-only
 
+Banner and separator comments are easy to type one character too wide. Rather than
+count, regenerate them:
+
+    python Scripts/fix_banners.py <file> ...
+
 Install the pre-commit hook once, and the same checks run before each commit:
 
     Scripts/install_hooks.sh

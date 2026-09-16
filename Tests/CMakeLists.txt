@@ -45,6 +45,7 @@ endfunction()
 cdtapilite_add_test(Alloc Unit/TestAlloc.c)
 cdtapilite_add_test(Api Unit/TestApi.c)
 cdtapilite_add_test(Buf Unit/TestBuf.c)
+cdtapilite_add_test(LinIoctlBuffer Unit/TestLinIoctlBuffer.c)
 cdtapilite_add_test(Ring Unit/TestRing.c)
 cdtapilite_add_test(Str Unit/TestStr.c)
 cdtapilite_add_test(Vec Unit/TestVec.c)
@@ -52,3 +53,9 @@ cdtapilite_add_test(Vec Unit/TestVec.c)
 # Including the vendored driver ABI is the test: DtCommon.h carries an ASSERT_SIZE on
 # every structure, so a layout change fails this build.
 cdtapilite_add_test(Abi Abi/AbiSizes.c)
+
+# Runs the OS abstraction and driver layers against the emulated device. The variable is
+# appended rather than set, so that the AddressSanitizer PATH change is kept.
+cdtapilite_add_test(SimDevice Sim/TestSimDevice.c)
+set_property(TEST SimDevice APPEND PROPERTY
+    ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")

@@ -1,0 +1,102 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#* OsDispatch.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDtapiLite - Chooses between the real driver and the emulated device
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// CDtapiLite includes
+#include "Core/DtlAlloc.h"      // Allocation seam.
+#include "OsAbstractionLayer.h" // Interface being implemented.
+#include "OsBackend.h"          // Backend interface.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Handle +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+struct OsDrv
+{
+    const OsBackend* Backend;
+    void* State;
+    bool IsEmulated;
+};
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+OsDrv* OsDrvOpen(int Index)
+{
+    const OsBackend* Backend;
+    bool Emulated;
+    void* State;
+    OsDrv* Drv;
+
+    if (Index < 0 || Index >= DTL_MAX_DEVICES)
+        return NULL;
+
+    // The emulator is checked before real hardware is enumerated, so that an application
+    // needs no change and no new call to use it.
+    Emulated = OsSimIsRequested();
+    Backend = Emulated ? OsSimBackend() : OsPlatformBackend();
+
+    // A build without the platform backend, asked for real hardware.
+    if (Backend == NULL)
+        return NULL;
+
+    State = Backend->Open(Index);
+    if (State == NULL)
+        return NULL;
+
+    Drv = (OsDrv*)DtlMalloc(sizeof(OsDrv));
+    if (Drv == NULL)
+    {
+        Backend->Close(State);
+        return NULL;
+    }
+
+    Drv->Backend = Backend;
+    Drv->State = State;
+    Drv->IsEmulated = Emulated;
+    return Drv;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvClose -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void OsDrvClose(OsDrv* Drv)
+{
+    if (Drv == NULL)
+        return;
+
+    Drv->Backend->Close(Drv->State);
+    DtlFree(Drv);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIsEmulated -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool OsDrvIsEmulated(const OsDrv* Drv)
+{
+    return Drv != NULL && Drv->IsEmulated;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, void* Out,
+               size_t* OutSize)
+{
+    if (Drv == NULL || In == NULL || InSize == 0)
+        return -1;
+
+    return Drv->Backend->IoCtl(Drv->State, Code, In, InSize, Out, OutSize);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+unsigned long OsDrvLastError(const OsDrv* Drv)
+{
+    if (Drv == NULL)
+        return 0;
+
+    return Drv->Backend->LastError(Drv->State);
+}
