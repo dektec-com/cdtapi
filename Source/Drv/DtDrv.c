@@ -927,9 +927,10 @@ unsigned int DtDrvChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex, uint8_t*
     Address = (void*)(uintptr_t)Out.m_BufferAddr;
     if (Address == NULL)
     {
-        Address =
-            OsDrvMapMemory(Drv, DT_MMAP_PORT_MEM_SEGMENT_SIZE * (uint64_t)(PortIndex + 1),
-                           (size_t)Out.m_BufSize);
+        uint64_t Offset = (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE * (uint64_t)PortIndex +
+                          (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE;
+
+        Address = OsDrvMapMemory(Drv, Offset, (size_t)Out.m_BufSize);
         if (Address == NULL)
             return DTAPI_E_OUT_OF_MEM;
         *Mapped = true;
