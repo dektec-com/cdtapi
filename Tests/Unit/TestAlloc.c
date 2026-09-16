@@ -96,6 +96,38 @@ DTL_TEST(ResetDisarmsInjection)
     DtlAllocResetCount();
 }
 
+// Every block made through the seam counts until it is freed; growing a block does not
+// make another, and neither does a failed allocation or freeing NULL.
+DTL_TEST(LiveBlocksAreCounted)
+{
+    long Before = DtlAllocLive();
+    void* Block;
+    void* Grown;
+
+    Block = DtlMalloc(16);
+    DTL_ASSERT_EQ(DtlAllocLive(), Before + 1);
+
+    Grown = DtlRealloc(Block, 64);
+    DTL_ASSERT(Grown != NULL);
+    DTL_ASSERT_EQ(DtlAllocLive(), Before + 1);
+
+    DtlFree(Grown);
+    DTL_ASSERT_EQ(DtlAllocLive(), Before);
+
+    Block = DtlRealloc(NULL, 8);
+    DTL_ASSERT_EQ(DtlAllocLive(), Before + 1);
+    DtlFree(Block);
+
+    DtlAllocResetCount();
+    DtlAllocFailAfter(0);
+    DTL_ASSERT(DtlMalloc(8) == NULL);
+    DtlAllocFailAfter(0);
+    DTL_ASSERT(DtlRealloc(NULL, 8) == NULL);
+    DtlFree(NULL);
+    DTL_ASSERT_EQ(DtlAllocLive(), Before);
+    DtlAllocResetCount();
+}
+
 DTL_TEST(FreeAcceptsNull)
 {
     long Before;
@@ -169,7 +201,7 @@ DTL_TEST(GrowthRejectsBadArguments)
     DTL_ASSERT_EQ(DtlGrowCapacity(0, 4, 0, 8, &Out), -1);
 }
 
-DTL_TEST_MAIN("Alloc", DTL_RUN(AllocationsAreCounted),
+DTL_TEST_MAIN("Alloc", DTL_RUN(AllocationsAreCounted), DTL_RUN(LiveBlocksAreCounted),
               DTL_RUN(InjectionFailsTheChosenAllocation),
               DTL_RUN(ReallocGrowsThroughTheSeam), DTL_RUN(InjectionCoversRealloc),
               DTL_RUN(ResetDisarmsInjection), DTL_RUN(FreeAcceptsNull),

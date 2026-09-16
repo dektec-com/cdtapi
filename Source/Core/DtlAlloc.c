@@ -21,6 +21,7 @@
 
 static long g_AllocCount = 0;
 static long g_FailAfter = -1;
+static long g_Live = 0;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -34,6 +35,13 @@ void DtlAllocFailAfter(long Count)
 long DtlAllocCount(void)
 {
     return g_AllocCount;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+long DtlAllocLive(void)
+{
+    return g_Live;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -72,26 +80,41 @@ static int ShouldFail(void)
 //
 void* DtlMalloc(size_t Size)
 {
+    void* Block;
+
     if (ShouldFail())
         return NULL;
 
-    return malloc(Size);
+    Block = malloc(Size);
+    if (Block != NULL)
+        g_Live++;
+    return Block;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlRealloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Only reallocating NULL creates a block; growing an existing one does not add to the
+// live count, and a failure leaves the original block, and the count, as they were.
+//
 void* DtlRealloc(void* Ptr, size_t Size)
 {
+    void* Block;
+
     if (ShouldFail())
         return NULL;
 
-    return realloc(Ptr, Size);
+    Block = realloc(Ptr, Size);
+    if (Block != NULL && Ptr == NULL)
+        g_Live++;
+    return Block;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtlFree(void* Ptr)
 {
+    if (Ptr != NULL)
+        g_Live--;
     free(Ptr);
 }
 

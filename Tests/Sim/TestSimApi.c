@@ -98,6 +98,7 @@ static int Direction(int Port, int* SubValue)
 DTL_TEST(ScanCountsThePorts)
 {
     int Count = -1;
+    long Live = DtlAllocLive();
 
     if (!StartSim(DtlFailures))
         return;
@@ -105,6 +106,7 @@ DTL_TEST(ScanCountsThePorts)
     DTL_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DTL_ASSERT_EQ(Count, SIM_PORT_COUNT);
     DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DTL_ASSERT_EQ(DtlAllocLive(), Live);
 }
 
 // Every port of the card, as CDTAPI converts DTAPI's hardware functions: capabilities,
@@ -250,6 +252,7 @@ DTL_TEST(ScanSurvivesAllocationFailure)
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
     long Needed;
+    long Live = DtlAllocLive();
 
     if (!StartSim(DtlFailures))
         return;
@@ -276,6 +279,7 @@ DTL_TEST(ScanSurvivesAllocationFailure)
         if (Result == DTAPI_OK && Count != 0 && Count != SIM_PORT_COUNT)
             DTL_FAIL("allocation %ld failing gave %d ports", Fail, Count);
         DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+        DTL_ASSERT_EQ(DtlAllocLive(), Live);
     }
 }
 
@@ -283,6 +287,7 @@ DTL_TEST(ScanSurvivesAllocationFailure)
 
 DTL_TEST(AttachAndDetach)
 {
+    long Live = DtlAllocLive();
     DtDevice* Device = AttachSim(DtlFailures);
 
     if (Device == NULL)
@@ -294,10 +299,11 @@ DTL_TEST(AttachAndDetach)
     DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
     DTL_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
 
-    // A detached object attaches again.
+    // A detached object attaches again, and freeing it attached releases everything.
     DTL_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Free(Device);
     DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DTL_ASSERT_EQ(DtlAllocLive(), Live);
 }
 
 DTL_TEST(FreepDetachesAndClears)
@@ -376,11 +382,13 @@ DTL_TEST(FirmwareStatusIsAWarning)
 DTL_TEST(UnreadableDeviceIsNoSuchDevice)
 {
     DtDevice* Device;
+    long Live;
 
     if (!StartSim(DtlFailures))
         return;
 
     Device = DtDevice_Alloc();
+    Live = DtlAllocLive();
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
@@ -410,6 +418,7 @@ DTL_TEST(UnreadableDeviceIsNoSuchDevice)
     DTL_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Detach(Device);
 
+    DTL_ASSERT_EQ(DtlAllocLive(), Live);
     DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
     DtDevice_Free(Device);
 }
@@ -498,15 +507,18 @@ DTL_TEST(AttachSurvivesAllocationFailure)
 {
     DtDevice* Device;
     long Needed, Fail;
+    long Live;
 
     if (!StartSim(DtlFailures))
         return;
 
     Device = DtDevice_Alloc();
+    Live = DtlAllocLive();
     DtlAllocResetCount();
     DTL_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     Needed = DtlAllocCount();
     DtDevice_Detach(Device);
+    DTL_ASSERT_EQ(DtlAllocLive(), Live);
     DTL_ASSERT(Needed >= 3);
 
     for (Fail = 0; Fail < Needed; Fail++)
@@ -524,6 +536,7 @@ DTL_TEST(AttachSurvivesAllocationFailure)
             DTL_FAIL("allocation %ld failing gave 0x%X", Fail, Result);
         DTL_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
         DTL_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
+        DTL_ASSERT_EQ(DtlAllocLive(), Live);
     }
     DtDevice_Free(Device);
 }

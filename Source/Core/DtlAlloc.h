@@ -43,6 +43,11 @@ long DtlAllocCount(void);
 // Sets the count back to zero and disarms any pending injection.
 void DtlAllocResetCount(void);
 
+// How many blocks allocated through the seam have not been freed. A test compares it
+// before and after an operation to find a leak, which matters on platforms where no leak
+// sanitizer runs. DtlAllocResetCount does not change it.
+long DtlAllocLive(void);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Doubling from a minimum, shared by every growable container so that they cannot drift

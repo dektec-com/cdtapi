@@ -188,6 +188,7 @@ install(TARGETS cdtapilite
 
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/CDtapiLite.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Include/CDtapiLite_Constants.h"
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/CDtapiLite_Version.h"
     DESTINATION Include)
 
