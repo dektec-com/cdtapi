@@ -43,6 +43,7 @@ set(CDTAPILITE_SOURCES
     Source/Core/DtlVec.c
     Source/Drv/DtlDrv.c
     Source/OAL/OsDispatch.c
+    Source/OAL/OsDmaBuffer.c
     Source/OAL/Sim/SimDtPcie.c)
 
 # The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
@@ -51,12 +52,16 @@ list(APPEND CDTAPILITE_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)
 
-# Threads, events and mutexes belong to the operating system rather than to a device, so
-# they are built for the host platform whether or not the driver backend is.
+# Threads, events, mutexes and DMA memory belong to the operating system rather than to
+# a device, so they are built for the host platform whether or not the driver backend is.
 if(WIN32)
-    list(APPEND CDTAPILITE_SOURCES Source/OAL/Windows/WinThread.c)
+    list(APPEND CDTAPILITE_SOURCES
+        Source/OAL/Windows/WinMemory.c
+        Source/OAL/Windows/WinThread.c)
 else()
-    list(APPEND CDTAPILITE_SOURCES Source/OAL/Linux/LinThread.c)
+    list(APPEND CDTAPILITE_SOURCES
+        Source/OAL/Linux/LinMemory.c
+        Source/OAL/Linux/LinThread.c)
 endif()
 
 # The real driver backend for this platform, or a stand-in that finds no hardware.
