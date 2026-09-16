@@ -34,15 +34,21 @@ DTL_TEST(InitRejectsUnusableBuffers)
     DtlRing Ring;
     uint8_t Base[RING_SIZE];
 
-    DTL_ASSERT_EQ(DtlRingInit(NULL, Base, RING_SIZE), -1);
-    DTL_ASSERT_EQ(DtlRingInit(&Ring, NULL, RING_SIZE), -1);
+    DTL_ASSERT_EQ(DtlRingInit(NULL, Base, RING_SIZE, 1), -1);
+    DTL_ASSERT_EQ(DtlRingInit(&Ring, NULL, RING_SIZE, 1), -1);
 
     // A single byte cannot hold anything, because one byte is always kept free to tell
     // a full ring from an empty one.
-    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, 1), -1);
-    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, 0), -1);
+    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, 1, 1), -1);
+    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, 0, 1), -1);
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, 2));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, 2, 1));
+
+    // A reserve of zero cannot tell full from empty, and a reserve of the whole buffer
+    // leaves a ring that holds nothing.
+    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, RING_SIZE, 0), -1);
+    DTL_ASSERT_EQ(DtlRingInit(&Ring, Base, RING_SIZE, RING_SIZE), -1);
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, RING_SIZE - 1));
 }
 
 DTL_TEST(StartsEmpty)
@@ -50,7 +56,7 @@ DTL_TEST(StartsEmpty)
     DtlRing Ring;
     uint8_t Base[RING_SIZE];
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_EQ(DtlRingLoad(&Ring), 0);
     DTL_ASSERT_EQ(DtlRingFree(&Ring), RING_SIZE - 1);
     DTL_ASSERT_EQ(DtlRingReadOffset(&Ring), 0);
@@ -63,7 +69,7 @@ DTL_TEST(WriteOffsetOutsideTheBufferIsRefused)
     DtlRing Ring;
     uint8_t Base[RING_SIZE];
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
 
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, RING_SIZE - 1));
     DTL_ASSERT_EQ(DtlRingSetWriteOffset(&Ring, RING_SIZE), -1);
@@ -81,7 +87,7 @@ DTL_TEST(ReadWithoutWrapping)
     uint8_t Out[4];
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 8));
     DTL_ASSERT_EQ(DtlRingLoad(&Ring), 8);
 
@@ -101,7 +107,7 @@ DTL_TEST(ReadAcrossTheEndOfTheBuffer)
     uint8_t Out[8];
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
 
     // Move the read offset near the end, then let the producer wrap past it.
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 14));
@@ -130,7 +136,7 @@ DTL_TEST(PeekDoesNotConsume)
     uint8_t Second[4];
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 8));
 
     DTL_ASSERT_OK(DtlRingPeek(&Ring, First, 4));
@@ -148,7 +154,7 @@ DTL_TEST(ReadingMoreThanIsAvailableFails)
     uint8_t Out[RING_SIZE];
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 4));
 
     DTL_ASSERT_EQ(DtlRingRead(&Ring, Out, 5), -1);
@@ -166,7 +172,7 @@ DTL_TEST(ZeroLengthIsAllowed)
     uint8_t Base[RING_SIZE];
     uint8_t Out[1];
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingPeek(&Ring, Out, 0));
     DTL_ASSERT_OK(DtlRingSkip(&Ring, 0));
     DTL_ASSERT_EQ(DtlRingReadOffset(&Ring), 0);
@@ -178,7 +184,7 @@ DTL_TEST(FullRingHoldsSizeMinusOne)
     uint8_t Base[RING_SIZE];
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, RING_SIZE - 1));
 
     DTL_ASSERT_EQ(DtlRingLoad(&Ring), RING_SIZE - 1);
@@ -190,7 +196,7 @@ DTL_TEST(ClearDropsEverythingAvailable)
     DtlRing Ring;
     uint8_t Base[RING_SIZE];
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 10));
     DTL_ASSERT_EQ(DtlRingLoad(&Ring), 10);
 
@@ -213,7 +219,7 @@ DTL_TEST(ManyLapsStayConsistent)
     int Lap;
 
     FillPattern(Base, RING_SIZE);
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
 
     for (Lap = 0; Lap < 1000; Lap++)
     {
@@ -251,7 +257,7 @@ DTL_TEST(PeekRejectsNullDestination)
     DtlRing Ring;
     uint8_t Base[RING_SIZE];
 
-    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE));
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 1));
     DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 4));
     DTL_ASSERT_EQ(DtlRingPeek(&Ring, NULL, 4), -1);
 }
@@ -273,10 +279,49 @@ DTL_TEST(ZeroedStructIsTreatedAsEmpty)
     DTL_ASSERT_EQ(DtlRingRead(&Ring, Out, 4), -1);
 }
 
+// The hardware keeps a whole data word free, not one byte. With an eight-byte word the
+// ring holds eight bytes less than its size, and reports free space accordingly. A
+// one-byte reserve here would let the transmit side write seven bytes too many and leave
+// a full ring looking empty.
+DTL_TEST(ReserveOfOneDataWord)
+{
+    DtlRing Ring;
+    uint8_t Base[RING_SIZE];
+
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 8));
+    DTL_ASSERT_EQ(DtlRingFree(&Ring), RING_SIZE - 8);
+
+    DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 5));
+    DTL_ASSERT_EQ(DtlRingLoad(&Ring), 5);
+    DTL_ASSERT_EQ(DtlRingFree(&Ring), RING_SIZE - 8 - 5);
+
+    DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, RING_SIZE - 8));
+    DTL_ASSERT_EQ(DtlRingFree(&Ring), 0);
+}
+
+// A write offset that would fill the reserve cannot come from a consistent driver.
+DTL_TEST(LoadBeyondTheReserveIsRefused)
+{
+    DtlRing Ring;
+    uint8_t Base[RING_SIZE];
+
+    DTL_ASSERT_OK(DtlRingInit(&Ring, Base, RING_SIZE, 8));
+
+    DTL_ASSERT_EQ(DtlRingSetWriteOffset(&Ring, RING_SIZE - 7), -1);
+    DTL_ASSERT_EQ(DtlRingLoad(&Ring), 0);
+
+    // Also when the offending offset has wrapped past the read offset.
+    DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 6));
+    DTL_ASSERT_OK(DtlRingSkip(&Ring, 6));
+    DTL_ASSERT_EQ(DtlRingSetWriteOffset(&Ring, 5), -1);
+    DTL_ASSERT_OK(DtlRingSetWriteOffset(&Ring, 14));
+}
+
 DTL_TEST_MAIN("Ring", DTL_RUN(InitRejectsUnusableBuffers), DTL_RUN(StartsEmpty),
               DTL_RUN(WriteOffsetOutsideTheBufferIsRefused), DTL_RUN(ReadWithoutWrapping),
               DTL_RUN(ReadAcrossTheEndOfTheBuffer), DTL_RUN(PeekDoesNotConsume),
               DTL_RUN(ReadingMoreThanIsAvailableFails), DTL_RUN(ZeroLengthIsAllowed),
               DTL_RUN(FullRingHoldsSizeMinusOne), DTL_RUN(ClearDropsEverythingAvailable),
               DTL_RUN(ManyLapsStayConsistent), DTL_RUN(NullIsAcceptedEverywhere),
-              DTL_RUN(PeekRejectsNullDestination), DTL_RUN(ZeroedStructIsTreatedAsEmpty))
+              DTL_RUN(PeekRejectsNullDestination), DTL_RUN(ZeroedStructIsTreatedAsEmpty),
+              DTL_RUN(ReserveOfOneDataWord), DTL_RUN(LoadBeyondTheReserveIsRefused))

@@ -24,9 +24,11 @@
 //   read offset    moves forward here, written back with DT_CDMAC_CMD_SET_RX_READ_OFFSET
 //   load           how many bytes are available: (write + size - read) % size
 //
-// One byte of the buffer is never used, because a completely full ring and a completely
-// empty one both have the two offsets equal and could not be told apart. So the maximum
-// load is Size - 1.
+// Part of the buffer is always kept free, because a completely full ring and a completely
+// empty one both have the two offsets equal and could not be told apart. The hardware
+// keeps one data word free, not one byte: for a PCIe data width of 64 bits that is eight
+// bytes. The reserve is therefore a parameter, taken from the DMA controller's
+// properties, and the maximum load is Size - Reserve.
 //
 // The wrap is the part that gets written wrong, so it lives here once rather than in
 // every caller: a read that crosses the end of the buffer is two copies.
@@ -38,22 +40,25 @@ typedef struct DtlRing
 {
     uint8_t* Base;
     size_t Size;
+    size_t MaxLoad;
     size_t ReadOffset;
     size_t WriteOffset;
 } DtlRing;
 
-// Prepares a ring over Size bytes at Base, with both offsets at zero. Returns 0 on
-// success, -1 when Base is NULL or Size is less than two.
-int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size);
+// Prepares a ring over Size bytes at Base, with both offsets at zero, keeping Reserve
+// bytes permanently free. Returns 0 on success, -1 when Base is NULL, when Reserve is
+// zero, or when Reserve leaves no room at all.
+int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size, size_t Reserve);
 
-// Records where the producer has got to. Returns 0 on success, -1 when Offset is not
-// inside the buffer.
+// Records where the producer has got to. Returns 0 on success, and -1 when Offset is not
+// inside the buffer or would put more than Size - Reserve bytes in the ring. Either means
+// the driver and the library disagree about the ring, and reading on would read garbage.
 int DtlRingSetWriteOffset(DtlRing* Ring, size_t Offset);
 
 // How many bytes are available to read.
 size_t DtlRingLoad(const DtlRing* Ring);
 
-// How many bytes could still be written before the ring is full.
+// How many bytes could still be written before the ring is full: Size - Reserve - Load.
 size_t DtlRingFree(const DtlRing* Ring);
 
 // Copies Length bytes to Dst without consuming them, handling the wrap. Returns 0 on

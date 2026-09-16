@@ -16,15 +16,16 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlRingInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size)
+int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
 {
-    // A ring of one byte can hold nothing, since one byte is always kept free to tell
-    // full from empty. Reject it rather than hand out a ring that can never be read.
-    if (Ring == NULL || Base == NULL || Size < 2)
+    // A reserve of zero would make a full ring indistinguishable from an empty one, and a
+    // reserve of the whole buffer would leave a ring that can never hold anything.
+    if (Ring == NULL || Base == NULL || Reserve == 0 || Reserve >= Size)
         return -1;
 
     Ring->Base = Base;
     Ring->Size = Size;
+    Ring->MaxLoad = Size - Reserve;
     Ring->ReadOffset = 0;
     Ring->WriteOffset = 0;
     return 0;
@@ -36,9 +37,17 @@ int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size)
 //
 int DtlRingSetWriteOffset(DtlRing* Ring, size_t Offset)
 {
+    size_t Load;
+
     // The offset comes from the driver. A value outside the buffer means the two sides
     // disagree about the ring, and continuing would read arbitrary memory.
     if (Ring == NULL || Ring->Base == NULL || Offset >= Ring->Size)
+        return -1;
+
+    // The producer never fills the reserve, so a load beyond MaxLoad cannot come from a
+    // consistent driver either. It is refused rather than read.
+    Load = (Offset + Ring->Size - Ring->ReadOffset) % Ring->Size;
+    if (Load > Ring->MaxLoad)
         return -1;
 
     Ring->WriteOffset = Offset;
@@ -68,11 +77,15 @@ size_t DtlRingLoad(const DtlRing* Ring)
 //
 size_t DtlRingFree(const DtlRing* Ring)
 {
+    size_t Load;
+
     if (Ring == NULL || Ring->Base == NULL)
         return 0;
 
-    // Minus one for the byte that is never used.
-    return Ring->Size - DtlRingLoad(Ring) - 1;
+    // Equal to DTAPI's (Read + MaxLoad - Write) % Size whenever the load is within
+    // MaxLoad, which SetWriteOffset guarantees; written this way it cannot wrap.
+    Load = DtlRingLoad(Ring);
+    return Load >= Ring->MaxLoad ? 0 : Ring->MaxLoad - Load;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reading +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
