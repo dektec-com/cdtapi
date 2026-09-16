@@ -1,0 +1,36 @@
+# .-.-.- Build output -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# Build/ is the binaryDir used by every CMake preset; out/ is what Visual Studio's
+# "Open Folder" mode uses when it configures CMake on its own.
+Build/
+out/
+Export/
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+
+# .-.-.- Visual Studio / MSBuild user state -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+.vs/
+*.user
+*.pdb
+*.ilk
+*.tlog
+*.opendb
+*.VC.db
+*.obj
+
+# .-.-.- Generated at configure time from Include/CDtapiLite_Version.h.in -.-.-.-.-.-.-.-
+Include/CDtapiLite_Version.h
+
+# .-.-.- Surround SCM bookkeeping -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# CDtapiLite lives in git, not in Surround. These patterns keep Surround's metadata out
+# of the repository should the directory ever be placed under Surround as well.
+.MySCMServerInfo
+*.vssscc
+*.vspscc
+
+# .-.-.- Editor and OS clutter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store

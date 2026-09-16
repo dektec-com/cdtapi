@@ -1,0 +1,103 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/Build/${presetName}",
+      "cacheVariables": {
+        "CDTAPILITE_BUILD_TESTS": "ON",
+        "CDTAPILITE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug",
+      "description": "Visual Studio 2026, x64. Opens directly in the IDE.",
+      "inherits": "base",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release",
+      "inherits": "windows-debug"
+    },
+    {
+      "name": "windows-sim",
+      "displayName": "Windows Debug, emulator only",
+      "description": "No driver backends. For a machine with no DekTec hardware.",
+      "inherits": "windows-debug",
+      "cacheVariables": { "CDTAPILITE_SIM_ONLY": "ON" }
+    },
+
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "inherits": "base",
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release",
+      "inherits": "linux-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "linux-sim",
+      "displayName": "Linux Debug, emulator only",
+      "inherits": "linux-debug",
+      "cacheVariables": { "CDTAPILITE_SIM_ONLY": "ON" }
+    },
+    {
+      "name": "linux-asan",
+      "displayName": "Linux Debug with ASan and UBSan",
+      "inherits": "linux-debug",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug" },
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release" },
+    { "name": "windows-sim", "configurePreset": "windows-sim", "configuration": "Debug" },
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-sim", "configurePreset": "linux-sim" },
+    { "name": "linux-asan", "configurePreset": "linux-asan" }
+  ],
+
+  "testPresets": [
+    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug",
+      "output": { "outputOnFailure": true } },
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release",
+      "output": { "outputOnFailure": true } },
+    { "name": "windows-sim", "configurePreset": "windows-sim", "configuration": "Debug",
+      "output": { "outputOnFailure": true } },
+    { "name": "linux-debug", "configurePreset": "linux-debug",
+      "output": { "outputOnFailure": true } },
+    { "name": "linux-release", "configurePreset": "linux-release",
+      "output": { "outputOnFailure": true } },
+    { "name": "linux-sim", "configurePreset": "linux-sim",
+      "output": { "outputOnFailure": true } },
+    { "name": "linux-asan", "configurePreset": "linux-asan",
+      "output": { "outputOnFailure": true } }
+  ]
+}

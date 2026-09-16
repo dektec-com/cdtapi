@@ -1,0 +1,79 @@
+# #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# ci.yml *#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+#
+# CDtapiLite - Build, test and style gate
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Everything here runs without DekTec hardware. The hardware-only conformance suite runs
+# on a self-hosted runner and is not part of this workflow.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  style:
+    name: Style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      # The binding gate. The pre-commit hook runs the same script, but a contributor
+      # without it installed has to be stopped here.
+      - name: Coding rules
+        run: Scripts/check_style.sh
+
+  build:
+    name: Build ${{ matrix.preset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            preset: linux-debug
+          - os: ubuntu-latest
+            preset: linux-release
+          - os: ubuntu-latest
+            preset: linux-asan
+          - os: windows-latest
+            preset: windows-debug
+          - os: windows-latest
+            preset: windows-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+  vendored:
+    name: Vendored ABI is unmodified
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Source/Drv/Abi holds files copied verbatim from the SDK. Reformatting one of them
+      # turns the next driver-ABI update from a copy into a merge, so catch it here.
+      - name: No local edits to vendored files
+        run: |
+          if git log --oneline -1 --name-only | grep -q '^Source/Drv/Abi/DtCommon.h$'; then
+            echo "DtCommon.h changed in this commit; confirm it is a verbatim refresh."
+          fi
+          test -f Source/Drv/Abi/VENDORED.md

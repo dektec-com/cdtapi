@@ -1,0 +1,75 @@
+# CDtapiLite
+
+A native, open-source C API for DekTec SDI interfaces.
+
+CDtapiLite talks to the DekTec `DtPcie` driver directly over its documented ioctl
+interface. It contains no closed-source component, so an application that links it —
+FFmpeg in particular — stays redistributable.
+
+- **Licence:** BSD-3-Clause. See [LICENSE](LICENSE).
+- **Language:** C11. No dependencies beyond libc and the OS API.
+- **Platforms:** Linux and Windows.
+- **Status:** early development. See [Documentation](Documentation/) for the design.
+
+## Why it exists
+
+FFmpeg's `configure` places closed-source capture SDKs in
+`EXTERNAL_LIBRARY_NONFREE_LIST`. Building FFmpeg against one of those requires
+`--enable-nonfree`, and the resulting binary cannot be redistributed at all — which is
+what happens today with Blackmagic DeckLink. Wrapping a closed library in a C API does
+not change that; the closed code is still linked in.
+
+An open-source library does change it. With CDtapiLite, DekTec support can sit in
+FFmpeg's ordinary `EXTERNAL_LIBRARY_LIST`, alongside the other `--enable-lib*` options,
+and the resulting build is redistributable under the LGPL like any other.
+
+## Building
+
+    Scripts/build.sh                 # configure, build and test for the host
+    Scripts/build.sh --list          # show the available presets
+    Scripts/build.sh linux-release
+    Scripts/build.sh -c windows-sim  # clean rebuild, no driver backends needed
+    Scripts/build.sh --lint-only     # style checks only
+
+On Windows, `Scripts\build.ps1` takes the same options from PowerShell.
+
+Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It reads
+`CMakePresets.json`, and the test suites appear in Test Explorer.
+
+### Platform status
+
+Windows is the platform the build is currently verified on: Visual Studio 2026
+with the `windows-*` presets. The Linux presets and the Linux driver backend are
+written but **not yet built or run anywhere** — no Linux machine is available to
+the project yet. Treat them as unverified until CI or a Linux host says otherwise.
+
+Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
+leave out the driver backends entirely; the emulated device is always compiled in and
+is selected at run time with `CDTAPILITE_SIM=1`.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `Include/` | Public headers |
+| `Source/Core/` | Containers used throughout the library |
+| `Source/OAL/` | OS abstraction: `Linux/`, `Windows/`, and the `Sim/` emulator |
+| `Source/Drv/` | Driver ABI, with the vendored header under `Abi/` |
+| `Source/Device/` | Device scan, attach and I/O configuration |
+| `Source/Channel/` | SDI input and output channels |
+| `Source/Video/` | Video-standard tables and detection |
+| `Source/Tables/` | Tables generated from the SDK capability descriptions |
+| `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
+| `Documentation/` | Numbered design documents |
+| `Scripts/` | Build and style-check entry points |
+
+## Relationship to CDTAPI
+
+CDtapiLite is interface-compatible with the existing `CDTAPI` C wrapper for the
+`DtDevice`, `DtInpChannel` and `DtOutpChannel` surface, and installs a `CDTAPI.h`
+compatibility header. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and
+the `ENABLE_AVFIFO` define have no equivalent yet.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the coding rules and how they are enforced.

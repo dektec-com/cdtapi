@@ -1,0 +1,55 @@
+# DekTec house style for CDtapiLite.
+#
+# Derived from Win/Applications/StreamXpertV3/.clang-format, which states the shared
+# house style in machine-readable form. Only the language differs: CDtapiLite is C11,
+# so the C++-only options are dropped and Standard is pinned to C.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Coding rule 4: lines wrap at 90. Coding rule 6: Allman braces.
+ColumnLimit: 90
+BreakBeforeBraces: Allman
+
+IndentWidth: 4
+TabWidth: 4
+
+# Indent the hash of a nested preprocessor directive, which is what the surrounding
+# DekTec code does (see SDK/Common/Source/DtCommon.h). Not in the StreamXpertV3 config
+# it derives from, because that tree has little platform branching; CDtapiLite has a
+# lot of it, so stating it here keeps the two trees looking the same.
+IndentPPDirectives: BeforeHash
+
+# A public C header wraps its declarations in extern "C". The existing DekTec headers do
+# not indent inside that block (see SDK/Libraries/CDTAPI/CDTAPI/CDTAPI.h), and indenting
+# it would push the banner comments past the 90-column limit.
+IndentExternBlock: NoIndent
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Type* Name, not Type *Name.
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# The banner comment and the -.-.- / +=+=+ separators must survive formatting.
+CommentPragmas: '^[ ]*[*#=.-]'
+ReflowComments: false
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+
+# C11. Without this, clang-format guesses the dialect from the file contents.
+Standard: c++03
