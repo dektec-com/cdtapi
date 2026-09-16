@@ -1,0 +1,96 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleCommon.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDtapiLite - What the example programs share: the API header, arguments, ports, names
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
+#ifndef CDTAPILITE_EXAMPLE_COMMON_H
+#define CDTAPILITE_EXAMPLE_COMMON_H
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <stdbool.h>
+#include <stdint.h>
+
+// The API. The examples use only what CDTAPI.h declares, so that each also builds
+// against the original header: EXAMPLE_WITH_CDTAPI selects it.
+#ifdef EXAMPLE_WITH_CDTAPI
+    #include "CDTAPI.h"
+#else
+    #include "CDtapiLite.h"
+#endif
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exit codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+#define EXAMPLE_OK 0      // Did what was asked
+#define EXAMPLE_FAILED 1  // An API call failed, or the command line was wrong
+#define EXAMPLE_NOTHING 2 // Ran, but found nothing, such as no signal
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Arguments +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// Options are "--name value" or a lone "--name". A program lists the options it knows;
+// anything else on the command line is an error.
+//
+
+typedef struct ExampleOption
+{
+    const char* Name; // Such as "--port"
+    bool TakesValue;  // Followed by a value
+    const char* Help; // One line for the usage text
+} ExampleOption;
+
+// Checks that every argument is a known option, with a value where it takes one. Prints
+// what is wrong and returns false when the command line is not valid, or when it asks
+// for --help, which every program knows; Usage is then printed.
+bool ExampleCheckArguments(int Argc, char** Argv, const char* Usage,
+                           const ExampleOption* Options, int NumOptions);
+
+// True when the lone option Name is on the command line.
+bool ExampleHasFlag(int Argc, char** Argv, const char* Name);
+
+// The value of option Name, or NULL when it is not given.
+const char* ExampleValue(int Argc, char** Argv, const char* Name);
+
+// Reads option Name as a decimal integer into *Value, which is left alone when the option
+// is not given. Prints the problem and returns false for a value that is no integer.
+bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Ports +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// What a program needs of a port it picks.
+typedef bool (*ExampleSuits)(const DtHwFuncDesc* Port);
+
+// Scans the hardware functions and returns in *Found the first port that is on the
+// device with this serial number, 0 for any; that has this number, 0 for any; and that
+// suits, NULL for any port. Returns DTAPI_OK, DTAPI_E_NOT_FOUND when no port matches, or
+// the scan's failure.
+unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
+                             DtHwFuncDesc* Found);
+
+// Prints "What: RESULT_NAME" for a failed call and returns EXAMPLE_FAILED.
+int ExampleFailed(const char* What, unsigned int Result);
+
+// True for DTAPI_OK and the DTAPI_OK_ results that carry a warning.
+bool ExampleSucceeded(unsigned int Result);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Names +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The name of a video standard, its DTAPI_VIDSTD_ macro without the prefix, such as
+// "1080I50", or "UNKNOWN"; NULL for a number that is no video standard.
+const char* ExampleVidStdName(int VidStd);
+
+// The video standard with Name, compared without regard to case. False when there is
+// none.
+bool ExampleVidStdFromName(const char* Name, int* VidStd);
+
+// The name of an I/O standard value DtapiVidStd2IoStd gives, such as "3GSDI"; "?" for
+// any other.
+const char* ExampleIoStdName(int Value);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Sleeps for about Ms milliseconds.
+void ExampleSleepMs(int Ms);
+
+#endif // CDTAPILITE_EXAMPLE_COMMON_H

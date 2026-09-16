@@ -32,7 +32,7 @@ Fail()
 # Files the rules apply to: CDtapiLite's own C sources and headers.
 OwnFiles()
 {
-    find Include Source Tests Tools -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null \
+    find Examples Include Source Tests Tools -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null \
         | grep -v '^Source/Drv/Abi/' \
         | sort
 }

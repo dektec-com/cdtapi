@@ -94,6 +94,25 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/ResultCodes.inc" "${ResultCode
 cdtapilite_add_test(Result Unit/TestResult.c)
 target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Generated")
 
+# The names the example programs give video standards are checked against every video
+# standard the public header defines, read from the header at configure time.
+if(CDTAPILITE_BUILD_EXAMPLES)
+    file(STRINGS "${CDTAPILITE_CONSTANTS_HEADER}" VidStdDefines
+         REGEX "^#define DTAPI_VIDSTD_[A-Z0-9_]+ ")
+    set(VidStdCodes "")
+    foreach(Line IN LISTS VidStdDefines)
+        string(REGEX MATCH "^#define (DTAPI_VIDSTD_[A-Z0-9_]+) " Unused "${Line}")
+        string(APPEND VidStdCodes "V(${CMAKE_MATCH_1})\n")
+    endforeach()
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/VidStdCodes.inc" "${VidStdCodes}")
+
+    cdtapilite_add_test(ExampleNames Unit/TestExampleNames.c)
+    target_sources(test_ExampleNames PRIVATE
+        "${CMAKE_SOURCE_DIR}/Examples/Common/ExampleCommon.c")
+    target_include_directories(test_ExampleNames PRIVATE
+        "${CMAKE_SOURCE_DIR}/Examples" "${CMAKE_CURRENT_BINARY_DIR}/Generated")
+endif()
+
 # Including the vendored driver ABI is the test: DtCommon.h carries an ASSERT_SIZE on
 # every structure, so a layout change fails this build.
 cdtapilite_add_test(Abi Abi/AbiSizes.c)

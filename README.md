@@ -60,6 +60,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
+| `Examples/` | Example programs that list devices, configure a port and detect a video standard |
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 

@@ -20,6 +20,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Options -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 option(CDTAPILITE_BUILD_TESTS "Build the test suites" ON)
+option(CDTAPILITE_BUILD_EXAMPLES "Build the example programs" ON)
 option(CDTAPILITE_BUILD_SHARED "Build a shared library instead of a static one" OFF)
 
 # Leaves out the platform driver backends so that the library builds and runs on a
@@ -178,6 +179,12 @@ endif()
 if(CDTAPILITE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests)
+endif()
+
+# +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Examples +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+if(CDTAPILITE_BUILD_EXAMPLES)
+    add_subdirectory(Examples)
 endif()
 
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Install +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
