@@ -10,6 +10,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -39,8 +40,8 @@
 #define SIM_DRIVER_MICRO 0
 #define SIM_DRIVER_BUILD 0
 
-// The emulator presents exactly one device, at index zero. A scan returns just that one,
-// which replaces the hardware rather than adding to it.
+// The emulator presents exactly one device, at index zero unless a test moves it. A scan
+// returns just that one, which replaces the hardware rather than adding to it.
 #define SIM_DEVICE_INDEX 0
 
 // Ports 1 to 8 are SDI/ASI inputs and outputs, port 9 the genlock reference input, and
@@ -63,8 +64,29 @@
 // first.
 //
 
-// Restores the power-on state: the default I/O configuration and no faults.
+// Restores the power-on state: the default I/O configuration, the identity above, and
+// no faults.
 void SimDtPcieReset(void);
+
+// Makes the card report this firmware status, one of the DT_FWSTATUS_ values.
+void SimDtPcieSetFirmwareStatus(int Status);
+
+// Makes the driver report this version.
+void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro);
+
+// Replaces a property of the card: absent when Present is false, otherwise with Value.
+// Up to eight properties can be overridden together; overriding one again replaces the
+// earlier override.
+void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
+                               uint64_t Value);
+
+// Moves the device to another driver index, so that it is found only by looking past the
+// indices before it.
+void SimDtPcieSetIndex(int Index);
+
+// The number of handles to the emulated device that are open, so that a test can check
+// that a layer above closes what it opens.
+int SimDtPcieOpenHandles(void);
 
 // Refuses every command with FunctionCode with the driver status Status.
 void SimDtPcieFailWithStatus(int FunctionCode, uint32_t Status);

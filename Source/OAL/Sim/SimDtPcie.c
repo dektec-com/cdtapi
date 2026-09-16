@@ -8,6 +8,7 @@
 
 // Standard includes
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -49,10 +50,27 @@ typedef struct SimFault
 // Faults for this many function codes can be active at once.
 #define SIM_MAX_FAULTS 4
 
+// Overrides for this many properties can be active at once.
+#define SIM_MAX_OVERRIDES 8
+
+typedef struct SimOverride
+{
+    bool Active;
+    char Name[PROPERTY_NAME_MAX_SIZE];
+    int PortIndex;
+    bool Present;
+    uint64_t Value;
+} SimOverride;
+
 // The card's state, shared by every handle. See the test controls in SimDtPcie.h.
 static struct
 {
     bool Initialised;
+    int Index;
+    int FirmwareStatus;
+    DtIoctlGetDriverVersionOutput DriverVersion;
+    int OpenHandles;
+    SimOverride Overrides[SIM_MAX_OVERRIDES];
     SimConfig Config[SIM_PORT_COUNT][SIM_IOCONFIG_COUNT];
     SimFault Faults[SIM_MAX_FAULTS];
     int LastFunctionCode;
@@ -106,6 +124,27 @@ static void AddFault(int FunctionCode, bool Short, uint32_t Status)
             return;
         }
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindOverride -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The override of a property, or NULL when it is not overridden.
+//
+static SimOverride* FindOverride(const char* Name, int PortIndex)
+{
+    int i;
+
+    for (i = 0; i < SIM_MAX_OVERRIDES; i++)
+    {
+        SimOverride* Override = &g_Sim.Overrides[i];
+
+        if (Override->Active && Override->PortIndex == PortIndex &&
+            strcmp(Override->Name, Name) == 0)
+        {
+            return Override;
+        }
+    }
+    return NULL;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Checks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -194,10 +233,7 @@ static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* Ou
         return Outcome;
 
     Version = (DtIoctlGetDriverVersionOutput*)Out;
-    Version->m_Major = SIM_DRIVER_MAJOR;
-    Version->m_Minor = SIM_DRIVER_MINOR;
-    Version->m_Micro = SIM_DRIVER_MICRO;
-    Version->m_Build = SIM_DRIVER_BUILD;
+    *Version = g_Sim.DriverVersion;
 
     *OutSize = sizeof(DtIoctlGetDriverVersionOutput);
     return OS_IOCTL_OK;
@@ -229,7 +265,7 @@ static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
     Info->m_FirmwareVersion = SIM_FIRMWARE_VERSION;
     Info->m_FirmwareVariant = SIM_FIRMWARE_VARIANT;
     Info->m_FwPackageVersion = -1;
-    Info->m_FirmwareStatus = DT_FWSTATUS_UPTODATE;
+    Info->m_FirmwareStatus = g_Sim.FirmwareStatus;
     Info->m_VendorId = SIM_VENDOR_ID;
     Info->m_DeviceId = SIM_DEVICE_ID;
     Info->m_SubVendorId = SIM_VENDOR_ID;
@@ -248,6 +284,7 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
 {
     DtIoctlPropCmdGetValueInput Request;
     DtIoctlPropCmdGetValueOutput* Answer;
+    const SimOverride* Override;
     uint64_t Value = 0;
     int Type = 0;
     int Outcome;
@@ -263,7 +300,16 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     memcpy(&Request, In, sizeof(Request));
     Request.m_Name[sizeof(Request.m_Name) - 1] = '\0';
 
-    if (!SimDta2178GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
+    Override = FindOverride(Request.m_Name, Request.m_PortIndex);
+    if (Override != NULL)
+    {
+        if (!Override->Present)
+            return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
+        Value = Override->Value;
+        Type = strncmp(Request.m_Name, "CAP_", 4) == 0 ? PROPERTY_VALUE_TYPE_BOOL
+                                                       : PROPERTY_VALUE_TYPE_INT;
+    }
+    else if (!SimDta2178GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
         return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
 
     Answer = (DtIoctlPropCmdGetValueOutput*)Out;
@@ -471,16 +517,17 @@ static void* SimOpen(int Index)
 {
     SimDevice* Dev;
 
-    if (Index != SIM_DEVICE_INDEX)
-        return NULL;
-
     EnsureState();
+
+    if (Index != g_Sim.Index)
+        return NULL;
 
     Dev = (SimDevice*)DtlMalloc(sizeof(SimDevice));
     if (Dev == NULL)
         return NULL;
 
     Dev->LastError = 0;
+    g_Sim.OpenHandles++;
     return Dev;
 }
 
@@ -488,6 +535,7 @@ static void* SimOpen(int Index)
 //
 static void SimClose(void* State)
 {
+    g_Sim.OpenHandles--;
     DtlFree(State);
 }
 
@@ -588,6 +636,16 @@ void SimDtPcieReset(void)
     g_Sim.LastFunctionCode = -1;
     g_Sim.LastInputSize = 0;
 
+    for (j = 0; j < SIM_MAX_OVERRIDES; j++)
+        g_Sim.Overrides[j].Active = false;
+
+    g_Sim.Index = SIM_DEVICE_INDEX;
+    g_Sim.FirmwareStatus = DT_FWSTATUS_UPTODATE;
+    g_Sim.DriverVersion.m_Major = SIM_DRIVER_MAJOR;
+    g_Sim.DriverVersion.m_Minor = SIM_DRIVER_MINOR;
+    g_Sim.DriverVersion.m_Micro = SIM_DRIVER_MICRO;
+    g_Sim.DriverVersion.m_Build = SIM_DRIVER_BUILD;
+
     g_Sim.Initialised = true;
 }
 
@@ -603,6 +661,66 @@ void SimDtPcieFailWithStatus(int FunctionCode, uint32_t Status)
 void SimDtPcieAnswerShort(int FunctionCode)
 {
     AddFault(FunctionCode, true, DT_STATUS_OK);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetFirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcieSetFirmwareStatus(int Status)
+{
+    EnsureState();
+    g_Sim.FirmwareStatus = Status;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro)
+{
+    EnsureState();
+    g_Sim.DriverVersion.m_Major = Major;
+    g_Sim.DriverVersion.m_Minor = Minor;
+    g_Sim.DriverVersion.m_Micro = Micro;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOverrideProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
+                               uint64_t Value)
+{
+    SimOverride* Override;
+    int i;
+
+    EnsureState();
+    Override = FindOverride(Name, PortIndex);
+    for (i = 0; Override == NULL && i < SIM_MAX_OVERRIDES; i++)
+    {
+        if (!g_Sim.Overrides[i].Active)
+            Override = &g_Sim.Overrides[i];
+    }
+
+    // More overrides than there are slots is a mistake in the test, and is ignored.
+    if (Override == NULL)
+        return;
+
+    snprintf(Override->Name, sizeof(Override->Name), "%s", Name);
+    Override->PortIndex = PortIndex;
+    Override->Present = Present;
+    Override->Value = Value;
+    Override->Active = true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieSetIndex(int Index)
+{
+    EnsureState();
+    g_Sim.Index = Index;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOpenHandles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int SimDtPcieOpenHandles(void)
+{
+    return g_Sim.OpenHandles;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieLastInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

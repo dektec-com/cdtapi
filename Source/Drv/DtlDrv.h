@@ -58,6 +58,10 @@ typedef struct DtlDeviceInfo
 // Reads the version of the driver behind Drv.
 unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version);
 
+// True when a DtPcie driver of this version is new enough: 1.3.1 or later, the minimum
+// DTAPI accepts (Utility.h, DtPcieMin*). The build number does not count.
+bool DtlDrvVersionIsSupported(const DtlDriverVersion* Version);
+
 // Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and falls back to the
 // original GET_DEV_INFO for a driver that predates it.
 unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info);

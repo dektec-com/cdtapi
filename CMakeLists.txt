@@ -39,11 +39,13 @@ configure_file(
 
 set(CDTAPILITE_SOURCES
     Source/Api/DtlApi.c
+    Source/Api/DtlResult.c
     Source/Core/DtlAlloc.c
     Source/Core/DtlBuf.c
     Source/Core/DtlRing.c
     Source/Core/DtlStr.c
     Source/Core/DtlVec.c
+    Source/Device/DtlDevice.c
     Source/Drv/DtlDrv.c
     Source/Drv/DtlDrvStatus.c
     Source/Drv/DtlIoConfig.c
@@ -134,6 +136,7 @@ target_include_directories(cdtapilite
         $<INSTALL_INTERFACE:Include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Source
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source/Device
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/Drv)
 
 if(CDTAPILITE_SIM_ONLY)

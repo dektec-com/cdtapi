@@ -28,6 +28,11 @@
 #define DTL_DTAPI_MINOR 13
 #define DTL_DTAPI_BUGFIX 0
 
+// The oldest DtPcie driver DTAPI works with.
+#define DTL_DRIVER_MIN_MAJOR 1
+#define DTL_DRIVER_MIN_MINOR 3
+#define DTL_DRIVER_MIN_MICRO 1
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= I/O configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The driver's I/O configuration commands end in a flexible array, one element per
@@ -276,6 +281,17 @@ unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version)
     Version->Micro = Out.m_Micro;
     Version->Build = Out.m_Build;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvVersionIsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool DtlDrvVersionIsSupported(const DtlDriverVersion* Version)
+{
+    if (Version->Major != DTL_DRIVER_MIN_MAJOR)
+        return Version->Major > DTL_DRIVER_MIN_MAJOR;
+    if (Version->Minor != DTL_DRIVER_MIN_MINOR)
+        return Version->Minor > DTL_DRIVER_MIN_MINOR;
+    return Version->Micro >= DTL_DRIVER_MIN_MICRO;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetDeviceInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
