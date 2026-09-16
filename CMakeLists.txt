@@ -54,6 +54,8 @@ set(CDTAPILITE_SOURCES
     Source/OAL/OsIoctlOutcome.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
+    Source/Video/DtFrameProps.c
+    Source/Video/DtSmpte352.c
     Source/Video/DtVidStd.c)
 
 # The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
