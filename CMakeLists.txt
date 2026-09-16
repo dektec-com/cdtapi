@@ -47,7 +47,17 @@ set(CDTAPILITE_SOURCES
 
 # The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
 # that it is unit-tested on every platform even though its only user is the Linux backend.
-list(APPEND CDTAPILITE_SOURCES Source/OAL/Linux/LinIoctlBuffer.c)
+list(APPEND CDTAPILITE_SOURCES
+    Source/OAL/Linux/LinIoctlBuffer.c
+    Source/OAL/Linux/LinTime.c)
+
+# Threads, events and mutexes belong to the operating system rather than to a device, so
+# they are built for the host platform whether or not the driver backend is.
+if(WIN32)
+    list(APPEND CDTAPILITE_SOURCES Source/OAL/Windows/WinThread.c)
+else()
+    list(APPEND CDTAPILITE_SOURCES Source/OAL/Linux/LinThread.c)
+endif()
 
 # The real driver backend for this platform, or a stand-in that finds no hardware.
 if(CDTAPILITE_SIM_ONLY)
@@ -93,6 +103,11 @@ if(CDTAPILITE_SIM_ONLY)
 elseif(WIN32)
     # SetupAPI enumerates the DtPcie device interfaces.
     target_link_libraries(cdtapilite PRIVATE setupapi)
+endif()
+
+if(NOT WIN32)
+    find_package(Threads REQUIRED)
+    target_link_libraries(cdtapilite PUBLIC Threads::Threads)
 endif()
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Warnings -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

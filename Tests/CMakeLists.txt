@@ -46,8 +46,10 @@ cdtapilite_add_test(Alloc Unit/TestAlloc.c)
 cdtapilite_add_test(Api Unit/TestApi.c)
 cdtapilite_add_test(Buf Unit/TestBuf.c)
 cdtapilite_add_test(LinIoctlBuffer Unit/TestLinIoctlBuffer.c)
+cdtapilite_add_test(LinTime Unit/TestLinTime.c)
 cdtapilite_add_test(Ring Unit/TestRing.c)
 cdtapilite_add_test(Str Unit/TestStr.c)
+cdtapilite_add_test(Thread Unit/TestThread.c)
 cdtapilite_add_test(Vec Unit/TestVec.c)
 
 # Including the vendored driver ABI is the test: DtCommon.h carries an ASSERT_SIZE on
