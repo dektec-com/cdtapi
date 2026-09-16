@@ -35,6 +35,26 @@
 #define SIM_VENDOR_ID 0x1A0E
 #define SIM_DEVICE_ID 0x0882
 
+// The subsystem IDs, the firmware build date, the location and the PCIe link are those a
+// DTA-2178 in a PCIe 3.0 x4 slot reported with driver 3.6.4: no subsystem IDs, and an x8
+// card on four lanes.
+#define SIM_SUBSYSTEM_VENDOR_ID 0
+#define SIM_SUBSYSTEM_ID 0
+#define SIM_FW_BUILD_YEAR 2024
+#define SIM_FW_BUILD_MONTH 1
+#define SIM_FW_BUILD_DAY 22
+#define SIM_FW_BUILD_HOUR 16
+#define SIM_FW_BUILD_MINUTE 54
+#define SIM_BUS_NUMBER 4
+#define SIM_SLOT_NUMBER 0
+#define SIM_PCIE_NUM_LANES 4
+#define SIM_PCIE_MAX_LANES 8
+#define SIM_PCIE_LINK_SPEED 3
+#define SIM_PCIE_MAX_SPEED 3
+#define SIM_PCIE_MAX_PAYLOAD_SIZE 256
+#define SIM_PCIE_MAX_READ_REQUEST_SIZE 512
+#define SIM_PCIE_MAX_SLOT_POWER 25000
+
 #define SIM_DRIVER_MAJOR 1
 #define SIM_DRIVER_MINOR 99
 #define SIM_DRIVER_MICRO 0

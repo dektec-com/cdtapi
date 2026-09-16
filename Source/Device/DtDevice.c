@@ -40,6 +40,7 @@ static const struct
     {"CAP_SDIRX", DT_CAP_SDIRX},
     {"CAP_HDMI", DT_CAP_HDMI},
     {"CAP_SCALE_12GTO3G", DT_CAP_SCALE_12GTO3G},
+    {"CAP_IP", DT_CAP_IP},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
@@ -279,6 +280,136 @@ unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc
 
     DtVecFree(&Found);
     return Result;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Device scan +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The driver's DT_FWSTATUS_ value as DTAPI's DtFirmwareStatus. The numbers are the same;
+// a value the driver should not report is undefined, as in DtProxyCORE::GetDeviceInfo.
+//
+static DtFirmwareStatus FirmwareStatus(int Status)
+{
+    switch (Status)
+    {
+    case DT_FWSTATUS_UPTODATE:
+        return DTAPI_FWSTATUS_UPTODATE;
+    case DT_FWSTATUS_BETA:
+        return DTAPI_FWSTATUS_BETA;
+    case DT_FWSTATUS_OLD:
+        return DTAPI_FWSTATUS_OLD;
+    case DT_FWSTATUS_NEW:
+        return DTAPI_FWSTATUS_NEW;
+    case DT_FWSTATUS_TAINTED:
+        return DTAPI_FWSTATUS_TAINTED;
+    case DT_FWSTATUS_OBSOLETE:
+        return DTAPI_FWSTATUS_OBSOLETE;
+    default:
+        return DTAPI_FWSTATUS_UNDEFINED;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDeviceDescribeDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Only the public ports count. A port that is only an input or only an output counts as
+// such, an IP port as both, and any other port by its I/O direction; DTAPI stops counting
+// at the first port whose direction cannot be read.
+//
+void DtDeviceDescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
+{
+    const DtDeviceInfo* Info = &Device->Info;
+    int Port;
+
+    memset(Desc, 0, sizeof(*Desc));
+    Desc->Category = DTAPI_CAT_PCI;
+    Desc->Serial = Info->Serial;
+    Desc->PciBusNumber = Info->BusNumber;
+    Desc->SlotNumber = Info->SlotNumber;
+    Desc->TypeNumber = Info->TypeNumber;
+    Desc->SubType = Info->SubType;
+    Desc->DeviceId = Info->DeviceId;
+    Desc->VendorId = Info->VendorId;
+    Desc->SubsystemId = Info->SubSystemId;
+    Desc->SubVendorId = Info->SubVendorId;
+    Desc->NumHwFuncs = Device->NumPublicPorts;
+    Desc->HardwareRevision = Info->HardwareRevision;
+    Desc->FirmwareVersion = Info->FirmwareVersion;
+    Desc->FirmwareVariant = Info->FirmwareVariant;
+    Desc->FirmwareStatus = FirmwareStatus(Info->FirmwareStatus);
+    Desc->FwBuildDate.Year = Info->FwBuildYear;
+    Desc->FwBuildDate.Month = Info->FwBuildMonth;
+    Desc->FwBuildDate.Day = Info->FwBuildDay;
+    Desc->FwBuildDate.Hour = Info->FwBuildHour;
+    Desc->FwBuildDate.Minute = Info->FwBuildMinute;
+    Desc->NumPorts = Device->NumPublicPorts;
+    Desc->PcieNumLanes = Info->PcieNumLanes;
+    Desc->PcieMaxLanes = Info->PcieMaxLanes;
+    Desc->PcieLinkSpeed = Info->PcieLinkSpeed;
+    Desc->PcieMaxSpeed = Info->PcieMaxSpeed;
+    Desc->PcieMaxPayloadSize = Info->PcieMaxPayloadSize;
+    Desc->PcieMaxReadRequestSize = Info->PcieMaxReadRequestSize;
+    Desc->PcieMaxSlotPower = Info->PcieMaxSlotPower;
+
+    for (Port = 1; Port <= Device->NumPublicPorts; Port++)
+    {
+        uint32_t Direction = Device->PortCaps[Port - 1] & (DT_CAP_INPUT | DT_CAP_OUTPUT);
+        DtIoConfig Config;
+
+        if (Direction == DT_CAP_INPUT)
+            Desc->NumDtInpChan++;
+        else if (Direction == DT_CAP_OUTPUT)
+            Desc->NumDtOutpChan++;
+        else if ((Device->PortCaps[Port - 1] & DT_CAP_IP) != 0)
+        {
+            Desc->NumDtInpChan++;
+            Desc->NumDtOutpChan++;
+        }
+        else
+        {
+            memset(&Config, 0, sizeof(Config));
+            Config.Port = Port;
+            Config.Group = DTAPI_IOCONFIG_IODIR;
+            if (DtDrvGetIoConfig(Device->Drv, &Config) != DTAPI_OK)
+                break;
+            if (Config.Value == DTAPI_IOCONFIG_INPUT)
+                Desc->NumDtInpChan++;
+            else if (Config.Value == DTAPI_IOCONFIG_OUTPUT)
+                Desc->NumDtOutpChan++;
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiDeviceScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// PcieDevice::DeviceScan: every device that can be attached counts, and its descriptor
+// is written while the array has room.
+//
+unsigned int DtapiDeviceScan(int NumEntries, int* NumEntriesResult,
+                             DtDeviceDesc* DvcDescArr)
+{
+    int Index;
+
+    if (NumEntriesResult == NULL || NumEntries < 0)
+        return DTAPI_E_INVALID_ARG;
+    if (DvcDescArr == NULL && NumEntries != 0)
+        return DTAPI_E_INVALID_BUF;
+
+    *NumEntriesResult = 0;
+    for (Index = 0; Index < DT_MAX_DEVICES; Index++)
+    {
+        DtDevice Device;
+
+        if (DtDeviceAttachIndex(&Device, Index, false, 0) != DTAPI_OK)
+            continue;
+
+        if (*NumEntriesResult < NumEntries)
+            DtDeviceDescribeDevice(&Device, &DvcDescArr[*NumEntriesResult]);
+        (*NumEntriesResult)++;
+        DtDeviceRelease(&Device);
+    }
+
+    return *NumEntriesResult > NumEntries ? DTAPI_E_BUF_TOO_SMALL : DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDevice +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

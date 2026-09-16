@@ -110,6 +110,98 @@ typedef struct DtHwFuncDesc
 CDTAPILITE_API unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult,
                                             DtHwFuncDesc* HwFuncs);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDeviceDesc +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// One device, as DTAPI's DtDeviceDesc describes it, with its fields under DTAPI's names
+// without the m_ prefix. An addition of CDtapiLite: CDTAPI.h has no device scan, so a
+// program that uses it cannot be built against CDTAPI.h.
+//
+
+// Device categories.
+#define DTAPI_CAT_ALL -1 // All devices
+#define DTAPI_CAT_PCI 0  // PCI or PCI-Express device
+#define DTAPI_CAT_USB 1  // USB-2 or USB-3 device
+#define DTAPI_CAT_NW 2   // Network device
+#define DTAPI_CAT_IP 3   // Network appliance: DTE-31xx
+#define DTAPI_CAT_NIC 4  // Non-DekTec network card
+#define DTAPI_CAT_NWAP 5 // Network Advanced Protocol (VLAN device)
+
+// The number of IPv6 addresses a device descriptor holds.
+#define MAX_IPV6_ADDR 3
+
+// Whether the firmware suits the driver.
+typedef enum DtFirmwareStatus
+{
+    DTAPI_FWSTATUS_UNDEFINED = -1, // Cannot be determined
+    DTAPI_FWSTATUS_UPTODATE,       // The latest released version the driver supports
+    DTAPI_FWSTATUS_BETA,           // The latest version the driver supports, not released
+    DTAPI_FWSTATUS_OLD,            // Not the latest version
+    DTAPI_FWSTATUS_NEW,            // Newer than the driver supports
+    DTAPI_FWSTATUS_TAINTED,        // An intermediate version the driver does not support
+    DTAPI_FWSTATUS_OBSOLETE        // No longer supported
+} DtFirmwareStatus;
+
+// When a firmware was built.
+typedef struct DtFwBuildDateTime
+{
+    int Year;
+    int Month;
+    int Day;
+    int Hour;
+    int Minute;
+} DtFwBuildDateTime;
+
+typedef struct DtDeviceDesc
+{
+    int Category;                          // DTAPI_CAT_ value
+    int64_t Serial;                        // Unique serial number of the device
+    int PciBusNumber;                      // PCI bus number
+    int SlotNumber;                        // PCI slot number
+    int UsbAddress;                        // USB address; 0 for a PCIe device
+    int TypeNumber;                        // Device type number, 2178 for a DTA-2178
+    int SubType;                           // Device subtype: 0 for none, 1 for A, ...
+    int DeviceId;                          // PCI device ID
+    int VendorId;                          // PCI vendor ID
+    int SubsystemId;                       // PCI subsystem ID
+    int SubVendorId;                       // PCI subsystem vendor ID
+    int NumHwFuncs;                        // Number of hardware functions: the ports
+    int HardwareRevision;                  // Hardware revision, such as 302 for 3.2
+    int FirmwareVersion;                   // Firmware version
+    int FirmwareVariant;                   // Firmware variant
+    DtFirmwareStatus FirmwareStatus;       // Firmware status
+    DtFwBuildDateTime FwBuildDate;         // Firmware build date and time
+    int NumDtInpChan;                      // Number of ports that are inputs
+    int NumDtOutpChan;                     // Number of ports that are outputs
+    int NumPorts;                          // Number of physical ports
+    unsigned char Ip[4];                   // IPv4 address; DTE-31xx only
+    unsigned char IpV6[MAX_IPV6_ADDR][16]; // IPv6 addresses; DTE-31xx only
+    unsigned char MacAddr[6];              // MAC address; DTE-31xx only
+    int PcieNumLanes;                      // Number of PCIe lanes in use
+    int PcieMaxLanes;                      // Maximum number of PCIe lanes
+    int PcieLinkSpeed;                     // PCIe generation of the link
+    int PcieMaxSpeed;                      // PCIe generation the link can reach
+    int PcieMaxPayloadSize;                // Maximum PCIe payload size in bytes
+    int PcieMaxReadRequestSize;            // Maximum PCIe read request size in bytes
+    int PcieMaxSlotPower;                  // Maximum PCIe slot power in milliwatts
+} DtDeviceDesc;
+
+// Describes every device, in the order the driver numbers them, as DTAPI's
+// DtapiDeviceScan does for PCIe devices. DvcDescArr holds NumEntries descriptors; they
+// are filled while they fit, and *NumEntriesResult receives how many devices there are.
+// A device that cannot be attached, for example because its driver is too old, is left
+// out.
+//
+// A port counts as an input or output by its capabilities; a port that can be both
+// counts by its current I/O direction. When reading a direction fails, DTAPI stops
+// counting, and so does this.
+//
+// Returns DTAPI_OK; DTAPI_E_BUF_TOO_SMALL when there are more devices than NumEntries,
+// after filling all NumEntries; with NumEntries 0 and DvcDescArr NULL this asks for the
+// count. Returns DTAPI_E_INVALID_ARG for a null NumEntriesResult or a negative
+// NumEntries, and DTAPI_E_INVALID_BUF for a null DvcDescArr with NumEntries not 0.
+CDTAPILITE_API unsigned int DtapiDeviceScan(int NumEntries, int* NumEntriesResult,
+                                            DtDeviceDesc* DvcDescArr);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDevice +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A device object, attached to one DekTec device at a time. Every function taking a

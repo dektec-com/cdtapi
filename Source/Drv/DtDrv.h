@@ -54,6 +54,24 @@ typedef struct DtDeviceInfo
     uint16_t DeviceId;
     uint16_t SubVendorId;
     uint16_t SubSystemId;
+
+    // When the firmware was built.
+    int FwBuildYear;
+    int FwBuildMonth;
+    int FwBuildDay;
+    int FwBuildHour;
+    int FwBuildMinute;
+
+    // Where the device is and how its PCIe link runs.
+    int BusNumber;
+    int SlotNumber;
+    int PcieNumLanes;
+    int PcieMaxLanes;
+    int PcieLinkSpeed;          // PCIe generation of the link
+    int PcieMaxSpeed;           // PCIe generation the link can reach
+    int PcieMaxPayloadSize;     // Bytes
+    int PcieMaxReadRequestSize; // Bytes
+    int PcieMaxSlotPower;       // Milliwatts; 0 from a driver without GET_DEV_INFO2
 } DtDeviceInfo;
 
 // Reads the version of the driver behind Drv.
@@ -69,7 +87,7 @@ bool DtDrvVersionAtLeast(const DtDriverVersion* Version, int Major, int Minor, i
                          int Build);
 
 // Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and falls back to the
-// original GET_DEV_INFO for a driver that predates it.
+// original GET_DEV_INFO for a driver that predates it, whose PCIe part has no slot power.
 unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Properties -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

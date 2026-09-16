@@ -274,11 +274,11 @@ static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* Ou
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetDevInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Answers GET_DEV_INFO and GET_DEV_INFO2 alike. The two differ only in how the driver
-// fills the PCIe-specific tail, which the emulator leaves zeroed.
+// Answers GET_DEV_INFO and GET_DEV_INFO2. The two differ only in the PCIe part: the
+// original has no slot power, which the driver then leaves zero.
 //
-static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
-                      uint32_t* DrvStatus)
+static int GetDevInfo(SimDevice* Dev, int FunctionCode, size_t InSize, void* Out,
+                      size_t* OutSize, uint32_t* DrvStatus)
 {
     DtIoctlGetDevInfoOutput* Info;
     int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlGetDevInfoInput), Out, OutSize,
@@ -301,8 +301,23 @@ static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
     Info->m_FirmwareStatus = g_Sim.FirmwareStatus;
     Info->m_VendorId = SIM_VENDOR_ID;
     Info->m_DeviceId = SIM_DEVICE_ID;
-    Info->m_SubVendorId = SIM_VENDOR_ID;
-    Info->m_SubSystemId = SIM_DEVICE_ID;
+    Info->m_SubVendorId = SIM_SUBSYSTEM_VENDOR_ID;
+    Info->m_SubSystemId = SIM_SUBSYSTEM_ID;
+    Info->m_FwBuildDate.m_Year = SIM_FW_BUILD_YEAR;
+    Info->m_FwBuildDate.m_Month = SIM_FW_BUILD_MONTH;
+    Info->m_FwBuildDate.m_Day = SIM_FW_BUILD_DAY;
+    Info->m_FwBuildDate.m_Hour = SIM_FW_BUILD_HOUR;
+    Info->m_FwBuildDate.m_Minute = SIM_FW_BUILD_MINUTE;
+    Info->m_DevSpecific.m_Pcie2.m_BusNumber = SIM_BUS_NUMBER;
+    Info->m_DevSpecific.m_Pcie2.m_SlotNumber = SIM_SLOT_NUMBER;
+    Info->m_DevSpecific.m_Pcie2.m_PcieNumLanes = SIM_PCIE_NUM_LANES;
+    Info->m_DevSpecific.m_Pcie2.m_PcieMaxLanes = SIM_PCIE_MAX_LANES;
+    Info->m_DevSpecific.m_Pcie2.m_PcieLinkSpeed = SIM_PCIE_LINK_SPEED;
+    Info->m_DevSpecific.m_Pcie2.m_PcieMaxSpeed = SIM_PCIE_MAX_SPEED;
+    Info->m_DevSpecific.m_Pcie2.m_PcieMaxPayloadSize = SIM_PCIE_MAX_PAYLOAD_SIZE;
+    Info->m_DevSpecific.m_Pcie2.m_PcieMaxReadRequestSize = SIM_PCIE_MAX_READ_REQUEST_SIZE;
+    if (FunctionCode == DT_FUNC_CODE_GET_DEV_INFO2)
+        Info->m_DevSpecific.m_Pcie2.m_PcieMaxSlotPower = SIM_PCIE_MAX_SLOT_POWER;
 
     *OutSize = sizeof(DtIoctlGetDevInfoOutput);
     return OS_IOCTL_OK;
@@ -726,7 +741,7 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         return GetDriverVersion(Dev, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_GET_DEV_INFO:
     case DT_FUNC_CODE_GET_DEV_INFO2:
-        return GetDevInfo(Dev, InSize, Out, OutSize, DrvStatus);
+        return GetDevInfo(Dev, FunctionCode, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_PROPERTY_CMD:
         return PropertyCmd(Dev, Cmd, In, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_IOCONFIG_CMD:

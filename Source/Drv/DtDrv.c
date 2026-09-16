@@ -338,6 +338,7 @@ unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
     DtIoctlGetDevInfoInput In;
     DtIoctlGetDevInfoOutput Out;
     unsigned int Result;
+    bool HasSlotPower;
 
     if (Drv == NULL || Info == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -346,9 +347,11 @@ unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
     memset(&Out, 0, sizeof(Out));
 
     // GET_DEV_INFO2 first. A driver that predates it refuses the command, and then the
-    // original is tried, which carries the same common fields.
+    // original is tried, which carries the same common fields and a PCIe part without the
+    // slot power (DtPcieProxyCORE::CopyDeviceTypeSpecificInfo).
     Result =
         Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In), &Out, sizeof(Out));
+    HasSlotPower = DT_SUCCEEDED(Result);
     if (!DT_SUCCEEDED(Result))
     {
         memset(&Out, 0, sizeof(Out));
@@ -359,6 +362,21 @@ unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
     }
 
     memset(Info, 0, sizeof(*Info));
+    Info->FwBuildYear = Out.m_FwBuildDate.m_Year;
+    Info->FwBuildMonth = Out.m_FwBuildDate.m_Month;
+    Info->FwBuildDay = Out.m_FwBuildDate.m_Day;
+    Info->FwBuildHour = Out.m_FwBuildDate.m_Hour;
+    Info->FwBuildMinute = Out.m_FwBuildDate.m_Minute;
+    Info->BusNumber = Out.m_DevSpecific.m_Pcie.m_BusNumber;
+    Info->SlotNumber = Out.m_DevSpecific.m_Pcie.m_SlotNumber;
+    Info->PcieNumLanes = Out.m_DevSpecific.m_Pcie.m_PcieNumLanes;
+    Info->PcieMaxLanes = Out.m_DevSpecific.m_Pcie.m_PcieMaxLanes;
+    Info->PcieLinkSpeed = Out.m_DevSpecific.m_Pcie.m_PcieLinkSpeed;
+    Info->PcieMaxSpeed = Out.m_DevSpecific.m_Pcie.m_PcieMaxSpeed;
+    Info->PcieMaxPayloadSize = Out.m_DevSpecific.m_Pcie.m_PcieMaxPayloadSize;
+    Info->PcieMaxReadRequestSize = Out.m_DevSpecific.m_Pcie.m_PcieMaxReadRequestSize;
+    Info->PcieMaxSlotPower =
+        HasSlotPower ? Out.m_DevSpecific.m_Pcie2.m_PcieMaxSlotPower : 0;
     Info->TypeNumber = Out.m_TypeNumber;
     Info->SubType = Out.m_SubType;
     Info->Serial = (int64_t)Out.m_Serial;

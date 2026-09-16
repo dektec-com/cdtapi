@@ -6,6 +6,10 @@
 
 set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd)
 
+# Programs that use what CDtapiLite adds to CDTAPI.h, and so build against CDtapiLite.h
+# only.
+set(ExampleLitePrograms DtListDeviceDescs)
+
 # The original CDTAPI.h, which the Tests directory also looks for. Each program is built
 # a second time against it, as a drop-in check, where it is found.
 set(CDTAPILITE_CDTAPI_HEADER
@@ -18,17 +22,28 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
 
     # CDTAPI.h includes its generated version header; any content will do here.
     file(WRITE "${ExampleShimDir}/CDTAPI_Version.h" "#define CDTAPI_VERSION \"example\"\n")
-    set(ExampleVariants "" "_Cdtapi")
+    set(ExampleVariants Lite Cdtapi)
 else()
-    set(ExampleVariants "")
+    set(ExampleVariants Lite)
 endif()
+
+# The variants are named by a word rather than by their suffix, because a CMake list
+# cannot hold an empty string on its own: Lite builds against CDtapiLite.h under the
+# program's name, Cdtapi against CDTAPI.h under <Program>_Cdtapi.
+function(cdtapilite_example_suffix Variant Suffix)
+    if(Variant STREQUAL "Cdtapi")
+        set(${Suffix} "_Cdtapi" PARENT_SCOPE)
+    else()
+        set(${Suffix} "" PARENT_SCOPE)
+    endif()
+endfunction()
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Programs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-# Adds one program, built against CDtapiLite.h, or with Variant "_Cdtapi" against
-# CDTAPI.h under the name <Program>_Cdtapi.
+# Adds one program in one variant.
 function(cdtapilite_add_example Program Variant)
-    set(Target "${Program}${Variant}")
+    cdtapilite_example_suffix(${Variant} Suffix)
+    set(Target "${Program}${Suffix}")
     set(Sources
         "${CMAKE_CURRENT_SOURCE_DIR}/${Program}.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleCommon.c"
@@ -52,7 +67,7 @@ function(cdtapilite_add_example Program Variant)
         endif()
     endif()
 
-    if(Variant STREQUAL "_Cdtapi")
+    if(Variant STREQUAL "Cdtapi")
         target_compile_definitions(${Target} PRIVATE EXAMPLE_WITH_CDTAPI)
         target_include_directories(${Target} BEFORE PRIVATE
             "${ExampleShimDir}" "${ExampleCdtapiDir}")
@@ -61,8 +76,11 @@ endfunction()
 
 foreach(Program IN LISTS ExamplePrograms)
     foreach(Variant IN LISTS ExampleVariants)
-        cdtapilite_add_example(${Program} "${Variant}")
+        cdtapilite_add_example(${Program} ${Variant})
     endforeach()
+endforeach()
+foreach(Program IN LISTS ExampleLitePrograms)
+    cdtapilite_add_example(${Program} Lite)
 endforeach()
 
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Smoke tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -75,11 +93,17 @@ if(NOT CDTAPILITE_BUILD_TESTS)
     return()
 endif()
 
-# Registers a run of Program, in every variant, with the arguments after Expected.
+# Registers a run of Program, in every variant, with the arguments after Expected. A
+# program of ExampleLitePrograms runs in its one variant.
 function(cdtapilite_example_test Name Program Expected)
-    foreach(Variant IN LISTS ExampleVariants)
-        set(Test "Example${Variant}_${Name}")
-        add_test(NAME ${Test} COMMAND ${Program}${Variant} ${ARGN})
+    set(Variants ${ExampleVariants})
+    if(Program IN_LIST ExampleLitePrograms)
+        set(Variants Lite)
+    endif()
+    foreach(Variant IN LISTS Variants)
+        cdtapilite_example_suffix(${Variant} Suffix)
+        set(Test "Example${Suffix}_${Name}")
+        add_test(NAME ${Test} COMMAND ${Program}${Suffix} ${ARGN})
         set_tests_properties(${Test} PROPERTIES
             PASS_REGULAR_EXPRESSION "${Expected}"
             ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
@@ -98,6 +122,10 @@ cdtapilite_example_test(ListDevices DtListDevices
     "9217800001:1  DTA-2178 port 1  SDI,INPUT,OUTPUT.*9217800001:9  DTA-2178 port 9  SDI\n.*10 ports")
 cdtapilite_example_test(ListDevicesOfNoDevice DtListDevices "^0 ports" --serial 1)
 cdtapilite_example_test(ListDevicesHelp DtListDevices "^Usage: .*--serial" --help)
+
+cdtapilite_example_test(ListDeviceDescs DtListDeviceDescs
+    "^Device 1\n  Category: 0\n  Serial: 9217800001\n.*  PcieMaxSlotPower: 25000\n1 devices")
+cdtapilite_example_test(ListDeviceDescsOfNoDevice DtListDeviceDescs "^0 devices" --serial 1)
 
 cdtapilite_example_test(ConfigPort DtConfigPort
     "9217800001:2  IODIR INPUT  DTAPI_OK\n9217800001:2  IOSTD 3GSDI 1080P50  DTAPI_OK"

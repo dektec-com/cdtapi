@@ -47,6 +47,9 @@
 #define DT_CAP_HDMI 0x800           // HDMI
 #define DT_CAP_SCALE_12GTO3G 0x1000 // The port can scale 12G-SDI down to 3G-SDI
 
+// The capability the device descriptor looks at besides the direction.
+#define DT_CAP_IP 0x2000 // Transport-stream-over-IP port
+
 // Any of the SDI rates.
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
@@ -84,5 +87,10 @@ unsigned int DtDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
 // Fills Desc for a port of an attached Device, numbered from 1, as CDTAPI converts
 // DTAPI's hardware function descriptor.
 void DtDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
+
+// Fills Desc for an attached Device, as DTAPI's Device::GetDescriptor and
+// PcieDevice::GetDescriptor do. Reads the I/O direction of each port that can be both an
+// input and an output.
+void DtDeviceDescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);
 
 #endif // CDTAPILITE_DT_DEVICE_H
