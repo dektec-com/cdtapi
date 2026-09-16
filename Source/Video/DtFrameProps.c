@@ -406,17 +406,15 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
         return false;
     }
 
-    // With a VPID, its transport bits separate PsF from interlaced, and its payload
-    // identifier 3G level A from level B.
+    // With a VPID, its scan bits must fit the frame, and its payload identifier the 3G
+    // level. PsF has two fields, so the interlaced test applies to it as well, and no
+    // VPID passes both: the search never gives PsF when there is a VPID.
     if (!DtFramePropsIsSd(Props) && Vpid != 0)
     {
         if (DtFramePropsIsPsF(Props) && (Vpid & 0x0000C000) != 0x00008000)
             return false;
-        if (!DtFramePropsIsPsF(Props) && DtFramePropsIsInterlaced(Props) &&
-            (Vpid & 0x0000C000) != 0x00000000)
-        {
+        if (DtFramePropsIsInterlaced(Props) && (Vpid & 0x0000C000) != 0x00000000)
             return false;
-        }
         if (DtFramePropsIs3g(Props) && DtFramePropsIs3gLevelB(Props) &&
             (Vpid & 0xFF) != 0x8A)
             return false;

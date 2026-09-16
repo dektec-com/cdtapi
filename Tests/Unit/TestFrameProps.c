@@ -288,16 +288,20 @@ DT_TEST(VpidDecidesWhenTheRateIsMissing)
         DTAPI_VIDSTD_UNKNOWN);
 }
 
-// The search takes PsF from VPID bits 15..14 being 1 and 0, where SMPTE ST 352 and the
-// VPID decoding put PsF at 0 and 1. A PsF VPID that does not decode, here for want of a
-// rate, therefore rules out both PsF and interlaced, and the reverse bits give PsF.
-DT_TEST(SearchReadsPsfFromTheTransportBit)
+// With a VPID the search never gives PsF: its PsF test wants scan bits 10, and its
+// interlaced test, which PsF's two fields also meet, wants 00. PsF is found only when the
+// VPID decodes. A VPID that does not decode, here for want of a rate, gives interlaced
+// with scan bits 00 and nothing with any others.
+DT_TEST(SearchNeverGivesPsfWithAVpid)
 {
     const SdiFormat* Format = FormatNamed(DTAPI_VIDSTD_1080PSF25);
 
     DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00004085), DTAPI_VIDSTD_UNKNOWN);
-    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00008085), DTAPI_VIDSTD_1080PSF25);
+    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00008085), DTAPI_VIDSTD_UNKNOWN);
+    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x0000C085), DTAPI_VIDSTD_UNKNOWN);
     DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00000085), DTAPI_VIDSTD_1080I50);
+    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, SdiFormatVpid(Format)),
+                 DTAPI_VIDSTD_1080PSF25);
 }
 
 // Without a VPID, only PsF 23.98 and 24, which have no interlaced form, stay PsF.
@@ -318,5 +322,4 @@ DT_TEST_MAIN("FrameProps", DT_RUN(InitGivesTheLineTimingOfEveryStandard),
              DT_RUN(VpidSeparatesStandardsWithTheSameCounters),
              DT_RUN(FrameRateMayDeviate500Ppm), DT_RUN(UnknownCountersGiveNoStandard),
              DT_RUN(RateAbove3gGives2160p), DT_RUN(VpidDecidesWhenTheRateIsMissing),
-             DT_RUN(SearchReadsPsfFromTheTransportBit),
-             DT_RUN(WithoutVpidPsfIsInterlaced))
+             DT_RUN(SearchNeverGivesPsfWithAVpid), DT_RUN(WithoutVpidPsfIsInterlaced))
