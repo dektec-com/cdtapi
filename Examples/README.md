@@ -8,6 +8,7 @@ file, built with the library unless `CDTAPILITE_BUILD_EXAMPLES` is off.
 | `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, AV FIFO, input or output |
 | `DtConfigPort` | Makes an SDI port an input or output and, with `--vidstd`, sets its I/O standard for a video standard |
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
+| `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDtapiLite addition |
 
 Every program lists its options with `--help`. Without `--serial` a program uses the
@@ -29,6 +30,7 @@ for the next. On a card the configuration stays.
     DtListDevices
     DtConfigPort --port 1 --input --vidstd 1080I50
     DtDetectVidStd --port 1 --timeout 5000
+    DtReceiveFrames --port 1 --count 10 --rxmode 10B
 
 ## Output and exit codes
 
@@ -48,3 +50,5 @@ of every program against the emulator.
 
 On a machine with DTAPI's Linux SDK, `Scripts/compare_device_scan.sh <LinuxSDK>`
 compares `DtListDeviceDescs` with DTAPI's own device scan.
+`Scripts/compare_cdtapi.sh <CDTAPI> <LinuxSDK> <Program> [args]` builds one of the other
+programs against the real CDTAPI library too, runs both builds and compares their output.

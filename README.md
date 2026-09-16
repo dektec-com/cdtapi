@@ -41,7 +41,9 @@ Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It re
 The build and every test suite are verified on Windows, with Visual Studio 2026 and the
 `windows-*` presets, and on Linux (Ubuntu, gcc 15) with the `linux-*` presets. The
 Linux driver backend has also talked to a DTA-2178: it reads the card's identity,
-properties, I/O configuration and SDI receiver status.
+properties, I/O configuration and SDI receiver status, and attaches its receive channels.
+Without a signal source the examples give the same output as the real CDTAPI there;
+receiving frames on a card is still to be confirmed.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and
@@ -60,7 +62,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
-| `Examples/` | Example programs that list devices, configure a port and detect a video standard |
+| `Examples/` | Example programs that list devices, configure a port, detect a video standard and receive frames |
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 
@@ -69,7 +71,8 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 CDtapiLite is interface-compatible with the existing `CDTAPI` C wrapper for the
 `DtDevice`, `DtInpChannel` and `DtOutpChannel` surface, and installs a `CDTAPI.h`
 compatibility header. It also adds what CDTAPI.h leaves out and an application needs, such
-as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and
+as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`. `DtInpChannel` receives SD, HD and 3G;
+`DtOutpChannel` is not there yet. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and
 the `ENABLE_AVFIFO` define have no equivalent yet.
 
 ## Contributing
