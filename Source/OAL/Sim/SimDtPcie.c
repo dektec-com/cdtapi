@@ -16,10 +16,13 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DTAPI_IOCONFIG_ codes.
 #include "Core/DtAlloc.h"           // Allocation seam.
+#include "Core/DtAtomic.h"          // The lock around commands.
 #include "DtDrvAbi.h"               // The driver ABI the emulator answers in.
 #include "DtIoConfig.h"             // I/O configuration names, codes and relation.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
+#include "OAL/OsThread.h"           // Pacing format events.
+#include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
 #include "SimDta2178.h"             // What the emulated card is.
 
@@ -28,6 +31,7 @@
 typedef struct SimDevice
 {
     unsigned long LastError;
+    int SleepMs; // How long the command just handled waits after the lock is released
 } SimDevice;
 
 // Enough for every I/O configuration code.
@@ -82,6 +86,29 @@ static struct
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
 } g_Sim;
+
+// Serialises commands, so that a thread waiting for a format event and another issuing
+// commands do not change the emulator's state at the same time. A counter rather than
+// an OsMutex, which would be an allocation that tests counting allocations would see.
+static DtAtomicInt g_Lock;
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Lock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void Lock(void)
+{
+    while (DtAtomicIncrement(&g_Lock) != 1)
+    {
+        DtAtomicDecrement(&g_Lock);
+        OsSleepMs(1);
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void Unlock(void)
+{
+    DtAtomicDecrement(&g_Lock);
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -666,6 +693,41 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
     return OS_IOCTL_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The receive channel of the port at PortIndex. Its status is the receiver's, which the
+// emulator keeps here; everything else is the channel's own.
+//
+static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
+                      size_t InSize, void* Out, size_t* OutSize, uint32_t* DrvStatus)
+{
+    uint32_t Status;
+
+    if (Cmd == DT_CHSDIRX_CMD_GET_SDI_STATUS)
+    {
+        size_t Size = OutSize != NULL ? *OutSize : 0;
+        int Outcome;
+
+        // The channel's status answer has the layout of GET_SDI_STATUS2's.
+        _Static_assert(sizeof(DtIoctlChSdiRxCmdGetSdiStatusOutput) ==
+                           sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2),
+                       "The two status answers must have one layout");
+        Outcome = SdiRxCmd(Dev, PortIndex, DT_SDIRX_CMD_GET_SDI_STATUS2, InSize, Out,
+                           &Size, DrvStatus);
+        if (Outcome == OS_IOCTL_OK)
+        {
+            ((DtIoctlChSdiRxCmdGetSdiStatusOutput*)Out)->m_CarrierDetect = 0;
+            *OutSize = Size;
+        }
+        return Outcome;
+    }
+
+    Status = SimChSdiRxCmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, &Dev->SleepMs);
+    if (Status != DT_STATUS_OK)
+        return SimFail(Dev, Status, DrvStatus);
+    return OS_IOCTL_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -684,6 +746,7 @@ static void* SimOpen(int Index)
         return NULL;
 
     Dev->LastError = 0;
+    Dev->SleepMs = 0;
     g_Sim.OpenHandles++;
     return Dev;
 }
@@ -692,7 +755,10 @@ static void* SimOpen(int Index)
 //
 static void SimClose(void* State)
 {
+    Lock();
+    SimChSdiRxCloseHandle(State);
     g_Sim.OpenHandles--;
+    Unlock();
     DtFree(State);
 }
 
@@ -729,6 +795,11 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         {
             return SdiRxCmd(Dev, PortIndex, Cmd, InSize, Out, OutSize, DrvStatus);
         }
+        if ((Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0 && Type == DT_FUNC_TYPE_CHSDIRX &&
+            FunctionCode == DT_FUNC_CODE_CHSDIRX_CMD)
+        {
+            return ChSdiRxCmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, DrvStatus);
+        }
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
     }
 
@@ -753,16 +824,14 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimIoCtlLocked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The driver refuses an input too short to hold the common header before it looks at
 // anything else (DtCore_Ioctl). OsDrvIoCtl has already refused a request without input.
 //
-static int SimIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
+static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
+                          void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
-    SimDevice* Dev = (SimDevice*)State;
-    int FunctionCode = (int)DT_IOCTL_TO_FUNCTION(Code);
     const SimFault* Fault = FindFault(FunctionCode);
     int Outcome;
 
@@ -783,6 +852,50 @@ static int SimIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
         (*OutSize)--;
 
     return Outcome;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// One command at a time. A wait that paces its events sleeps after the lock is released.
+//
+static int SimIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
+                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
+{
+    SimDevice* Dev = (SimDevice*)State;
+    int FunctionCode = (int)DT_IOCTL_TO_FUNCTION(Code);
+    int Outcome;
+
+    Lock();
+    Dev->SleepMs = 0;
+    Outcome = SimIoCtlLocked(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
+    Unlock();
+
+    if (Dev->SleepMs > 0)
+        OsSleepMs(Dev->SleepMs);
+    return Outcome;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void* SimMapMemory(void* State, uint64_t Offset, size_t Size)
+{
+    void* Address;
+
+    Lock();
+    Address = SimChSdiRxMap(State, Offset, Size);
+    Unlock();
+    return Address;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimUnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The ring stays the channel's, so unmapping it releases nothing.
+//
+static void SimUnmapMemory(void* State, void* Address, size_t Size)
+{
+    (void)State;
+    (void)Address;
+    (void)Size;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -811,6 +924,8 @@ void SimDtPcieReset(void)
                 Config->ParXtra[j] = -1;
         }
     }
+
+    SimChSdiRxReset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;
@@ -981,8 +1096,8 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
 //
 const OsBackend* OsSimBackend(void)
 {
-    static const OsBackend Backend = {SimOpen,      SimClose, SimIoCtl,
-                                      SimLastError, NULL,     NULL};
+    static const OsBackend Backend = {SimOpen,      SimClose,     SimIoCtl,
+                                      SimLastError, SimMapMemory, SimUnmapMemory};
     return &Backend;
 }
 

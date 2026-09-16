@@ -1,0 +1,655 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#* TestSimChSdiRx.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDtapiLite - The receive channel commands against the emulated channel and its source
+//
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// state, and ends with no handle to it and no allocation left open.
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <string.h>
+
+// CDtapiLite includes
+#include "CDtapiLite.h"             // DTAPI_VIDSTD_ codes and results.
+#include "Core/DtAlloc.h"           // Live allocations.
+#include "DtDrvAbi.h"               // Types, commands and driver statuses.
+#include "DtFunc.h"                 // Finding the channel's UUID.
+#include "DtTest.h"                 // Test framework.
+#include "OAL/OsAbstractionLayer.h" // Device handles.
+#include "OAL/Sim/SimChSdiRx.h"     // The emulated channels and their controls.
+#include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "Video/DtFrameProps.h"     // Geometry for configurations.
+#include "Video/DtSdiFrame.h"       // The frame format in the ring.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The port the tests use: port 1, an input by default.
+#define PORT 0
+
+// A 64-KB ring, the smallest the channel takes.
+#define SMALL_RING (16 * 4096)
+
+typedef struct Fixture
+{
+    OsDrv* Drv;
+    int Uuid;
+    long Live;
+} Fixture;
+
+// Opens the emulated device in its power-on state and finds the channel's UUID. Returns
+// false, having recorded a failure, when that is not possible.
+static bool Open(Fixture* Fix, int* DtFailures)
+{
+    DtFuncInstance Instance;
+    const DtFuncPart* Part;
+
+    SimDtPcieReset();
+    Fix->Live = DtAllocLive();
+    Fix->Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    Fix->Uuid = 0;
+    if (Fix->Drv == NULL || !OsDrvIsEmulated(Fix->Drv) ||
+        DtFuncFind(Fix->Drv, PORT, "AF_ASISDIRX", "", &Instance) != DTAPI_OK)
+    {
+        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        (*DtFailures)++;
+        OsDrvClose(Fix->Drv);
+        return false;
+    }
+    Part = DtFuncGet(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
+    Fix->Uuid = Part != NULL ? Part->Uuid : 0;
+    DtFuncRelease(&Instance);
+    return Part != NULL;
+}
+
+// Closes the device and checks that nothing is left open or allocated.
+#define FINISH(Fix)                                                                      \
+    do                                                                                   \
+    {                                                                                    \
+        OsDrvClose((Fix).Drv);                                                           \
+        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
+        DT_ASSERT_EQ(DtAllocLive(), (Fix).Live);                                         \
+    } while (0)
+
+// A configuration for VidStd with a ring of at least RingSize bytes.
+static DtChSdiRxConfig ConfigFor(int VidStd, int RingSize)
+{
+    DtChSdiRxConfig Config;
+    DtFrameProps Props;
+
+    memset(&Config, 0, sizeof(Config));
+    DtFramePropsInit(&Props, VidStd);
+    Config.NumPorts = 1;
+    Config.PortIndices[0] = PORT;
+    Config.DmaMinSize = RingSize;
+    Config.FmtIntInterval = 10000;
+    Config.FmtIntDelay = 200;
+    Config.FmtNumIntsPerFrame = 4;
+    Config.NumSymsHanc = DtFramePropsLineSymbolsHanc(&Props);
+    Config.NumSymsVidVanc = Props.LineNumSymVanc;
+    Config.NumLines = DtFramePropsNumLines(&Props);
+    Config.SdiRate = DtFramePropsIsSd(&Props) ? DT_DRV_SDIRATE_SD : DT_DRV_SDIRATE_HD;
+    Config.AssumeInterlaced = DtFramePropsIsInterlaced(&Props);
+    return Config;
+}
+
+// Attaches, configures for VidStd, maps and runs. Returns the ring, or NULL having
+// recorded a failure.
+static uint8_t* Run(Fixture* Fix, int VidStd, int RingSize, int* Size, int* MaxLoad,
+                    int* DtFailures)
+{
+    DtChSdiRxConfig Config = ConfigFor(VidStd, RingSize);
+    uint8_t* Ring = NULL;
+    bool Mapped = false;
+
+    if (DtDrvChSdiRxAttach(Fix->Drv, Fix->Uuid, PORT, true, "test:1") != DTAPI_OK ||
+        DtDrvChSdiRxConfigure(Fix->Drv, Fix->Uuid, PORT, &Config) != DTAPI_OK ||
+        DtDrvChSdiRxMapDmaBuf(Fix->Drv, Fix->Uuid, PORT, &Ring, Size, MaxLoad, &Mapped) !=
+            DTAPI_OK ||
+        DtDrvChSdiRxSetReadOffset(Fix->Drv, Fix->Uuid, PORT, 0) != DTAPI_OK ||
+        DtDrvChSdiRxSetOpMode(Fix->Drv, Fix->Uuid, PORT, DT_FUNC_OPMODE_RUN) != DTAPI_OK)
+    {
+        printf("    FAIL: cannot start the channel\n");
+        (*DtFailures)++;
+        return NULL;
+    }
+    return Ring;
+}
+
+// Checks that the ring holds line Line of frame Frame of VidStd at Offset.
+static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* Layout,
+                   uint32_t Frame, int Line)
+{
+    uint16_t Symbols[8250];
+    int Count = SimChSdiRxLine(Layout->VidStd, Frame, Line, Symbols);
+    int i;
+
+    if (Count != Layout->LineSymsHanc + Layout->LineSymsVideo)
+        return false;
+    for (i = 0; i < Count; i++)
+    {
+        bool Video = i >= Layout->LineSymsHanc;
+        size_t Bit = (size_t)(Video ? i - Layout->LineSymsHanc : i) * 10;
+        const uint8_t* Section = Ring + Offset + (Video ? Layout->LineBytesHanc : 0);
+        unsigned Value =
+            (unsigned)(Section[Bit / 8] | Section[Bit / 8 + 1] << 8) >> (Bit % 8) & 0x3FF;
+
+        if (Value != Symbols[i])
+            return false;
+    }
+    return true;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Channel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// What the DTA-2178's channel reported.
+DT_TEST(ReportsTheCardsProperties)
+{
+    Fixture Fix;
+    DtChSdiRxProps Props;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtDrvChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+    DT_ASSERT_EQ(Props.DmaCaps, DT_CDMAC_CAP_RX | DT_CDMAC_CAP_TX);
+    DT_ASSERT_EQ(Props.PrefetchSize, 16);
+    DT_ASSERT_EQ(Props.PcieDataWidth, 256);
+    DT_ASSERT_EQ(Props.ReorderBufSize, 8192);
+    DT_ASSERT_EQ(Props.StreamAlignment, 128);
+
+    SimDtPcieSetRxAlignment(32);
+    DT_ASSERT_OK(DtDrvChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+    DT_ASSERT_EQ(Props.StreamAlignment, 32);
+    FINISH(Fix);
+}
+
+// Exclusive access excludes every other user, and a handle that is no user is not found.
+DT_TEST(AttachesUsers)
+{
+    Fixture Fix;
+    OsDrv* Other;
+    int OpMode = -2;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    Other = OsDrvOpen(SIM_DEVICE_INDEX);
+
+    DT_ASSERT_EQ(DtDrvChSdiRxGetOpMode(Fix.Drv, Fix.Uuid, PORT, &OpMode),
+                 DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, ""),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+    DT_ASSERT_EQ(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtDrvChSdiRxAttach(Other, Fix.Uuid, PORT, true, "other:2"),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtDrvChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_OK(DtDrvChSdiRxGetOpMode(Fix.Drv, Fix.Uuid, PORT, &OpMode));
+    DT_ASSERT_EQ(OpMode, DT_FUNC_OPMODE_IDLE);
+
+    DT_ASSERT_OK(DtDrvChSdiRxDetach(Fix.Drv, Fix.Uuid, PORT));
+    DT_ASSERT_EQ(DtDrvChSdiRxDetach(Fix.Drv, Fix.Uuid, PORT), DTAPI_E_NOT_FOUND);
+
+    // Shared users go together, but not with an exclusive one.
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, false, "test:1"));
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"));
+    DT_ASSERT_EQ(DtDrvChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"),
+                 DTAPI_E_IN_USE);
+
+    OsDrvClose(Other);
+    FINISH(Fix);
+}
+
+// Closing a handle detaches it, and the last user takes the ring along.
+DT_TEST(ClosingDetaches)
+{
+    Fixture Fix;
+    SimRxState State;
+    DtChSdiRxConfig Config = ConfigFor(DTAPI_VIDSTD_625I50, SMALL_RING);
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    SimDtPcieGetRxState(PORT, &State);
+    DT_ASSERT(State.Configured);
+    DT_ASSERT_EQ(State.NumUsers, 1);
+    FINISH(Fix);
+
+    SimDtPcieGetRxState(PORT, &State);
+    DT_ASSERT(!State.Configured);
+    DT_ASSERT_EQ(State.NumUsers, 0);
+}
+
+// The ring is a multiple of 64 KB from 64 KB to 256 MB; outside that the channel ends up
+// unconfigured. The same configuration again keeps the ring.
+DT_TEST(ConfiguresTheRing)
+{
+    Fixture Fix;
+    DtChSdiRxConfig Config = ConfigFor(DTAPI_VIDSTD_625I50, SMALL_RING + 1);
+    SimRxState State;
+    uint8_t* Ring = NULL;
+    uint8_t* Again = NULL;
+    int Size = 0, MaxLoad = 0;
+    bool Mapped = true;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+
+    DT_ASSERT_EQ(
+        DtDrvChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size, &MaxLoad, &Mapped),
+        DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_OK(
+        DtDrvChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size, &MaxLoad, &Mapped));
+    DT_ASSERT(Ring != NULL);
+    DT_ASSERT(!Mapped);
+    DT_ASSERT_EQ(Size, 2 * SMALL_RING);
+    DT_ASSERT_EQ(MaxLoad, 2 * SMALL_RING - 32);
+
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_OK(
+        DtDrvChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Again, &Size, &MaxLoad, &Mapped));
+    DT_ASSERT(Again == Ring);
+
+    Config.DmaMinSize = SMALL_RING - 1;
+    DT_ASSERT_EQ(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+                 DTAPI_E_INVALID_ARG);
+    SimDtPcieGetRxState(PORT, &State);
+    DT_ASSERT(!State.Configured);
+
+    Config.DmaMinSize = 256 * 1024 * 1024 + 1;
+    DT_ASSERT_EQ(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+                 DTAPI_E_INVALID_ARG);
+
+    // A test limit shrinks the ring to a multiple of 64 KB.
+    SimDtPcieLimitRxRing(3 * SMALL_RING + 5);
+    Config.DmaMinSize = 8 * 1024 * 1024;
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    SimDtPcieGetRxState(PORT, &State);
+    DT_ASSERT_EQ(State.RingSize, 3 * SMALL_RING);
+
+    Config.NumPorts = 4;
+    DT_ASSERT_EQ(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+                 DTAPI_E_NOT_SUPPORTED);
+    FINISH(Fix);
+}
+
+// As on Linux the ring comes from mapping the port's segment of the device.
+DT_TEST(MapsAsLinux)
+{
+    Fixture Fix;
+    DtChSdiRxConfig Config = ConfigFor(DTAPI_VIDSTD_625I50, SMALL_RING);
+    uint8_t* Ring = NULL;
+    uint8_t* Again = NULL;
+    int Size = 0, MaxLoad = 0;
+    bool Mapped = false;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    SimDtPcieMapRxRingAsLinux(true);
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_OK(
+        DtDrvChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size, &MaxLoad, &Mapped));
+    DT_ASSERT(Ring != NULL);
+    DT_ASSERT(Mapped);
+
+    // Once mapped, the driver returns the address.
+    DT_ASSERT_OK(
+        DtDrvChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Again, &Size, &MaxLoad, &Mapped));
+    DT_ASSERT(Again == Ring);
+    DT_ASSERT(!Mapped);
+    DtDrvChSdiRxUnmapDmaBuf(Fix.Drv, Ring, Size, true);
+
+    // Only the port's segment with the ring's size maps.
+    DT_ASSERT(OsDrvMapMemory(Fix.Drv, 256ull * 1024 * 1024 * 2, (size_t)Size) == NULL);
+    DT_ASSERT(OsDrvMapMemory(Fix.Drv, 256ull * 1024 * 1024, (size_t)Size + 1) == NULL);
+    DT_ASSERT(OsDrvMapMemory(Fix.Drv, 0, (size_t)Size) == NULL);
+    DT_ASSERT(OsDrvMapMemory(Fix.Drv, 256ull * 1024 * 1024, (size_t)Size) == Ring);
+    FINISH(Fix);
+}
+
+// Only configured channels run, and waits need a running channel.
+DT_TEST(RunsWhenConfigured)
+{
+    Fixture Fix;
+    DtChSdiRxConfig Config = ConfigFor(DTAPI_VIDSTD_625I50, SMALL_RING);
+    DtChSdiRxEvent Event;
+    uint32_t Offset = 1;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtDrvChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+    DT_ASSERT_OK(DtDrvChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_IDLE));
+    DT_ASSERT_EQ(DtDrvChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_RUN),
+                 DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_EQ(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event),
+                 DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_EQ(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset),
+                 DTAPI_E_NOT_INITIALIZED);
+
+    DT_ASSERT_OK(DtDrvChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_EQ(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event),
+                 DTAPI_E_TIMEOUT);
+    DT_ASSERT_EQ(DtDrvChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, 7), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtDrvChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event));
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_EQ(Offset, 0);
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame source +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Without a source the events go on, out of sync, and nothing is written.
+DT_TEST(EventsWithoutSource)
+{
+    Fixture Fix;
+    DtChSdiRxEvent Event;
+    int Size, MaxLoad, i;
+    uint32_t Offset = 1;
+
+    if (!Open(&Fix, DtFailures) ||
+        Run(&Fix, DTAPI_VIDSTD_625I50, SMALL_RING, &Size, &MaxLoad, DtFailures) == NULL)
+    {
+        return;
+    }
+    for (i = 0; i < 8; i++)
+    {
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_EQ(Event.FrameId, i / 4);
+        DT_ASSERT_EQ(Event.SeqNumber, i % 4);
+        DT_ASSERT(!Event.InSync);
+    }
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_EQ(Offset, 0);
+    FINISH(Fix);
+}
+
+// With a source a frame arrives in four quarters: its header and its lines, in order.
+DT_TEST(WritesFramesInQuarters)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    DtSdiFrameHeader Header;
+    DtChSdiRxEvent Event;
+    const uint8_t* Ring;
+    int Size, MaxLoad, Quarter;
+    uint32_t Offset = 0;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    SimDtPcieSetRxSource(PORT, DTAPI_VIDSTD_625I50);
+    Ring = Run(&Fix, DTAPI_VIDSTD_625I50, 4 * 1024 * 1024, &Size, &MaxLoad, DtFailures);
+    if (Ring == NULL)
+        return;
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
+
+    for (Quarter = 0; Quarter < 4; Quarter++)
+    {
+        int Lines = (625 * (Quarter + 1) + 3) / 4;
+
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_EQ(Event.FrameId, 0);
+        DT_ASSERT_EQ(Event.SeqNumber, Quarter);
+        DT_ASSERT(Event.InSync);
+        DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+        DT_ASSERT_EQ(Offset, 16 + Lines * Layout.Stride);
+    }
+
+    DtSdiFrameDecodeHeader(Ring, &Header);
+    DT_ASSERT_OK(DtSdiFrameCheckHeader(&Layout, &Header, 0));
+    DT_ASSERT_EQ(Header.PtpSeconds, 0);
+    DT_ASSERT(LineAt(Ring, 16, &Layout, 0, 1));
+    DT_ASSERT(LineAt(Ring, 16 + 312 * (size_t)Layout.Stride, &Layout, 0, 313));
+    DT_ASSERT(LineAt(Ring, 16 + 624 * (size_t)Layout.Stride, &Layout, 0, 625));
+
+    // The next frame follows directly.
+    DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT_EQ(Event.FrameId, 1);
+    DtSdiFrameDecodeHeader(Ring + Offset, &Header);
+    DT_ASSERT_OK(DtSdiFrameCheckHeader(&Layout, &Header, 1));
+    DT_ASSERT(LineAt(Ring, Offset + 16, &Layout, 1, 1));
+    FINISH(Fix);
+}
+
+// A source whose geometry the channel is not configured for is out of sync.
+DT_TEST(MismatchedSourceIsOutOfSync)
+{
+    Fixture Fix;
+    DtChSdiRxEvent Event;
+    int Size, MaxLoad, i;
+    uint32_t Offset = 1;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    SimDtPcieSetRxSource(PORT, DTAPI_VIDSTD_525I59_94);
+    if (Run(&Fix, DTAPI_VIDSTD_625I50, SMALL_RING, &Size, &MaxLoad, DtFailures) == NULL)
+        return;
+    for (i = 0; i < 4; i++)
+    {
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT(!Event.InSync);
+    }
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_EQ(Offset, 0);
+    FINISH(Fix);
+}
+
+// The faults each change the next frame, once.
+DT_TEST(InjectsFaults)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    DtSdiFrameHeader Header;
+    DtChSdiRxEvent Event;
+    const uint8_t* Ring;
+    int Size, MaxLoad, i;
+    uint32_t Offset = 0, Before;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    SimDtPcieSetRxSource(PORT, DTAPI_VIDSTD_625I50);
+    Ring = Run(&Fix, DTAPI_VIDSTD_625I50, 16 * 1024 * 1024, &Size, &MaxLoad, DtFailures);
+    if (Ring == NULL)
+        return;
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
+
+    SimDtPcieInjectRxFault(PORT, SIM_RX_FAULT_SYNC_WORD);
+    SimDtPcieInjectRxFault(PORT, SIM_RX_FAULT_SKIP_FRAME);
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT_EQ(Event.FrameId, 1);
+    DtSdiFrameDecodeHeader(Ring, &Header);
+    DT_ASSERT_EQ(DtSdiFrameCheckHeader(&Layout, &Header, 1), DTAPI_E_OUT_OF_SYNC);
+
+    SimDtPcieInjectRxFault(PORT, SIM_RX_FAULT_FORMAT);
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT_EQ(Event.FrameId, 2);
+    DtSdiFrameDecodeHeader(Ring + Offset, &Header);
+    DT_ASSERT_EQ(DtSdiFrameCheckHeader(&Layout, &Header, 2), DTAPI_E_INVALID_FORMAT);
+
+    SimDtPcieInjectRxFault(PORT, SIM_RX_FAULT_OUT_OF_SYNC);
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Before));
+    for (i = 0; i < 4; i++)
+    {
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT(!Event.InSync);
+    }
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_EQ(Offset, Before);
+
+    // And the frame after them is whole again.
+    DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT(Event.InSync);
+    DT_ASSERT_EQ(Event.FrameId, 4);
+    DtSdiFrameDecodeHeader(Ring + Offset, &Header);
+    DT_ASSERT_OK(DtSdiFrameCheckHeader(&Layout, &Header, 4));
+    FINISH(Fix);
+}
+
+// A frame that does not fit is cut off and out of sync; reading makes room again, and the
+// ring wraps.
+DT_TEST(FullRingDropsAndWraps)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    DtChSdiRxEvent Event;
+    const uint8_t* Ring;
+    int Size, MaxLoad, i;
+    uint32_t Offset = 0;
+    size_t Frame;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
+    Frame = DtSdiFrameCodedSize(&Layout);
+    SimDtPcieSetRxSource(PORT, DTAPI_VIDSTD_625I50);
+    SimDtPcieLimitRxRing(Frame + Frame / 2);
+    Ring = Run(&Fix, DTAPI_VIDSTD_625I50, 8 * 1024 * 1024, &Size, &MaxLoad, DtFailures);
+    if (Ring == NULL)
+        return;
+    DT_ASSERT((size_t)Size < 2 * Frame);
+
+    // The first frame fits, the second not.
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT(Event.InSync);
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT(!Event.InSync);
+    DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT((size_t)Offset <= (size_t)MaxLoad);
+
+    // Read everything, and the third frame wraps around the end.
+    DT_ASSERT_OK(DtDrvChSdiRxSetReadOffset(Fix.Drv, Fix.Uuid, PORT, Offset));
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtDrvChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT(Event.InSync);
+    DT_ASSERT_EQ(Event.FrameId, 2);
+    {
+        uint32_t End = 0;
+        DT_ASSERT_OK(DtDrvChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &End));
+        DT_ASSERT_EQ(End, (Offset + Frame) % (size_t)Size);
+        DT_ASSERT(End < Offset);
+    }
+    FINISH(Fix);
+}
+
+// A refused command, and the channel's status is its receiver's without the carrier.
+DT_TEST(RefusesAndReportsStatus)
+{
+    Fixture Fix;
+    DtSdiRxStatus Status;
+    SimSdiSignal Signal;
+    DtChSdiRxProps Props;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    SimDtPcieFailRxCmd(DT_CHSDIRX_CMD_GET_PROPS, DT_STATUS_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtDrvChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props),
+                 DTAPI_E_NOT_SUPPORTED);
+    SimDtPcieFailRxCmd(DT_CHSDIRX_CMD_GET_PROPS, 0);
+    DT_ASSERT_OK(DtDrvChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+
+    memset(&Signal, 0, sizeof(Signal));
+    Signal.CarrierDetect = 1;
+    Signal.SdiLock = 1;
+    Signal.Valid = 1;
+    Signal.NumLinesF1 = 312;
+    Signal.SdiRate = DT_DRV_SDIRATE_SD;
+    SimDtPcieSetSdiSignal(PORT, &Signal);
+    DT_ASSERT_OK(DtDrvChSdiRxGetSdiStatus(Fix.Drv, Fix.Uuid, PORT, &Status));
+    DT_ASSERT(!Status.CarrierDetect);
+    DT_ASSERT(Status.SdiLock);
+    DT_ASSERT(Status.Valid);
+    DT_ASSERT_EQ(Status.NumLinesF1, 312);
+    DT_ASSERT_EQ(Status.SdiRate, DT_DRV_SDIRATE_SD);
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbols +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// SD's timing references on the first and last line, as DTAPI's frame check expects them.
+DT_TEST(SdTimingReferences)
+{
+    uint16_t Symbols[8250];
+    int Count, i;
+
+    Count = SimChSdiRxLine(DTAPI_VIDSTD_625I50, 3, 1, Symbols);
+    DT_ASSERT_EQ(Count, 1728);
+    DT_ASSERT_EQ(Symbols[0], 0x3FF);
+    DT_ASSERT_EQ(Symbols[1], 0x000);
+    DT_ASSERT_EQ(Symbols[2], 0x000);
+    DT_ASSERT_EQ(Symbols[3], 0x2D8);
+    DT_ASSERT_EQ(Symbols[284], 0x3FF);
+    DT_ASSERT_EQ(Symbols[287], 0x2AC);
+    for (i = 4; i < 284; i++)
+        DT_ASSERT(Symbols[i] >= 0x040 && Symbols[i] <= 0x3BF);
+    for (i = 288; i < Count; i++)
+        DT_ASSERT(Symbols[i] >= 0x040 && Symbols[i] <= 0x3BF);
+
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_625I50, 3, 625, Symbols), 1728);
+    DT_ASSERT_EQ(Symbols[3], 0x3C4);
+    // Line 100 of field 1 carries video.
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_625I50, 3, 100, Symbols), 1728);
+    DT_ASSERT_EQ(Symbols[3], 0x274);
+}
+
+// HD's timing references carry the line number and a CRC per channel.
+DT_TEST(HdTimingReferences)
+{
+    uint16_t Line1[8250], Line2[8250], Again[8250];
+    int Count, c;
+
+    Count = SimChSdiRxLine(DTAPI_VIDSTD_1080I50, 9, 1, Line1);
+    DT_ASSERT_EQ(Count, 5280);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_1080I50, 9, 1, Again), Count);
+    DT_ASSERT_MEM(Line1, Again, sizeof(uint16_t) * (size_t)Count);
+    for (c = 0; c < 2; c++)
+    {
+        DT_ASSERT_EQ(Line1[0 + c], 0x3FF);
+        DT_ASSERT_EQ(Line1[2 + c], 0x000);
+        DT_ASSERT_EQ(Line1[4 + c], 0x000);
+        DT_ASSERT_EQ(Line1[6 + c], 0x2D8);
+        DT_ASSERT_EQ(Line1[8 + c], 0x204);
+        DT_ASSERT_EQ(Line1[10 + c], 0x200);
+        DT_ASSERT_EQ((Line1[12 + c] >> 9 & 1) ^ (Line1[12 + c] >> 8 & 1), 1);
+        DT_ASSERT_EQ((Line1[14 + c] >> 9 & 1) ^ (Line1[14 + c] >> 8 & 1), 1);
+        DT_ASSERT_EQ(Line1[1432 + c], 0x3FF);
+        DT_ASSERT_EQ(Line1[1438 + c], 0x2AC);
+    }
+    // The two channels' CRCs differ, and a line number above 127 uses LN1.
+    DT_ASSERT(Line1[12] != Line1[13] || Line1[14] != Line1[15]);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_1080I50, 9, 200, Line2), Count);
+    DT_ASSERT_EQ(Line2[8], 0x120);
+    DT_ASSERT_EQ(Line2[10], 0x204);
+}
+
+DT_TEST(LineRefusesWhatIsNot)
+{
+    uint16_t Symbols[8250];
+
+    Symbols[0] = 0x123;
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_2160P50, 0, 1, Symbols), 0);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_UNKNOWN, 0, 1, Symbols), 0);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_625I50, 0, 0, Symbols), 0);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_625I50, 0, 626, Symbols), 0);
+    DT_ASSERT_EQ(Symbols[0], 0x123);
+    DT_ASSERT_EQ(SimChSdiRxLine(DTAPI_VIDSTD_720P23_98, 0, 750, Symbols), 8250);
+}
+
+DT_TEST_MAIN("SimChSdiRx", DT_RUN(ReportsTheCardsProperties), DT_RUN(AttachesUsers),
+             DT_RUN(ClosingDetaches), DT_RUN(ConfiguresTheRing), DT_RUN(MapsAsLinux),
+             DT_RUN(RunsWhenConfigured), DT_RUN(EventsWithoutSource),
+             DT_RUN(WritesFramesInQuarters), DT_RUN(MismatchedSourceIsOutOfSync),
+             DT_RUN(InjectsFaults), DT_RUN(FullRingDropsAndWraps),
+             DT_RUN(RefusesAndReportsStatus), DT_RUN(SdTimingReferences),
+             DT_RUN(HdTimingReferences), DT_RUN(LineRefusesWhatIsNot))
