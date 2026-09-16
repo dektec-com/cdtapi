@@ -32,6 +32,10 @@ typedef struct OsBackend
     int (*IoCtl)(void* State, unsigned long Code, const void* In, size_t InSize,
                  void* Out, size_t* OutSize, uint32_t* DrvStatus);
     unsigned long (*LastError)(const void* State);
+
+    // NULL for a backend that maps no memory; see OsDrvMapMemory.
+    void* (*MapMemory)(void* State, uint64_t Offset, size_t Size);
+    void (*UnmapMemory)(void* State, void* Address, size_t Size);
 } OsBackend;
 
 // The emulated device. Always present, so that a build can be tested anywhere.

@@ -164,6 +164,7 @@ static unsigned long WinLastError(const void* State)
 //
 const OsBackend* OsPlatformBackend(void)
 {
-    static const OsBackend Backend = {WinOpen, WinClose, WinIoCtl, WinLastError};
+    static const OsBackend Backend = {WinOpen,      WinClose, WinIoCtl,
+                                      WinLastError, NULL,     NULL};
     return &Backend;
 }

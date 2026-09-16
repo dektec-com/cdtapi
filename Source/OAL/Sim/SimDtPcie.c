@@ -981,7 +981,8 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
 //
 const OsBackend* OsSimBackend(void)
 {
-    static const OsBackend Backend = {SimOpen, SimClose, SimIoCtl, SimLastError};
+    static const OsBackend Backend = {SimOpen,      SimClose, SimIoCtl,
+                                      SimLastError, NULL,     NULL};
     return &Backend;
 }
 

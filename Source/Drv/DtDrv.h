@@ -181,4 +181,97 @@ typedef struct DtSdiRxStatus
 unsigned int DtDrvSdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
                                  DtSdiRxStatus* Status);
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI receive channel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The CHSDIRX driver function: a receive channel that writes the SDI lines of a port
+// into a DMA ring the driver allocates, and reports how far it has written. The process
+// maps the ring, reads from it, and tells the driver how far it has read. Every command
+// goes to the channel's UUID and port index.
+//
+
+// What the channel's DMA and formatter are like, as DT_CHSDIRX_CMD_GET_PROPS reports.
+typedef struct DtChSdiRxProps
+{
+    uint32_t DmaCaps;    // DT_CDMAC_CAP_ flags
+    int PrefetchSize;    // In pages; the ring is a multiple of this many pages
+    int PcieDataWidth;   // Bits per PCIe data word
+    int ReorderBufSize;  // Bytes
+    int StreamAlignment; // Bits; every part of the ring's format is padded to this
+} DtChSdiRxProps;
+
+// How the channel is configured, as DT_CHSDIRX_CMD_CONFIGURE takes it.
+typedef struct DtChSdiRxConfig
+{
+    int NumPorts;       // 1, or 4 for quad link
+    int PortIndices[4]; // The ports, from 0, in link order
+    int DmaMinSize;     // Bytes; the driver may make the ring larger
+    int FmtIntInterval; // Microseconds between format events
+    int FmtIntDelay;    // Microseconds from the start of a frame to its first event
+    int FmtNumIntsPerFrame;
+    int NumSymsHanc;    // Symbols per line in HANC, EAV and SAV included
+    int NumSymsVidVanc; // Symbols per line in the active part
+    int NumLines;       // Lines per frame
+    int SdiRate;        // DT_DRV_SDIRATE_ value
+    bool AssumeInterlaced;
+    bool Scale12GTo3G;
+} DtChSdiRxConfig;
+
+// A format event: which frame the formatter is in, how far, and whether it is in sync.
+typedef struct DtChSdiRxEvent
+{
+    int FrameId;   // The 16 least significant bits of the frame number
+    int SeqNumber; // 0 for the first event of a frame
+    bool InSync;
+} DtChSdiRxEvent;
+
+// Attaches to the channel, exclusively or shared, under a friendly name of at most
+// DT_CHAN_FRIENDLY_NAME_MAX_LENGTH characters. A longer or empty name gives
+// DTAPI_E_INVALID_ARG, as DTAPI's proxy refuses one.
+unsigned int DtDrvChSdiRxAttach(OsDrv* Drv, int Uuid, int PortIndex, bool Exclusive,
+                                const char* FriendlyName);
+
+// Detaches from the channel.
+unsigned int DtDrvChSdiRxDetach(OsDrv* Drv, int Uuid, int PortIndex);
+
+// Configures the channel, which must be idle.
+unsigned int DtDrvChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
+                                   const DtChSdiRxConfig* Config);
+
+// Reads and sets this user's operational mode, a DT_FUNC_OPMODE_ value.
+unsigned int DtDrvChSdiRxGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode);
+unsigned int DtDrvChSdiRxSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// Waits up to TimeoutMs milliseconds for the next format event. Gives DTAPI_E_TIMEOUT
+// when none comes.
+unsigned int DtDrvChSdiRxWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
+                                         int TimeoutMs, DtChSdiRxEvent* Event);
+
+// Reads how far the channel has written into the ring, as an offset from its start.
+unsigned int DtDrvChSdiRxGetWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                        uint32_t* Offset);
+
+// Tells the channel how far this user has read.
+unsigned int DtDrvChSdiRxSetReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                       uint32_t Offset);
+
+// Reads the channel's properties.
+unsigned int DtDrvChSdiRxGetProps(OsDrv* Drv, int Uuid, int PortIndex,
+                                  DtChSdiRxProps* Props);
+
+// Reads the status of the channel's input, as DtDrvSdiRxGetStatus does for the receiver.
+unsigned int DtDrvChSdiRxGetSdiStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                      DtSdiRxStatus* Status);
+
+// Maps the configured ring into the process. On Windows the driver maps it during the
+// command and returns its address; on Linux the driver returns address 0, and the ring
+// is then mapped from the device at offset DT_MMAP_PORT_MEM_SEGMENT_SIZE times the port
+// index plus one, as DtProxyCHSDIRX::MapDmaBufferToUser does. *Mapped is true in the
+// second case, in which DtDrvChSdiRxUnmapDmaBuf must release the mapping.
+unsigned int DtDrvChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex, uint8_t** Buffer,
+                                   int* BufSize, int* MaxLoad, bool* Mapped);
+
+// Releases a mapping DtDrvChSdiRxMapDmaBuf made itself; one the driver made goes with
+// the detach.
+void DtDrvChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize, bool Mapped);
+
 #endif // CDTAPILITE_DT_DRV_H

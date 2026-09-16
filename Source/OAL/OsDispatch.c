@@ -100,6 +100,28 @@ int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, vo
     return Drv->Backend->IoCtl(Drv->State, Code, In, InSize, Out, OutSize, DrvStatus);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size)
+{
+    if (Drv == NULL || Size == 0 || Drv->Backend->MapMemory == NULL)
+        return NULL;
+
+    return Drv->Backend->MapMemory(Drv->State, Offset, Size);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvUnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size)
+{
+    if (Drv == NULL || Address == NULL || Drv->Backend->UnmapMemory == NULL)
+        return;
+
+    Drv->Backend->UnmapMemory(Drv->State, Address, Size);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 unsigned long OsDrvLastError(const OsDrv* Drv)

@@ -95,6 +95,17 @@ int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, vo
 #define OS_IOCTL_NO_RESOURCES -2  // The operating system ran out of resources.
 #define OS_IOCTL_COMMUNICATION -3 // Any other failure to reach the driver.
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Memory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+
+// Maps Size bytes of memory the driver offers at Offset into the process, readable and
+// writable and shared with the driver, as the Linux driver offers a channel's DMA ring.
+// Returns the address, or NULL when the mapping fails or the platform maps no memory
+// this way: the Windows driver maps a ring itself, during the command that asks for it.
+void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size);
+
+// Releases a mapping OsDrvMapMemory made. Passing NULL does nothing.
+void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size);
+
 // The error the last failed call on this handle reported, for diagnostics: the driver
 // status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
 // Linux and GetLastError on Windows. Zero when nothing has failed.

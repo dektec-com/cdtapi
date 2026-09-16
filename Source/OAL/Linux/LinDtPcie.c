@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 // CDtapiLite includes
@@ -151,10 +152,38 @@ static unsigned long LinLastError(const void* State)
     return ((const LinDevice*)State)->LastError;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// As XpDriverLinux::MapMemory: shared, readable and writable, at the offset the driver
+// reads as which memory is meant.
+//
+static void* LinMapMemory(void* State, uint64_t Offset, size_t Size)
+{
+    LinDevice* Dev = (LinDevice*)State;
+    void* Address =
+        mmap(NULL, Size, PROT_READ | PROT_WRITE, MAP_SHARED, Dev->Fd, (off_t)Offset);
+
+    if (Address == MAP_FAILED)
+    {
+        Dev->LastError = (unsigned long)errno;
+        return NULL;
+    }
+    return Address;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinUnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void LinUnmapMemory(void* State, void* Address, size_t Size)
+{
+    (void)State;
+    munmap(Address, Size);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformBackend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 const OsBackend* OsPlatformBackend(void)
 {
-    static const OsBackend Backend = {LinOpen, LinClose, LinIoCtl, LinLastError};
+    static const OsBackend Backend = {LinOpen,      LinClose,     LinIoCtl,
+                                      LinLastError, LinMapMemory, LinUnmapMemory};
     return &Backend;
 }
