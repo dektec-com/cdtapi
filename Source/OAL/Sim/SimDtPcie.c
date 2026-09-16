@@ -11,27 +11,11 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation seam.
-#include "DtlDrvAbi.h"     // The driver ABI the emulator answers in.
-#include "OAL/OsBackend.h" // Backend interface being implemented.
-#include "SimDtPcie.h"     // What the emulated card reports.
-
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Errors +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-//
-// The emulator fails the way the real driver fails on the same platform, so that code
-// which inspects OsDrvLastError behaves the same against both.
-//
-
-#if defined(WINBUILD)
-    #define SIM_ERR_INVALID_ARG ERROR_INVALID_PARAMETER
-    #define SIM_ERR_BUFFER_SIZE ERROR_INSUFFICIENT_BUFFER
-    #define SIM_ERR_UNSUPPORTED ERROR_NOT_SUPPORTED
-#else
-    #include <errno.h>
-    #define SIM_ERR_INVALID_ARG EINVAL
-    #define SIM_ERR_BUFFER_SIZE EINVAL
-    #define SIM_ERR_UNSUPPORTED ENOTTY
-#endif
+#include "Core/DtlAlloc.h"          // Allocation seam.
+#include "DtlDrvAbi.h"              // The driver ABI the emulator answers in.
+#include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
+#include "OAL/OsBackend.h"          // Backend interface being implemented.
+#include "SimDtPcie.h"              // What the emulated card reports.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -42,46 +26,54 @@ typedef struct SimDevice
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimFail -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static int SimFail(SimDevice* Dev, unsigned long Error)
+// Refuses a command with a DtStatus, which is how the driver refuses one. The emulator
+// stands in for the driver, not for the operating system, so it has no other way to
+// fail.
+//
+static int SimFail(SimDevice* Dev, DtStatus Status, uint32_t* DrvStatus)
 {
-    Dev->LastError = Error;
-    return -1;
+    Dev->LastError = Status;
+    *DrvStatus = Status;
+    return OS_IOCTL_DRIVER_STATUS;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckSizes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The driver refuses a request whose input is shorter than its header, or whose output
-// buffer cannot hold the answer. Doing the same here is what makes the emulator a test
-// of the wire format rather than a stub that accepts anything.
+// The driver refuses a request whose input is shorter than the command's input
+// structure, or whose output buffer cannot hold the answer, both with
+// DT_STATUS_INVALID_PARAMETER and in that order. Doing the same here is what makes the
+// emulator a test of the wire format rather than a stub that accepts anything.
+//
+// Returns OS_IOCTL_OK when the sizes are acceptable.
 //
 static int CheckSizes(SimDevice* Dev, size_t InSize, size_t InNeeded, const void* Out,
-                      const size_t* OutSize, size_t OutNeeded)
+                      const size_t* OutSize, size_t OutNeeded, uint32_t* DrvStatus)
 {
     if (InSize < InNeeded)
-        return SimFail(Dev, SIM_ERR_BUFFER_SIZE);
+        return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
 
     if (OutNeeded == 0)
-        return 0;
+        return OS_IOCTL_OK;
 
     if (Out == NULL || OutSize == NULL || *OutSize < OutNeeded)
-        return SimFail(Dev, SIM_ERR_BUFFER_SIZE);
+        return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
 
-    return 0;
+    return OS_IOCTL_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize)
+static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
+                            uint32_t* DrvStatus)
 {
     DtIoctlGetDriverVersionOutput* Version;
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlGetDriverVersionInput), Out,
+                             OutSize, sizeof(DtIoctlGetDriverVersionOutput), DrvStatus);
 
-    if (CheckSizes(Dev, InSize, sizeof(DtIoctlGetDriverVersionInput), Out, OutSize,
-                   sizeof(DtIoctlGetDriverVersionOutput)) != 0)
-    {
-        return -1;
-    }
+    if (Outcome != OS_IOCTL_OK)
+        return Outcome;
 
     Version = (DtIoctlGetDriverVersionOutput*)Out;
     Version->m_Major = SIM_DRIVER_MAJOR;
@@ -90,7 +82,7 @@ static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* Ou
     Version->m_Build = SIM_DRIVER_BUILD;
 
     *OutSize = sizeof(DtIoctlGetDriverVersionOutput);
-    return 0;
+    return OS_IOCTL_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetDevInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -98,15 +90,15 @@ static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* Ou
 // Answers GET_DEV_INFO and GET_DEV_INFO2 alike. The two differ only in how the driver
 // fills the PCIe-specific tail, which the emulator leaves zeroed.
 //
-static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize)
+static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
+                      uint32_t* DrvStatus)
 {
     DtIoctlGetDevInfoOutput* Info;
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlGetDevInfoInput), Out, OutSize,
+                             sizeof(DtIoctlGetDevInfoOutput), DrvStatus);
 
-    if (CheckSizes(Dev, InSize, sizeof(DtIoctlGetDevInfoInput), Out, OutSize,
-                   sizeof(DtIoctlGetDevInfoOutput)) != 0)
-    {
-        return -1;
-    }
+    if (Outcome != OS_IOCTL_OK)
+        return Outcome;
 
     Info = (DtIoctlGetDevInfoOutput*)Out;
     memset(Info, 0, sizeof(*Info));
@@ -126,7 +118,7 @@ static int GetDevInfo(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize)
     Info->m_SubSystemId = SIM_DEVICE_ID;
 
     *OutSize = sizeof(DtIoctlGetDevInfoOutput);
-    return 0;
+    return OS_IOCTL_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -161,25 +153,28 @@ static void SimClose(void* State)
 // driver does. On Linux the number also encodes the argument size, so matching on it
 // would accept only the one structure size this build happened to be compiled with.
 //
+// A command the emulator does not model is refused with DT_STATUS_NOT_SUPPORTED before
+// any size is looked at, as the driver refuses a command it does not know. OsDrvIoCtl
+// has already refused a request without input.
+//
 static int SimIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize)
+                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
     SimDevice* Dev = (SimDevice*)State;
 
-    if (In == NULL)
-        return SimFail(Dev, SIM_ERR_INVALID_ARG);
+    (void)In;
 
     switch (DT_IOCTL_TO_FUNCTION(Code))
     {
     case DT_FUNC_CODE_GET_DRIVER_VERSION:
-        return GetDriverVersion(Dev, InSize, Out, OutSize);
+        return GetDriverVersion(Dev, InSize, Out, OutSize, DrvStatus);
 
     case DT_FUNC_CODE_GET_DEV_INFO:
     case DT_FUNC_CODE_GET_DEV_INFO2:
-        return GetDevInfo(Dev, InSize, Out, OutSize);
+        return GetDevInfo(Dev, InSize, Out, OutSize, DrvStatus);
 
     default:
-        return SimFail(Dev, SIM_ERR_UNSUPPORTED);
+        return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
     }
 }
 

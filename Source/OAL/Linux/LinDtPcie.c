@@ -18,10 +18,11 @@
 #include <unistd.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h"  // Allocation seam.
-#include "DtlDrvAbi.h"      // Driver ABI; pulls in sys/ioctl.h.
-#include "LinIoctlBuffer.h" // Layout of the shared in/out buffer.
-#include "OAL/OsBackend.h"  // Backend interface being implemented.
+#include "Core/DtlAlloc.h"      // Allocation seam.
+#include "DtlDrvAbi.h"          // Driver ABI; pulls in sys/ioctl.h.
+#include "LinIoctlBuffer.h"     // Layout of the shared in/out buffer.
+#include "OAL/OsBackend.h"      // Backend interface being implemented.
+#include "OAL/OsIoctlOutcome.h" // Classifies the return value of ioctl.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -82,8 +83,11 @@ static void LinClose(void* State)
 // LinIoctlPack. A scratch block is always used, rather than the caller's input buffer,
 // so that the driver's answer never overwrites memory the caller passed as const.
 //
+// A command the driver refuses comes back as its DtStatus, negated, in the return value
+// of ioctl rather than in errno. OsIoctlClassifyLinux separates the two.
+//
 static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize)
+                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
     LinDevice* Dev = (LinDevice*)State;
     uint8_t Stack[LIN_STACK_BUFFER_BYTES];
@@ -91,7 +95,8 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
     size_t OutBytes = (Out != NULL && OutSize != NULL) ? *OutSize : 0;
     bool SizeHeader = _IOC_TYPE(Code) == DT_IOCTL_MAGIC_SIZE;
     size_t BufSize = LinIoctlBufferSize(SizeHeader, InSize, OutBytes);
-    int Result = -1;
+    int Result = OS_IOCTL_COMMUNICATION;
+    int Rc;
 
     if (BufSize > sizeof(Stack))
     {
@@ -99,7 +104,7 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
         if (Buf == NULL)
         {
             Dev->LastError = ENOMEM;
-            return -1;
+            return OS_IOCTL_NO_RESOURCES;
         }
     }
 
@@ -109,9 +114,12 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
         goto Cleanup;
     }
 
-    if (ioctl(Dev->Fd, Code, Buf) != 0)
+    Rc = ioctl(Dev->Fd, Code, Buf);
+    if (Rc != 0)
     {
-        Dev->LastError = (unsigned long)errno;
+        Result = OsIoctlClassifyLinux(Rc, DrvStatus);
+        Dev->LastError =
+            (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (unsigned long)errno;
         goto Cleanup;
     }
 
@@ -124,7 +132,7 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
     // The Linux driver does not report how much it wrote, so *OutSize is left as the
     // caller set it. See the OsDrvIoCtl contract.
 
-    Result = 0;
+    Result = OS_IOCTL_OK;
 
 Cleanup:
     if (Buf != Stack)

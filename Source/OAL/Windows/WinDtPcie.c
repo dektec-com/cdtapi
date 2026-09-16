@@ -7,12 +7,17 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes: DtlDrvAbi.h brings in windows.h and the device interface GUID.
-#include "Core/DtlAlloc.h" // Allocation seam.
-#include "DtlDrvAbi.h"     // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
-#include "OAL/OsBackend.h" // Backend interface being implemented.
+#include "Core/DtlAlloc.h"      // Allocation seam.
+#include "DtlDrvAbi.h"          // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
+#include "OAL/OsBackend.h"      // Backend interface being implemented.
+#include "OAL/OsIoctlOutcome.h" // Classifies a failed DeviceIoControl.
 
 // Windows includes, after windows.h.
 #include <setupapi.h>
+
+// The classifier is built without windows.h, so it carries its own copy of this value.
+_Static_assert(OS_WIN_ERROR_NO_SYSTEM_RESOURCES == ERROR_NO_SYSTEM_RESOURCES,
+               "OS_WIN_ERROR_NO_SYSTEM_RESOURCES must match winerror.h");
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -125,11 +130,11 @@ static void WinClose(void* State)
 // argument that the I/O manager locks for the duration of the call.
 //
 // A driver-specific failure comes back from GetLastError with the customer bit, bit 29,
-// set. It is recorded unchanged; translating it into a DTAPI result is the driver ABI
-// layer's job, not this one's.
+// set. OsIoctlClassifyWindows separates it from errors of Windows itself; translating it
+// into a DTAPI result is the driver ABI layer's job, not this one's.
 //
 static int WinIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize)
+                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
     WinDevice* Dev = (WinDevice*)State;
     DWORD Returned = 0;
@@ -139,13 +144,13 @@ static int WinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
                          OutCapacity, &Returned, NULL))
     {
         Dev->LastError = GetLastError();
-        return -1;
+        return OsIoctlClassifyWindows(Dev->LastError, DrvStatus);
     }
 
     if (OutSize != NULL)
         *OutSize = Returned;
 
-    return 0;
+    return OS_IOCTL_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

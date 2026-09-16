@@ -12,6 +12,7 @@
 // Standard includes
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Seam +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -74,12 +75,29 @@ bool OsDrvIsEmulated(const OsDrv* Drv);
 // So a caller can use *OutSize to detect a short answer on Windows, but must not rely on
 // it to do so everywhere.
 //
-// Returns 0 on success and -1 on failure.
+// Returns one of the OS_IOCTL_ outcomes below. DrvStatus may be NULL; otherwise it
+// receives the driver's DtStatus when the outcome is OS_IOCTL_DRIVER_STATUS, and
+// DT_STATUS_OK, which is zero, for every other outcome.
 int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, void* Out,
-               size_t* OutSize);
+               size_t* OutSize, uint32_t* DrvStatus);
 
-// The error the last failed call on this handle reported, as the platform's own error
-// number: errno on Linux, GetLastError on Windows. Zero when nothing has failed.
+// Outcomes of OsDrvIoCtl.
+//
+// A driver refuses a command with a DtStatus, and the two platforms deliver it in
+// different ways: on Windows as a GetLastError value with the customer bit (bit 29) set,
+// on Linux as the negated return value of ioctl itself. Each backend recognises its own
+// form, so that the layer above sees one outcome and one status, and translates only the
+// status. Everything else is a failure of the operating system rather than of the
+// driver, and is kept apart because DTAPI reports it differently.
+//
+#define OS_IOCTL_OK 0             // The driver carried out the command.
+#define OS_IOCTL_DRIVER_STATUS -1 // The driver refused it; see the DtStatus.
+#define OS_IOCTL_NO_RESOURCES -2  // The operating system ran out of resources.
+#define OS_IOCTL_COMMUNICATION -3 // Any other failure to reach the driver.
+
+// The error the last failed call on this handle reported, for diagnostics: the driver
+// status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
+// Linux and GetLastError on Windows. Zero when nothing has failed.
 unsigned long OsDrvLastError(const OsDrv* Drv);
 
 #endif // CDTAPILITE_OS_ABSTRACTION_LAYER_H

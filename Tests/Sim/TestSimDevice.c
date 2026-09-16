@@ -75,11 +75,38 @@ DTL_TEST(OutOfRangeIndexIsRefused)
 DTL_TEST(NullHandleIsAccepted)
 {
     uint8_t In[16];
+    uint32_t Status = 0xDEAD;
 
     OsDrvClose(NULL);
     DTL_ASSERT(!OsDrvIsEmulated(NULL));
     DTL_ASSERT_EQ(OsDrvLastError(NULL), 0);
-    DTL_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL), -1);
+    DTL_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
+                  OS_IOCTL_COMMUNICATION);
+    DTL_ASSERT_EQ(Status, 0);
+    DTL_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL, NULL),
+                  OS_IOCTL_COMMUNICATION);
+}
+
+// A request without input never reaches the driver, so there is no driver status.
+DTL_TEST(RequestWithoutInputIsRefused)
+{
+    uint8_t In[16];
+    uint32_t Status = 0xDEAD;
+    OsDrv* Drv = OpenSim(DtlFailures);
+
+    if (Drv == NULL)
+        return;
+
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
+                             sizeof(In), NULL, NULL, &Status),
+                  OS_IOCTL_COMMUNICATION);
+    DTL_ASSERT_EQ(Status, 0);
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), In, 0,
+                             NULL, NULL, &Status),
+                  OS_IOCTL_COMMUNICATION);
+    DTL_ASSERT_EQ(Status, 0);
+
+    OsDrvClose(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -151,6 +178,7 @@ DTL_TEST(OutputBufferTooSmallIsRefused)
     DtIoctlGetDriverVersionInput In;
     uint8_t Out[sizeof(DtIoctlGetDriverVersionOutput) - 1];
     size_t OutSize = sizeof(Out);
+    uint32_t Status = 0;
     OsDrv* Drv = OpenSim(DtlFailures);
 
     if (Drv == NULL)
@@ -158,9 +186,11 @@ DTL_TEST(OutputBufferTooSmallIsRefused)
 
     memset(&In, 0, sizeof(In));
     DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
-                             sizeof(In), Out, &OutSize),
-                  -1);
-    DTL_ASSERT(OsDrvLastError(Drv) != 0);
+                             sizeof(In), Out, &OutSize, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
+    DTL_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_INVALID_PARAMETER);
+    DTL_ASSERT_EQ(OutSize, sizeof(Out));
 
     OsDrvClose(Drv);
 }
@@ -170,6 +200,7 @@ DTL_TEST(InputShorterThanHeaderIsRefused)
     uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     DtIoctlGetDevInfoOutput Out;
     size_t OutSize = sizeof(Out);
+    uint32_t Status = 0;
     OsDrv* Drv = OpenSim(DtlFailures);
 
     if (Drv == NULL)
@@ -177,38 +208,48 @@ DTL_TEST(InputShorterThanHeaderIsRefused)
 
     memset(In, 0, sizeof(In));
     DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
-                             &Out, &OutSize),
-                  -1);
-    DTL_ASSERT(OsDrvLastError(Drv) != 0);
+                             &Out, &OutSize, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
+    DTL_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_INVALID_PARAMETER);
 
     OsDrvClose(Drv);
 }
 
 // A command the emulator does not model is refused, not answered with zeroes. Silently
-// succeeding would let a missing emulation look like a working feature.
+// succeeding would let a missing emulation look like a working feature. The command is
+// refused as unknown before its sizes are looked at, so even an empty output buffer
+// yields DT_STATUS_NOT_SUPPORTED rather than DT_STATUS_INVALID_PARAMETER.
 DTL_TEST(UnmodelledCommandIsRefused)
 {
     DtIoctlInputDataHdr In;
     uint8_t Out[64];
     size_t OutSize = sizeof(Out);
+    uint32_t Status = 0;
     OsDrv* Drv = OpenSim(DtlFailures);
 
     if (Drv == NULL)
         return;
 
     memset(&In, 0, sizeof(In));
-    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                             Out, &OutSize),
-                  -1);
-    DTL_ASSERT(OsDrvLastError(Drv) != 0);
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In),
+                             Out, &OutSize, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
+    DTL_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_NOT_SUPPORTED);
+
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In),
+                             NULL, NULL, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
 
     OsDrvClose(Drv);
 }
 
 DTL_TEST_MAIN("SimDevice", DTL_RUN(EmulatedDeviceOpens), DTL_RUN(OnlyIndexZeroExists),
               DTL_RUN(OutOfRangeIndexIsRefused), DTL_RUN(NullHandleIsAccepted),
-              DTL_RUN(DriverVersionComesThrough), DTL_RUN(DeviceInfoComesThrough),
-              DTL_RUN(CommandsRejectNullArguments),
+              DTL_RUN(RequestWithoutInputIsRefused), DTL_RUN(DriverVersionComesThrough),
+              DTL_RUN(DeviceInfoComesThrough), DTL_RUN(CommandsRejectNullArguments),
               DTL_RUN(OutputBufferTooSmallIsRefused),
               DTL_RUN(InputShorterThanHeaderIsRefused),
               DTL_RUN(UnmodelledCommandIsRefused))

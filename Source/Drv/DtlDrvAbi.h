@@ -34,6 +34,18 @@
     #endif
     #include <windows.h>
     #include <winioctl.h>
+
+    // DtStatusCodes.h builds Windows driver statuses from two NT status definitions
+    // that come from kernel headers and are not available to user mode. Their values
+    // are fixed by the NTSTATUS layout: success is zero and the error severity is 3.
+    // The severity is unsigned because DT_STATUS_ERROR shifts it left by 30 bits, which
+    // would overflow a signed int.
+    #ifndef STATUS_SUCCESS
+        #define STATUS_SUCCESS 0
+    #endif
+    #ifndef STATUS_SEVERITY_ERROR
+        #define STATUS_SEVERITY_ERROR 3U
+    #endif
 #else
     // _IOWR and _IOC_NR, used by the Linux half of the IOCTL definitions.
     #include <sys/ioctl.h>
@@ -43,7 +55,7 @@
 // other than MSVC the macro already ends in one. That leaves an empty declaration at file
 // scope, which -Wpedantic reports and -Werror then turns into a failed build of every
 // file that includes the driver ABI. The headers stay byte-identical to the SDK, so the
-// diagnostic is silenced for exactly these two includes instead.
+// diagnostic is silenced for exactly these vendored includes instead.
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wpedantic"
@@ -54,6 +66,9 @@
 // The DtPcie driver's own header carries the device interface GUID that the Windows
 // backend enumerates by. Including it for every platform keeps one include order.
 #include "Abi/DtPcieCommon.h"
+
+// The status codes a driver command fails with, DT_STATUS_IN_USE and the like.
+#include "Abi/DtStatusCodes.h"
 
 #if defined(__GNUC__)
     #pragma GCC diagnostic pop

@@ -342,6 +342,15 @@ extern "C"
 #define DTAPI_E_CONFIG_VIDEO        (DTAPI_E + 279)
 #define DTAPI_E_CONFIG_VIDEO_WEAVE  (DTAPI_E + 280)
 
+// Defined by DTAPI but not by CDTAPI.h. DTAPI_E_ALREADY_EXCL_ACCESS is what a driver
+// reports when another process holds a port exclusively.
+#define DTAPI_E_CONFIG_VIDEO_ZEROCOPY (DTAPI_E + 281)
+#define DTAPI_E_ALREADY_EXCL_ACCESS   (DTAPI_E + 282)
+#define DTAPI_E_DISABLED              (DTAPI_E + 283)
+#define DTAPI_E_CPU_NO_AVX2           (DTAPI_E + 284)
+#define DTAPI_E_INVALID_MIMO          (DTAPI_E + 285)
+#define DTAPI_E_NO_GATEWAY            (DTAPI_E + 286)
+
 // Reported for failures inside the AV FIFO API, which CDtapiLite does not provide.
 #define DTAPI_E_EXCEPTION (DTAPI_E + 300) // For AvFifo exceptions see GetLastException
 // clang-format on

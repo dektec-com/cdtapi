@@ -12,6 +12,7 @@
 // Standard includes
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backends +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -21,13 +22,15 @@
 // A backend owns an opaque state pointer of its own. Open returns NULL when there is no
 // device at that index, which is the normal answer during a scan and not an error.
 //
+// IoCtl follows the OsDrvIoCtl contract, except that DrvStatus is never NULL.
+//
 
 typedef struct OsBackend
 {
     void* (*Open)(int Index);
     void (*Close)(void* State);
     int (*IoCtl)(void* State, unsigned long Code, const void* In, size_t InSize,
-                 void* Out, size_t* OutSize);
+                 void* Out, size_t* OutSize, uint32_t* DrvStatus);
     unsigned long (*LastError)(const void* State);
 } OsBackend;
 

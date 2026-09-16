@@ -45,9 +45,11 @@ set(CDTAPILITE_SOURCES
     Source/Core/DtlStr.c
     Source/Core/DtlVec.c
     Source/Drv/DtlDrv.c
+    Source/Drv/DtlDrvStatus.c
     Source/Drv/DtlIoConfig.c
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
+    Source/OAL/OsIoctlOutcome.c
     Source/OAL/Sim/SimDtPcie.c
     Source/Video/DtlVidStd.c)
 

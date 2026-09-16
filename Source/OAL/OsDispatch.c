@@ -83,12 +83,21 @@ bool OsDrvIsEmulated(const OsDrv* Drv)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, void* Out,
-               size_t* OutSize)
+               size_t* OutSize, uint32_t* DrvStatus)
 {
-    if (Drv == NULL || In == NULL || InSize == 0)
-        return -1;
+    uint32_t Ignored;
 
-    return Drv->Backend->IoCtl(Drv->State, Code, In, InSize, Out, OutSize);
+    if (DrvStatus == NULL)
+        DrvStatus = &Ignored;
+
+    *DrvStatus = 0;
+
+    // Every command starts with a header, so a request without input never reaches a
+    // driver.
+    if (Drv == NULL || In == NULL || InSize == 0)
+        return OS_IOCTL_COMMUNICATION;
+
+    return Drv->Backend->IoCtl(Drv->State, Code, In, InSize, Out, OutSize, DrvStatus);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

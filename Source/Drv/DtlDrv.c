@@ -10,8 +10,9 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtlDrv.h"    // Interface being implemented.
-#include "DtlDrvAbi.h" // Vendored driver structures and IOCTL codes.
+#include "DtlDrv.h"       // Interface being implemented.
+#include "DtlDrvAbi.h"    // Vendored driver structures and IOCTL codes.
+#include "DtlDrvStatus.h" // Driver status to result.
 
 // The IOCTL codes come from CTL_CODE on Windows, which the SDK evaluates as int. The
 // device type DekTec uses puts the value above INT_MAX, so it is converted once, here,
@@ -37,7 +38,10 @@ static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Issue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Issues a command whose answer has a fixed size, and turns the outcome into a result.
+// Issues a command whose answer has a fixed size, and turns the outcome into a result:
+// a refused command into the result its DtStatus stands for, and a failure to reach the
+// driver into DTAPI_E_COMMUNICATION or DTAPI_E_OUT_OF_RESOURCES.
+//
 // A driver that answers with fewer bytes than the structure holds is treated as a
 // failure: the fields it did not write would otherwise be read as zeroes and trusted.
 //
@@ -49,9 +53,11 @@ static unsigned int Issue(OsDrv* Drv, unsigned long Code, const void* In, size_t
                           void* Out, size_t OutSize)
 {
     size_t Returned = OutSize;
+    uint32_t Status;
+    int Outcome = OsDrvIoCtl(Drv, Code, In, InSize, Out, &Returned, &Status);
 
-    if (OsDrvIoCtl(Drv, Code, In, InSize, Out, &Returned) != 0)
-        return DTAPI_E_DEV_DRIVER;
+    if (Outcome != OS_IOCTL_OK)
+        return DtlDrvOutcomeToResult(Outcome, Status);
 
     if (Returned < OutSize)
         return DTAPI_E_DEV_DRIVER;
