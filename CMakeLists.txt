@@ -50,6 +50,7 @@ set(CDTAPILITE_SOURCES
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
+    Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
     Source/Video/DtlVidStd.c)
 

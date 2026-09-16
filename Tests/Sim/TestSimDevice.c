@@ -216,6 +216,46 @@ DTL_TEST(InputShorterThanHeaderIsRefused)
     OsDrvClose(Drv);
 }
 
+// The header is checked before the command is looked at, so a short input is an invalid
+// parameter even for a command the emulator does not model.
+DTL_TEST(ShortInputIsRefusedBeforeTheCommand)
+{
+    uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
+    uint32_t Status = 0;
+    OsDrv* Drv = OpenSim(DtlFailures);
+
+    if (Drv == NULL)
+        return;
+
+    memset(In, 0, sizeof(In));
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In),
+                             NULL, NULL, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
+
+    OsDrvClose(Drv);
+}
+
+DTL_TEST(DeviceInfoOutputTooSmallIsRefused)
+{
+    DtIoctlGetDevInfoInput In;
+    uint8_t Out[sizeof(DtIoctlGetDevInfoOutput) - 1];
+    size_t OutSize = sizeof(Out);
+    uint32_t Status = 0;
+    OsDrv* Drv = OpenSim(DtlFailures);
+
+    if (Drv == NULL)
+        return;
+
+    memset(&In, 0, sizeof(In));
+    DTL_ASSERT_EQ(OsDrvIoCtl(Drv, DTL_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
+                             Out, &OutSize, &Status),
+                  OS_IOCTL_DRIVER_STATUS);
+    DTL_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
+
+    OsDrvClose(Drv);
+}
+
 // A command the emulator does not model is refused, not answered with zeroes. Silently
 // succeeding would let a missing emulation look like a working feature. The command is
 // refused as unknown before its sizes are looked at, so even an empty output buffer
@@ -252,4 +292,6 @@ DTL_TEST_MAIN("SimDevice", DTL_RUN(EmulatedDeviceOpens), DTL_RUN(OnlyIndexZeroEx
               DTL_RUN(DeviceInfoComesThrough), DTL_RUN(CommandsRejectNullArguments),
               DTL_RUN(OutputBufferTooSmallIsRefused),
               DTL_RUN(InputShorterThanHeaderIsRefused),
+              DTL_RUN(DeviceInfoOutputTooSmallIsRefused),
+              DTL_RUN(ShortInputIsRefusedBeforeTheCommand),
               DTL_RUN(UnmodelledCommandIsRefused))

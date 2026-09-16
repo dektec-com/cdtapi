@@ -77,11 +77,13 @@ cdtapilite_add_test(VidStd Unit/TestVidStd.c)
 # every structure, so a layout change fails this build.
 cdtapilite_add_test(Abi Abi/AbiSizes.c)
 
-# Runs the OS abstraction and driver layers against the emulated device. The variable is
+# Run the OS abstraction and driver layers against the emulated device. The variable is
 # appended rather than set, so that the AddressSanitizer PATH change is kept.
-cdtapilite_add_test(SimDevice Sim/TestSimDevice.c)
-set_property(TEST SimDevice APPEND PROPERTY
-    ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
+foreach(SimSuite SimDevice SimCommands)
+    cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
+    set_property(TEST ${SimSuite} APPEND PROPERTY
+        ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
+endforeach()
 
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ CDTAPI compatibility +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 #

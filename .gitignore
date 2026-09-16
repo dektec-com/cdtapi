@@ -30,6 +30,7 @@ Include/CDtapiLite_Version.h
 *.vspscc
 
 # .-.-.- Editor and OS clutter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+__pycache__/
 .vscode/
 *.swp
 Thumbs.db

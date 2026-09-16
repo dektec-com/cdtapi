@@ -36,4 +36,28 @@ unsigned int DtlIoConfigGetCode(const char* Name, int* Code);
 // and with DTAPI_E_BUF_TOO_SMALL when the name does not fit; Name is then empty.
 unsigned int DtlIoConfigGetName(int Code, char* Name, size_t Size);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Validation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// Which combinations of group, value and sub-value make a configuration. DTAPI checks a
+// configuration against this relation before it sends one to the driver, and so does
+// CDtapiLite. Whether a port supports the configuration is for the driver to decide.
+//
+
+// What a code can be in a configuration; a code can be more than one. These are the
+// kinds in Tables/DtlIoConfigList.inc.
+#define DTL_IOCFG_GROUP 0x1    // A group, such as IODIR
+#define DTL_IOCFG_BOOLIO 0x2   // A boolean I/O capability, set like a group to TRUE/FALSE
+#define DTL_IOCFG_VALUE 0x4    // A value within a group, such as OUTPUT
+#define DTL_IOCFG_SUBVALUE 0x8 // A sub-value within a value, such as DBLBUF
+
+// The parent slots of Tables/DtlIoConfigList.inc: an unused slot, and every boolean I/O
+// capability.
+#define DTL_IOCFG_NONE -1
+#define DTL_IOCFG_ANY_BOOLIO -2
+
+// Returns DTAPI_OK when Value belongs to Group and SubValue to Value, SubValue -1 being
+// required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
+// checks and their order are those of DTAPI's DtConfigDefs::IsValidConfig.
+unsigned int DtlIoConfigIsValid(int Group, int Value, int SubValue);
+
 #endif // CDTAPILITE_DTL_IO_CONFIG_H
