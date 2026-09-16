@@ -8,6 +8,7 @@ file, built with the library unless `CDTAPILITE_BUILD_EXAMPLES` is off.
 | `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, AV FIFO, input or output |
 | `DtConfigPort` | Makes an SDI port an input or output and, with `--vidstd`, sets its I/O standard for a video standard |
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
+| `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDtapiLite addition |
 
 Every program lists its options with `--help`. Without `--serial` a program uses the
 first device that has a port that suits, and without `--port` the first such port.
@@ -38,7 +39,12 @@ found nothing, such as no ports or no signal.
 
 ## Only CDTAPI.h
 
-The programs use only what the original `CDTAPI.h` declares. `Common/ExampleCommon.h`
-includes `CDtapiLite.h`, or `CDTAPI.h` when `EXAMPLE_WITH_CDTAPI` is defined, and where the
-original header is found each program is also built that way, as `<Program>_Cdtapi`.
-CTest runs both builds of every program against the emulator.
+The programs use only what the original `CDTAPI.h` declares, apart from
+`DtListDeviceDescs`, which shows a CDtapiLite addition and is built against
+`CDtapiLite.h` only. `Common/ExampleCommon.h` includes `CDtapiLite.h`, or `CDTAPI.h`
+when `EXAMPLE_WITH_CDTAPI` is defined, and where the original header is found each of
+the other programs is also built that way, as `<Program>_Cdtapi`. CTest runs every build
+of every program against the emulator.
+
+On a machine with DTAPI's Linux SDK, `Scripts/compare_device_scan.sh <LinuxSDK>`
+compares `DtListDeviceDescs` with DTAPI's own device scan.
