@@ -50,6 +50,20 @@
 // The capability the device descriptor looks at besides the direction.
 #define DT_CAP_IP 0x2000 // Transport-stream-over-IP port
 
+// The capabilities an input channel looks at.
+#define DT_CAP_ASI 0x4000           // ASI, which DTAPI's ASI/SDI receiver implies
+#define DT_CAP_MATRIX 0x8000        // The frame-buffer Matrix API of older cards
+#define DT_CAP_TS 0x10000           // Transport-stream receive modes
+#define DT_CAP_HUFFMAN 0x20000      // Compressed SDI
+#define DT_CAP_L3MODE 0x40000       // L.3 receive modes
+#define DT_CAP_TRPMODE 0x80000      // Transparent-packet receive mode
+#define DT_CAP_TIMESTAMP64 0x100000 // 64-bit time stamps
+#define DT_CAP_SDI10BNBO 0x200000   // 10-bit SDI in network byte order
+#define DT_CAP_DMATESTMODE 0x400000 // A DMA-rate test mode to switch off
+#define DT_CAP_FAILSAFE 0x800000    // A fail-safe relay
+#define DT_CAP_SPI 0x1000000        // SPI
+#define DT_CAP_SPISDI 0x2000000     // SDI over SPI
+
 // Any of the SDI rates.
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
@@ -57,6 +71,7 @@
 struct DtDeviceC
 {
     OsDrv* Drv; // NULL while detached
+    int Index;  // The index the driver numbers the device by
     DtDriverVersion DriverVersion;
     DtDeviceInfo Info;
     int NumPorts;       // All ports, PORT_COUNT

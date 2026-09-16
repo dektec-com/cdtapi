@@ -847,6 +847,20 @@ void SimDtPcieSetRxSource(int PortIndex, int VidStd)
         g_Rx.Channels[PortIndex].SourceVidStd = VidStd;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieRunRxEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcieRunRxEvents(int PortIndex, int Events)
+{
+    DtIoctlChSdiRxCmdWaitForFmtEventOutput Event;
+    int i;
+
+    EnsureRx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return;
+    for (i = 0; i < Events && g_Rx.Channels[PortIndex].Running; i++)
+        NextEvent(&g_Rx.Channels[PortIndex], &Event);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieInjectRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void SimDtPcieInjectRxFault(int PortIndex, SimRxFault Fault)

@@ -217,3 +217,41 @@ uint64_t OsMonotonicMs(void)
 {
     return (uint64_t)GetTickCount64();
 }
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The file name of the executable, as GetModuleBaseName gives it to XpUtil's
+// GetCurrentProcessName on Windows.
+//
+void OsProcessName(char* Buf, size_t Size)
+{
+    char Path[MAX_PATH];
+    DWORD Length;
+    const char* Name;
+    size_t i;
+
+    if (Buf == NULL || Size == 0)
+        return;
+    Buf[0] = '\0';
+
+    Length = GetModuleFileNameA(NULL, Path, (DWORD)sizeof(Path));
+    if (Length == 0 || Length >= sizeof(Path))
+        return;
+
+    Name = Path;
+    for (i = 0; i < Length; i++)
+    {
+        if (Path[i] == '\\' || Path[i] == '/')
+            Name = Path + i + 1;
+    }
+    for (i = 0; i + 1 < Size && Name[i] != '\0'; i++)
+        Buf[i] = Name[i];
+    Buf[i] = '\0';
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+unsigned long OsProcessId(void)
+{
+    return (unsigned long)GetCurrentProcessId();
+}

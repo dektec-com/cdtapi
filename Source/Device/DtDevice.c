@@ -41,6 +41,18 @@ static const struct
     {"CAP_HDMI", DT_CAP_HDMI},
     {"CAP_SCALE_12GTO3G", DT_CAP_SCALE_12GTO3G},
     {"CAP_IP", DT_CAP_IP},
+    {"CAP_ASI", DT_CAP_ASI},
+    {"CAP_MATRIX", DT_CAP_MATRIX},
+    {"CAP_TS", DT_CAP_TS},
+    {"CAP_HUFFMAN", DT_CAP_HUFFMAN},
+    {"CAP_L3MODE", DT_CAP_L3MODE},
+    {"CAP_TRPMODE", DT_CAP_TRPMODE},
+    {"CAP_TIMESTAMP64", DT_CAP_TIMESTAMP64},
+    {"CAP_SDI10BNBO", DT_CAP_SDI10BNBO},
+    {"CAP_DMATESTMODE", DT_CAP_DMATESTMODE},
+    {"CAP_FAILSAFE", DT_CAP_FAILSAFE},
+    {"CAP_SPI", DT_CAP_SPI},
+    {"CAP_SPISDI", DT_CAP_SPISDI},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
@@ -143,6 +155,7 @@ unsigned int DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
     }
 
     Device->Drv = Drv;
+    Device->Index = Index;
     Device->DriverVersion = Version;
     return DTAPI_OK;
 }

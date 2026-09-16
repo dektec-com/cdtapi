@@ -41,6 +41,7 @@ configure_file(
 set(CDTAPILITE_SOURCES
     Source/Api/DtApi.c
     Source/Api/DtResult.c
+    Source/Channel/DtInpChannel.c
     Source/Core/DtAlloc.c
     Source/Core/DtBuf.c
     Source/Core/DtRing.c

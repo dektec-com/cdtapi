@@ -11,6 +11,7 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Primitives +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -88,5 +89,15 @@ void OsSleepMs(int Ms);
 // Milliseconds on a clock that only moves forward, for measuring an interval. Where it
 // starts is unspecified.
 uint64_t OsMonotonicMs(void);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Process -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Writes the name the process runs under into Buf, which holds Size bytes, cut to fit:
+// the executable's file name on Windows, the name it was invoked by on Linux, as DTAPI
+// takes them for a channel's friendly name. Empty when it cannot be read.
+void OsProcessName(char* Buf, size_t Size);
+
+// The process's identifier.
+unsigned long OsProcessId(void);
 
 #endif // CDTAPILITE_OS_THREAD_H

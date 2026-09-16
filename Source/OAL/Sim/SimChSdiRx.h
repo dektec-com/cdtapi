@@ -104,6 +104,10 @@ typedef enum SimRxFault
 // Arms a fault for the next frame of the port at PortIndex.
 void SimDtPcieInjectRxFault(int PortIndex, SimRxFault Fault);
 
+// Lets the running channel of the port at PortIndex produce Events format events without
+// anyone waiting for them, as a card goes on while an application does not read.
+void SimDtPcieRunRxEvents(int PortIndex, int Events);
+
 // Makes the channel of every port allocate at most Size bytes, so that a test can wrap
 // the ring with few frames. 0 lifts the limit.
 void SimDtPcieLimitRxRing(size_t Size);

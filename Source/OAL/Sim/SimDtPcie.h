@@ -55,10 +55,12 @@
 #define SIM_PCIE_MAX_READ_REQUEST_SIZE 512
 #define SIM_PCIE_MAX_SLOT_POWER 25000
 
-#define SIM_DRIVER_MAJOR 1
-#define SIM_DRIVER_MINOR 99
-#define SIM_DRIVER_MICRO 0
-#define SIM_DRIVER_BUILD 0
+// The driver version the DTA-2178 in the Linux machine runs, new enough for every driver
+// function the emulator has.
+#define SIM_DRIVER_MAJOR 3
+#define SIM_DRIVER_MINOR 6
+#define SIM_DRIVER_MICRO 4
+#define SIM_DRIVER_BUILD 398
 
 // The emulator presents exactly one device, at index zero unless a test moves it. A scan
 // returns just that one, which replaces the hardware rather than adding to it.

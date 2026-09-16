@@ -17,7 +17,9 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 
 // CDtapiLite includes
 #include "Core/DtAlloc.h" // Allocation seam.
@@ -299,4 +301,23 @@ uint64_t OsMonotonicMs(void)
     if (clock_gettime(CLOCK_MONOTONIC, &Now) != 0)
         return 0;
     return (uint64_t)Now.tv_sec * 1000u + (uint64_t)Now.tv_nsec / 1000000u;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// program_invocation_name, as XpUtil's GetCurrentProcessName on Linux.
+//
+void OsProcessName(char* Buf, size_t Size)
+{
+    if (Buf == NULL || Size == 0)
+        return;
+    snprintf(Buf, Size, "%s",
+             program_invocation_name != NULL ? program_invocation_name : "");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+unsigned long OsProcessId(void)
+{
+    return (unsigned long)getpid();
 }
