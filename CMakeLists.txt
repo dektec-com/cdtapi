@@ -14,6 +14,9 @@ project(CDtapiLite
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)
 
+# Groups the test projects into a Tests folder in the Visual Studio solution.
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Options -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 option(CDTAPILITE_BUILD_TESTS "Build the test suites" ON)
@@ -42,9 +45,11 @@ set(CDTAPILITE_SOURCES
     Source/Core/DtlStr.c
     Source/Core/DtlVec.c
     Source/Drv/DtlDrv.c
+    Source/Drv/DtlIoConfig.c
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
-    Source/OAL/Sim/SimDtPcie.c)
+    Source/OAL/Sim/SimDtPcie.c
+    Source/Video/DtlVidStd.c)
 
 # The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
 # that it is unit-tested on every platform even though its only user is the Linux backend.
@@ -76,11 +81,36 @@ else()
                         "use CDTAPILITE_SIM_ONLY=ON to build for emulation elsewhere.")
 endif()
 
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IDE layout -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+#
+# Everything under Include and Source is added to the target, so that an IDE shows the
+# whole tree and not only what this platform compiles: headers, the X-macro tables, and
+# the backends for the other platform. Files outside CDTAPILITE_SOURCES are marked
+# HEADER_FILE_ONLY, which lists them without building them. source_group then turns the
+# directory structure into the Visual Studio filters.
+#
+# The glob only decides what is shown. What is compiled stays the explicit list above.
+
+file(GLOB_RECURSE CDTAPILITE_TREE CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Include/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Include/*.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.inc")
+
+list(TRANSFORM CDTAPILITE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/"
+     OUTPUT_VARIABLE CDTAPILITE_BUILT)
+set(CDTAPILITE_SHOWN_ONLY ${CDTAPILITE_TREE})
+list(REMOVE_ITEM CDTAPILITE_SHOWN_ONLY ${CDTAPILITE_BUILT})
+set_source_files_properties(${CDTAPILITE_SHOWN_ONLY} PROPERTIES HEADER_FILE_ONLY TRUE)
+
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${CDTAPILITE_TREE})
+
 if(CDTAPILITE_BUILD_SHARED)
-    add_library(cdtapilite SHARED ${CDTAPILITE_SOURCES})
+    add_library(cdtapilite SHARED ${CDTAPILITE_BUILT} ${CDTAPILITE_SHOWN_ONLY})
     target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_EXPORTS)
 else()
-    add_library(cdtapilite STATIC ${CDTAPILITE_SOURCES})
+    add_library(cdtapilite STATIC ${CDTAPILITE_BUILT} ${CDTAPILITE_SHOWN_ONLY})
     target_compile_definitions(cdtapilite PUBLIC CDTAPILITE_STATIC)
 endif()
 

@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDrvAbi.h *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDrvAbi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Single entry point for the vendored DtPcie driver ABI
 //
@@ -12,7 +12,7 @@
 // CDtapiLite includes
 #include "DtlAbiTypes.h" // Base types the vendored header expects.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Vendored ABI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Vendored ABI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // Every translation unit that talks to the driver includes this header rather than
 // Abi/DtCommon.h, so that the base types and the WINBUILD spelling are set up in exactly
@@ -39,10 +39,24 @@
     #include <sys/ioctl.h>
 #endif
 
+// The vendored headers write ASSERT_SIZE(Type, Size); with a semicolon, and on compilers
+// other than MSVC the macro already ends in one. That leaves an empty declaration at file
+// scope, which -Wpedantic reports and -Werror then turns into a failed build of every
+// file that includes the driver ABI. The headers stay byte-identical to the SDK, so the
+// diagnostic is silenced for exactly these two includes instead.
+#if defined(__GNUC__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
 #include "Abi/DtCommon.h"
 
 // The DtPcie driver's own header carries the device interface GUID that the Windows
 // backend enumerates by. Including it for every platform keeps one include order.
 #include "Abi/DtPcieCommon.h"
+
+#if defined(__GNUC__)
+    #pragma GCC diagnostic pop
+#endif
 
 #endif // CDTAPILITE_DTL_DRV_ABI_H

@@ -341,6 +341,280 @@ extern "C"
 #define DTAPI_E_CONFIG_RAW_SDI      (DTAPI_E + 278)
 #define DTAPI_E_CONFIG_VIDEO        (DTAPI_E + 279)
 #define DTAPI_E_CONFIG_VIDEO_WEAVE  (DTAPI_E + 280)
+
+// Reported for failures inside the AV FIFO API, which CDtapiLite does not provide.
+#define DTAPI_E_EXCEPTION (DTAPI_E + 300) // For AvFifo exceptions see GetLastException
+// clang-format on
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// I/O configuration groups and values, receive and transmit control, video standards,
+// receive and transmit modes, and status flags. Like the result codes, the values are
+// part of the binary interface shared with CDTAPI and DTAPI and must not change.
+//
+// Each DTAPI_IOCONFIG_ value also has a name, which is what actually travels to the
+// driver: the macro name without its DTAPI_IOCONFIG_ prefix. DTAPI_IOCONFIG_2160P50 is
+// sent as "2160P50". See Documentation/0002-io-configuration-tables.md.
+//
+// Every video standard shares its number with the I/O configuration sub-value of the
+// same name: DTAPI_VIDSTD_1080I50 and DTAPI_IOCONFIG_1080I50 are both 67.
+//
+
+// clang-format off
+// I/O configuration groups
+#define DTAPI_IOCONFIG_IODIR             0       // I/O direction
+#define DTAPI_IOCONFIG_IOSTD             1       // I/O standard
+#define DTAPI_IOCONFIG_IODOWNSCALE       2       // I/O down-scaling
+#define DTAPI_IOCONFIG_PWRMODE           3       // Power mode
+#define DTAPI_IOCONFIG_RFCLKSEL          4       // RF clock source selection
+#define DTAPI_IOCONFIG_SPICLKSEL         5       // Parallel port clock source selection
+#define DTAPI_IOCONFIG_SPIMODE           6       // Parallel port mode
+#define DTAPI_IOCONFIG_SPISTD            7       // Parallel port I/O standard
+#define DTAPI_IOCONFIG_TSRATESEL         8       // Transport-stream rate selection
+#define DTAPI_IOCONFIG_TODREFSEL         9       // TimeOfDay reference selection
+
+// I/O configuration groups - Boolean I/O
+#define DTAPI_IOCONFIG_AUTOBFGEN         10      // Automatic black-frame generation
+#define DTAPI_IOCONFIG_BW                11      // DEPRECATED, do not use
+#define DTAPI_IOCONFIG_DMATESTMODE       12      // DMA-rate test mode
+#define DTAPI_IOCONFIG_FAILSAFE          13      // A fail-over relay is available
+#define DTAPI_IOCONFIG_FRACMODE          14      // Fractional mode is supported
+#define DTAPI_IOCONFIG_GENLOCKED         15      // Locked to a genlock reference
+#define DTAPI_IOCONFIG_GENREF            16      // Genlock reference input
+#define DTAPI_IOCONFIG_SWS2APSK          17      // DVB-S2 APSK mode
+
+// Values for boolean I/O configuration options
+#define DTAPI_IOCONFIG_TRUE              18      // Turn I/O capability on
+#define DTAPI_IOCONFIG_FALSE             19      // Turn I/O capability off
+
+// Values for group IO_CONFIG_IODIR (I/O direction)
+#define DTAPI_IOCONFIG_DISABLED          20      // Port is disabled
+#define DTAPI_IOCONFIG_INPUT             21      // Uni-directional input
+#define DTAPI_IOCONFIG_INTINPUT          22      // Internal input port
+#define DTAPI_IOCONFIG_INTOUTPUT         23      // Internal output port
+#define DTAPI_IOCONFIG_MONITOR           24      // Monitor of input or output
+#define DTAPI_IOCONFIG_OUTPUT            25      // Uni-directional output
+
+// SubValues for group DTAPI_IOCONFIG_IODIR, value DTAPI_IOCONFIG_INPUT
+#define DTAPI_IOCONFIG_SHAREDANT         26      // Get antenna signal from another port
+
+// SubValues for group DTAPI_IOCONFIG_IODIR, value DTAPI_IOCONFIG_INTOUTPUT
+#define DTAPI_IOCONFIG_DBLBUF            27      // Double buffered output
+#define DTAPI_IOCONFIG_LOOPS2L3          28      // Loop-through of DVB-S2 in L3-frames
+#define DTAPI_IOCONFIG_LOOPS2TS          29      // Loop-through of an DVB-S(2) input
+#define DTAPI_IOCONFIG_LOOPTHR           30      // Loop-through of another input
+
+// Values for group IO_CONFIG_IOSTD (I/O standard)
+#define DTAPI_IOCONFIG_12GSDI            31      // 12G-SDI
+#define DTAPI_IOCONFIG_3GSDI             32      // 3G-SDI
+#define DTAPI_IOCONFIG_6GSDI             33      // 6G-SDI
+#define DTAPI_IOCONFIG_ASI               34      // DVB-ASI transport stream
+#define DTAPI_IOCONFIG_AVENC             35      // Audio/video encoder
+#define DTAPI_IOCONFIG_DEKTECST          36      // DekTec Streaming-data Interface
+#define DTAPI_IOCONFIG_DEMOD             37      // Demodulation
+#define DTAPI_IOCONFIG_GPSTIME           38      // 1PPS and 10MHz GPS-clock input
+#define DTAPI_IOCONFIG_HDMI              39      // HDMI
+#define DTAPI_IOCONFIG_HDSDI             40      // HD-SDI
+#define DTAPI_IOCONFIG_IFADC             41      // IF A/D converter
+#define DTAPI_IOCONFIG_IP                42      // Transport stream over IP
+#define DTAPI_IOCONFIG_MOD               43      // Modulator output
+#define DTAPI_IOCONFIG_PHASENOISE        44      // Phase noise injection
+#define DTAPI_IOCONFIG_RS422             45      // RS422 port
+#define DTAPI_IOCONFIG_SDIRX             46      // SDI receiver
+#define DTAPI_IOCONFIG_SDI               47      // SD-SDI
+#define DTAPI_IOCONFIG_SPI               48      // DVB-SPI transport stream
+#define DTAPI_IOCONFIG_SPISDI            49      // SD-SDI on a parallel port
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_12GSDI
+#define DTAPI_IOCONFIG_2160P50           50      // 2160p/50 lvl A
+#define DTAPI_IOCONFIG_2160P50B          51      // 2160p/50 lvl B
+#define DTAPI_IOCONFIG_2160P59_94        52      // 2160p/59.94 lvl A
+#define DTAPI_IOCONFIG_2160P59_94B       53      // 2160p/59.94 lvl B
+#define DTAPI_IOCONFIG_2160P60           54      // 2160p/60 lvl A
+#define DTAPI_IOCONFIG_2160P60B          55      // 2160p/60 lvl B
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_3GSDI
+#define DTAPI_IOCONFIG_1080P50           56      // 1080p/50 lvl A
+#define DTAPI_IOCONFIG_1080P50B          57      // 1080p/50 lvl B
+#define DTAPI_IOCONFIG_1080P59_94        58      // 1080p/59.94 lvl A
+#define DTAPI_IOCONFIG_1080P59_94B       59      // 1080p/59.94 lvl B
+#define DTAPI_IOCONFIG_1080P60           60      // 1080p/60 lvl A
+#define DTAPI_IOCONFIG_1080P60B          61      // 1080p/60 lvl B
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_6GSDI
+#define DTAPI_IOCONFIG_2160P23_98        62      // 2160p/23.98
+#define DTAPI_IOCONFIG_2160P24           63      // 2160p/24
+#define DTAPI_IOCONFIG_2160P25           64      // 2160p/25
+#define DTAPI_IOCONFIG_2160P29_97        65      // 2160p/29.97
+#define DTAPI_IOCONFIG_2160P30           66      // 2160p/30
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_HDSDI
+#define DTAPI_IOCONFIG_1080I50           67      // 1080i/50
+#define DTAPI_IOCONFIG_1080I59_94        68      // 1080i/59.94
+#define DTAPI_IOCONFIG_1080I60           69      // 1080i/60
+#define DTAPI_IOCONFIG_1080P23_98        70      // 1080p/23.98
+#define DTAPI_IOCONFIG_1080P24           71      // 1080p/24
+#define DTAPI_IOCONFIG_1080P25           72      // 1080p/25
+#define DTAPI_IOCONFIG_1080P29_97        73      // 1080p/29.97
+#define DTAPI_IOCONFIG_1080P30           74      // 1080p/30
+#define DTAPI_IOCONFIG_1080PSF23_98      75      // 1080psf/23.98
+#define DTAPI_IOCONFIG_1080PSF24         76      // 1080psf/24
+#define DTAPI_IOCONFIG_1080PSF25         77      // 1080psf/25
+#define DTAPI_IOCONFIG_1080PSF29_97      78      // 1080psf/29.97
+#define DTAPI_IOCONFIG_1080PSF30         79      // 1080psf/30
+#define DTAPI_IOCONFIG_720P23_98         80      // 720p/23.98
+#define DTAPI_IOCONFIG_720P24            81      // 720p/24
+#define DTAPI_IOCONFIG_720P25            82      // 720p/25
+#define DTAPI_IOCONFIG_720P29_97         83      // 720p/29.97
+#define DTAPI_IOCONFIG_720P30            84      // 720p/30
+#define DTAPI_IOCONFIG_720P50            85      // 720p/50
+#define DTAPI_IOCONFIG_720P59_94         86      // 720p/59.94
+#define DTAPI_IOCONFIG_720P60            87      // 720p/60
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_SDI
+#define DTAPI_IOCONFIG_525I59_94         88      // 525i/59.94
+#define DTAPI_IOCONFIG_625I50            89      // 625i/50
+
+// SubValues for group DTAPI_IOCONFIG_IOSTD, value DTAPI_IOCONFIG_SPISDI
+#define DTAPI_IOCONFIG_SPI525I59_94      90      // SPI 525i/59.94
+#define DTAPI_IOCONFIG_SPI625I50         91      // SPI 625i/50
+
+// Values for group IO_CONFIG_IODOWNSCALE (I/O down-scaling)
+#define DTAPI_IOCONFIG_SCALE_12GTO3G     92      // Downscale 12G-SDI to 3G-SDI
+#define DTAPI_IOCONFIG_SCALE_BYPASS      93      // Bypass the downscaler
+
+// Values for group IO_CONFIG_PWRMODE (Power mode)
+#define DTAPI_IOCONFIG_MODHQ             94      // High-quality modulation
+#define DTAPI_IOCONFIG_LOWPWR            95      // Low-power mode
+
+// Values for group IO_CONFIG_RFCLKSEL (RF clock source selection)
+#define DTAPI_IOCONFIG_RFCLKEXT          96      // External RF clock input
+#define DTAPI_IOCONFIG_RFCLKINT          97      // Internal RF clock reference
+
+// Values for group IO_CONFIG_SPICLKSEL (Parallel port clock source selection)
+#define DTAPI_IOCONFIG_SPICLKEXT         98      // External clock input
+#define DTAPI_IOCONFIG_SPICLKINT         99      // Internal clock reference
+
+// Values for group IO_CONFIG_SPIMODE (Parallel port mode)
+#define DTAPI_IOCONFIG_SPIFIXEDCLK       100     // SPI fixed clock with valid signal
+#define DTAPI_IOCONFIG_SPIDVBMODE        101     // SPI DVB mode
+#define DTAPI_IOCONFIG_SPISER8B          102     // SPI serial 8-bit mode
+#define DTAPI_IOCONFIG_SPISER10B         103     // SPI serial 10-bit mode
+
+// Values for group IO_CONFIG_SPISTD (Parallel port I/O standard)
+#define DTAPI_IOCONFIG_SPILVDS1          104     // LVDS1
+#define DTAPI_IOCONFIG_SPILVDS2          105     // LVDS2
+#define DTAPI_IOCONFIG_SPILVTTL          106     // LVTTL
+
+// Values for group IO_CONFIG_TSRATESEL (Transport-stream rate selection)
+#define DTAPI_IOCONFIG_EXTTSRATE         107     // External TS rate clock input
+#define DTAPI_IOCONFIG_EXTRATIO          108     // External TS rate clock with ratio
+#define DTAPI_IOCONFIG_INTTSRATE         109     // Internal TS rate clock reference
+#define DTAPI_IOCONFIG_LOCK2INP          110     // Lock TS rate to input port
+
+// Values for group IO_CONFIG_TODREFSEL (TimeOfDay reference selection)
+#define DTAPI_IOCONFIG_TODREF_INTERNAL   111     // Internal clock reference
+#define DTAPI_IOCONFIG_TODREF_STEADYCLOCK 112    // Steady clock reference
+
+// Transmit control
+#define DTAPI_TXCTRL_IDLE           1
+#define DTAPI_TXCTRL_HOLD           2
+#define DTAPI_TXCTRL_SEND           3
+
+// Receive Control
+#define DTAPI_RXCTRL_IDLE           0
+#define DTAPI_RXCTRL_RCV            1
+
+// Transmit status flags
+#define DTAPI_TX_FIFO_UFL           0x0002
+#define DTAPI_TX_SYNC_ERR           0x0004
+#define DTAPI_TX_READBACK_ERR       0x0008
+#define DTAPI_TX_TARGET_ERR         0x0010
+#define DTAPI_TX_MUX_OVF            0x0020
+#define DTAPI_TX_FIFO_OVF           0x0020
+#define DTAPI_TX_LINK_ERR           0x0040
+#define DTAPI_TX_DATA_ERR           0x0080
+#define DTAPI_TX_CPU_UFL            0x0100
+#define DTAPI_TX_DMA_UFL            0x0200
+
+// Video standards
+#define DTAPI_VIDSTD_UNKNOWN        -1
+#define DTAPI_VIDSTD_525I59_94      88
+#define DTAPI_VIDSTD_625I50         89
+#define DTAPI_VIDSTD_720P23_98      80
+#define DTAPI_VIDSTD_720P24         81
+#define DTAPI_VIDSTD_720P25         82
+#define DTAPI_VIDSTD_720P29_97      83
+#define DTAPI_VIDSTD_720P30         84
+#define DTAPI_VIDSTD_720P50         85
+#define DTAPI_VIDSTD_720P59_94      86
+#define DTAPI_VIDSTD_720P60         87
+#define DTAPI_VIDSTD_1080P23_98     70
+#define DTAPI_VIDSTD_1080P24        71
+#define DTAPI_VIDSTD_1080P25        72
+#define DTAPI_VIDSTD_1080P29_97     73
+#define DTAPI_VIDSTD_1080P30        74
+#define DTAPI_VIDSTD_1080PSF23_98   75
+#define DTAPI_VIDSTD_1080PSF24      76
+#define DTAPI_VIDSTD_1080PSF25      77
+#define DTAPI_VIDSTD_1080PSF29_97   78
+#define DTAPI_VIDSTD_1080PSF30      79
+#define DTAPI_VIDSTD_1080I50        67
+#define DTAPI_VIDSTD_1080I59_94     68
+#define DTAPI_VIDSTD_1080I60        69
+#define DTAPI_VIDSTD_1080P50        56
+#define DTAPI_VIDSTD_1080P50B       57
+#define DTAPI_VIDSTD_1080P59_94     58
+#define DTAPI_VIDSTD_1080P59_94B    59
+#define DTAPI_VIDSTD_1080P60        60
+#define DTAPI_VIDSTD_1080P60B       61
+#define DTAPI_VIDSTD_2160P50        50
+#define DTAPI_VIDSTD_2160P50B       51
+#define DTAPI_VIDSTD_2160P59_94     52
+#define DTAPI_VIDSTD_2160P59_94B    53
+#define DTAPI_VIDSTD_2160P60        54
+#define DTAPI_VIDSTD_2160P60B       55
+#define DTAPI_VIDSTD_2160P23_98     62
+#define DTAPI_VIDSTD_2160P24        63
+#define DTAPI_VIDSTD_2160P25        64
+#define DTAPI_VIDSTD_2160P29_97     65
+#define DTAPI_VIDSTD_2160P30        66
+
+// Transmit mode for SDI - Modes
+#define DTAPI_TXMODE_SDI            0x1000
+#define DTAPI_TXMODE_SDI_MODE_BITS  0x0F00
+#define DTAPI_TXMODE_SDI_FULL       (DTAPI_TXMODE_SDI | 0x100)
+#define DTAPI_TXMODE_SDI_ACTVID     (DTAPI_TXMODE_SDI | 0x200)
+#define DTAPI_TXMODE_SDI_MASK       (DTAPI_TXMODE_SDI | DTAPI_TXMODE_SDI_MODE_BITS)
+// Transmit mode for SDI - Flags
+#define DTAPI_TXMODE_SDI_HUFFMAN    0x00002000
+#define DTAPI_TXMODE_SDI_10B        0x00004000
+#define DTAPI_TXMODE_SDI_16B        0x00008000
+#define DTAPI_TXMODE_SDI_10B_NBO    0x00010000
+
+// Receive mode for SDI - Modes
+#define DTAPI_RXMODE_SDI            0x1000
+#define DTAPI_RXMODE_SDI_MODE_BITS  0x0F00
+#define DTAPI_RXMODE_SDI_FULL       (DTAPI_RXMODE_SDI | 0x100)
+#define DTAPI_RXMODE_SDI_ACTVID     (DTAPI_RXMODE_SDI | 0x200)
+#define DTAPI_RXMODE_SDI_RAWDMA     (DTAPI_RXMODE_SDI | 0x400)
+#define DTAPI_RXMODE_SDI_MASK       (DTAPI_RXMODE_SDI | DTAPI_RXMODE_SDI_MODE_BITS)
+// Receive mode for SDI - Flags
+#define DTAPI_RXMODE_SDI_HUFFMAN    0x00002000
+#define DTAPI_RXMODE_SDI_10B        0x00004000
+#define DTAPI_RXMODE_SDI_16B        0x00008000
+#define DTAPI_RXMODE_SDI_10B_NBO    0x00010000
+#define DTAPI_RXMODE_SDI_STAT       0x00020000
+
+// Receiver status flags
+#define DTAPI_RX_FIFO_OVF           0x0002
+#define DTAPI_RX_SYNC_ERR           0x0004
+#define DTAPI_RX_RATE_OVF           0x0008
+#define DTAPI_RX_TARGET_ERR         0x0010
+#define DTAPI_RX_LINK_ERR           0x0040
+#define DTAPI_RX_DATA_ERR           0x0080
+#define DTAPI_RX_DRV_BUF_OVF        0x0100
+#define DTAPI_RX_SYNTAX_ERR         0x0200
 // clang-format on
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Global functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -348,6 +622,18 @@ extern "C"
 // Returns the library version as a string, for example "1.0.0". The returned pointer is
 // static storage owned by the library and must not be freed.
 CDTAPILITE_API const char* DtapiLiteGetVersion(void);
+
+// Converts a video standard to the I/O standard group value and sub-value that select it,
+// for use with SetIoConfig and DTAPI_IOCONFIG_IOSTD. LinkStandard is -1 for anything but
+// 4K; for 4K it says how the picture is carried: 0 and 1 are four 3G links per SMPTE 425
+// level A and annex B, 2 is one 6G link, 3 is one 12G link.
+//
+// Sets *Value and *SubValue to -1 before anything can fail. Returns DTAPI_E_INVALID_ARG
+// for a null output pointer, DTAPI_E_INVALID_LINKSTD for a link standard that does not
+// suit the video standard, and DTAPI_E_INVALID_VIDSTD for an unknown video standard.
+// 4K over four links returns DTAPI_E_NOT_IMPLEMENTED in this version.
+CDTAPILITE_API unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard,
+                                              int* Value, int* SubValue);
 
 #ifdef __cplusplus
 } // extern "C"
