@@ -1,7 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
-
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "base",
@@ -12,7 +15,6 @@
         "CDTAPILITE_WARNINGS_AS_ERRORS": "ON"
       }
     },
-
     {
       "name": "windows-debug",
       "displayName": "Windows Debug",
@@ -36,9 +38,20 @@
       "displayName": "Windows Debug, emulator only",
       "description": "No driver backends. For a machine with no DekTec hardware.",
       "inherits": "windows-debug",
-      "cacheVariables": { "CDTAPILITE_SIM_ONLY": "ON" }
+      "cacheVariables": {
+        "CDTAPILITE_SIM_ONLY": "ON"
+      }
     },
-
+    {
+      "name": "windows-asan",
+      "displayName": "Windows Debug with AddressSanitizer",
+      "description": "MSVC /fsanitize=address. UBSan is not available on MSVC.",
+      "inherits": "windows-debug",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "/fsanitize=address",
+        "CMAKE_C_FLAGS_DEBUG": "/Zi /Od /RTC1"
+      }
+    },
     {
       "name": "linux-debug",
       "displayName": "Linux Debug",
@@ -49,19 +62,25 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       },
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
       "name": "linux-release",
       "displayName": "Linux Release",
       "inherits": "linux-debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     },
     {
       "name": "linux-sim",
       "displayName": "Linux Debug, emulator only",
       "inherits": "linux-debug",
-      "cacheVariables": { "CDTAPILITE_SIM_ONLY": "ON" }
+      "cacheVariables": {
+        "CDTAPILITE_SIM_ONLY": "ON"
+      }
     },
     {
       "name": "linux-asan",
@@ -73,31 +92,104 @@
       }
     }
   ],
-
   "buildPresets": [
-    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug" },
-    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release" },
-    { "name": "windows-sim", "configurePreset": "windows-sim", "configuration": "Debug" },
-    { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-release", "configurePreset": "linux-release" },
-    { "name": "linux-sim", "configurePreset": "linux-sim" },
-    { "name": "linux-asan", "configurePreset": "linux-asan" }
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-sim",
+      "configurePreset": "windows-sim",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-asan",
+      "configurePreset": "windows-asan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-sim",
+      "configurePreset": "linux-sim"
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan"
+    }
   ],
-
   "testPresets": [
-    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug",
-      "output": { "outputOnFailure": true } },
-    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release",
-      "output": { "outputOnFailure": true } },
-    { "name": "windows-sim", "configurePreset": "windows-sim", "configuration": "Debug",
-      "output": { "outputOnFailure": true } },
-    { "name": "linux-debug", "configurePreset": "linux-debug",
-      "output": { "outputOnFailure": true } },
-    { "name": "linux-release", "configurePreset": "linux-release",
-      "output": { "outputOnFailure": true } },
-    { "name": "linux-sim", "configurePreset": "linux-sim",
-      "output": { "outputOnFailure": true } },
-    { "name": "linux-asan", "configurePreset": "linux-asan",
-      "output": { "outputOnFailure": true } }
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-sim",
+      "configurePreset": "windows-sim",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-asan",
+      "configurePreset": "windows-asan",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-sim",
+      "configurePreset": "linux-sim",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

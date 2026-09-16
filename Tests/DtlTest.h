@@ -12,7 +12,12 @@
 // Standard includes
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#if defined(_MSC_VER)
+    #include <crtdbg.h>
+#endif
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Test framework +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -96,6 +101,32 @@ typedef struct DtlTestCase
     void (*Func)(int* Failures);
 } DtlTestCase;
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlTestSilenceDialogs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Sends failed CRT assertions and abort() to stderr instead of to a message box.
+//
+// A test process must never wait for someone to click OK. On Windows the debug CRT pops
+// a dialog for a failed assertion, a detected heap corruption or an abort, and a run
+// started by CTest or by CI has nobody to dismiss it: the run hangs until it times out,
+// and the report says nothing about what actually went wrong.
+//
+static void DtlTestSilenceDialogs(void)
+{
+#if defined(_MSC_VER)
+    int Report;
+
+    // _CRT_WARN, _CRT_ERROR and _CRT_ASSERT.
+    for (Report = 0; Report < 3; Report++)
+    {
+        _CrtSetReportMode(Report, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(Report, _CRTDBG_FILE_STDERR);
+    }
+
+    // Still report the fault to an attached debugger, but show no dialog.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+}
+
 #define DTL_RUN(Name) {#Name, Name}
 
 #define DTL_TEST_MAIN(SuiteName, ...)                                                    \
@@ -104,6 +135,7 @@ typedef struct DtlTestCase
         static const DtlTestCase Cases[] = {__VA_ARGS__};                                \
         const int NumCases = (int)(sizeof(Cases) / sizeof(Cases[0]));                    \
         int TotalFailures = 0;                                                           \
+        DtlTestSilenceDialogs();                                                         \
         printf("== %s: %d case(s)\n", SuiteName, NumCases);                              \
         for (int i = 0; i < NumCases; i++)                                               \
         {                                                                                \

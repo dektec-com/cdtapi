@@ -35,7 +35,12 @@ configure_file(
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Library +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 set(CDTAPILITE_SOURCES
-    Source/Api/DtlApi.c)
+    Source/Api/DtlApi.c
+    Source/Core/DtlAlloc.c
+    Source/Core/DtlBuf.c
+    Source/Core/DtlRing.c
+    Source/Core/DtlStr.c
+    Source/Core/DtlVec.c)
 
 if(CDTAPILITE_BUILD_SHARED)
     add_library(cdtapilite SHARED ${CDTAPILITE_SOURCES})
