@@ -63,6 +63,11 @@ unsigned int DtDrvGetDriverVersion(OsDrv* Drv, DtDriverVersion* Version);
 // DTAPI accepts (Utility.h, DtPcieMin*). The build number does not count.
 bool DtDrvVersionIsSupported(const DtDriverVersion* Version);
 
+// True when Version is Major.Minor.Micro.Build or later, comparing the four numbers in
+// that order, as DTAPI's DtVersion does.
+bool DtDrvVersionAtLeast(const DtDriverVersion* Version, int Major, int Minor, int Micro,
+                         int Build);
+
 // Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and falls back to the
 // original GET_DEV_INFO for a driver that predates it.
 unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
@@ -152,10 +157,6 @@ typedef struct DtSdiRxStatus
     double FrameRate;   // Frames per second, 0 when the driver reports no frame period
     int SdiRate;        // -1 unknown, 0 SD, 1 HD, 2 3G, 3 6G, 4 12G
 } DtSdiRxStatus;
-
-// True when the driver is new enough for the SDI receiver function: 1.4.0.111 or later,
-// build number included (DtProxy.cpp, PROXY_SDIRX).
-bool DtDrvVersionSupportsSdiRx(const DtDriverVersion* Version);
 
 // Reads the status of the SDI receiver with this UUID in the port with this index.
 // Clears *Status first.

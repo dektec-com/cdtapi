@@ -235,7 +235,7 @@ DT_TEST(ScanLeavesOutDevicesItCannotAttach)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcieSetDriverVersion(1, 3, 0);
+    SimDtPcieSetDriverVersion(1, 3, 0, 0);
     DT_ASSERT_OK(DtapiHwFuncScan(1, &Count, Funcs));
     DT_ASSERT_EQ(Count, 0);
     DT_ASSERT_STR(Funcs[0].Description, "DTA-0 port 0");
@@ -342,12 +342,12 @@ DT_TEST(OldDriverIsIncompatible)
         return;
 
     Device = DtDevice_Alloc();
-    SimDtPcieSetDriverVersion(1, 3, 0);
+    SimDtPcieSetDriverVersion(1, 3, 0, 0);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL + 1), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
 
-    SimDtPcieSetDriverVersion(1, 3, 1);
+    SimDtPcieSetDriverVersion(1, 3, 1, 0);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Free(Device);
 }

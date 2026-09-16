@@ -60,6 +60,7 @@ typedef struct SimOverride
     char Name[PROPERTY_NAME_MAX_SIZE];
     int PortIndex;
     bool Present;
+    uint32_t Status; // A status to refuse with, 0 for none
     uint64_t Value;
     char Str[PROPERTY_STR_MAX_SIZE];
 } SimOverride;
@@ -76,6 +77,7 @@ static struct
     SimConfig Config[SIM_PORT_COUNT][SIM_IOCONFIG_COUNT];
     SimFault Faults[SIM_MAX_FAULTS];
     SimSdiSignal Signals[SIM_SDI_PORT_COUNT];
+    int SignalDelays[SIM_SDI_PORT_COUNT]; // Status requests the signal is hidden from
     int LastFunctionCode;
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
@@ -335,6 +337,8 @@ static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* O
     Override = FindOverride(Request.m_Name, Request.m_PortIndex, true);
     if (Override != NULL)
     {
+        if (Override->Status != 0)
+            return SimFail(Dev, (DtStatus)Override->Status, DrvStatus);
         if (!Override->Present)
             return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
         memcpy(Answer->m_Str, Override->Str, sizeof(Answer->m_Str));
@@ -384,6 +388,8 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     Override = FindOverride(Request.m_Name, Request.m_PortIndex, false);
     if (Override != NULL)
     {
+        if (Override->Status != 0)
+            return SimFail(Dev, (DtStatus)Override->Status, DrvStatus);
         if (!Override->Present)
             return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
         Value = Override->Value;
@@ -615,6 +621,15 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
 
     Answer = (DtIoctlSdiRxCmdGetSdiStatusOutput2*)Out;
     memset(Answer, 0, sizeof(*Answer));
+    *OutSize = sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2);
+
+    if (g_Sim.SignalDelays[PortIndex] > 0)
+    {
+        g_Sim.SignalDelays[PortIndex]--;
+        Answer->m_SdiRate = DT_DRV_SDIRATE_UNKNOWN;
+        return OS_IOCTL_OK;
+    }
+
     Answer->m_CarrierDetect = Signal->CarrierDetect;
 
     if (g_Sim.Config[PortIndex][DTAPI_IOCONFIG_IOSTD].Value == DTAPI_IOCONFIG_ASI)
@@ -633,8 +648,6 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
         Answer->m_FramePeriod = Signal->FramePeriod;
         Answer->m_SdiRate = Signal->SdiRate;
     }
-
-    *OutSize = sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2);
     return OS_IOCTL_OK;
 }
 
@@ -832,12 +845,22 @@ void SimDtPcieSetFirmwareStatus(int Status)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro)
+void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro, int Build)
 {
     EnsureState();
     g_Sim.DriverVersion.m_Major = Major;
     g_Sim.DriverVersion.m_Minor = Minor;
     g_Sim.DriverVersion.m_Micro = Micro;
+    g_Sim.DriverVersion.m_Build = Build;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieDelaySdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieDelaySdiSignal(int PortIndex, int Reads)
+{
+    EnsureState();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+        g_Sim.SignalDelays[PortIndex] = Reads;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOverrideProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -878,6 +901,17 @@ void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
+                           uint32_t Status)
+{
+    SimOverride* Override = AddOverride(Name, PortIndex, IsString);
+
+    if (Override != NULL)
+        Override->Status = Status;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
 void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
 {
     SimSdiSignal* Port;
@@ -887,6 +921,7 @@ void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
         return;
 
     Port = &g_Sim.Signals[PortIndex];
+    g_Sim.SignalDelays[PortIndex] = 0;
     if (Signal != NULL)
     {
         *Port = *Signal;

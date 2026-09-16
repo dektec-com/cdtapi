@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# LinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events and mutexes on Linux
+// CDtapiLite - Threads, events, mutexes and time on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -269,4 +269,34 @@ void OsMutexLock(OsMutex* Mutex)
 void OsMutexUnlock(OsMutex* Mutex)
 {
     pthread_mutex_unlock(&Mutex->Handle);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A signal cuts nanosleep short and leaves the rest in Remaining, which is slept again.
+//
+void OsSleepMs(int Ms)
+{
+    struct timespec Remaining;
+
+    if (Ms <= 0)
+        return;
+
+    Remaining.tv_sec = Ms / 1000;
+    Remaining.tv_nsec = (long)(Ms % 1000) * 1000000L;
+    while (nanosleep(&Remaining, &Remaining) != 0 && errno == EINTR)
+        ;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+uint64_t OsMonotonicMs(void)
+{
+    struct timespec Now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &Now) != 0)
+        return 0;
+    return (uint64_t)Now.tv_sec * 1000u + (uint64_t)Now.tv_nsec / 1000000u;
 }

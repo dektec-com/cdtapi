@@ -317,6 +317,20 @@ bool DtDrvVersionIsSupported(const DtDriverVersion* Version)
     return Version->Micro >= DT_DRIVER_MIN_MICRO;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvVersionAtLeast -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDrvVersionAtLeast(const DtDriverVersion* Version, int Major, int Minor, int Micro,
+                         int Build)
+{
+    if (Version->Major != Major)
+        return Version->Major > Major;
+    if (Version->Minor != Minor)
+        return Version->Minor > Minor;
+    if (Version->Micro != Micro)
+        return Version->Micro > Micro;
+    return Version->Build >= Build;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetDeviceInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
@@ -538,19 +552,6 @@ unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseco
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDI receiver +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvVersionSupportsSdiRx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-bool DtDrvVersionSupportsSdiRx(const DtDriverVersion* Version)
-{
-    if (Version->Major != 1)
-        return Version->Major > 1;
-    if (Version->Minor != 4)
-        return Version->Minor > 4;
-    if (Version->Micro != 0)
-        return Version->Micro > 0;
-    return Version->Build >= 111;
-}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiRxGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //

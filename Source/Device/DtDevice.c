@@ -13,9 +13,11 @@
 // CDtapiLite includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "Core/DtVec.h"   // The scan's list of hardware functions.
+#include "DtAvInput.h"    // Video standard detection.
 #include "DtDevice.h"     // Interface being implemented.
 #include "DtDrvAbi.h"     // DT_FWSTATUS_ values.
 #include "DtIoConfig.h"   // I/O configuration validation.
+#include "OAL/OsThread.h" // Sleeping and the clock while waiting for a signal.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -25,10 +27,19 @@ static const struct
     const char* Name;
     uint32_t Flag;
 } g_PortCaps[] = {
-    {"CAP_12GSDI", DT_CAP_12GSDI}, {"CAP_3GSDI", DT_CAP_3GSDI},
-    {"CAP_6GSDI", DT_CAP_6GSDI},   {"CAP_HDSDI", DT_CAP_HDSDI},
-    {"CAP_SDI", DT_CAP_SDI},       {"CAP_AVFIFO", DT_CAP_AVFIFO},
-    {"CAP_INPUT", DT_CAP_INPUT},   {"CAP_OUTPUT", DT_CAP_OUTPUT},
+    {"CAP_12GSDI", DT_CAP_12GSDI},
+    {"CAP_3GSDI", DT_CAP_3GSDI},
+    {"CAP_6GSDI", DT_CAP_6GSDI},
+    {"CAP_HDSDI", DT_CAP_HDSDI},
+    {"CAP_SDI", DT_CAP_SDI},
+    {"CAP_AVFIFO", DT_CAP_AVFIFO},
+    {"CAP_INPUT", DT_CAP_INPUT},
+    {"CAP_OUTPUT", DT_CAP_OUTPUT},
+    {"CAP_INTINPUT", DT_CAP_INTINPUT},
+    {"CAP_MATRIX2", DT_CAP_MATRIX2},
+    {"CAP_SDIRX", DT_CAP_SDIRX},
+    {"CAP_HDMI", DT_CAP_HDMI},
+    {"CAP_SCALE_12GTO3G", DT_CAP_SCALE_12GTO3G},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
@@ -38,15 +49,16 @@ static const struct
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadPorts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads the port counts and the capabilities of the public ports into Device, as
-// Device::Init and Device::GetCapInfo do: PORT_COUNT is required, MAIN_PORT_COUNT falls
-// back to it for an old driver, and a capability that cannot be read counts as absent.
-// A negative or implausibly large count, which no driver reports, is refused rather than
-// allocated.
+// Reads the port counts and the capabilities of every port into Device, as Device::Init
+// and Device::GetCapInfo do: PORT_COUNT is required, MAIN_PORT_COUNT falls back to it for
+// an old driver, and a capability that cannot be read counts as absent. The hardware
+// functions look at the public ports, detection at all of them, so the capabilities
+// cover whichever count is larger. A negative or implausibly large count, which no
+// driver reports, is refused rather than allocated.
 //
 static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
 {
-    size_t Port, Cap;
+    size_t Port, Cap, Count;
     unsigned int Result;
 
     Result =
@@ -61,20 +73,21 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
     }
 
     if (Device->NumPorts < 0 || Device->NumPublicPorts < 0 ||
-        Device->NumPublicPorts > DT_MAX_PORTS)
+        Device->NumPorts > DT_MAX_PORTS || Device->NumPublicPorts > DT_MAX_PORTS)
     {
         return DTAPI_E_NO_SUCH_DEVICE;
     }
 
-    if (Device->NumPublicPorts == 0)
+    Count = (size_t)(Device->NumPorts > Device->NumPublicPorts ? Device->NumPorts
+                                                               : Device->NumPublicPorts);
+    if (Count == 0)
         return DTAPI_OK;
 
-    Device->PortCaps =
-        (uint32_t*)DtMalloc((size_t)Device->NumPublicPorts * sizeof(uint32_t));
+    Device->PortCaps = (uint32_t*)DtMalloc(Count * sizeof(uint32_t));
     if (Device->PortCaps == NULL)
         return DTAPI_E_OUT_OF_MEM;
 
-    for (Port = 0; Port < (size_t)Device->NumPublicPorts; Port++)
+    for (Port = 0; Port < Count; Port++)
     {
         Device->PortCaps[Port] = 0;
         for (Cap = 0; Cap < PORT_CAP_COUNT; Cap++)
@@ -129,6 +142,7 @@ unsigned int DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
     }
 
     Device->Drv = Drv;
+    Device->DriverVersion = Version;
     return DTAPI_OK;
 }
 
@@ -420,4 +434,94 @@ unsigned int DtDevice_GetTimeOfDay(const DtDevice* Device, DtTimeOfDay* TimeOfDa
     TimeOfDay->Seconds = Seconds;
     TimeOfDay->Nanoseconds = Nanoseconds;
     return DTAPI_OK;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Video standard +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// How often waiting for a signal detects again, as CDTAPI does.
+#define DT_SIGNAL_POLL_MS 5
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_DetectVidStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// CDTAPI attaches a DtAvInputStatus, ignores the result, and detects. The detection then
+// fails with DTAPI_E_NOT_ATTACHED, which hides why; the reason attaching failed is
+// returned here instead, and *VidStd is left alone on any failure.
+//
+unsigned int DtDevice_DetectVidStd(DtDevice* Device, int Port, int* VidStd)
+{
+    DtAvInput Input;
+    DtDetVidStd Info;
+    unsigned int Result;
+
+    if (Device == NULL || VidStd == NULL)
+        return DTAPI_E_INVALID_ARG;
+
+    Result = DtAvInputAttach(&Input, Device, Port);
+    if (Result != DTAPI_OK)
+        return Result;
+
+    Result = DtAvInputDetectVidStd(&Input, &Info);
+    if (Result == DTAPI_OK)
+        *VidStd = Info.VidStd;
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_WaitForSignalTimeout -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Attaches once and detects until a standard is found, as CDTAPI's DtDevice_WaitForSignal
+// does, also while detection fails. The time is measured on a monotonic clock, and the
+// last pause is cut to what is left, so that the wait ends close to the time limit.
+//
+unsigned int DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port, int TimeoutMs,
+                                           DtDetVidStd* Result)
+{
+    DtAvInput Input;
+    uint64_t Start;
+    unsigned int Attached;
+
+    if (Result != NULL)
+        DtAvInputSetUnknown(Result);
+    if (Device == NULL || Result == NULL)
+        return DTAPI_E_INVALID_ARG;
+
+    Attached = DtAvInputAttach(&Input, Device, Port);
+    if (Attached != DTAPI_OK)
+        return Attached;
+
+    Start = OsMonotonicMs();
+    for (;;)
+    {
+        uint64_t Elapsed;
+
+        if (DtAvInputDetectVidStd(&Input, Result) == DTAPI_OK &&
+            Result->VidStd != DTAPI_VIDSTD_UNKNOWN)
+        {
+            return DTAPI_OK;
+        }
+
+        Elapsed = OsMonotonicMs() - Start;
+        if (TimeoutMs >= 0 && Elapsed >= (uint64_t)TimeoutMs)
+            break;
+
+        if (TimeoutMs >= 0 && (uint64_t)TimeoutMs - Elapsed < DT_SIGNAL_POLL_MS)
+            OsSleepMs((int)((uint64_t)TimeoutMs - Elapsed));
+        else
+            OsSleepMs(DT_SIGNAL_POLL_MS);
+    }
+
+    // The last detection left every field unknown.
+    return DTAPI_E_TIMEOUT;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_WaitForSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Without a time limit only a null device or a port that cannot be attached returns, and
+// then every field is unknown.
+//
+DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port)
+{
+    DtDetVidStd Info;
+
+    DtDevice_WaitForSignalTimeout(Device, Port, -1, &Info);
+    return Info;
 }

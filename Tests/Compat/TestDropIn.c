@@ -9,7 +9,7 @@
 // builds it only where the original header is found, and runs it with CDTAPILITE_SIM=1.
 //
 // It uses the device part of the API the way an application does: scan, pick a port,
-// attach by serial number, configure, read the clock, detach.
+// attach by serial number, configure, read the clock, detect a video standard, detach.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -77,6 +77,63 @@ DT_TEST(ScanAttachConfigureDetach)
     free(Funcs);
 }
 
+// Detection on the ports the scan describes: an input without a signal has no standard,
+// an output is in the wrong mode for it, a port that is no input is refused, and so is a
+// port the device does not have. Waiting on a port that cannot be attached returns at
+// once, with every field unknown.
+DT_TEST(DetectVideoStandard)
+{
+    DtHwFuncDesc Funcs[64];
+    DtDevice* Device;
+    DtDetVidStd Info;
+    int Found = 0;
+    int Output = -1, Input = -1, NoInput = -1;
+    int VidStd;
+    int i;
+
+    DT_ASSERT_EQ(DtapiHwFuncScan(64, &Found, Funcs), DTAPI_OK);
+    for (i = 0; i < Found; i++)
+    {
+        if (!Funcs[i].IsInput && NoInput < 0)
+            NoInput = i;
+        else if (Funcs[i].IsSdi && Funcs[i].IsInput && Funcs[i].IsOutput)
+        {
+            if (Input < 0)
+                Input = i;
+            else if (Output < 0)
+                Output = i;
+        }
+    }
+    DT_ASSERT(Input >= 0 && Output >= 0 && NoInput >= 0);
+    if (Input < 0 || Output < 0 || NoInput < 0)
+        return;
+
+    Device = DtDevice_Alloc();
+    DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, Funcs[Input].SerialNumber), DTAPI_OK);
+    DT_ASSERT_EQ(DtDevice_SetToInput(Device, Funcs[Input].Port), DTAPI_OK);
+    DT_ASSERT_EQ(DtDevice_SetToOutput(Device, Funcs[Output].Port), DTAPI_OK);
+
+    VidStd = 12345;
+    DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Funcs[Input].Port, &VidStd), DTAPI_OK);
+    DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_UNKNOWN);
+
+    VidStd = 12345;
+    DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Funcs[Output].Port, &VidStd),
+                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(VidStd, 12345);
+    DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Funcs[NoInput].Port, &VidStd),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Found + 1, &VidStd), DTAPI_E_NO_SUCH_PORT);
+
+    Info = DtDevice_WaitForSignal(Device, Funcs[NoInput].Port);
+    DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_UNKNOWN);
+    DT_ASSERT_EQ(Info.LinkStd, -1);
+    DT_ASSERT_EQ(Info.LinkNr, -1);
+    DT_ASSERT_EQ(Info.AspectRatio, DT_AR_UNKNOWN);
+
+    DtDevice_Free(Device);
+}
+
 DT_TEST(ResultNames)
 {
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
@@ -84,4 +141,5 @@ DT_TEST(ResultNames)
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_EXCEPTION), "???");
 }
 
-DT_TEST_MAIN("DropIn", DT_RUN(ScanAttachConfigureDetach), DT_RUN(ResultNames))
+DT_TEST_MAIN("DropIn", DT_RUN(ScanAttachConfigureDetach), DT_RUN(DetectVideoStandard),
+             DT_RUN(ResultNames))

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# OsThread.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events with a timeout, and mutexes
+// CDtapiLite - Threads, events with a timeout, mutexes, sleeping and a monotonic clock
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,13 +11,15 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stdint.h>
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Primitives +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The receive path of a channel runs on its own thread: it waits on an event with a
 // short timeout, drains the DMA ring, and stops when a kill event is set. That is the
 // pattern DTAPI uses in AsiSdiInpChannel_Bb2.cpp, and it is why this layer provides
-// exactly these three primitives and nothing more.
+// these three primitives. Waiting for a signal polls instead, which takes a sleep and a
+// clock to measure its timeout by.
 //
 // These belong to the operating system, not to a device, so they are the same whether
 // the device behind a channel is real or emulated.
@@ -76,5 +78,15 @@ OsMutex* OsMutexCreate(void);
 void OsMutexDestroy(OsMutex* Mutex);
 void OsMutexLock(OsMutex* Mutex);
 void OsMutexUnlock(OsMutex* Mutex);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Time -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+
+// Sleeps for at least Ms milliseconds, or returns at once for 0 or less. The system may
+// sleep longer, by up to a scheduler tick.
+void OsSleepMs(int Ms);
+
+// Milliseconds on a clock that only moves forward, for measuring an interval. Where it
+// starts is unspecified.
+uint64_t OsMonotonicMs(void);
 
 #endif // CDTAPILITE_OS_THREAD_H

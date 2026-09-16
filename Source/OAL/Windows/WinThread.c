@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# WinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events and mutexes on Windows
+// CDtapiLite - Threads, events, mutexes and time on Windows
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -199,4 +199,21 @@ void OsMutexLock(OsMutex* Mutex)
 void OsMutexUnlock(OsMutex* Mutex)
 {
     ReleaseSRWLockExclusive(&Mutex->Lock);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void OsSleepMs(int Ms)
+{
+    if (Ms > 0)
+        Sleep((DWORD)Ms);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+uint64_t OsMonotonicMs(void)
+{
+    return (uint64_t)GetTickCount64();
 }

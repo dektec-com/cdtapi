@@ -100,7 +100,7 @@ cdtapilite_add_test(Abi Abi/AbiSizes.c)
 
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
-foreach(SimSuite SimDevice SimCommands SimSdiRx SimApi)
+foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect)
     cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
@@ -136,7 +136,12 @@ set(CDTAPILITE_CDTAPI_HEADER
 # The structures both headers define, and their fields.
 set(CompatLayouts
     "DtTimeOfDay:Seconds,Nanoseconds"
-    "DtHwFuncDesc:DeviceName,Description,SerialNumber,Port,IsSdi,IsAvFifo,IsInput,IsOutput")
+    "DtHwFuncDesc:DeviceName,Description,SerialNumber,Port,IsSdi,IsAvFifo,IsInput,IsOutput"
+    "DtDetVidStd:VidStd,LinkStd,LinkNr,Vpid,Vpid2,AspectRatio,OriginalVidStd,OriginalLinkStd")
+
+# The enumerators both headers define. They are no macros, so the name and value checks
+# do not see them; their values are compared with the layout.
+set(CompatEnumerators DT_AR_UNKNOWN DT_AR_4_3 DT_AR_16_9 DT_AR_14_9)
 
 if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
     get_filename_component(CompatHeader "${CDTAPILITE_CDTAPI_HEADER}" ABSOLUTE)
@@ -208,6 +213,10 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
             string(APPEND LayoutRows "    offsetof(${Type}, ${Field}),\n")
             string(APPEND LayoutNames "    \"${Type}.${Field}\",\n")
         endforeach()
+    endforeach()
+    foreach(Enumerator IN LISTS CompatEnumerators)
+        string(APPEND LayoutRows "    (size_t)${Enumerator},\n")
+        string(APPEND LayoutNames "    \"${Enumerator}\",\n")
     endforeach()
     foreach(Side Orig Lite)
         if(Side STREQUAL "Orig")

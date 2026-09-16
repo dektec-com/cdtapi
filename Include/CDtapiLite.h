@@ -54,7 +54,9 @@ CDTAPILITE_API const char* DtapiLiteGetVersion(void);
 // Sets *Value and *SubValue to -1 before anything can fail. Returns DTAPI_E_INVALID_ARG
 // for a null output pointer, DTAPI_E_INVALID_LINKSTD for a link standard that does not
 // suit the video standard, and DTAPI_E_INVALID_VIDSTD for an unknown video standard.
-// 4K over four links returns DTAPI_E_NOT_IMPLEMENTED in this version.
+// 4K that is not on the one link of its rate, 6G up to 30 frames and 12G from 50, gives
+// the I/O standard of one of its links: HD-SDI or 3G-SDI with the 1080p standard of the
+// same rate.
 CDTAPILITE_API unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard,
                                               int* Value, int* SubValue);
 
@@ -111,9 +113,35 @@ CDTAPILITE_API unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResul
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDevice +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A device object, attached to one DekTec device at a time. Every function taking a
-// DtDevice returns DTAPI_E_INVALID_ARG for a null pointer, and DTAPI_E_NOT_ATTACHED when
-// it needs a device and the object is not attached to one.
+// DtDevice returns DTAPI_E_INVALID_ARG for a null pointer, and, except where it says
+// otherwise, DTAPI_E_NOT_ATTACHED when it needs a device and the object is not attached
+// to one.
 //
+
+// The picture aspect ratio a VPID gives.
+typedef enum DtAspectRatio
+{
+    DT_AR_UNKNOWN, // Unknown aspect ratio
+    DT_AR_4_3,     // 4x3
+    DT_AR_16_9,    // 16x9
+    DT_AR_14_9     // 14x9
+} DtAspectRatio;
+
+// The video standard detected on an input port.
+typedef struct DtDetVidStd
+{
+    int VidStd;                // DTAPI_VIDSTD_ code, DTAPI_VIDSTD_UNKNOWN when none
+    int LinkStd;               // How 4K is carried, 0 to 3; -1 for none
+    int LinkNr;                // The VPID's link number from 1; -1 without a VPID
+    unsigned int Vpid;         // Raw VPID, 0 if not available
+    unsigned int Vpid2;        // Raw VPID of 3G level B's second channel; always 0
+    DtAspectRatio AspectRatio; // From the VPID: 4:3 or 16:9; unknown without one
+
+    // What the input carries before the hardware processes it: 12G or 6G 4K on one link
+    // that the port scales to 3G is VidStd 1080p and LinkStd -1, but 2160p here.
+    int OriginalVidStd;
+    int OriginalLinkStd;
+} DtDetVidStd;
 
 typedef struct DtDeviceC DtDevice;
 
@@ -149,6 +177,37 @@ CDTAPILITE_API unsigned int DtDevice_SetToOutput(DtDevice* Device, int Port);
 
 // Makes a port an input: DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT.
 CDTAPILITE_API unsigned int DtDevice_SetToInput(DtDevice* Device, int Port);
+
+// Waits until a video standard is detected on a port, numbered from 1, and returns it.
+// Detection is retried every 5 ms, without a time limit, also while it fails. Returns at
+// once with every field unknown for a null Device and for a port that detection cannot
+// be attached to; see DtDevice_DetectVidStd.
+CDTAPILITE_API DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port);
+
+// Detects the video standard on an input port, numbered from 1, and sets *VidStd to it:
+// a DTAPI_VIDSTD_ code, or DTAPI_VIDSTD_UNKNOWN when there is no valid, locked signal or
+// it matches no standard. *VidStd is written only when this returns DTAPI_OK.
+//
+// Returns DTAPI_E_INVALID_ARG for a null pointer; DTAPI_E_DEVICE when Device is not
+// attached; DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT for a port
+// outside the device's ports, the internal ones included; DTAPI_E_NOT_SUPPORTED for a
+// port that is not an input or has no SDI receiver the high-level Matrix API can use;
+// DTAPI_E_NOT_FOUND when the driver describes no SDI receiver for the port;
+// DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111; and the driver's result when
+// reading the receiver fails, such as DTAPI_E_INVALID_MODE for a port that is not
+// configured as an input.
+CDTAPILITE_API unsigned int DtDevice_DetectVidStd(DtDevice* Device, int Port,
+                                                  int* VidStd);
+
+// DtDevice_WaitForSignal with a time limit and a result. Waits up to TimeoutMs
+// milliseconds, retrying detection every 5 ms; 0 tries once, and a negative TimeoutMs
+// waits without a limit. Returns DTAPI_OK with *Result filled in when a standard is
+// detected, DTAPI_E_TIMEOUT with every field of *Result unknown when none is within the
+// time, and DTAPI_E_INVALID_ARG for a null Device or Result. The reasons attaching can
+// fail, as DtDevice_DetectVidStd lists them, are returned at once.
+CDTAPILITE_API unsigned int DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
+                                                          int TimeoutMs,
+                                                          DtDetVidStd* Result);
 
 // Reads the device's time-of-day clock. *TimeOfDay is zero when this fails.
 CDTAPILITE_API unsigned int DtDevice_GetTimeOfDay(const DtDevice* Device,

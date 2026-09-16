@@ -72,7 +72,7 @@ void SimDtPcieReset(void);
 void SimDtPcieSetFirmwareStatus(int Status);
 
 // Makes the driver report this version.
-void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro);
+void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro, int Build);
 
 // Replaces a property of the card: absent when Present is false, otherwise with Value.
 // Up to eight properties can be overridden together; overriding one again replaces the
@@ -85,6 +85,11 @@ void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
 // Value is ignored when Present is false, and is cut to what the driver can answer.
 void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
                              const char* Value);
+
+// Makes reading a string property, when IsString, or a value property fail with the
+// driver status Status, sharing the eight slots with the overrides above.
+void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
+                           uint32_t Status);
 
 // What the SDI receiver of a port reports, in the driver's terms: the fields of
 // DT_SDIRX_CMD_GET_SDI_STATUS2, with its flags as integers, 0 for false.
@@ -109,6 +114,11 @@ typedef struct SimSdiSignal
 // unknown. The receiver reports the signal only while the port is an input; on a port
 // configured for ASI it reports the carrier alone, as the driver does.
 void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal);
+
+// Hides the signal of the SDI port at PortIndex from the next Reads status requests that
+// the receiver answers, as if it arrived only then. A reset, a new signal or a new delay
+// ends it.
+void SimDtPcieDelaySdiSignal(int PortIndex, int Reads);
 
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.

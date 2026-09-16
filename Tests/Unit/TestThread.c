@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Tests for threads, events and mutexes on the host platform
+// CDtapiLite - Tests for threads, events, mutexes and time on the host platform
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -286,10 +286,47 @@ DT_TEST(MutexDestroyAcceptsNull)
     OsMutexDestroy(NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// A sleep lasts at least as long as asked, measured on the monotonic clock. The clock may
+// tick in steps of a scheduler tick, up to about 16 ms on Windows, so the lower bound
+// allows for one step.
+DT_TEST(SleepIsMeasuredByTheClock)
+{
+    uint64_t Start = OsMonotonicMs();
+    uint64_t Elapsed;
+
+    OsSleepMs(60);
+    Elapsed = OsMonotonicMs() - Start;
+    if (Elapsed < 60 - 17 || Elapsed > 5000)
+        DT_FAIL("a 60 ms sleep took %llu ms", (unsigned long long)Elapsed);
+}
+
+// No sleep for zero or a negative time, and the clock does not run backwards.
+DT_TEST(NoSleepForNothing)
+{
+    uint64_t Start = OsMonotonicMs();
+    uint64_t Last = Start;
+    int i;
+
+    for (i = 0; i < 1000; i++)
+    {
+        uint64_t Now;
+
+        OsSleepMs(0);
+        OsSleepMs(-10);
+        Now = OsMonotonicMs();
+        DT_ASSERT(Now >= Last);
+        Last = Now;
+    }
+    DT_ASSERT(Last - Start < 1000);
+}
+
 DT_TEST_MAIN("Thread", DT_RUN(ThreadRunsWithItsContextAndJoins),
              DT_RUN(StartRejectsMissingFunction), DT_RUN(RaisingPriorityDoesNotFailHere),
              DT_RUN(UnsetEventTimesOut), DT_RUN(SetBeforeWaitIsRemembered),
              DT_RUN(EventResetsAfterOneWake), DT_RUN(SettingTwiceCountsOnce),
              DT_RUN(SetFromAnotherThreadWakesTheWaiter), DT_RUN(NullEventIsAccepted),
              DT_RUN(KillEventStopsAPollingThread), DT_RUN(MutexLosesNoUpdates),
-             DT_RUN(MutexDestroyAcceptsNull))
+             DT_RUN(MutexDestroyAcceptsNull), DT_RUN(SleepIsMeasuredByTheClock),
+             DT_RUN(NoSleepForNothing))

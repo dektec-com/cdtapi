@@ -927,8 +927,8 @@ DT_TEST(SignalsAreResetAndPerSdiPort)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The SDI receiver needs driver 1.4.0.111, and here the build number counts.
-DT_TEST(SdiReceiverNeedsDriver1_4_0_111)
+// A version is compared number by number, the build number included.
+DT_TEST(VersionsCompareNumberByNumber)
 {
     static const struct
     {
@@ -945,7 +945,7 @@ DT_TEST(SdiReceiverNeedsDriver1_4_0_111)
     {
         const DtDriverVersion* V = &Cases[i].Version;
 
-        if (DtDrvVersionSupportsSdiRx(V) != Cases[i].Supported)
+        if (DtDrvVersionAtLeast(V, 1, 4, 0, 111) != Cases[i].Supported)
             DT_FAIL("%d.%d.%d.%d", V->Major, V->Minor, V->Micro, V->Build);
     }
 }
@@ -964,5 +964,4 @@ DT_TEST_MAIN("SimSdiRx", DT_RUN(StringPropertiesAreRead),
              DT_RUN(RateOutsideTheDriverValuesIsUnknown),
              DT_RUN(OutputPortReceiverIsNotEnabled), DT_RUN(AsiReportsTheCarrierOnly),
              DT_RUN(StatusRequestSizesAreChecked), DT_RUN(StatusFailuresBecomeResults),
-             DT_RUN(SignalsAreResetAndPerSdiPort),
-             DT_RUN(SdiReceiverNeedsDriver1_4_0_111))
+             DT_RUN(SignalsAreResetAndPerSdiPort), DT_RUN(VersionsCompareNumberByNumber))

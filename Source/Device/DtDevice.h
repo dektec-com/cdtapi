@@ -21,9 +21,9 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // What DTAPI's DtDevice keeps of an attached device and CDtapiLite needs: the driver
-// handle, the device's identity, its port counts and, per public port, the capabilities
-// the hardware functions report. Everything is read once, at attach, as DTAPI does; the
-// capabilities do not depend on the I/O configuration.
+// handle and its version, the device's identity, its port counts and, per port, the
+// capabilities CDtapiLite looks at. Everything is read once, at attach, as DTAPI does;
+// the capabilities do not depend on the I/O configuration.
 //
 // DTAPI also caches each port's channel type, which follows the I/O direction, and
 // re-reads it after a configuration change. Nothing CDTAPI exposes uses it; it belongs
@@ -40,6 +40,13 @@
 #define DT_CAP_INPUT 0x40
 #define DT_CAP_OUTPUT 0x80
 
+// The capabilities video standard detection looks at.
+#define DT_CAP_INTINPUT 0x100       // Internal input, such as a link of a quad-link input
+#define DT_CAP_MATRIX2 0x200        // The high-level Matrix API can use the port
+#define DT_CAP_SDIRX 0x400          // SDI receiver
+#define DT_CAP_HDMI 0x800           // HDMI
+#define DT_CAP_SCALE_12GTO3G 0x1000 // The port can scale 12G-SDI down to 3G-SDI
+
 // Any of the SDI rates.
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
@@ -47,10 +54,11 @@
 struct DtDeviceC
 {
     OsDrv* Drv; // NULL while detached
+    DtDriverVersion DriverVersion;
     DtDeviceInfo Info;
     int NumPorts;       // All ports, PORT_COUNT
     int NumPublicPorts; // The ports an application sees, MAIN_PORT_COUNT
-    uint32_t* PortCaps; // DT_CAP_ flags per public port, NumPublicPorts long
+    uint32_t* PortCaps; // DT_CAP_ flags per port index, for NumPorts and NumPublicPorts
 };
 
 // Attaches Device, which must be detached, to the device the driver numbers Index, when
