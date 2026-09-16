@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# #*#*#*#*#*#*#*#*#*#*#*#*#*#* compare_cdtapi.sh *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+# #*#*#*#*#*#*#*#*#*#*#*#*#*# compare_cdtapi.sh *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Runs an example against the real CDTAPI and against CDtapiLite, and compares
+# CDtapiLite - Runs an example on the real CDTAPI and on CDtapiLite, and compares them
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -44,8 +44,9 @@ echo '#define CDTAPI_VERSION "compare"' > "$Work/CDTAPI_Version.h"
 
 g++ -std=c++17 -O1 -I "$Cdtapi" -I "$Work" -I "$Sdk/DTAPI/Include" \
     -c "$Cdtapi/CDTAPI.cpp" -o "$Work/CDTAPI.o"
-for Source in "$RepoRoot/Examples/$Program.c" "$RepoRoot/Examples/Common/ExampleCommon.c"; do
-    gcc -std=c11 -O1 -DEXAMPLE_WITH_CDTAPI -I "$Work" -I "$Cdtapi" -I "$RepoRoot/Examples" \
+Examples="$RepoRoot/Examples"
+for Source in "$Examples/$Program.c" "$Examples/Common/ExampleCommon.c"; do
+    gcc -std=c11 -O1 -DEXAMPLE_WITH_CDTAPI -I "$Work" -I "$Cdtapi" -I "$Examples" \
         -c "$Source" -o "$Work/$(basename "$Source" .c).o"
 done
 g++ -o "$Work/$Program" "$Work/$Program.o" "$Work/ExampleCommon.o" "$Work/CDTAPI.o" \
