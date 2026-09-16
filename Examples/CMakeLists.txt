@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd)
+set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames)
 
 # Programs that use what CDtapiLite adds to CDTAPI.h, and so build against CDtapiLite.h
 # only.
@@ -148,3 +148,10 @@ cdtapilite_example_test(DetectVidStdNoInput DtDetectVidStd
     "^No SDI input that suits" --port 9)
 cdtapilite_example_test(DetectVidStdBadNumber DtDetectVidStd
     "^Option --timeout needs a number" --timeout soon)
+
+cdtapilite_example_test(ReceiveFramesWithoutSignal DtReceiveFrames
+    "^9217800001:1  no frame within 100 ms" --timeout 100)
+cdtapilite_example_test(ReceiveFramesOnOutput DtReceiveFrames
+    "^9217800001:2  DtInpChannel_AttachToPort: DTAPI_E_NO_DT_INPUT" --port 2)
+cdtapilite_example_test(ReceiveFramesBadMode DtReceiveFrames
+    "^Unknown receive mode: 12B" --rxmode 12B)
