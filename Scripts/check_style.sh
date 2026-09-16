@@ -37,7 +37,7 @@ OwnFiles()
         | sort
 }
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 4: line length -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 4: line length -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 echo "Rule 4: line length <= $MaxLineLength"
 while IFS= read -r File; do
@@ -50,7 +50,7 @@ LongLines=$(while IFS= read -r File; do
 done < <(OwnFiles) | awk '{ s += $1 } END { print s + 0 }')
 [ "$LongLines" -ne 0 ] && Failures=$((Failures + LongLines))
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 5: file header -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 5: file header -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 #
 # The first line must be the DekTec banner and must name the file it is in. That second
 # half is the point: a copy-pasted header naming the wrong file otherwise survives for
@@ -70,7 +70,7 @@ while IFS= read -r File; do
     esac
 done < <(OwnFiles)
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 2: no historical comments -.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 2: no historical comments -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 #
 # Only the obvious phrasings are caught. The rest is a review matter; this is a tripwire,
 # not a proof.
@@ -88,7 +88,7 @@ HistoryHits=$(while IFS= read -r File; do
 done < <(OwnFiles) | awk '{ s += $1 } END { print s + 0 }')
 [ "$HistoryHits" -ne 0 ] && Failures=$((Failures + HistoryHits))
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 ClangFormat="${CLANG_FORMAT:-clang-format}"
 if command -v "$ClangFormat" >/dev/null 2>&1; then
@@ -102,7 +102,7 @@ else
     echo "Rules 4 and 6: clang-format not found, skipping (set CLANG_FORMAT to override)"
 fi
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Verdict -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Verdict -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 echo
 if [ "$Failures" -eq 0 ]; then

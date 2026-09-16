@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDrvStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtDrvStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Driver ABI layer: from a driver status to a DTAPI result - Implementation
 //
@@ -7,21 +7,21 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "DtlDrvStatus.h"           // Interface being implemented.
+#include "DtDrvStatus.h"            // Interface being implemented.
 #include "CDtapiLite.h"             // DTAPI result codes.
-#include "DtlDrvAbi.h"              // The DT_STATUS_ codes.
+#include "DtDrvAbi.h"               // The DT_STATUS_ codes.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvStatusToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvStatusToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The DT_STATUS_ values are encoded differently on Windows and on Linux, so the cases are
 // written with the vendored names and never with numbers. Statuses DTAPI deliberately
 // reports as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
 // case of their own and fall to the default.
 //
-unsigned int DtlDrvStatusToResult(uint32_t Status)
+unsigned int DtDrvStatusToResult(uint32_t Status)
 {
     switch (Status)
     {
@@ -88,16 +88,16 @@ unsigned int DtlDrvStatusToResult(uint32_t Status)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtlDrvOutcomeToResult(int Outcome, uint32_t Status)
+unsigned int DtDrvOutcomeToResult(int Outcome, uint32_t Status)
 {
     switch (Outcome)
     {
     case OS_IOCTL_OK:
         return DTAPI_OK;
     case OS_IOCTL_DRIVER_STATUS:
-        return DtlDrvStatusToResult(Status);
+        return DtDrvStatusToResult(Status);
     case OS_IOCTL_NO_RESOURCES:
         return DTAPI_E_OUT_OF_RESOURCES;
     default:

@@ -30,14 +30,14 @@
 
 // The driver accepts up to this many devices, and the Linux backend probes /dev/DtPcie0
 // through /dev/DtPcie49 to find them.
-#define DTL_MAX_DEVICES 50
+#define DT_MAX_DEVICES 50
 
 typedef struct OsDrv OsDrv;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Device -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 // Opens the device at Index, or returns NULL when there is none. Index runs from zero
-// to DTL_MAX_DEVICES - 1.
+// to DT_MAX_DEVICES - 1.
 //
 // When CDTAPILITE_SIM is set in the environment, the emulated device is opened instead
 // and no real hardware is touched.

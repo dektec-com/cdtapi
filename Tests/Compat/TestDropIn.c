@@ -19,11 +19,11 @@
 
 // The original C API, and the test framework.
 #include "CDTAPI.h"
-#include "DtlTest.h"
+#include "DtTest.h"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(ScanAttachConfigureDetach)
+DT_TEST(ScanAttachConfigureDetach)
 {
     DtHwFuncDesc* Funcs;
     DtDevice* Device;
@@ -32,18 +32,18 @@ DTL_TEST(ScanAttachConfigureDetach)
     int Output = -1, Input = -1;
     int i;
 
-    DTL_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
-    DTL_ASSERT(Count > 0);
+    DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT(Count > 0);
     if (Count <= 0)
         return;
 
     Funcs = (DtHwFuncDesc*)calloc((size_t)Count, sizeof(DtHwFuncDesc));
-    DTL_ASSERT(Funcs != NULL);
+    DT_ASSERT(Funcs != NULL);
     if (Funcs == NULL)
         return;
 
-    DTL_ASSERT_EQ(DtapiHwFuncScan(Count, &Found, Funcs), DTAPI_OK);
-    DTL_ASSERT_EQ(Found, Count);
+    DT_ASSERT_EQ(DtapiHwFuncScan(Count, &Found, Funcs), DTAPI_OK);
+    DT_ASSERT_EQ(Found, Count);
 
     for (i = 0; i < Found; i++)
     {
@@ -52,36 +52,36 @@ DTL_TEST(ScanAttachConfigureDetach)
         else if (Funcs[i].IsSdi && Funcs[i].IsInput && Input < 0)
             Input = i;
     }
-    DTL_ASSERT(Output >= 0 && Input >= 0);
+    DT_ASSERT(Output >= 0 && Input >= 0);
     if (Output < 0 || Input < 0)
     {
         free(Funcs);
         return;
     }
-    DTL_ASSERT(strstr(Funcs[Output].Description, "DTA-") == Funcs[Output].Description);
+    DT_ASSERT(strstr(Funcs[Output].Description, "DTA-") == Funcs[Output].Description);
 
     Device = DtDevice_Alloc();
-    DTL_ASSERT(Device != NULL);
-    DTL_ASSERT_EQ(DtDevice_AttachToSerial(Device, Funcs[Output].SerialNumber), DTAPI_OK);
-    DTL_ASSERT_EQ(DtDevice_SetToOutput(Device, Funcs[Output].Port), DTAPI_OK);
-    DTL_ASSERT_EQ(DtDevice_SetToInput(Device, Funcs[Input].Port), DTAPI_OK);
-    DTL_ASSERT_EQ(DtDevice_SetIoConfig(Device, Funcs[Output].Port, DTAPI_IOCONFIG_IODIR,
-                                       DTAPI_IOCONFIG_OUTPUT, -1),
-                  DTAPI_E_INVALID_ARG);
-    DTL_ASSERT_EQ(DtDevice_GetTimeOfDay(Device, &Tod), DTAPI_OK);
-    DTL_ASSERT(Tod.Nanoseconds < 1000000000U);
-    DTL_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_OK);
+    DT_ASSERT(Device != NULL);
+    DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, Funcs[Output].SerialNumber), DTAPI_OK);
+    DT_ASSERT_EQ(DtDevice_SetToOutput(Device, Funcs[Output].Port), DTAPI_OK);
+    DT_ASSERT_EQ(DtDevice_SetToInput(Device, Funcs[Input].Port), DTAPI_OK);
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, Funcs[Output].Port, DTAPI_IOCONFIG_IODIR,
+                                      DTAPI_IOCONFIG_OUTPUT, -1),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTimeOfDay(Device, &Tod), DTAPI_OK);
+    DT_ASSERT(Tod.Nanoseconds < 1000000000U);
+    DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_OK);
     DtDevice_Freep(&Device);
-    DTL_ASSERT(Device == NULL);
+    DT_ASSERT(Device == NULL);
 
     free(Funcs);
 }
 
-DTL_TEST(ResultNames)
+DT_TEST(ResultNames)
 {
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_E_NO_TS_INPUT), "DTAPI_E_NO_DT_INPUT");
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_E_EXCEPTION), "???");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_NO_TS_INPUT), "DTAPI_E_NO_DT_INPUT");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_EXCEPTION), "???");
 }
 
-DTL_TEST_MAIN("DropIn", DTL_RUN(ScanAttachConfigureDetach), DTL_RUN(ResultNames))
+DT_TEST_MAIN("DropIn", DT_RUN(ScanAttachConfigureDetach), DT_RUN(ResultNames))

@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestVec.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestVec.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Unit tests for the growable array
 //
@@ -7,160 +7,160 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation fault injection.
-#include "Core/DtlVec.h"   // Interface under test.
-#include "DtlTest.h"       // Test framework.
+#include "Core/DtAlloc.h" // Allocation fault injection.
+#include "Core/DtVec.h"   // Interface under test.
+#include "DtTest.h"       // Test framework.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(StartsEmptyWithoutAllocating)
+DT_TEST(StartsEmptyWithoutAllocating)
 {
-    DtlVec Vec;
+    DtVec Vec;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
-    DTL_ASSERT(Vec.Data == NULL);
-    DTL_ASSERT_EQ(Vec.Capacity, 0);
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
+    DT_ASSERT(Vec.Data == NULL);
+    DT_ASSERT_EQ(Vec.Capacity, 0);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(FreeIsIdempotent)
+DT_TEST(FreeIsIdempotent)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 1;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Value));
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT_OK(DtVecPush(&Vec, &Value));
 
-    DtlVecFree(&Vec);
-    DtlVecFree(&Vec);
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
+    DtVecFree(&Vec);
+    DtVecFree(&Vec);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
 }
 
 // Pushes far past the initial capacity, so that the growth path runs several times and
 // the contents have to survive each reallocation.
-DTL_TEST(GrowthPreservesContents)
+DT_TEST(GrowthPreservesContents)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int i;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
 
     for (i = 0; i < 1000; i++)
-        DTL_ASSERT_OK(DtlVecPush(&Vec, &i));
+        DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 1000);
-    DTL_ASSERT(Vec.Capacity >= 1000);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 1000);
+    DT_ASSERT(Vec.Capacity >= 1000);
 
     for (i = 0; i < 1000; i++)
-        DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, (size_t)i), i);
+        DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, (size_t)i), i);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(TypedAccessIsAnLvalue)
+DT_TEST(TypedAccessIsAnLvalue)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 10;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Value));
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT_OK(DtVecPush(&Vec, &Value));
 
-    DTL_VEC_AT(&Vec, int, 0) = 42;
-    DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, 0), 42);
+    DT_VEC_AT(&Vec, int, 0) = 42;
+    DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 0), 42);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(IndexOutOfRangeGivesNull)
+DT_TEST(IndexOutOfRangeGivesNull)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 1;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT(DtlVecAt(&Vec, 0) == NULL);
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT(DtVecAt(&Vec, 0) == NULL);
 
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Value));
-    DTL_ASSERT(DtlVecAt(&Vec, 0) != NULL);
-    DTL_ASSERT(DtlVecAt(&Vec, 1) == NULL);
+    DT_ASSERT_OK(DtVecPush(&Vec, &Value));
+    DT_ASSERT(DtVecAt(&Vec, 0) != NULL);
+    DT_ASSERT(DtVecAt(&Vec, 1) == NULL);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
 // A rescan refills a vector it has just emptied; that must not allocate again.
-DTL_TEST(ClearKeepsCapacity)
+DT_TEST(ClearKeepsCapacity)
 {
-    DtlVec Vec;
+    DtVec Vec;
     size_t CapacityBefore;
     int i;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
     for (i = 0; i < 50; i++)
-        DTL_ASSERT_OK(DtlVecPush(&Vec, &i));
+        DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
     CapacityBefore = Vec.Capacity;
-    DtlVecClear(&Vec);
+    DtVecClear(&Vec);
 
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
-    DTL_ASSERT_EQ(Vec.Capacity, CapacityBefore);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
+    DT_ASSERT_EQ(Vec.Capacity, CapacityBefore);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(ResizeZeroFillsWhenGrowing)
+DT_TEST(ResizeZeroFillsWhenGrowing)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 0x5A5A;
     size_t i;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Value));
-    DTL_ASSERT_OK(DtlVecResize(&Vec, 10));
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT_OK(DtVecPush(&Vec, &Value));
+    DT_ASSERT_OK(DtVecResize(&Vec, 10));
 
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 10);
-    DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, 0), 0x5A5A);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 10);
+    DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 0), 0x5A5A);
     for (i = 1; i < 10; i++)
-        DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, i), 0);
+        DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, i), 0);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(ResizeDownDropsElements)
+DT_TEST(ResizeDownDropsElements)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int i;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
     for (i = 0; i < 20; i++)
-        DTL_ASSERT_OK(DtlVecPush(&Vec, &i));
+        DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
-    DTL_ASSERT_OK(DtlVecResize(&Vec, 5));
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 5);
-    DTL_ASSERT(DtlVecAt(&Vec, 5) == NULL);
-    DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, 4), 4);
+    DT_ASSERT_OK(DtVecResize(&Vec, 5));
+    DT_ASSERT_EQ(DtVecCount(&Vec), 5);
+    DT_ASSERT(DtVecAt(&Vec, 5) == NULL);
+    DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 4), 4);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(ReserveMakesRoomWithoutAddingElements)
+DT_TEST(ReserveMakesRoomWithoutAddingElements)
 {
-    DtlVec Vec;
+    DtVec Vec;
 
-    DtlVecInit(&Vec, sizeof(int));
-    DTL_ASSERT_OK(DtlVecReserve(&Vec, 100));
+    DtVecInit(&Vec, sizeof(int));
+    DT_ASSERT_OK(DtVecReserve(&Vec, 100));
 
-    DTL_ASSERT(Vec.Capacity >= 100);
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
+    DT_ASSERT(Vec.Capacity >= 100);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
 
     // Reserving less than is already there must not shrink anything.
-    DTL_ASSERT_OK(DtlVecReserve(&Vec, 2));
-    DTL_ASSERT(Vec.Capacity >= 100);
+    DT_ASSERT_OK(DtVecReserve(&Vec, 2));
+    DT_ASSERT(Vec.Capacity >= 100);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(LargeElementsWork)
+DT_TEST(LargeElementsWork)
 {
     typedef struct Big
     {
@@ -168,129 +168,128 @@ DTL_TEST(LargeElementsWork)
         int Port;
     } Big;
 
-    DtlVec Vec;
+    DtVec Vec;
     Big Item;
     Big* Stored;
 
-    DtlVecInit(&Vec, sizeof(Big));
+    DtVecInit(&Vec, sizeof(Big));
     memset(Item.Name, 'x', sizeof(Item.Name));
     Item.Name[0] = 'A';
     Item.Port = 3;
 
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Item));
-    Stored = (Big*)DtlVecAt(&Vec, 0);
-    DTL_ASSERT(Stored != NULL);
-    DTL_ASSERT_EQ(Stored->Port, 3);
-    DTL_ASSERT_EQ(Stored->Name[0], 'A');
+    DT_ASSERT_OK(DtVecPush(&Vec, &Item));
+    Stored = (Big*)DtVecAt(&Vec, 0);
+    DT_ASSERT(Stored != NULL);
+    DT_ASSERT_EQ(Stored->Port, 3);
+    DT_ASSERT_EQ(Stored->Name[0], 'A');
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(BadArgumentsAreRejected)
+DT_TEST(BadArgumentsAreRejected)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 1;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
 
-    DTL_ASSERT_EQ(DtlVecPush(&Vec, NULL), -1);
-    DTL_ASSERT_EQ(DtlVecPush(NULL, &Value), -1);
-    DTL_ASSERT_EQ(DtlVecReserve(NULL, 10), -1);
-    DTL_ASSERT_EQ(DtlVecResize(NULL, 10), -1);
-    DTL_ASSERT(DtlVecAt(NULL, 0) == NULL);
-    DTL_ASSERT_EQ(DtlVecCount(NULL), 0);
+    DT_ASSERT_EQ(DtVecPush(&Vec, NULL), -1);
+    DT_ASSERT_EQ(DtVecPush(NULL, &Value), -1);
+    DT_ASSERT_EQ(DtVecReserve(NULL, 10), -1);
+    DT_ASSERT_EQ(DtVecResize(NULL, 10), -1);
+    DT_ASSERT(DtVecAt(NULL, 0) == NULL);
+    DT_ASSERT_EQ(DtVecCount(NULL), 0);
 
     // These take no action but must not crash.
-    DtlVecInit(NULL, sizeof(int));
-    DtlVecFree(NULL);
-    DtlVecClear(NULL);
+    DtVecInit(NULL, sizeof(int));
+    DtVecFree(NULL);
+    DtVecClear(NULL);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
 // An element size of zero would make every element occupy nothing and the index
 // arithmetic meaningless, so it is refused rather than accepted quietly.
-DTL_TEST(ZeroElementSizeIsRefused)
+DT_TEST(ZeroElementSizeIsRefused)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 1;
 
-    DtlVecInit(&Vec, 0);
-    DTL_ASSERT_EQ(DtlVecPush(&Vec, &Value), -1);
-    DTL_ASSERT_EQ(DtlVecReserve(&Vec, 4), -1);
-    DTL_ASSERT_EQ(DtlVecResize(&Vec, 4), -1);
+    DtVecInit(&Vec, 0);
+    DT_ASSERT_EQ(DtVecPush(&Vec, &Value), -1);
+    DT_ASSERT_EQ(DtVecReserve(&Vec, 4), -1);
+    DT_ASSERT_EQ(DtVecResize(&Vec, 4), -1);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // A failed growth must leave the vector exactly as it was, so that a caller that ignores
 // the error does not then read through a dangling pointer.
-DTL_TEST(FailedGrowthLeavesTheVectorIntact)
+DT_TEST(FailedGrowthLeavesTheVectorIntact)
 {
-    DtlVec Vec;
+    DtVec Vec;
     int Value = 11;
     int i;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
     for (i = 0; i < 8; i++)
-        DTL_ASSERT_OK(DtlVecPush(&Vec, &i));
+        DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
 
-    DTL_ASSERT_EQ(DtlVecPush(&Vec, &Value), -1);
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 8);
-    DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, 7), 7);
+    DT_ASSERT_EQ(DtVecPush(&Vec, &Value), -1);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 8);
+    DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 7), 7);
 
-    DtlAllocResetCount();
+    DtAllocResetCount();
 
     // Still usable once the allocator recovers.
-    DTL_ASSERT_OK(DtlVecPush(&Vec, &Value));
-    DTL_ASSERT_EQ(DTL_VEC_AT(&Vec, int, 8), 11);
+    DT_ASSERT_OK(DtVecPush(&Vec, &Value));
+    DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 8), 11);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST(ReserveAndResizeReportFailure)
+DT_TEST(ReserveAndResizeReportFailure)
 {
-    DtlVec Vec;
+    DtVec Vec;
 
-    DtlVecInit(&Vec, sizeof(int));
+    DtVecInit(&Vec, sizeof(int));
 
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
-    DTL_ASSERT_EQ(DtlVecReserve(&Vec, 100), -1);
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
+    DT_ASSERT_EQ(DtVecReserve(&Vec, 100), -1);
 
-    DtlAllocFailAfter(0);
-    DTL_ASSERT_EQ(DtlVecResize(&Vec, 100), -1);
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
+    DtAllocFailAfter(0);
+    DT_ASSERT_EQ(DtVecResize(&Vec, 100), -1);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
 
-    DtlAllocResetCount();
-    DtlVecFree(&Vec);
+    DtAllocResetCount();
+    DtVecFree(&Vec);
 }
 
 // An element large enough that even a small count cannot be expressed in bytes. The
 // growth policy has to refuse rather than hand back a capacity that wraps.
-DTL_TEST(ImpossibleByteCountIsRefused)
+DT_TEST(ImpossibleByteCountIsRefused)
 {
-    DtlVec Vec;
+    DtVec Vec;
 
-    DtlVecInit(&Vec, (size_t)-1 / 4);
+    DtVecInit(&Vec, (size_t)-1 / 4);
 
-    DTL_ASSERT_EQ(DtlVecReserve(&Vec, 8), -1);
-    DTL_ASSERT_EQ(DtlVecCount(&Vec), 0);
+    DT_ASSERT_EQ(DtVecReserve(&Vec, 8), -1);
+    DT_ASSERT_EQ(DtVecCount(&Vec), 0);
 
-    DtlVecFree(&Vec);
+    DtVecFree(&Vec);
 }
 
-DTL_TEST_MAIN("Vec", DTL_RUN(StartsEmptyWithoutAllocating), DTL_RUN(FreeIsIdempotent),
-              DTL_RUN(GrowthPreservesContents), DTL_RUN(TypedAccessIsAnLvalue),
-              DTL_RUN(IndexOutOfRangeGivesNull), DTL_RUN(ClearKeepsCapacity),
-              DTL_RUN(ResizeZeroFillsWhenGrowing), DTL_RUN(ResizeDownDropsElements),
-              DTL_RUN(ReserveMakesRoomWithoutAddingElements), DTL_RUN(LargeElementsWork),
-              DTL_RUN(BadArgumentsAreRejected), DTL_RUN(ZeroElementSizeIsRefused),
-              DTL_RUN(FailedGrowthLeavesTheVectorIntact),
-              DTL_RUN(ReserveAndResizeReportFailure),
-              DTL_RUN(ImpossibleByteCountIsRefused))
+DT_TEST_MAIN("Vec", DT_RUN(StartsEmptyWithoutAllocating), DT_RUN(FreeIsIdempotent),
+             DT_RUN(GrowthPreservesContents), DT_RUN(TypedAccessIsAnLvalue),
+             DT_RUN(IndexOutOfRangeGivesNull), DT_RUN(ClearKeepsCapacity),
+             DT_RUN(ResizeZeroFillsWhenGrowing), DT_RUN(ResizeDownDropsElements),
+             DT_RUN(ReserveMakesRoomWithoutAddingElements), DT_RUN(LargeElementsWork),
+             DT_RUN(BadArgumentsAreRejected), DT_RUN(ZeroElementSizeIsRefused),
+             DT_RUN(FailedGrowthLeavesTheVectorIntact),
+             DT_RUN(ReserveAndResizeReportFailure), DT_RUN(ImpossibleByteCountIsRefused))

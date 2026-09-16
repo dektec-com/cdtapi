@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlResult.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtResult.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Names of result codes
 //
@@ -22,7 +22,7 @@ typedef struct ResultName
 
 static const ResultName g_ResultNames[] = {
 #define X(Name) {Name, #Name},
-#include "Tables/DtlResultList.inc"
+#include "Tables/DtResultList.inc"
 #undef X
 };
 

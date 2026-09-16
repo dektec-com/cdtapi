@@ -15,7 +15,7 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h" // Public API under test.
-#include "DtlTest.h"    // Test framework.
+#include "DtTest.h"     // Test framework.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Every code +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -46,12 +46,12 @@ static const char* ExpectedName(const char* Macro)
     return Macro;
 }
 
-DTL_TEST(EveryHeaderCodeHasItsName)
+DT_TEST(EveryHeaderCodeHasItsName)
 {
     size_t i;
 
     // Sanity: the generated list really holds the header's codes.
-    DTL_ASSERT(sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]) > 290);
+    DT_ASSERT(sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]) > 290);
 
     for (i = 0; i < sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]); i++)
     {
@@ -59,19 +59,18 @@ DTL_TEST(EveryHeaderCodeHasItsName)
         const char* Expected = ExpectedName(g_HeaderCodes[i].Macro);
 
         if (strcmp(Name, Expected) != 0)
-            DTL_FAIL("%s: expected \"%s\", got \"%s\"", g_HeaderCodes[i].Macro, Expected,
-                     Name);
+            DT_FAIL("%s: expected \"%s\", got \"%s\"", g_HeaderCodes[i].Macro, Expected,
+                    Name);
     }
 }
 
-DTL_TEST(OtherValuesAreUnknown)
+DT_TEST(OtherValuesAreUnknown)
 {
-    DTL_ASSERT_STR(DtapiResult2Str(7), "???");
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_E + 10), "???");
-    DTL_ASSERT_STR(DtapiResult2Str(0xFFFFFFFFU), "???");
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
-    DTL_ASSERT_STR(DtapiResult2Str(DTAPI_E), "DTAPI_E_ATTACHED");
+    DT_ASSERT_STR(DtapiResult2Str(7), "???");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_E + 10), "???");
+    DT_ASSERT_STR(DtapiResult2Str(0xFFFFFFFFU), "???");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
+    DT_ASSERT_STR(DtapiResult2Str(DTAPI_E), "DTAPI_E_ATTACHED");
 }
 
-DTL_TEST_MAIN("Result", DTL_RUN(EveryHeaderCodeHasItsName),
-              DTL_RUN(OtherValuesAreUnknown))
+DT_TEST_MAIN("Result", DT_RUN(EveryHeaderCodeHasItsName), DT_RUN(OtherValuesAreUnknown))

@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtlDrv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDrv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Driver ABI layer - Implementation
 //
@@ -11,27 +11,27 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtlDrv.h"       // Interface being implemented.
-#include "DtlDrvAbi.h"    // Vendored driver structures and IOCTL codes.
-#include "DtlDrvStatus.h" // Driver status to result.
-#include "DtlIoConfig.h"  // I/O configuration codes to names and back.
+#include "DtDrv.h"       // Interface being implemented.
+#include "DtDrvAbi.h"    // Vendored driver structures and IOCTL codes.
+#include "DtDrvStatus.h" // Driver status to result.
+#include "DtIoConfig.h"  // I/O configuration codes to names and back.
 
 // The IOCTL codes come from CTL_CODE on Windows, which the SDK evaluates as int. The
 // device type DekTec uses puts the value above INT_MAX, so it is converted once, here,
 // rather than at every call.
-#define DTL_IOCTL(Code) ((unsigned long)(Code))
+#define DT_IOCTL(Code) ((unsigned long)(Code))
 
 // The DTAPI version a property request says it speaks for. The driver can hide or change
 // properties per DTAPI version, so CDtapiLite presents itself as the DTAPI whose
 // behaviour it reproduces.
-#define DTL_DTAPI_MAJOR 6
-#define DTL_DTAPI_MINOR 13
-#define DTL_DTAPI_BUGFIX 0
+#define DT_DTAPI_MAJOR 6
+#define DT_DTAPI_MINOR 13
+#define DT_DTAPI_BUGFIX 0
 
 // The oldest DtPcie driver DTAPI works with.
-#define DTL_DRIVER_MIN_MAJOR 1
-#define DTL_DRIVER_MIN_MINOR 3
-#define DTL_DRIVER_MIN_MICRO 1
+#define DT_DRIVER_MIN_MAJOR 1
+#define DT_DRIVER_MIN_MINOR 3
+#define DT_DRIVER_MIN_MICRO 1
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= I/O configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -119,7 +119,7 @@ static unsigned int Issue(OsDrv* Drv, unsigned long Code, const void* In, size_t
     int Outcome = OsDrvIoCtl(Drv, Code, In, InSize, Out, &Returned, &Status);
 
     if (Outcome != OS_IOCTL_OK)
-        return DtlDrvOutcomeToResult(Outcome, Status);
+        return DtDrvOutcomeToResult(Outcome, Status);
 
     if (Returned < OutSize)
         return DTAPI_E_DEV_DRIVER;
@@ -154,9 +154,9 @@ static unsigned int GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex
     In.m_FirmwareVersion = 0;
     In.m_FirmwareVariant = -1;
     In.m_PortIndex = PortIndex;
-    In.m_DtapiMaj = DTL_DTAPI_MAJOR;
-    In.m_DtapiMin = DTL_DTAPI_MINOR;
-    In.m_DtapiBugfix = DTL_DTAPI_BUGFIX;
+    In.m_DtapiMaj = DT_DTAPI_MAJOR;
+    In.m_DtapiMin = DT_DTAPI_MINOR;
+    In.m_DtapiBugfix = DT_DTAPI_BUGFIX;
 
     NameLength = strlen(Name);
     if (NameLength + 1 > sizeof(In.m_Name))
@@ -165,8 +165,8 @@ static unsigned int GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex
 
     memset(&Out, 0, sizeof(Out));
     Result =
-        Issue(Drv, DTL_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out, sizeof(Out));
-    if (!DTL_SUCCEEDED(Result))
+        Issue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     *Value = Out.m_Value;
@@ -178,7 +178,7 @@ static unsigned int GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex
 // True when ParXtra[0] of this configuration names another port, which DTAPI numbers
 // from 1 and the driver from 0 (DriverUtils::PrepIoConfigForDriver).
 //
-static bool IsBuddyPort(const DtlIoConfig* Config)
+static bool IsBuddyPort(const DtIoConfig* Config)
 {
     if (Config->Group != DTAPI_IOCONFIG_IODIR)
         return false;
@@ -205,21 +205,21 @@ static bool IsBuddyPort(const DtlIoConfig* Config)
 // Converts a configuration to the driver's form, in the order DTAPI does and with the
 // same failures: a code without a name, then an ISI out of range.
 //
-static unsigned int ConfigToDriver(const DtlIoConfig* Config, DtIoctlIoConfig* Drv)
+static unsigned int ConfigToDriver(const DtIoConfig* Config, DtIoctlIoConfig* Drv)
 {
     unsigned int Result;
 
     memset(Drv, 0, sizeof(*Drv));
     Drv->m_PortIndex = Config->Port - 1;
 
-    Result = DtlIoConfigGetName(Config->Group, Drv->m_Group, sizeof(Drv->m_Group));
+    Result = DtIoConfigGetName(Config->Group, Drv->m_Group, sizeof(Drv->m_Group));
     if (Result != DTAPI_OK)
         return Result;
-    Result = DtlIoConfigGetName(Config->Value, Drv->m_Value, sizeof(Drv->m_Value));
+    Result = DtIoConfigGetName(Config->Value, Drv->m_Value, sizeof(Drv->m_Value));
     if (Result != DTAPI_OK)
         return Result;
     Result =
-        DtlIoConfigGetName(Config->SubValue, Drv->m_SubValue, sizeof(Drv->m_SubValue));
+        DtIoConfigGetName(Config->SubValue, Drv->m_SubValue, sizeof(Drv->m_SubValue));
     if (Result != DTAPI_OK)
         return Result;
 
@@ -252,14 +252,14 @@ static unsigned int ConfigToDriver(const DtlIoConfig* Config, DtIoctlIoConfig* D
 static unsigned int CodeFromDriver(char* Name, size_t Size, int* Code)
 {
     Name[Size - 1] = '\0';
-    return DtlIoConfigGetCode(Name, Code);
+    return DtIoConfigGetCode(Name, Code);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version)
+unsigned int DtDrvGetDriverVersion(OsDrv* Drv, DtDriverVersion* Version)
 {
     DtIoctlGetDriverVersionInput In;
     DtIoctlGetDriverVersionOutput Out;
@@ -271,9 +271,9 @@ unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version)
     InitHeader(&In, DT_IOCTL_CMD_NOP);
     memset(&Out, 0, sizeof(Out));
 
-    Result = Issue(Drv, DTL_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In, sizeof(In), &Out,
+    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In, sizeof(In), &Out,
                    sizeof(Out));
-    if (!DTL_SUCCEEDED(Result))
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     Version->Major = Out.m_Major;
@@ -283,20 +283,20 @@ unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvVersionIsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvVersionIsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtlDrvVersionIsSupported(const DtlDriverVersion* Version)
+bool DtDrvVersionIsSupported(const DtDriverVersion* Version)
 {
-    if (Version->Major != DTL_DRIVER_MIN_MAJOR)
-        return Version->Major > DTL_DRIVER_MIN_MAJOR;
-    if (Version->Minor != DTL_DRIVER_MIN_MINOR)
-        return Version->Minor > DTL_DRIVER_MIN_MINOR;
-    return Version->Micro >= DTL_DRIVER_MIN_MICRO;
+    if (Version->Major != DT_DRIVER_MIN_MAJOR)
+        return Version->Major > DT_DRIVER_MIN_MAJOR;
+    if (Version->Minor != DT_DRIVER_MIN_MINOR)
+        return Version->Minor > DT_DRIVER_MIN_MINOR;
+    return Version->Micro >= DT_DRIVER_MIN_MICRO;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetDeviceInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetDeviceInfo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info)
+unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
 {
     DtIoctlGetDevInfoInput In;
     DtIoctlGetDevInfoOutput Out;
@@ -311,13 +311,13 @@ unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info)
     // GET_DEV_INFO2 first. A driver that predates it refuses the command, and then the
     // original is tried, which carries the same common fields.
     Result =
-        Issue(Drv, DTL_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In), &Out, sizeof(Out));
-    if (!DTL_SUCCEEDED(Result))
+        Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
     {
         memset(&Out, 0, sizeof(Out));
-        Result = Issue(Drv, DTL_IOCTL(DT_IOCTL_GET_DEV_INFO), &In, sizeof(In), &Out,
+        Result = Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO), &In, sizeof(In), &Out,
                        sizeof(Out));
-        if (!DTL_SUCCEEDED(Result))
+        if (!DT_SUCCEEDED(Result))
             return Result;
     }
 
@@ -336,9 +336,9 @@ unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetPropertyInt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetPropertyInt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtlDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, int* Value)
+unsigned int DtDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, int* Value)
 {
     uint64_t Raw = 0;
     unsigned int Result;
@@ -350,7 +350,7 @@ unsigned int DtlDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, i
         return DTAPI_E_INVALID_ARG;
 
     Result = GetPropertyValue(Drv, Name, PortIndex, &Raw);
-    if (!DTL_SUCCEEDED(Result))
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     // Truncated to int, as DTAPI casts it; a negative value is stored sign-extended.
@@ -358,10 +358,10 @@ unsigned int DtlDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, i
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetPropertyBool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetPropertyBool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtlDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
-                                   bool* Value)
+unsigned int DtDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
+                                  bool* Value)
 {
     uint64_t Raw = 0;
     unsigned int Result;
@@ -373,16 +373,16 @@ unsigned int DtlDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     Result = GetPropertyValue(Drv, Name, PortIndex, &Raw);
-    if (!DTL_SUCCEEDED(Result))
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     *Value = Raw != 0;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtlDrvGetIoConfig(OsDrv* Drv, DtlIoConfig* Config)
+unsigned int DtDrvGetIoConfig(OsDrv* Drv, DtIoConfig* Config)
 {
     IoConfigGetIn In;
     IoConfigGetOut Out;
@@ -396,15 +396,15 @@ unsigned int DtlDrvGetIoConfig(OsDrv* Drv, DtlIoConfig* Config)
     InitHeader(&In.m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
     In.m_IoConfigCount = 1;
     In.m_IoCfgId.m_PortIndex = Config->Port - 1;
-    Result = DtlIoConfigGetName(Config->Group, In.m_IoCfgId.m_Group,
-                                sizeof(In.m_IoCfgId.m_Group));
+    Result = DtIoConfigGetName(Config->Group, In.m_IoCfgId.m_Group,
+                               sizeof(In.m_IoCfgId.m_Group));
     if (Result != DTAPI_OK)
         return Result;
 
     memset(&Out, 0, sizeof(Out));
     Result =
-        Issue(Drv, DTL_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), &Out, sizeof(Out));
-    if (!DTL_SUCCEEDED(Result))
+        Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     Value = &Out.m_IoCfgValue;
@@ -424,9 +424,9 @@ unsigned int DtlDrvGetIoConfig(OsDrv* Drv, DtlIoConfig* Config)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvSetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtlDrvSetIoConfig(OsDrv* Drv, const DtlIoConfig* Config)
+unsigned int DtDrvSetIoConfig(OsDrv* Drv, const DtIoConfig* Config)
 {
     IoConfigSetIn In;
     unsigned int Result;
@@ -448,12 +448,12 @@ unsigned int DtlDrvSetIoConfig(OsDrv* Drv, const DtlIoConfig* Config)
     // before it gets here.
     In.m_IoCfgPars.m_SkipExclAccessCheck = (In.m_IoCfgPars.m_PortIndex == -1) ? 1 : 0;
 
-    return Issue(Drv, DTL_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), NULL, 0);
+    return Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDrvGetTimeOfDay -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetTimeOfDay -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtlDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds)
+unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds)
 {
     DtIoctlTodCmdGetTimeInput In;
     DtIoctlTodCmdGetTimeOutput Out;
@@ -465,8 +465,8 @@ unsigned int DtlDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanosec
     InitHeader(&In, DT_TOD_CMD_GET_TIME);
     memset(&Out, 0, sizeof(Out));
 
-    Result = Issue(Drv, DTL_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out, sizeof(Out));
-    if (!DTL_SUCCEEDED(Result))
+    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    if (!DT_SUCCEEDED(Result))
         return Result;
 
     *Seconds = Out.m_Time.m_Seconds;

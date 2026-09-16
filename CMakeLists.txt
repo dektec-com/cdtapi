@@ -38,23 +38,23 @@ configure_file(
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Library +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 set(CDTAPILITE_SOURCES
-    Source/Api/DtlApi.c
-    Source/Api/DtlResult.c
-    Source/Core/DtlAlloc.c
-    Source/Core/DtlBuf.c
-    Source/Core/DtlRing.c
-    Source/Core/DtlStr.c
-    Source/Core/DtlVec.c
-    Source/Device/DtlDevice.c
-    Source/Drv/DtlDrv.c
-    Source/Drv/DtlDrvStatus.c
-    Source/Drv/DtlIoConfig.c
+    Source/Api/DtApi.c
+    Source/Api/DtResult.c
+    Source/Core/DtAlloc.c
+    Source/Core/DtBuf.c
+    Source/Core/DtRing.c
+    Source/Core/DtStr.c
+    Source/Core/DtVec.c
+    Source/Device/DtDevice.c
+    Source/Drv/DtDrv.c
+    Source/Drv/DtDrvStatus.c
+    Source/Drv/DtIoConfig.c
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
-    Source/Video/DtlVidStd.c)
+    Source/Video/DtVidStd.c)
 
 # The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
 # that it is unit-tested on every platform even though its only user is the Linux backend.

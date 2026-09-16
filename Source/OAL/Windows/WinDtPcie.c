@@ -6,9 +6,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes: DtlDrvAbi.h brings in windows.h and the device interface GUID.
-#include "Core/DtlAlloc.h"      // Allocation seam.
-#include "DtlDrvAbi.h"          // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
+// CDtapiLite includes: DtDrvAbi.h brings in windows.h and the device interface GUID.
+#include "Core/DtAlloc.h"       // Allocation seam.
+#include "DtDrvAbi.h"           // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
 #include "OAL/OsBackend.h"      // Backend interface being implemented.
 #include "OAL/OsIoctlOutcome.h" // Classifies a failed DeviceIoControl.
 
@@ -65,7 +65,7 @@ static HANDLE OpenInterface(int Index)
         goto Cleanup;
     }
 
-    Detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtlMalloc(Size);
+    Detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtMalloc(Size);
     if (Detail == NULL)
         goto Cleanup;
 
@@ -85,7 +85,7 @@ static HANDLE OpenInterface(int Index)
                          FILE_ATTRIBUTE_NORMAL, NULL);
 
 Cleanup:
-    DtlFree(Detail);
+    DtFree(Detail);
     SetupDiDestroyDeviceInfoList(DevInfo);
     return Handle;
 }
@@ -102,7 +102,7 @@ static void* WinOpen(int Index)
     if (Handle == INVALID_HANDLE_VALUE)
         return NULL;
 
-    Dev = (WinDevice*)DtlMalloc(sizeof(WinDevice));
+    Dev = (WinDevice*)DtMalloc(sizeof(WinDevice));
     if (Dev == NULL)
     {
         CloseHandle(Handle);
@@ -121,7 +121,7 @@ static void WinClose(void* State)
     WinDevice* Dev = (WinDevice*)State;
 
     CloseHandle(Dev->Handle);
-    DtlFree(Dev);
+    DtFree(Dev);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

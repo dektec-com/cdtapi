@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlAtomic.h *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAtomic.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Atomic reference counting, portable across MSVC and GCC/Clang
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_ATOMIC_H
-#define CDTAPILITE_DTL_ATOMIC_H
+#ifndef CDTAPILITE_DT_ATOMIC_H
+#define CDTAPILITE_DT_ATOMIC_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,28 +25,28 @@
 // Both are at least 32 bits on every platform this library targets.
 //
 
-typedef volatile long DtlAtomicInt;
+typedef volatile long DtAtomicInt;
 
 // Stores an initial value. Not atomic, and does not need to be: an object is initialised
 // before it becomes reachable from another thread.
-static inline void DtlAtomicInit(DtlAtomicInt* Value, long Initial)
+static inline void DtAtomicInit(DtAtomicInt* Value, long Initial)
 {
     *Value = Initial;
 }
 
 #if defined(_MSC_VER)
 
-static inline long DtlAtomicIncrement(DtlAtomicInt* Value)
+static inline long DtAtomicIncrement(DtAtomicInt* Value)
 {
     return _InterlockedIncrement(Value);
 }
 
-static inline long DtlAtomicDecrement(DtlAtomicInt* Value)
+static inline long DtAtomicDecrement(DtAtomicInt* Value)
 {
     return _InterlockedDecrement(Value);
 }
 
-static inline long DtlAtomicLoad(const DtlAtomicInt* Value)
+static inline long DtAtomicLoad(const DtAtomicInt* Value)
 {
     // A plain read of an aligned long is atomic on every architecture MSVC targets, and
     // volatile keeps the compiler from caching it.
@@ -55,21 +55,21 @@ static inline long DtlAtomicLoad(const DtlAtomicInt* Value)
 
 #else
 
-static inline long DtlAtomicIncrement(DtlAtomicInt* Value)
+static inline long DtAtomicIncrement(DtAtomicInt* Value)
 {
     return __atomic_add_fetch(Value, 1, __ATOMIC_ACQ_REL);
 }
 
-static inline long DtlAtomicDecrement(DtlAtomicInt* Value)
+static inline long DtAtomicDecrement(DtAtomicInt* Value)
 {
     return __atomic_sub_fetch(Value, 1, __ATOMIC_ACQ_REL);
 }
 
-static inline long DtlAtomicLoad(const DtlAtomicInt* Value)
+static inline long DtAtomicLoad(const DtAtomicInt* Value)
 {
     return __atomic_load_n(Value, __ATOMIC_ACQUIRE);
 }
 
 #endif
 
-#endif // CDTAPILITE_DTL_ATOMIC_H
+#endif // CDTAPILITE_DT_ATOMIC_H

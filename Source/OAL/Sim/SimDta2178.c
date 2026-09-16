@@ -11,7 +11,7 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes.
-#include "DtlDrvAbi.h"  // PROPERTY_VALUE_TYPE_ values.
+#include "DtDrvAbi.h"   // PROPERTY_VALUE_TYPE_ values.
 #include "SimDtPcie.h"  // Port counts.
 #include "SimDta2178.h" // Interface being implemented.
 

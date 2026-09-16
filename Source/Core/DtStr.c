@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtlStr.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtStr.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Growable string with a small-buffer optimisation - Implementation
 //
@@ -11,10 +11,10 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtlAlloc.h" // Allocation seam and growth policy.
-#include "DtlStr.h"   // Interface being implemented.
+#include "DtAlloc.h" // Allocation seam and growth policy.
+#include "DtStr.h"   // Interface being implemented.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Grow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -22,7 +22,7 @@
 // the first time that is not enough. Returns 0 on success and -1 when out of memory,
 // leaving Str untouched on failure.
 //
-static int Grow(DtlStr* Str, size_t Needed)
+static int Grow(DtStr* Str, size_t Needed)
 {
     size_t Required = Needed + 1;
     size_t NewCapacity;
@@ -32,12 +32,12 @@ static int Grow(DtlStr* Str, size_t Needed)
     if (Required < Needed)
         return -1;
 
-    // The failure branch here cannot be reached: DtlGrowCapacity only fails on a byte
+    // The failure branch here cannot be reached: DtGrowCapacity only fails on a byte
     // count that does not fit, and with an element size of one the character count is
     // the byte count, which Required has already been checked against. The call stays
     // because the growth policy is shared and its contract may widen.
-    if (DtlGrowCapacity(Str->Capacity, Required, 1, DTL_STR_SMALL_CAPACITY,
-                        &NewCapacity) != 0)
+    if (DtGrowCapacity(Str->Capacity, Required, 1, DT_STR_SMALL_CAPACITY, &NewCapacity) !=
+        0)
     {
         return -1;
     }
@@ -49,7 +49,7 @@ static int Grow(DtlStr* Str, size_t Needed)
     {
         // Moving out of the embedded buffer. realloc cannot be used on it, so the
         // contents including the terminator are copied across by hand.
-        NewData = (char*)DtlMalloc(NewCapacity);
+        NewData = (char*)DtMalloc(NewCapacity);
         if (NewData == NULL)
             return -1;
 
@@ -57,7 +57,7 @@ static int Grow(DtlStr* Str, size_t Needed)
     }
     else
     {
-        NewData = (char*)DtlRealloc(Str->Data, NewCapacity);
+        NewData = (char*)DtRealloc(Str->Data, NewCapacity);
         if (NewData == NULL)
             return -1;
     }
@@ -67,39 +67,39 @@ static int Grow(DtlStr* Str, size_t Needed)
     return 0;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtlStrInit(DtlStr* Str)
+void DtStrInit(DtStr* Str)
 {
     if (Str == NULL)
         return;
 
     Str->Data = Str->Small;
     Str->Length = 0;
-    Str->Capacity = DTL_STR_SMALL_CAPACITY;
+    Str->Capacity = DT_STR_SMALL_CAPACITY;
     Str->Small[0] = '\0';
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtlStrFree(DtlStr* Str)
+void DtStrFree(DtStr* Str)
 {
     if (Str == NULL)
         return;
 
     if (Str->Data != Str->Small)
-        DtlFree(Str->Data);
+        DtFree(Str->Data);
 
-    DtlStrInit(Str);
+    DtStrInit(Str);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Modifiers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Modifiers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrReserve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrReserve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtlStrReserve(DtlStr* Str, size_t Capacity)
+int DtStrReserve(DtStr* Str, size_t Capacity)
 {
     if (Str == NULL)
         return -1;
@@ -107,9 +107,9 @@ int DtlStrReserve(DtlStr* Str, size_t Capacity)
     return Grow(Str, Capacity);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrClear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrClear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtlStrClear(DtlStr* Str)
+void DtStrClear(DtStr* Str)
 {
     if (Str == NULL)
         return;
@@ -118,9 +118,9 @@ void DtlStrClear(DtlStr* Str)
     Str->Data[0] = '\0';
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrAppendLen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrAppendLen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtlStrAppendLen(DtlStr* Str, const char* Text, size_t Length)
+int DtStrAppendLen(DtStr* Str, const char* Text, size_t Length)
 {
     if (Str == NULL || Text == NULL)
         return -1;
@@ -144,29 +144,29 @@ int DtlStrAppendLen(DtlStr* Str, const char* Text, size_t Length)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- DtlStrAppend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrAppend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtlStrAppend(DtlStr* Str, const char* Text)
+int DtStrAppend(DtStr* Str, const char* Text)
 {
     if (Text == NULL)
         return -1;
 
-    return DtlStrAppendLen(Str, Text, strlen(Text));
+    return DtStrAppendLen(Str, Text, strlen(Text));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- DtlStrAppendChar -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrAppendChar -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtlStrAppendChar(DtlStr* Str, char Ch)
+int DtStrAppendChar(DtStr* Str, char Ch)
 {
-    return DtlStrAppendLen(Str, &Ch, 1);
+    return DtStrAppendLen(Str, &Ch, 1);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AppendVaList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AppendVaList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // vsnprintf is called twice: once to measure and once to write. The argument list is
 // consumed by the first call, so the caller passes a copy for the second.
 //
-static int AppendVaList(DtlStr* Str, const char* Format, va_list Measure, va_list Write)
+static int AppendVaList(DtStr* Str, const char* Format, va_list Measure, va_list Write)
 {
     int Needed;
 
@@ -184,9 +184,9 @@ static int AppendVaList(DtlStr* Str, const char* Format, va_list Measure, va_lis
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrAppendFormat -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrAppendFormat -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtlStrAppendFormat(DtlStr* Str, const char* Format, ...)
+int DtStrAppendFormat(DtStr* Str, const char* Format, ...)
 {
     va_list Measure;
     va_list Write;
@@ -204,9 +204,9 @@ int DtlStrAppendFormat(DtlStr* Str, const char* Format, ...)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrSetFormat -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrSetFormat -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtlStrSetFormat(DtlStr* Str, const char* Format, ...)
+int DtStrSetFormat(DtStr* Str, const char* Format, ...)
 {
     va_list Measure;
     va_list Write;
@@ -215,7 +215,7 @@ int DtlStrSetFormat(DtlStr* Str, const char* Format, ...)
     if (Str == NULL || Format == NULL)
         return -1;
 
-    DtlStrClear(Str);
+    DtStrClear(Str);
 
     va_start(Measure, Format);
     va_start(Write, Format);
@@ -226,25 +226,25 @@ int DtlStrSetFormat(DtlStr* Str, const char* Format, ...)
     return Result;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Accessors +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Accessors +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrCStr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrCStr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const char* DtlStrCStr(const DtlStr* Str)
+const char* DtStrCStr(const DtStr* Str)
 {
     return Str != NULL ? Str->Data : NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrLength -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrLength -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtlStrLength(const DtlStr* Str)
+size_t DtStrLength(const DtStr* Str)
 {
     return Str != NULL ? Str->Length : 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlStrIsSmall -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtStrIsSmall -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtlStrIsSmall(const DtlStr* Str)
+int DtStrIsSmall(const DtStr* Str)
 {
     return Str != NULL && Str->Data == Str->Small;
 }

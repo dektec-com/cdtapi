@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestBuf.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestBuf.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Unit tests for the reference-counted buffer
 //
@@ -10,9 +10,9 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation fault injection.
-#include "Core/DtlBuf.h"   // Interface under test.
-#include "DtlTest.h"       // Test framework.
+#include "Core/DtAlloc.h" // Allocation fault injection.
+#include "Core/DtBuf.h"   // Interface under test.
+#include "DtTest.h"       // Test framework.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test double +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -43,167 +43,167 @@ static void ResetRecord(void)
     memset(&g_Record, 0, sizeof(g_Record));
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(AllocGivesOneReference)
+DT_TEST(AllocGivesOneReference)
 {
-    DtlBuf* Buf = DtlBufAlloc(64);
+    DtBuf* Buf = DtBufAlloc(64);
 
-    DTL_ASSERT(Buf != NULL);
-    DTL_ASSERT(DtlBufData(Buf) != NULL);
-    DTL_ASSERT_EQ(DtlBufSize(Buf), 64);
-    DTL_ASSERT_EQ(DtlBufRefCount(Buf), 1);
+    DT_ASSERT(Buf != NULL);
+    DT_ASSERT(DtBufData(Buf) != NULL);
+    DT_ASSERT_EQ(DtBufSize(Buf), 64);
+    DT_ASSERT_EQ(DtBufRefCount(Buf), 1);
 
-    DtlBufUnref(&Buf);
-    DTL_ASSERT(Buf == NULL);
+    DtBufUnref(&Buf);
+    DT_ASSERT(Buf == NULL);
 }
 
-DTL_TEST(AllocRejectsZeroSize)
+DT_TEST(AllocRejectsZeroSize)
 {
-    DTL_ASSERT(DtlBufAlloc(0) == NULL);
+    DT_ASSERT(DtBufAlloc(0) == NULL);
 }
 
-DTL_TEST(AllocatedBytesAreWritable)
+DT_TEST(AllocatedBytesAreWritable)
 {
-    DtlBuf* Buf = DtlBufAlloc(16);
+    DtBuf* Buf = DtBufAlloc(16);
     uint8_t* Data;
 
-    DTL_ASSERT(Buf != NULL);
-    Data = DtlBufData(Buf);
+    DT_ASSERT(Buf != NULL);
+    Data = DtBufData(Buf);
     memset(Data, 0xA5, 16);
-    DTL_ASSERT_EQ(Data[0], 0xA5);
-    DTL_ASSERT_EQ(Data[15], 0xA5);
+    DT_ASSERT_EQ(Data[0], 0xA5);
+    DT_ASSERT_EQ(Data[15], 0xA5);
 
-    DtlBufUnref(&Buf);
+    DtBufUnref(&Buf);
 }
 
-DTL_TEST(RefCountRisesAndFalls)
+DT_TEST(RefCountRisesAndFalls)
 {
-    DtlBuf* Buf = DtlBufAlloc(8);
-    DtlBuf* Second;
+    DtBuf* Buf = DtBufAlloc(8);
+    DtBuf* Second;
 
-    DTL_ASSERT(Buf != NULL);
+    DT_ASSERT(Buf != NULL);
 
-    Second = DtlBufRef(Buf);
-    DTL_ASSERT(Second == Buf);
-    DTL_ASSERT_EQ(DtlBufRefCount(Buf), 2);
+    Second = DtBufRef(Buf);
+    DT_ASSERT(Second == Buf);
+    DT_ASSERT_EQ(DtBufRefCount(Buf), 2);
 
-    DtlBufUnref(&Second);
-    DTL_ASSERT(Second == NULL);
-    DTL_ASSERT_EQ(DtlBufRefCount(Buf), 1);
+    DtBufUnref(&Second);
+    DT_ASSERT(Second == NULL);
+    DT_ASSERT_EQ(DtBufRefCount(Buf), 1);
 
-    DtlBufUnref(&Buf);
+    DtBufUnref(&Buf);
 }
 
 // The whole point of the type: the bytes stay alive until the last holder lets go, and
 // the release happens exactly once.
-DTL_TEST(ReleaseRunsOnceAtLastReference)
+DT_TEST(ReleaseRunsOnceAtLastReference)
 {
     uint8_t Bytes[32];
     int Marker = 7;
-    DtlBuf* Buf;
-    DtlBuf* Extra;
+    DtBuf* Buf;
+    DtBuf* Extra;
 
     ResetRecord();
-    Buf = DtlBufWrap(Bytes, sizeof(Bytes), RecordingRelease, &Marker);
-    DTL_ASSERT(Buf != NULL);
+    Buf = DtBufWrap(Bytes, sizeof(Bytes), RecordingRelease, &Marker);
+    DT_ASSERT(Buf != NULL);
 
-    Extra = DtlBufRef(Buf);
-    DtlBufUnref(&Buf);
-    DTL_ASSERT_EQ(g_Record.Calls, 0);
+    Extra = DtBufRef(Buf);
+    DtBufUnref(&Buf);
+    DT_ASSERT_EQ(g_Record.Calls, 0);
 
-    DtlBufUnref(&Extra);
-    DTL_ASSERT_EQ(g_Record.Calls, 1);
-    DTL_ASSERT(g_Record.Data == Bytes);
-    DTL_ASSERT_EQ(g_Record.Size, sizeof(Bytes));
-    DTL_ASSERT(g_Record.Opaque == &Marker);
+    DtBufUnref(&Extra);
+    DT_ASSERT_EQ(g_Record.Calls, 1);
+    DT_ASSERT(g_Record.Data == Bytes);
+    DT_ASSERT_EQ(g_Record.Size, sizeof(Bytes));
+    DT_ASSERT(g_Record.Opaque == &Marker);
 }
 
-DTL_TEST(WrapAcceptsNoReleaseFunction)
+DT_TEST(WrapAcceptsNoReleaseFunction)
 {
     uint8_t Bytes[4] = {1, 2, 3, 4};
-    DtlBuf* Buf = DtlBufWrap(Bytes, sizeof(Bytes), NULL, NULL);
+    DtBuf* Buf = DtBufWrap(Bytes, sizeof(Bytes), NULL, NULL);
 
-    DTL_ASSERT(Buf != NULL);
-    DTL_ASSERT(DtlBufData(Buf) == Bytes);
+    DT_ASSERT(Buf != NULL);
+    DT_ASSERT(DtBufData(Buf) == Bytes);
 
-    DtlBufUnref(&Buf);
-    DTL_ASSERT_EQ(Bytes[0], 1);
+    DtBufUnref(&Buf);
+    DT_ASSERT_EQ(Bytes[0], 1);
 }
 
-DTL_TEST(WrapRejectsBadArguments)
+DT_TEST(WrapRejectsBadArguments)
 {
     uint8_t Bytes[4];
 
-    DTL_ASSERT(DtlBufWrap(NULL, 4, NULL, NULL) == NULL);
-    DTL_ASSERT(DtlBufWrap(Bytes, 0, NULL, NULL) == NULL);
+    DT_ASSERT(DtBufWrap(NULL, 4, NULL, NULL) == NULL);
+    DT_ASSERT(DtBufWrap(Bytes, 0, NULL, NULL) == NULL);
 }
 
-DTL_TEST(NullIsAcceptedEverywhere)
+DT_TEST(NullIsAcceptedEverywhere)
 {
-    DtlBuf* Null = NULL;
+    DtBuf* Null = NULL;
 
-    DTL_ASSERT(DtlBufRef(NULL) == NULL);
-    DTL_ASSERT(DtlBufData(NULL) == NULL);
-    DTL_ASSERT_EQ(DtlBufSize(NULL), 0);
-    DTL_ASSERT_EQ(DtlBufRefCount(NULL), 0);
+    DT_ASSERT(DtBufRef(NULL) == NULL);
+    DT_ASSERT(DtBufData(NULL) == NULL);
+    DT_ASSERT_EQ(DtBufSize(NULL), 0);
+    DT_ASSERT_EQ(DtBufRefCount(NULL), 0);
 
     // Neither of these may do anything, and neither may crash.
-    DtlBufUnref(NULL);
-    DtlBufUnref(&Null);
-    DTL_ASSERT(Null == NULL);
+    DtBufUnref(NULL);
+    DtBufUnref(&Null);
+    DT_ASSERT(Null == NULL);
 }
 
-DTL_TEST(ManyReferencesBalance)
+DT_TEST(ManyReferencesBalance)
 {
-    DtlBuf* Buf = DtlBufAlloc(8);
-    DtlBuf* Held[16];
+    DtBuf* Buf = DtBufAlloc(8);
+    DtBuf* Held[16];
     int i;
 
-    DTL_ASSERT(Buf != NULL);
+    DT_ASSERT(Buf != NULL);
 
     for (i = 0; i < 16; i++)
-        Held[i] = DtlBufRef(Buf);
+        Held[i] = DtBufRef(Buf);
 
-    DTL_ASSERT_EQ(DtlBufRefCount(Buf), 17);
+    DT_ASSERT_EQ(DtBufRefCount(Buf), 17);
 
     for (i = 0; i < 16; i++)
-        DtlBufUnref(&Held[i]);
+        DtBufUnref(&Held[i]);
 
-    DTL_ASSERT_EQ(DtlBufRefCount(Buf), 1);
-    DtlBufUnref(&Buf);
+    DT_ASSERT_EQ(DtBufRefCount(Buf), 1);
+    DtBufUnref(&Buf);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// DtlBufAlloc makes two allocations: the bytes and the handle. If the second one fails
+// DtBufAlloc makes two allocations: the bytes and the handle. If the second one fails
 // the first has to be given back, or every failed allocation leaks the payload.
-DTL_TEST(AllocFailureFreesTheBytes)
+DT_TEST(AllocFailureFreesTheBytes)
 {
-    DtlAllocResetCount();
+    DtAllocResetCount();
 
-    DtlAllocFailAfter(0);
-    DTL_ASSERT(DtlBufAlloc(64) == NULL);
+    DtAllocFailAfter(0);
+    DT_ASSERT(DtBufAlloc(64) == NULL);
 
-    DtlAllocFailAfter(1);
-    DTL_ASSERT(DtlBufAlloc(64) == NULL);
+    DtAllocFailAfter(1);
+    DT_ASSERT(DtBufAlloc(64) == NULL);
 
-    DtlAllocResetCount();
+    DtAllocResetCount();
 }
 
-DTL_TEST(WrapFailureIsReported)
+DT_TEST(WrapFailureIsReported)
 {
     uint8_t Bytes[8];
 
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
-    DTL_ASSERT(DtlBufWrap(Bytes, sizeof(Bytes), NULL, NULL) == NULL);
-    DtlAllocResetCount();
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
+    DT_ASSERT(DtBufWrap(Bytes, sizeof(Bytes), NULL, NULL) == NULL);
+    DtAllocResetCount();
 }
 
-DTL_TEST_MAIN("Buf", DTL_RUN(AllocGivesOneReference), DTL_RUN(AllocRejectsZeroSize),
-              DTL_RUN(AllocatedBytesAreWritable), DTL_RUN(RefCountRisesAndFalls),
-              DTL_RUN(ReleaseRunsOnceAtLastReference),
-              DTL_RUN(WrapAcceptsNoReleaseFunction), DTL_RUN(WrapRejectsBadArguments),
-              DTL_RUN(NullIsAcceptedEverywhere), DTL_RUN(ManyReferencesBalance),
-              DTL_RUN(AllocFailureFreesTheBytes), DTL_RUN(WrapFailureIsReported))
+DT_TEST_MAIN("Buf", DT_RUN(AllocGivesOneReference), DT_RUN(AllocRejectsZeroSize),
+             DT_RUN(AllocatedBytesAreWritable), DT_RUN(RefCountRisesAndFalls),
+             DT_RUN(ReleaseRunsOnceAtLastReference), DT_RUN(WrapAcceptsNoReleaseFunction),
+             DT_RUN(WrapRejectsBadArguments), DT_RUN(NullIsAcceptedEverywhere),
+             DT_RUN(ManyReferencesBalance), DT_RUN(AllocFailureFreesTheBytes),
+             DT_RUN(WrapFailureIsReported))

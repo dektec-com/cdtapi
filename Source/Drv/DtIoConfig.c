@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtlIoConfig.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtIoConfig.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Translation between I/O configuration codes and driver names
 //
@@ -11,8 +11,8 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "CDtapiLite.h"  // DTAPI_IOCONFIG_ codes and result codes.
-#include "DtlIoConfig.h" // Interface being implemented.
+#include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes and result codes.
+#include "DtIoConfig.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Table +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -29,7 +29,7 @@ typedef struct IoConfigEntry
 static const IoConfigEntry g_IoConfigs[] = {
 #define X(Name, Kinds, Parent1, Parent2)                                                 \
     {#Name, DTAPI_IOCONFIG_##Name, Kinds, {Parent1, Parent2}},
-#include "Tables/DtlIoConfigList.inc"
+#include "Tables/DtIoConfigList.inc"
 #undef X
 };
 
@@ -37,19 +37,19 @@ static const IoConfigEntry g_IoConfigs[] = {
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lookups +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlIoConfigCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtlIoConfigCount(void)
+int DtIoConfigCount(void)
 {
     return IO_CONFIG_COUNT;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlIoConfigGetCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigGetCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A linear search. There are about a hundred entries and configuration is set rarely, so
 // a hash or a sorted index would add code without making anything measurably faster.
 //
-unsigned int DtlIoConfigGetCode(const char* Name, int* Code)
+unsigned int DtIoConfigGetCode(const char* Name, int* Code)
 {
     int i;
 
@@ -76,12 +76,12 @@ unsigned int DtlIoConfigGetCode(const char* Name, int* Code)
     return DTAPI_E_INVALID_ARG;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlIoConfigGetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigGetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The table is in numeric order, so a code indexes it directly. The unit test that checks
 // every code appears exactly once is what makes that safe.
 //
-unsigned int DtlIoConfigGetName(int Code, char* Name, size_t Size)
+unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size)
 {
     const char* Found;
     size_t Length;
@@ -124,7 +124,7 @@ static bool IsKind(int Code, int Kinds)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasParent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True when Code may appear under Parent. DTL_IOCFG_ANY_BOOLIO matches the boolean I/O
+// True when Code may appear under Parent. DT_IOCFG_ANY_BOOLIO matches the boolean I/O
 // capabilities themselves, not TRUE and FALSE, which also carry the boolean I/O kind.
 //
 static bool HasParent(int Code, int Parent)
@@ -137,8 +137,8 @@ static bool HasParent(int Code, int Parent)
 
         if (Slot == Parent)
             return true;
-        if (Slot == DTL_IOCFG_ANY_BOOLIO && IsKind(Parent, DTL_IOCFG_BOOLIO) &&
-            !IsKind(Parent, DTL_IOCFG_SUBVALUE))
+        if (Slot == DT_IOCFG_ANY_BOOLIO && IsKind(Parent, DT_IOCFG_BOOLIO) &&
+            !IsKind(Parent, DT_IOCFG_SUBVALUE))
         {
             return true;
         }
@@ -160,24 +160,24 @@ static bool HasChildren(int Code)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlIoConfigIsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigIsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtlIoConfigIsValid(int Group, int Value, int SubValue)
+unsigned int DtIoConfigIsValid(int Group, int Value, int SubValue)
 {
-    if (!IsCode(Group) || !IsKind(Group, DTL_IOCFG_GROUP | DTL_IOCFG_BOOLIO))
+    if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
         return DTAPI_E_INVALID_ARG;
 
-    if (!IsCode(Value) || !IsKind(Value, DTL_IOCFG_VALUE) || !HasParent(Value, Group))
+    if (!IsCode(Value) || !IsKind(Value, DT_IOCFG_VALUE) || !HasParent(Value, Group))
         return DTAPI_E_INVALID_ARG;
 
     if (SubValue == -1)
         return HasChildren(Value) ? DTAPI_E_INVALID_ARG : DTAPI_OK;
 
     // A boolean I/O capability takes TRUE or FALSE and nothing below it.
-    if (IsKind(Group, DTL_IOCFG_BOOLIO))
+    if (IsKind(Group, DT_IOCFG_BOOLIO))
         return DTAPI_E_INVALID_ARG;
 
-    if (!IsCode(SubValue) || !IsKind(SubValue, DTL_IOCFG_SUBVALUE) ||
+    if (!IsCode(SubValue) || !IsKind(SubValue, DT_IOCFG_SUBVALUE) ||
         !HasParent(SubValue, Value))
     {
         return DTAPI_E_INVALID_ARG;

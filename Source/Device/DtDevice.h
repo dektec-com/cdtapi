@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDevice.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDevice.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Device layer: the object behind DtDevice, and its hardware functions
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_DEVICE_H
-#define CDTAPILITE_DTL_DEVICE_H
+#ifndef CDTAPILITE_DT_DEVICE_H
+#define CDTAPILITE_DT_DEVICE_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -15,7 +15,7 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DtDevice and DtHwFuncDesc.
-#include "DtlDrv.h"                 // Driver commands and DtlDeviceInfo.
+#include "DtDrv.h"                  // Driver commands and DtDeviceInfo.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -31,37 +31,37 @@
 //
 
 // The capabilities of a port that a hardware function description reports.
-#define DTL_CAP_12GSDI 0x01
-#define DTL_CAP_3GSDI 0x02
-#define DTL_CAP_6GSDI 0x04
-#define DTL_CAP_HDSDI 0x08
-#define DTL_CAP_SDI 0x10
-#define DTL_CAP_AVFIFO 0x20
-#define DTL_CAP_INPUT 0x40
-#define DTL_CAP_OUTPUT 0x80
+#define DT_CAP_12GSDI 0x01
+#define DT_CAP_3GSDI 0x02
+#define DT_CAP_6GSDI 0x04
+#define DT_CAP_HDSDI 0x08
+#define DT_CAP_SDI 0x10
+#define DT_CAP_AVFIFO 0x20
+#define DT_CAP_INPUT 0x40
+#define DT_CAP_OUTPUT 0x80
 
 // Any of the SDI rates.
-#define DTL_CAP_ANY_SDI                                                                  \
-    (DTL_CAP_12GSDI | DTL_CAP_3GSDI | DTL_CAP_6GSDI | DTL_CAP_HDSDI | DTL_CAP_SDI)
+#define DT_CAP_ANY_SDI                                                                   \
+    (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
 
 struct DtDeviceC
 {
     OsDrv* Drv; // NULL while detached
-    DtlDeviceInfo Info;
+    DtDeviceInfo Info;
     int NumPorts;       // All ports, PORT_COUNT
     int NumPublicPorts; // The ports an application sees, MAIN_PORT_COUNT
-    uint32_t* PortCaps; // DTL_CAP_ flags per public port, NumPublicPorts long
+    uint32_t* PortCaps; // DT_CAP_ flags per public port, NumPublicPorts long
 };
 
 // Attaches Device, which must be detached, to the device the driver numbers Index, when
 // MatchSerial is false or the device's serial number is Serial. Returns DTAPI_OK,
 // DTAPI_E_NO_SUCH_DEVICE when there is no such device or it cannot be read,
 // DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM.
-unsigned int DtlDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
-                                  int64_t Serial);
+unsigned int DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
+                                 int64_t Serial);
 
 // Releases what an attached Device holds and leaves it detached.
-void DtlDeviceRelease(DtDevice* Device);
+void DtDeviceRelease(DtDevice* Device);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -70,11 +70,11 @@ void DtlDeviceRelease(DtDevice* Device);
 // port number, as "DTA-2178 port 1" or "DTA-2172A port 3". For a DTA-2178 with sub-type
 // 1, DTAPI writes the full name after the type number: "DTA-2178DTA-2178-ASI port 1".
 // Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf, when Size cannot hold it.
-unsigned int DtlDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
-                               size_t Size);
+unsigned int DtDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
+                              size_t Size);
 
 // Fills Desc for a port of an attached Device, numbered from 1, as CDTAPI converts
 // DTAPI's hardware function descriptor.
-void DtlDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
+void DtDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
-#endif // CDTAPILITE_DTL_DEVICE_H
+#endif // CDTAPILITE_DT_DEVICE_H

@@ -20,7 +20,7 @@ which states the house style in machine-readable form.
 ### File header
 
 ```c
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtlDevice.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtDevice.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Device management - Implementation
 //

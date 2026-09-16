@@ -14,8 +14,8 @@
 #include <windows.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation seam.
-#include "OAL/OsThread.h"  // Interface being implemented.
+#include "Core/DtAlloc.h" // Allocation seam.
+#include "OAL/OsThread.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Thread +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -49,7 +49,7 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
     if (Func == NULL)
         return NULL;
 
-    Thread = (OsThread*)DtlMalloc(sizeof(OsThread));
+    Thread = (OsThread*)DtMalloc(sizeof(OsThread));
     if (Thread == NULL)
         return NULL;
 
@@ -59,7 +59,7 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
     Handle = _beginthreadex(NULL, 0, ThreadEntry, Thread, 0, NULL);
     if (Handle == 0)
     {
-        DtlFree(Thread);
+        DtFree(Thread);
         return NULL;
     }
 
@@ -76,7 +76,7 @@ void OsThreadJoin(OsThread* Thread)
 
     WaitForSingleObject(Thread->Handle, INFINITE);
     CloseHandle(Thread->Handle);
-    DtlFree(Thread);
+    DtFree(Thread);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadRaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -101,7 +101,7 @@ struct OsEvent
 //
 OsEvent* OsEventCreate(void)
 {
-    OsEvent* Event = (OsEvent*)DtlMalloc(sizeof(OsEvent));
+    OsEvent* Event = (OsEvent*)DtMalloc(sizeof(OsEvent));
 
     if (Event == NULL)
         return NULL;
@@ -110,7 +110,7 @@ OsEvent* OsEventCreate(void)
     Event->Handle = CreateEventA(NULL, FALSE, FALSE, NULL);
     if (Event->Handle == NULL)
     {
-        DtlFree(Event);
+        DtFree(Event);
         return NULL;
     }
 
@@ -125,7 +125,7 @@ void OsEventDestroy(OsEvent* Event)
         return;
 
     CloseHandle(Event->Handle);
-    DtlFree(Event);
+    DtFree(Event);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventSet -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -172,7 +172,7 @@ struct OsMutex
 //
 OsMutex* OsMutexCreate(void)
 {
-    OsMutex* Mutex = (OsMutex*)DtlMalloc(sizeof(OsMutex));
+    OsMutex* Mutex = (OsMutex*)DtMalloc(sizeof(OsMutex));
 
     if (Mutex != NULL)
         InitializeSRWLock(&Mutex->Lock);
@@ -184,7 +184,7 @@ OsMutex* OsMutexCreate(void)
 //
 void OsMutexDestroy(OsMutex* Mutex)
 {
-    DtlFree(Mutex);
+    DtFree(Mutex);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexLock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

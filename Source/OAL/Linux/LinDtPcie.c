@@ -18,8 +18,8 @@
 #include <unistd.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h"      // Allocation seam.
-#include "DtlDrvAbi.h"          // Driver ABI; pulls in sys/ioctl.h.
+#include "Core/DtAlloc.h"       // Allocation seam.
+#include "DtDrvAbi.h"           // Driver ABI; pulls in sys/ioctl.h.
 #include "LinIoctlBuffer.h"     // Layout of the shared in/out buffer.
 #include "OAL/OsBackend.h"      // Backend interface being implemented.
 #include "OAL/OsIoctlOutcome.h" // Classifies the return value of ioctl.
@@ -55,7 +55,7 @@ static void* LinOpen(int Index)
     if (Fd < 0)
         return NULL;
 
-    Dev = (LinDevice*)DtlMalloc(sizeof(LinDevice));
+    Dev = (LinDevice*)DtMalloc(sizeof(LinDevice));
     if (Dev == NULL)
     {
         close(Fd);
@@ -74,7 +74,7 @@ static void LinClose(void* State)
     LinDevice* Dev = (LinDevice*)State;
 
     close(Dev->Fd);
-    DtlFree(Dev);
+    DtFree(Dev);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -100,7 +100,7 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
 
     if (BufSize > sizeof(Stack))
     {
-        Buf = (uint8_t*)DtlMalloc(BufSize);
+        Buf = (uint8_t*)DtMalloc(BufSize);
         if (Buf == NULL)
         {
             Dev->LastError = ENOMEM;
@@ -136,7 +136,7 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
 
 Cleanup:
     if (Buf != Stack)
-        DtlFree(Buf);
+        DtFree(Buf);
 
     return Result;
 }

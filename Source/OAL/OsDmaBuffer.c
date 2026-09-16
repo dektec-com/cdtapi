@@ -10,8 +10,8 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation seam.
-#include "OsDmaBuffer.h"   // Interface being implemented.
+#include "Core/DtAlloc.h" // Allocation seam.
+#include "OsDmaBuffer.h"  // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DMA buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -64,7 +64,7 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
     // most SIZE_MAX.
     Total = Rounded + Page - 1;
 
-    Block = (uint8_t*)DtlMalloc(Total);
+    Block = (uint8_t*)DtMalloc(Total);
     if (Block == NULL)
         return -1;
 
@@ -77,7 +77,7 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
     // Only madvise on Linux can fail, so on Windows the tests do not reach this branch.
     if (OsPlatformDontFork(Data, Rounded) != 0)
     {
-        DtlFree(Block);
+        DtFree(Block);
         return -1;
     }
 
@@ -95,7 +95,7 @@ void OsDmaBufferFree(OsDmaBuffer* Buf)
         return;
 
     OsPlatformDoFork(Buf->Data, Buf->Size);
-    DtlFree(Buf->Block);
+    DtFree(Buf->Block);
     memset(Buf, 0, sizeof(*Buf));
 }
 

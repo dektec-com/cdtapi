@@ -10,7 +10,7 @@
 # is a group, a boolean I/O group, a value or a sub-value, and which codes sit one level
 # below it. This script repeats that derivation (CapDefStore.cpp: Load, AddTrueAndFalse,
 # EstablishHierarchy, EnumerateDefines, AddGrp, AddCap) and prints the entries of
-# Source/Tables/DtlIoConfigList.inc, with each code's parents instead of its children.
+# Source/Tables/DtIoConfigList.inc, with each code's parents instead of its children.
 #
 # It is run by hand when DekTec adds I/O configuration codes; the build does not need the
 # XML. The output is checked against the numbering already in the list, so a code that
@@ -139,7 +139,7 @@ def Kinds(Code):
     for Key, Flag in (("Group", "GROUP"), ("BoolIo", "BOOLIO"), ("Value", "VALUE"),
                       ("SubValue", "SUBVALUE")):
         if Code[Key]:
-            Flags.append("DTL_IOCFG_" + Flag)
+            Flags.append("DT_IOCFG_" + Flag)
     return " | ".join(Flags) if Flags else "0"
 
 
@@ -206,12 +206,12 @@ def Main():
     for C in Codes:
         P = Parents[C["Name"]]
         if P and sorted(P) == sorted(BoolIoCaps):
-            P = ["DTL_IOCFG_ANY_BOOLIO"]
+            P = ["DT_IOCFG_ANY_BOOLIO"]
         else:
             P = ["DTAPI_IOCONFIG_" + Name for Name in P]
         if len(P) > 2:
             sys.exit(f"{C['Name']} has {len(P)} parents; the list holds two")
-        P = P + ["DTL_IOCFG_NONE"] * (2 - len(P))
+        P = P + ["DT_IOCFG_NONE"] * (2 - len(P))
         Line = f"X({C['Name']}, {Kinds(C)}, {P[0]}, {P[1]})"
         if len(Line) > 90:
             Line = f"X({C['Name']},\n  {Kinds(C)},\n  {P[0]}, {P[1]})"

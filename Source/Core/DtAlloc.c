@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlAlloc.c *#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAlloc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Allocation seam and the shared container growth policy - Implementation
 //
@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 // CDtapiLite includes
-#include "DtlAlloc.h" // Interface being implemented.
+#include "DtAlloc.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Fault injection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -23,30 +23,30 @@ static long g_AllocCount = 0;
 static long g_FailAfter = -1;
 static long g_Live = 0;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtlAllocFailAfter(long Count)
+void DtAllocFailAfter(long Count)
 {
     g_FailAfter = Count;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-long DtlAllocCount(void)
+long DtAllocCount(void)
 {
     return g_AllocCount;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-long DtlAllocLive(void)
+long DtAllocLive(void)
 {
     return g_Live;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlAllocResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtlAllocResetCount(void)
+void DtAllocResetCount(void)
 {
     g_AllocCount = 0;
     g_FailAfter = -1;
@@ -76,9 +76,9 @@ static int ShouldFail(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Allocation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlMalloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtMalloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void* DtlMalloc(size_t Size)
+void* DtMalloc(size_t Size)
 {
     void* Block;
 
@@ -91,12 +91,12 @@ void* DtlMalloc(size_t Size)
     return Block;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlRealloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRealloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Only reallocating NULL creates a block; growing an existing one does not add to the
 // live count, and a failure leaves the original block, and the count, as they were.
 //
-void* DtlRealloc(void* Ptr, size_t Size)
+void* DtRealloc(void* Ptr, size_t Size)
 {
     void* Block;
 
@@ -109,21 +109,21 @@ void* DtlRealloc(void* Ptr, size_t Size)
     return Block;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtlFree(void* Ptr)
+void DtFree(void* Ptr)
 {
     if (Ptr != NULL)
         g_Live--;
     free(Ptr);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlGrowCapacity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtGrowCapacity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtlGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
-                    size_t* Out)
+int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
+                   size_t* Out)
 {
     size_t Capacity;
 

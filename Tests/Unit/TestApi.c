@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestApi.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestApi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Unit tests for the version entry point and the build wiring
 //
@@ -8,26 +8,25 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h" // Public API.
-#include "DtlTest.h"    // Test framework.
+#include "DtTest.h"     // Test framework.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(VersionStringIsPresent)
+DT_TEST(VersionStringIsPresent)
 {
     const char* Version = DtapiLiteGetVersion();
-    DTL_ASSERT(Version != NULL);
-    DTL_ASSERT(Version[0] != '\0');
+    DT_ASSERT(Version != NULL);
+    DT_ASSERT(Version[0] != '\0');
 }
 
 // The string macro and the numeric macros are generated from the same CMake project
 // version. If the template ever drifts, they stop agreeing.
-DTL_TEST(VersionMacrosAgreeWithString)
+DT_TEST(VersionMacrosAgreeWithString)
 {
     char Expected[32];
     snprintf(Expected, sizeof(Expected), "%d.%d.%d", CDTAPILITE_VERSION_MAJOR,
              CDTAPILITE_VERSION_MINOR, CDTAPILITE_VERSION_PATCH);
-    DTL_ASSERT_STR(DtapiLiteGetVersion(), Expected);
+    DT_ASSERT_STR(DtapiLiteGetVersion(), Expected);
 }
 
-DTL_TEST_MAIN("Api", DTL_RUN(VersionStringIsPresent),
-              DTL_RUN(VersionMacrosAgreeWithString))
+DT_TEST_MAIN("Api", DT_RUN(VersionStringIsPresent), DT_RUN(VersionMacrosAgreeWithString))

@@ -7,7 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h"      // Allocation seam.
+#include "Core/DtAlloc.h"       // Allocation seam.
 #include "OsAbstractionLayer.h" // Interface being implemented.
 #include "OsBackend.h"          // Backend interface.
 
@@ -31,7 +31,7 @@ OsDrv* OsDrvOpen(int Index)
     void* State;
     OsDrv* Drv;
 
-    if (Index < 0 || Index >= DTL_MAX_DEVICES)
+    if (Index < 0 || Index >= DT_MAX_DEVICES)
         return NULL;
 
     // The emulator is checked before real hardware is enumerated, so that an application
@@ -47,7 +47,7 @@ OsDrv* OsDrvOpen(int Index)
     if (State == NULL)
         return NULL;
 
-    Drv = (OsDrv*)DtlMalloc(sizeof(OsDrv));
+    Drv = (OsDrv*)DtMalloc(sizeof(OsDrv));
     if (Drv == NULL)
     {
         Backend->Close(State);
@@ -68,7 +68,7 @@ void OsDrvClose(OsDrv* Drv)
         return;
 
     Drv->Backend->Close(Drv->State);
-    DtlFree(Drv);
+    DtFree(Drv);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIsEmulated -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

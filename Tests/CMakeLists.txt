@@ -9,7 +9,7 @@
 function(cdtapilite_add_test SuiteName SourceFile)
     set(TargetName "test_${SuiteName}")
     get_filename_component(SourcePath "${SourceFile}" ABSOLUTE)
-    set(FrameworkHeader "${CMAKE_CURRENT_SOURCE_DIR}/DtlTest.h")
+    set(FrameworkHeader "${CMAKE_CURRENT_SOURCE_DIR}/DtTest.h")
     add_executable(${TargetName} "${SourcePath}" "${FrameworkHeader}")
 
     # The same directory-based filters as the library. A generated source lives in the

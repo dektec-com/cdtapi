@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlTest.h *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtTest.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Minimal assertion and test-runner header used by every test
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_TEST_H
-#define CDTAPILITE_DTL_TEST_H
+#ifndef CDTAPILITE_DT_TEST_H
+#define CDTAPILITE_DT_TEST_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -19,13 +19,13 @@
     #include <crtdbg.h>
 #endif
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Test framework +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test framework +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // CDtapiLite has no dependencies, and a unit-test framework is not worth making an
 // exception for: gtest and Catch2 would each pull in C++ and a package manager. This
 // header is the whole framework.
 //
-// A test file declares cases with DTL_TEST and lists them in DTL_TEST_MAIN. The list is
+// A test file declares cases with DT_TEST and lists them in DT_TEST_MAIN. The list is
 // written out rather than collected automatically, because the usual trick for that is
 // a constructor attribute, which MSVC does not have. Listing the cases costs one line
 // each and works on every compiler.
@@ -36,72 +36,72 @@
 //
 // Usage:
 //
-//     DTL_TEST(VersionIsNotEmpty)
+//     DT_TEST(VersionIsNotEmpty)
 //     {
-//         DTL_ASSERT(DtapiLiteGetVersion()[0] != '\0');
+//         DT_ASSERT(DtapiLiteGetVersion()[0] != '\0');
 //     }
 //
-//     DTL_TEST_MAIN("Api", DTL_RUN(VersionIsNotEmpty))
+//     DT_TEST_MAIN("Api", DT_RUN(VersionIsNotEmpty))
 //
 
 // Declares one test case. The body follows this macro.
-#define DTL_TEST(Name) static void Name(int* DtlFailures)
+#define DT_TEST(Name) static void Name(int* DtFailures)
 
-#define DTL_FAIL(...)                                                                    \
+#define DT_FAIL(...)                                                                     \
     do                                                                                   \
     {                                                                                    \
         printf("    FAIL %s:%d: ", __FILE__, __LINE__);                                  \
         printf(__VA_ARGS__);                                                             \
         printf("\n");                                                                    \
-        (*DtlFailures)++;                                                                \
+        (*DtFailures)++;                                                                 \
         return;                                                                          \
     } while (0)
 
-#define DTL_ASSERT(Cond)                                                                 \
+#define DT_ASSERT(Cond)                                                                  \
     do                                                                                   \
     {                                                                                    \
         if (!(Cond))                                                                     \
-            DTL_FAIL("expected %s", #Cond);                                              \
+            DT_FAIL("expected %s", #Cond);                                               \
     } while (0)
 
-#define DTL_ASSERT_EQ(Actual, Expected)                                                  \
+#define DT_ASSERT_EQ(Actual, Expected)                                                   \
     do                                                                                   \
     {                                                                                    \
-        long long DtlA = (long long)(Actual);                                            \
-        long long DtlE = (long long)(Expected);                                          \
-        if (DtlA != DtlE)                                                                \
-            DTL_FAIL("%s: expected %lld, got %lld", #Actual, DtlE, DtlA);                \
+        long long DtA = (long long)(Actual);                                             \
+        long long DtE = (long long)(Expected);                                           \
+        if (DtA != DtE)                                                                  \
+            DT_FAIL("%s: expected %lld, got %lld", #Actual, DtE, DtA);                   \
     } while (0)
 
-#define DTL_ASSERT_OK(Result) DTL_ASSERT_EQ((Result), 0)
+#define DT_ASSERT_OK(Result) DT_ASSERT_EQ((Result), 0)
 
-#define DTL_ASSERT_STR(Actual, Expected)                                                 \
+#define DT_ASSERT_STR(Actual, Expected)                                                  \
     do                                                                                   \
     {                                                                                    \
-        const char* DtlA = (Actual);                                                     \
-        const char* DtlE = (Expected);                                                   \
-        if (DtlA == NULL || strcmp(DtlA, DtlE) != 0)                                     \
-            DTL_FAIL("%s: expected \"%s\", got \"%s\"", #Actual, DtlE,                   \
-                     DtlA == NULL ? "(null)" : DtlA);                                    \
+        const char* DtA = (Actual);                                                      \
+        const char* DtE = (Expected);                                                    \
+        if (DtA == NULL || strcmp(DtA, DtE) != 0)                                        \
+            DT_FAIL("%s: expected \"%s\", got \"%s\"", #Actual, DtE,                     \
+                    DtA == NULL ? "(null)" : DtA);                                       \
     } while (0)
 
-#define DTL_ASSERT_MEM(Actual, Expected, Size)                                           \
+#define DT_ASSERT_MEM(Actual, Expected, Size)                                            \
     do                                                                                   \
     {                                                                                    \
-        size_t DtlN = (size_t)(Size);                                                    \
-        if (memcmp((Actual), (Expected), DtlN) != 0)                                     \
-            DTL_FAIL("%s: %zu bytes differ from %s", #Actual, DtlN, #Expected);          \
+        size_t DtN = (size_t)(Size);                                                     \
+        if (memcmp((Actual), (Expected), DtN) != 0)                                      \
+            DT_FAIL("%s: %zu bytes differ from %s", #Actual, DtN, #Expected);            \
     } while (0)
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Test runner -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Test runner -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-typedef struct DtlTestCase
+typedef struct DtTestCase
 {
     const char* Name;
     void (*Func)(int* Failures);
-} DtlTestCase;
+} DtTestCase;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlTestSilenceDialogs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTestSilenceDialogs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Sends failed CRT assertions and abort() to stderr instead of to a message box.
 //
@@ -110,7 +110,7 @@ typedef struct DtlTestCase
 // started by CTest or by CI has nobody to dismiss it: the run hangs until it times out,
 // and the report says nothing about what actually went wrong.
 //
-static void DtlTestSilenceDialogs(void)
+static void DtTestSilenceDialogs(void)
 {
 #if defined(_MSC_VER)
     int Report;
@@ -127,15 +127,15 @@ static void DtlTestSilenceDialogs(void)
 #endif
 }
 
-#define DTL_RUN(Name) {#Name, Name}
+#define DT_RUN(Name) {#Name, Name}
 
-#define DTL_TEST_MAIN(SuiteName, ...)                                                    \
+#define DT_TEST_MAIN(SuiteName, ...)                                                     \
     int main(void)                                                                       \
     {                                                                                    \
-        static const DtlTestCase Cases[] = {__VA_ARGS__};                                \
+        static const DtTestCase Cases[] = {__VA_ARGS__};                                 \
         const int NumCases = (int)(sizeof(Cases) / sizeof(Cases[0]));                    \
         int TotalFailures = 0;                                                           \
-        DtlTestSilenceDialogs();                                                         \
+        DtTestSilenceDialogs();                                                          \
         printf("== %s: %d case(s)\n", SuiteName, NumCases);                              \
         for (int i = 0; i < NumCases; i++)                                               \
         {                                                                                \
@@ -148,4 +148,4 @@ static void DtlTestSilenceDialogs(void)
         return TotalFailures == 0 ? 0 : 1;                                               \
     }
 
-#endif // CDTAPILITE_DTL_TEST_H
+#endif // CDTAPILITE_DT_TEST_H

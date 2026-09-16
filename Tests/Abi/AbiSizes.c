@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 // CDtapiLite includes
-#include "DtlDrvAbi.h" // Vendored DtPcie driver ABI plus its base types.
+#include "DtDrvAbi.h" // Vendored DtPcie driver ABI plus its base types.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Test +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

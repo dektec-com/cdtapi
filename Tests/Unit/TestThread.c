@@ -14,7 +14,7 @@
 #include <time.h>
 
 // CDtapiLite includes
-#include "DtlTest.h"      // Test framework.
+#include "DtTest.h"       // Test framework.
 #include "OAL/OsThread.h" // Interface under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -47,92 +47,92 @@ static void SetFlag(void* Context)
     *(int*)Context = 42;
 }
 
-DTL_TEST(ThreadRunsWithItsContextAndJoins)
+DT_TEST(ThreadRunsWithItsContextAndJoins)
 {
     int Flag = 0;
     OsThread* Thread = OsThreadStart(SetFlag, &Flag);
 
-    DTL_ASSERT(Thread != NULL);
+    DT_ASSERT(Thread != NULL);
     OsThreadJoin(Thread);
 
     // Join waits for the function to return, so the write is complete by now.
-    DTL_ASSERT_EQ(Flag, 42);
+    DT_ASSERT_EQ(Flag, 42);
 }
 
-DTL_TEST(StartRejectsMissingFunction)
+DT_TEST(StartRejectsMissingFunction)
 {
-    DTL_ASSERT(OsThreadStart(NULL, NULL) == NULL);
+    DT_ASSERT(OsThreadStart(NULL, NULL) == NULL);
     OsThreadJoin(NULL);
 }
 
-DTL_TEST(RaisingPriorityDoesNotFailHere)
+DT_TEST(RaisingPriorityDoesNotFailHere)
 {
     // Allowed to be refused on Linux without privilege, but not to misbehave. On Windows
     // HIGHEST needs no privilege, so there it has to succeed.
     int Result = OsThreadRaisePriority();
 
 #if defined(_WIN32)
-    DTL_ASSERT_EQ(Result, 0);
+    DT_ASSERT_EQ(Result, 0);
 #else
-    DTL_ASSERT(Result == 0 || Result == -1);
+    DT_ASSERT(Result == 0 || Result == -1);
 #endif
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Event +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(UnsetEventTimesOut)
+DT_TEST(UnsetEventTimesOut)
 {
     OsEvent* Event = OsEventCreate();
     long long Start;
 
-    DTL_ASSERT(Event != NULL);
+    DT_ASSERT(Event != NULL);
 
     Start = NowMs();
-    DTL_ASSERT_EQ(OsEventWait(Event, 50), OS_WAIT_TIMEOUT);
+    DT_ASSERT_EQ(OsEventWait(Event, 50), OS_WAIT_TIMEOUT);
 
     // It really waited. The lower bound allows for a coarse timer tick.
-    DTL_ASSERT(NowMs() - Start >= 30);
+    DT_ASSERT(NowMs() - Start >= 30);
 
     OsEventDestroy(Event);
 }
 
 // A set that happens before anyone waits must be remembered, not lost. That is the
 // difference between an event and a bare condition variable.
-DTL_TEST(SetBeforeWaitIsRemembered)
+DT_TEST(SetBeforeWaitIsRemembered)
 {
     OsEvent* Event = OsEventCreate();
 
-    DTL_ASSERT(Event != NULL);
+    DT_ASSERT(Event != NULL);
 
     OsEventSet(Event);
-    DTL_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
 
     OsEventDestroy(Event);
 }
 
-DTL_TEST(EventResetsAfterOneWake)
+DT_TEST(EventResetsAfterOneWake)
 {
     OsEvent* Event = OsEventCreate();
 
-    DTL_ASSERT(Event != NULL);
+    DT_ASSERT(Event != NULL);
 
     OsEventSet(Event);
-    DTL_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
-    DTL_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
+    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
 
     OsEventDestroy(Event);
 }
 
-DTL_TEST(SettingTwiceCountsOnce)
+DT_TEST(SettingTwiceCountsOnce)
 {
     OsEvent* Event = OsEventCreate();
 
-    DTL_ASSERT(Event != NULL);
+    DT_ASSERT(Event != NULL);
 
     OsEventSet(Event);
     OsEventSet(Event);
-    DTL_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
-    DTL_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
+    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
 
     OsEventDestroy(Event);
 }
@@ -151,7 +151,7 @@ static void SetAfterDelay(void* Context)
     OsEventSet(Job->Event);
 }
 
-DTL_TEST(SetFromAnotherThreadWakesTheWaiter)
+DT_TEST(SetFromAnotherThreadWakesTheWaiter)
 {
     DelayedSet Job;
     OsThread* Thread;
@@ -159,23 +159,23 @@ DTL_TEST(SetFromAnotherThreadWakesTheWaiter)
 
     Job.Event = OsEventCreate();
     Job.DelayMs = 30;
-    DTL_ASSERT(Job.Event != NULL);
+    DT_ASSERT(Job.Event != NULL);
 
     Start = NowMs();
     Thread = OsThreadStart(SetAfterDelay, &Job);
-    DTL_ASSERT(Thread != NULL);
+    DT_ASSERT(Thread != NULL);
 
     // Woken by the other thread, long before the five-second timeout.
-    DTL_ASSERT_EQ(OsEventWait(Job.Event, 5000), OS_WAIT_SIGNALLED);
-    DTL_ASSERT(NowMs() - Start < 4000);
+    DT_ASSERT_EQ(OsEventWait(Job.Event, 5000), OS_WAIT_SIGNALLED);
+    DT_ASSERT(NowMs() - Start < 4000);
 
     OsThreadJoin(Thread);
     OsEventDestroy(Job.Event);
 }
 
-DTL_TEST(NullEventIsAccepted)
+DT_TEST(NullEventIsAccepted)
 {
-    DTL_ASSERT_EQ(OsEventWait(NULL, 0), OS_WAIT_ERROR);
+    DT_ASSERT_EQ(OsEventWait(NULL, 0), OS_WAIT_ERROR);
     OsEventSet(NULL);
     OsEventDestroy(NULL);
 }
@@ -201,7 +201,7 @@ static void PollUntilKilled(void* Context)
         Self->Rounds++;
 }
 
-DTL_TEST(KillEventStopsAPollingThread)
+DT_TEST(KillEventStopsAPollingThread)
 {
     Worker Self;
     OsThread* Thread;
@@ -209,10 +209,10 @@ DTL_TEST(KillEventStopsAPollingThread)
 
     Self.Kill = OsEventCreate();
     Self.Rounds = 0;
-    DTL_ASSERT(Self.Kill != NULL);
+    DT_ASSERT(Self.Kill != NULL);
 
     Thread = OsThreadStart(PollUntilKilled, &Self);
-    DTL_ASSERT(Thread != NULL);
+    DT_ASSERT(Thread != NULL);
 
     PauseMs(80);
 
@@ -221,8 +221,8 @@ DTL_TEST(KillEventStopsAPollingThread)
     OsThreadJoin(Thread);
 
     // It ran for a while, and it stopped promptly once told to.
-    DTL_ASSERT(Self.Rounds > 0);
-    DTL_ASSERT(NowMs() - Start < 2000);
+    DT_ASSERT(Self.Rounds > 0);
+    DT_ASSERT(NowMs() - Start < 2000);
 
     OsEventDestroy(Self.Kill);
 }
@@ -253,7 +253,7 @@ static void IncrementManyTimes(void* Context)
 
 // Four threads each increment a shared counter many times. Under the lock no increment
 // is lost, so the total is exact. Without it, lost updates would almost certainly show.
-DTL_TEST(MutexLosesNoUpdates)
+DT_TEST(MutexLosesNoUpdates)
 {
     Counter Shared;
     OsThread* Threads[INCREMENT_THREADS];
@@ -261,36 +261,35 @@ DTL_TEST(MutexLosesNoUpdates)
 
     Shared.Lock = OsMutexCreate();
     Shared.Value = 0;
-    DTL_ASSERT(Shared.Lock != NULL);
+    DT_ASSERT(Shared.Lock != NULL);
 
     for (i = 0; i < INCREMENT_THREADS; i++)
     {
         Threads[i] = OsThreadStart(IncrementManyTimes, &Shared);
-        DTL_ASSERT(Threads[i] != NULL);
+        DT_ASSERT(Threads[i] != NULL);
     }
 
     for (i = 0; i < INCREMENT_THREADS; i++)
         OsThreadJoin(Threads[i]);
 
-    DTL_ASSERT_EQ(Shared.Value, (long)INCREMENT_THREADS * INCREMENTS_PER_THREAD);
+    DT_ASSERT_EQ(Shared.Value, (long)INCREMENT_THREADS * INCREMENTS_PER_THREAD);
 
     OsMutexDestroy(Shared.Lock);
 }
 
-DTL_TEST(MutexDestroyAcceptsNull)
+DT_TEST(MutexDestroyAcceptsNull)
 {
     OsMutex* Lock = OsMutexCreate();
 
-    DTL_ASSERT(Lock != NULL);
+    DT_ASSERT(Lock != NULL);
     OsMutexDestroy(Lock);
     OsMutexDestroy(NULL);
 }
 
-DTL_TEST_MAIN("Thread", DTL_RUN(ThreadRunsWithItsContextAndJoins),
-              DTL_RUN(StartRejectsMissingFunction),
-              DTL_RUN(RaisingPriorityDoesNotFailHere), DTL_RUN(UnsetEventTimesOut),
-              DTL_RUN(SetBeforeWaitIsRemembered), DTL_RUN(EventResetsAfterOneWake),
-              DTL_RUN(SettingTwiceCountsOnce),
-              DTL_RUN(SetFromAnotherThreadWakesTheWaiter), DTL_RUN(NullEventIsAccepted),
-              DTL_RUN(KillEventStopsAPollingThread), DTL_RUN(MutexLosesNoUpdates),
-              DTL_RUN(MutexDestroyAcceptsNull))
+DT_TEST_MAIN("Thread", DT_RUN(ThreadRunsWithItsContextAndJoins),
+             DT_RUN(StartRejectsMissingFunction), DT_RUN(RaisingPriorityDoesNotFailHere),
+             DT_RUN(UnsetEventTimesOut), DT_RUN(SetBeforeWaitIsRemembered),
+             DT_RUN(EventResetsAfterOneWake), DT_RUN(SettingTwiceCountsOnce),
+             DT_RUN(SetFromAnotherThreadWakesTheWaiter), DT_RUN(NullEventIsAccepted),
+             DT_RUN(KillEventStopsAPollingThread), DT_RUN(MutexLosesNoUpdates),
+             DT_RUN(MutexDestroyAcceptsNull))

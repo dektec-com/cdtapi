@@ -15,9 +15,9 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DTAPI_IOCONFIG_ codes.
-#include "Core/DtlAlloc.h"          // Allocation seam.
-#include "DtlDrvAbi.h"              // The driver ABI the emulator answers in.
-#include "DtlIoConfig.h"            // I/O configuration names, codes and relation.
+#include "Core/DtAlloc.h"           // Allocation seam.
+#include "DtDrvAbi.h"               // The driver ABI the emulator answers in.
+#include "DtIoConfig.h"             // I/O configuration names, codes and relation.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
 #include "SimDtPcie.h"              // What the emulated card reports.
@@ -198,7 +198,7 @@ static bool CodeFromName(const char* Field, int* Code)
 
     memcpy(Name, Field, sizeof(Name));
     Name[sizeof(Name) - 1] = '\0';
-    return DtlIoConfigGetCode(Name, Code) == DTAPI_OK;
+    return DtIoConfigGetCode(Name, Code) == DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -214,7 +214,7 @@ static bool IsSupported(int PortIndex, int Code)
     int Type;
 
     memcpy(CapName, "CAP_", 4);
-    DtlIoConfigGetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
+    DtIoConfigGetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
     return SimDta2178GetProperty(CapName, PortIndex, &Type, &Value) && Value != 0;
 }
 
@@ -371,9 +371,8 @@ static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
 
         Config = &g_Sim.Config[Id->m_PortIndex][Group];
         memset(Value, 0, sizeof(*Value));
-        DtlIoConfigGetName(Config->Value, Value->m_Value, sizeof(Value->m_Value));
-        DtlIoConfigGetName(Config->SubValue, Value->m_SubValue,
-                           sizeof(Value->m_SubValue));
+        DtIoConfigGetName(Config->Value, Value->m_Value, sizeof(Value->m_Value));
+        DtIoConfigGetName(Config->SubValue, Value->m_SubValue, sizeof(Value->m_SubValue));
         for (j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
             Value->m_ParXtra[j] = Config->ParXtra[j];
     }
@@ -431,7 +430,7 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
 
         // A boolean I/O capability must itself be supported; any other group needs its
         // value and sub-value to be.
-        if (DtlIoConfigIsValid(Group, Value, SubValue) != DTAPI_OK)
+        if (DtIoConfigIsValid(Group, Value, SubValue) != DTAPI_OK)
             Supported = false;
         else if (Value == DTAPI_IOCONFIG_TRUE || Value == DTAPI_IOCONFIG_FALSE)
             Supported = IsSupported(Port, Group);
@@ -522,7 +521,7 @@ static void* SimOpen(int Index)
     if (Index != g_Sim.Index)
         return NULL;
 
-    Dev = (SimDevice*)DtlMalloc(sizeof(SimDevice));
+    Dev = (SimDevice*)DtMalloc(sizeof(SimDevice));
     if (Dev == NULL)
         return NULL;
 
@@ -536,7 +535,7 @@ static void* SimOpen(int Index)
 static void SimClose(void* State)
 {
     g_Sim.OpenHandles--;
-    DtlFree(State);
+    DtFree(State);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Dispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

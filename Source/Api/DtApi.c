@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlApi.c *#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtApi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Public API entry points that belong to no single subsystem
 //
@@ -9,9 +9,9 @@
 // CDtapiLite includes
 #include "CDtapiLite.h" // Public API.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiLiteGetVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiLiteGetVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 const char* DtapiLiteGetVersion(void)
 {

@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlRing.h *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtRing.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Read side of the shared DMA ring buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_RING_H
-#define CDTAPILITE_DTL_RING_H
+#ifndef CDTAPILITE_DT_RING_H
+#define CDTAPILITE_DT_RING_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -13,7 +13,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ DtlRing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A view over the DMA buffer shared with the driver, not a queue that owns anything.
 // The hardware writes into that buffer and the driver reports how far it has got; the
@@ -36,48 +36,48 @@
 // Not thread-safe. The channel that owns the ring serialises access to it.
 //
 
-typedef struct DtlRing
+typedef struct DtRing
 {
     uint8_t* Base;
     size_t Size;
     size_t MaxLoad;
     size_t ReadOffset;
     size_t WriteOffset;
-} DtlRing;
+} DtRing;
 
 // Prepares a ring over Size bytes at Base, with both offsets at zero, keeping Reserve
 // bytes permanently free. Returns 0 on success, -1 when Base is NULL, when Reserve is
 // zero, or when Reserve leaves no room at all.
-int DtlRingInit(DtlRing* Ring, uint8_t* Base, size_t Size, size_t Reserve);
+int DtRingInit(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve);
 
 // Records where the producer has got to. Returns 0 on success, and -1 when Offset is not
 // inside the buffer or would put more than Size - Reserve bytes in the ring. Either means
 // the driver and the library disagree about the ring, and reading on would read garbage.
-int DtlRingSetWriteOffset(DtlRing* Ring, size_t Offset);
+int DtRingSetWriteOffset(DtRing* Ring, size_t Offset);
 
 // How many bytes are available to read.
-size_t DtlRingLoad(const DtlRing* Ring);
+size_t DtRingLoad(const DtRing* Ring);
 
 // How many bytes could still be written before the ring is full: Size - Reserve - Load.
-size_t DtlRingFree(const DtlRing* Ring);
+size_t DtRingFree(const DtRing* Ring);
 
 // Copies Length bytes to Dst without consuming them, handling the wrap. Returns 0 on
 // success, -1 when fewer than Length bytes are available.
-int DtlRingPeek(const DtlRing* Ring, void* Dst, size_t Length);
+int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length);
 
 // Consumes Length bytes without copying them. Returns 0 on success, -1 when fewer than
 // Length bytes are available.
-int DtlRingSkip(DtlRing* Ring, size_t Length);
+int DtRingSkip(DtRing* Ring, size_t Length);
 
 // Copies Length bytes to Dst and consumes them. Returns 0 on success, -1 when fewer than
 // Length bytes are available, in which case nothing is consumed.
-int DtlRingRead(DtlRing* Ring, void* Dst, size_t Length);
+int DtRingRead(DtRing* Ring, void* Dst, size_t Length);
 
 // The read offset, to be handed back to the driver.
-size_t DtlRingReadOffset(const DtlRing* Ring);
+size_t DtRingReadOffset(const DtRing* Ring);
 
 // Drops everything available, by moving the read offset to the write offset. That is
 // what a FIFO clear does.
-void DtlRingClear(DtlRing* Ring);
+void DtRingClear(DtRing* Ring);
 
-#endif // CDTAPILITE_DTL_RING_H
+#endif // CDTAPILITE_DT_RING_H

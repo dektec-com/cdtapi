@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestStr.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestStr.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Unit tests for the growable string
 //
@@ -7,318 +7,318 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation fault injection.
-#include "Core/DtlStr.h"   // Interface under test.
-#include "DtlTest.h"       // Test framework.
+#include "Core/DtAlloc.h" // Allocation fault injection.
+#include "Core/DtStr.h"   // Interface under test.
+#include "DtTest.h"       // Test framework.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(StartsEmptyAndSmall)
+DT_TEST(StartsEmptyAndSmall)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "");
-    DTL_ASSERT(DtlStrIsSmall(&Str));
+    DtStrInit(&Str);
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
+    DT_ASSERT_STR(DtStrCStr(&Str), "");
+    DT_ASSERT(DtStrIsSmall(&Str));
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(ShortTextStaysInTheStructure)
+DT_TEST(ShortTextStaysInTheStructure)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "IODIR"));
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "/INPUT"));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, "IODIR"));
+    DT_ASSERT_OK(DtStrAppend(&Str, "/INPUT"));
 
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "IODIR/INPUT");
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 11);
-    DTL_ASSERT(DtlStrIsSmall(&Str));
+    DT_ASSERT_STR(DtStrCStr(&Str), "IODIR/INPUT");
+    DT_ASSERT_EQ(DtStrLength(&Str), 11);
+    DT_ASSERT(DtStrIsSmall(&Str));
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
 // The boundary is where a small-buffer optimisation goes wrong, so it is checked from
 // both sides: one character below the capacity and one above it.
-DTL_TEST(TransitionToHeapIsExact)
+DT_TEST(TransitionToHeapIsExact)
 {
-    DtlStr Str;
+    DtStr Str;
     size_t i;
 
-    DtlStrInit(&Str);
+    DtStrInit(&Str);
 
-    for (i = 0; i < DTL_STR_SMALL_CAPACITY - 1; i++)
-        DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'a'));
+    for (i = 0; i < DT_STR_SMALL_CAPACITY - 1; i++)
+        DT_ASSERT_OK(DtStrAppendChar(&Str, 'a'));
 
-    DTL_ASSERT_EQ(DtlStrLength(&Str), DTL_STR_SMALL_CAPACITY - 1);
-    DTL_ASSERT(DtlStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrLength(&Str), DT_STR_SMALL_CAPACITY - 1);
+    DT_ASSERT(DtStrIsSmall(&Str));
 
-    DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'b'));
-    DTL_ASSERT_EQ(DtlStrLength(&Str), DTL_STR_SMALL_CAPACITY);
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
+    DT_ASSERT_OK(DtStrAppendChar(&Str, 'b'));
+    DT_ASSERT_EQ(DtStrLength(&Str), DT_STR_SMALL_CAPACITY);
+    DT_ASSERT(!DtStrIsSmall(&Str));
 
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[0], 'a');
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[DTL_STR_SMALL_CAPACITY - 1], 'b');
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[DTL_STR_SMALL_CAPACITY], '\0');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[0], 'a');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[DT_STR_SMALL_CAPACITY - 1], 'b');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[DT_STR_SMALL_CAPACITY], '\0');
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(ContentsSurviveTheMoveToTheHeap)
+DT_TEST(ContentsSurviveTheMoveToTheHeap)
 {
-    DtlStr Str;
+    DtStr Str;
     int i;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "prefix:"));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, "prefix:"));
 
     for (i = 0; i < 500; i++)
-        DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'z'));
+        DT_ASSERT_OK(DtStrAppendChar(&Str, 'z'));
 
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 7 + 500);
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[0], 'p');
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[6], ':');
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[7], 'z');
+    DT_ASSERT_EQ(DtStrLength(&Str), 7 + 500);
+    DT_ASSERT(!DtStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrCStr(&Str)[0], 'p');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[6], ':');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[7], 'z');
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(AppendLenHandlesEmbeddedNull)
+DT_TEST(AppendLenHandlesEmbeddedNull)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppendLen(&Str, "ab\0cd", 5));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppendLen(&Str, "ab\0cd", 5));
 
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 5);
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[2], '\0');
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[3], 'c');
+    DT_ASSERT_EQ(DtStrLength(&Str), 5);
+    DT_ASSERT_EQ(DtStrCStr(&Str)[2], '\0');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[3], 'c');
     // The terminator is still written after the contents.
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[5], '\0');
+    DT_ASSERT_EQ(DtStrCStr(&Str)[5], '\0');
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(AppendingNothingIsAllowed)
+DT_TEST(AppendingNothingIsAllowed)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppend(&Str, ""));
-    DTL_ASSERT_OK(DtlStrAppendLen(&Str, "ignored", 0));
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, ""));
+    DT_ASSERT_OK(DtStrAppendLen(&Str, "ignored", 0));
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(FormatAppendsAndReplaces)
+DT_TEST(FormatAppendsAndReplaces)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppendFormat(&Str, "%lld:%d", 2175000123LL, 2));
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "2175000123:2");
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppendFormat(&Str, "%lld:%d", 2175000123LL, 2));
+    DT_ASSERT_STR(DtStrCStr(&Str), "2175000123:2");
 
-    DTL_ASSERT_OK(DtlStrAppendFormat(&Str, " port %d", 7));
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "2175000123:2 port 7");
+    DT_ASSERT_OK(DtStrAppendFormat(&Str, " port %d", 7));
+    DT_ASSERT_STR(DtStrCStr(&Str), "2175000123:2 port 7");
 
-    DTL_ASSERT_OK(DtlStrSetFormat(&Str, "DTA-%d", 2178));
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "DTA-2178");
+    DT_ASSERT_OK(DtStrSetFormat(&Str, "DTA-%d", 2178));
+    DT_ASSERT_STR(DtStrCStr(&Str), "DTA-2178");
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
 // vsnprintf is called twice, once to measure and once to write. If the second call were
 // given an already-consumed argument list the result would be garbage, so a format long
 // enough to force the heap is worth checking on its own.
-DTL_TEST(FormatLongerThanTheSmallBuffer)
+DT_TEST(FormatLongerThanTheSmallBuffer)
 {
-    DtlStr Str;
+    DtStr Str;
     size_t i;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrSetFormat(&Str, "%0*d", 200, 7));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrSetFormat(&Str, "%0*d", 200, 7));
 
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 200);
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[199], '7');
+    DT_ASSERT_EQ(DtStrLength(&Str), 200);
+    DT_ASSERT(!DtStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrCStr(&Str)[199], '7');
     for (i = 0; i < 199; i++)
-        DTL_ASSERT_EQ(DtlStrCStr(&Str)[i], '0');
+        DT_ASSERT_EQ(DtStrCStr(&Str)[i], '0');
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(ClearKeepsTheStorage)
+DT_TEST(ClearKeepsTheStorage)
 {
-    DtlStr Str;
+    DtStr Str;
     int i;
 
-    DtlStrInit(&Str);
+    DtStrInit(&Str);
     for (i = 0; i < 200; i++)
-        DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'q'));
+        DT_ASSERT_OK(DtStrAppendChar(&Str, 'q'));
 
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
-    DtlStrClear(&Str);
+    DT_ASSERT(!DtStrIsSmall(&Str));
+    DtStrClear(&Str);
 
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "");
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
+    DT_ASSERT_STR(DtStrCStr(&Str), "");
     // Still on the heap: clearing empties the contents, it does not undo the move.
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
+    DT_ASSERT(!DtStrIsSmall(&Str));
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(FreeReturnsItToTheSmallBuffer)
+DT_TEST(FreeReturnsItToTheSmallBuffer)
 {
-    DtlStr Str;
+    DtStr Str;
     int i;
 
-    DtlStrInit(&Str);
+    DtStrInit(&Str);
     for (i = 0; i < 300; i++)
-        DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'w'));
+        DT_ASSERT_OK(DtStrAppendChar(&Str, 'w'));
 
-    DtlStrFree(&Str);
-    DTL_ASSERT(DtlStrIsSmall(&Str));
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
+    DtStrFree(&Str);
+    DT_ASSERT(DtStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
 
     // Usable again without re-initialising, and safe to free twice.
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "again"));
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "again");
-    DtlStrFree(&Str);
-    DtlStrFree(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, "again"));
+    DT_ASSERT_STR(DtStrCStr(&Str), "again");
+    DtStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(ReserveMovesToTheHeapUpFront)
+DT_TEST(ReserveMovesToTheHeapUpFront)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrReserve(&Str, 1000));
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "");
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrReserve(&Str, 1000));
+    DT_ASSERT(!DtStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
+    DT_ASSERT_STR(DtStrCStr(&Str), "");
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST(BadArgumentsAreRejected)
+DT_TEST(BadArgumentsAreRejected)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
+    DtStrInit(&Str);
 
-    DTL_ASSERT_EQ(DtlStrAppend(&Str, NULL), -1);
-    DTL_ASSERT_EQ(DtlStrAppendLen(&Str, NULL, 4), -1);
-    DTL_ASSERT_EQ(DtlStrAppend(NULL, "x"), -1);
-    DTL_ASSERT_EQ(DtlStrAppendFormat(NULL, "x"), -1);
-    DTL_ASSERT_EQ(DtlStrAppendFormat(&Str, NULL), -1);
-    DTL_ASSERT_EQ(DtlStrSetFormat(NULL, "x"), -1);
-    DTL_ASSERT_EQ(DtlStrSetFormat(&Str, NULL), -1);
-    DTL_ASSERT_EQ(DtlStrReserve(NULL, 10), -1);
-    DTL_ASSERT(DtlStrCStr(NULL) == NULL);
-    DTL_ASSERT_EQ(DtlStrLength(NULL), 0);
-    DTL_ASSERT(!DtlStrIsSmall(NULL));
+    DT_ASSERT_EQ(DtStrAppend(&Str, NULL), -1);
+    DT_ASSERT_EQ(DtStrAppendLen(&Str, NULL, 4), -1);
+    DT_ASSERT_EQ(DtStrAppend(NULL, "x"), -1);
+    DT_ASSERT_EQ(DtStrAppendFormat(NULL, "x"), -1);
+    DT_ASSERT_EQ(DtStrAppendFormat(&Str, NULL), -1);
+    DT_ASSERT_EQ(DtStrSetFormat(NULL, "x"), -1);
+    DT_ASSERT_EQ(DtStrSetFormat(&Str, NULL), -1);
+    DT_ASSERT_EQ(DtStrReserve(NULL, 10), -1);
+    DT_ASSERT(DtStrCStr(NULL) == NULL);
+    DT_ASSERT_EQ(DtStrLength(NULL), 0);
+    DT_ASSERT(!DtStrIsSmall(NULL));
 
-    DtlStrInit(NULL);
-    DtlStrFree(NULL);
-    DtlStrClear(NULL);
+    DtStrInit(NULL);
+    DtStrFree(NULL);
+    DtStrClear(NULL);
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The move out of the embedded buffer is the one allocation a short string ever makes.
 // If it fails, the contents that were already there have to survive untouched.
-DTL_TEST(FailedMoveToHeapKeepsTheContents)
+DT_TEST(FailedMoveToHeapKeepsTheContents)
 {
-    DtlStr Str;
+    DtStr Str;
     int i;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "keep me"));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, "keep me"));
 
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
 
     for (i = 0; i < 200; i++)
     {
-        if (DtlStrAppendChar(&Str, 'x') != 0)
+        if (DtStrAppendChar(&Str, 'x') != 0)
             break;
     }
 
-    DTL_ASSERT(i < 200);
-    DTL_ASSERT(DtlStrIsSmall(&Str));
-    DTL_ASSERT_EQ(DtlStrCStr(&Str)[0], 'k');
+    DT_ASSERT(i < 200);
+    DT_ASSERT(DtStrIsSmall(&Str));
+    DT_ASSERT_EQ(DtStrCStr(&Str)[0], 'k');
 
-    DtlAllocResetCount();
-    DtlStrFree(&Str);
+    DtAllocResetCount();
+    DtStrFree(&Str);
 }
 
-DTL_TEST(FailedGrowthOnTheHeapIsReported)
+DT_TEST(FailedGrowthOnTheHeapIsReported)
 {
-    DtlStr Str;
+    DtStr Str;
     int i;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrReserve(&Str, 200));
-    DTL_ASSERT(!DtlStrIsSmall(&Str));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrReserve(&Str, 200));
+    DT_ASSERT(!DtStrIsSmall(&Str));
 
     for (i = 0; i < 200; i++)
-        DTL_ASSERT_OK(DtlStrAppendChar(&Str, 'y'));
+        DT_ASSERT_OK(DtStrAppendChar(&Str, 'y'));
 
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
-    DTL_ASSERT_EQ(DtlStrReserve(&Str, 100000), -1);
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 200);
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
+    DT_ASSERT_EQ(DtStrReserve(&Str, 100000), -1);
+    DT_ASSERT_EQ(DtStrLength(&Str), 200);
 
-    DtlAllocResetCount();
-    DtlStrFree(&Str);
+    DtAllocResetCount();
+    DtStrFree(&Str);
 }
 
-DTL_TEST(FormatReportsAllocationFailure)
+DT_TEST(FormatReportsAllocationFailure)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DtlAllocResetCount();
-    DtlAllocFailAfter(0);
+    DtStrInit(&Str);
+    DtAllocResetCount();
+    DtAllocFailAfter(0);
 
-    DTL_ASSERT_EQ(DtlStrSetFormat(&Str, "%0*d", 500, 1), -1);
-    DTL_ASSERT_EQ(DtlStrLength(&Str), 0);
+    DT_ASSERT_EQ(DtStrSetFormat(&Str, "%0*d", 500, 1), -1);
+    DT_ASSERT_EQ(DtStrLength(&Str), 0);
 
-    DtlAllocResetCount();
-    DtlStrFree(&Str);
+    DtAllocResetCount();
+    DtStrFree(&Str);
 }
 
 // A caller that computes a length wrongly can ask for one that leaves no room for the
 // terminator. The addition would wrap, so it is checked before the allocation, not after.
-DTL_TEST(ImpossibleLengthIsRefused)
+DT_TEST(ImpossibleLengthIsRefused)
 {
-    DtlStr Str;
+    DtStr Str;
 
-    DtlStrInit(&Str);
-    DTL_ASSERT_OK(DtlStrAppend(&Str, "intact"));
+    DtStrInit(&Str);
+    DT_ASSERT_OK(DtStrAppend(&Str, "intact"));
 
-    DTL_ASSERT_EQ(DtlStrAppendLen(&Str, "x", (size_t)-1), -1);
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "intact");
+    DT_ASSERT_EQ(DtStrAppendLen(&Str, "x", (size_t)-1), -1);
+    DT_ASSERT_STR(DtStrCStr(&Str), "intact");
 
     // Reserve takes the length directly, so it overflows one step later.
-    DTL_ASSERT_EQ(DtlStrReserve(&Str, (size_t)-1), -1);
-    DTL_ASSERT_STR(DtlStrCStr(&Str), "intact");
+    DT_ASSERT_EQ(DtStrReserve(&Str, (size_t)-1), -1);
+    DT_ASSERT_STR(DtStrCStr(&Str), "intact");
 
-    DtlStrFree(&Str);
+    DtStrFree(&Str);
 }
 
-DTL_TEST_MAIN("Str", DTL_RUN(StartsEmptyAndSmall), DTL_RUN(ShortTextStaysInTheStructure),
-              DTL_RUN(TransitionToHeapIsExact), DTL_RUN(ContentsSurviveTheMoveToTheHeap),
-              DTL_RUN(AppendLenHandlesEmbeddedNull), DTL_RUN(AppendingNothingIsAllowed),
-              DTL_RUN(FormatAppendsAndReplaces), DTL_RUN(FormatLongerThanTheSmallBuffer),
-              DTL_RUN(ClearKeepsTheStorage), DTL_RUN(FreeReturnsItToTheSmallBuffer),
-              DTL_RUN(ReserveMovesToTheHeapUpFront), DTL_RUN(BadArgumentsAreRejected),
-              DTL_RUN(FailedMoveToHeapKeepsTheContents),
-              DTL_RUN(FailedGrowthOnTheHeapIsReported),
-              DTL_RUN(FormatReportsAllocationFailure), DTL_RUN(ImpossibleLengthIsRefused))
+DT_TEST_MAIN("Str", DT_RUN(StartsEmptyAndSmall), DT_RUN(ShortTextStaysInTheStructure),
+             DT_RUN(TransitionToHeapIsExact), DT_RUN(ContentsSurviveTheMoveToTheHeap),
+             DT_RUN(AppendLenHandlesEmbeddedNull), DT_RUN(AppendingNothingIsAllowed),
+             DT_RUN(FormatAppendsAndReplaces), DT_RUN(FormatLongerThanTheSmallBuffer),
+             DT_RUN(ClearKeepsTheStorage), DT_RUN(FreeReturnsItToTheSmallBuffer),
+             DT_RUN(ReserveMovesToTheHeapUpFront), DT_RUN(BadArgumentsAreRejected),
+             DT_RUN(FailedMoveToHeapKeepsTheContents),
+             DT_RUN(FailedGrowthOnTheHeapIsReported),
+             DT_RUN(FormatReportsAllocationFailure), DT_RUN(ImpossibleLengthIsRefused))

@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#* DtlResultList.inc *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#* DtResultList.inc *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Every result code DtapiResult2Str names, as an X-macro list
 //
@@ -8,7 +8,7 @@
 // so that a code and its name come from one token and cannot disagree:
 //
 //     #define X(Name) { Name, #Name },
-//     #include "Tables/DtlResultList.inc"
+//     #include "Tables/DtResultList.inc"
 //     #undef X
 //
 // The list holds exactly the codes DTAPI's DtapiResult2Str names, in its order. Of each

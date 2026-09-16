@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtlDrv.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDrv.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Driver ABI layer: typed commands on top of the OS abstraction
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_DRV_H
-#define CDTAPILITE_DTL_DRV_H
+#ifndef CDTAPILITE_DT_DRV_H
+#define CDTAPILITE_DT_DRV_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -24,7 +24,7 @@
 //
 
 // True for DTAPI_OK and for the DTAPI_OK_* successes that carry a warning.
-#define DTL_SUCCEEDED(Result) ((Result) < DTAPI_E)
+#define DT_SUCCEEDED(Result) ((Result) < DTAPI_E)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -32,15 +32,15 @@
 // structures stay inside this layer, so nothing above it depends on their layout.
 //
 
-typedef struct DtlDriverVersion
+typedef struct DtDriverVersion
 {
     int Major;
     int Minor;
     int Micro;
     int Build;
-} DtlDriverVersion;
+} DtDriverVersion;
 
-typedef struct DtlDeviceInfo
+typedef struct DtDeviceInfo
 {
     int TypeNumber; // 2178 for a DTA-2178
     int SubType;    // 0 for none, 1 for A, and so on
@@ -53,18 +53,18 @@ typedef struct DtlDeviceInfo
     uint16_t DeviceId;
     uint16_t SubVendorId;
     uint16_t SubSystemId;
-} DtlDeviceInfo;
+} DtDeviceInfo;
 
 // Reads the version of the driver behind Drv.
-unsigned int DtlDrvGetDriverVersion(OsDrv* Drv, DtlDriverVersion* Version);
+unsigned int DtDrvGetDriverVersion(OsDrv* Drv, DtDriverVersion* Version);
 
 // True when a DtPcie driver of this version is new enough: 1.3.1 or later, the minimum
 // DTAPI accepts (Utility.h, DtPcieMin*). The build number does not count.
-bool DtlDrvVersionIsSupported(const DtlDriverVersion* Version);
+bool DtDrvVersionIsSupported(const DtDriverVersion* Version);
 
 // Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and falls back to the
 // original GET_DEV_INFO for a driver that predates it.
-unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info);
+unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Properties -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -78,15 +78,14 @@ unsigned int DtlDrvGetDeviceInfo(OsDrv* Drv, DtlDeviceInfo* Info);
 //
 
 // The port index of a property that belongs to the device rather than to a port.
-#define DTL_PROPERTY_DEVICE -1
+#define DT_PROPERTY_DEVICE -1
 
-// Reads an integer property. PortIndex counts from zero, or is DTL_PROPERTY_DEVICE.
-unsigned int DtlDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex,
-                                  int* Value);
+// Reads an integer property. PortIndex counts from zero, or is DT_PROPERTY_DEVICE.
+unsigned int DtDrvGetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex, int* Value);
 
-// Reads a boolean property. PortIndex counts from zero, or is DTL_PROPERTY_DEVICE.
-unsigned int DtlDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
-                                   bool* Value);
+// Reads a boolean property. PortIndex counts from zero, or is DT_PROPERTY_DEVICE.
+unsigned int DtDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
+                                  bool* Value);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- I/O configuration -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -96,27 +95,27 @@ unsigned int DtlDrvGetPropertyBool(OsDrv* Drv, const char* Name, int PortIndex,
 // values that name another port in ParXtra[0], that port as an index as well.
 //
 
-typedef struct DtlIoConfig
+typedef struct DtIoConfig
 {
     int Port;
     int Group;
     int Value;
     int SubValue;
     int64_t ParXtra[2];
-} DtlIoConfig;
+} DtIoConfig;
 
 // Reads the configuration of Config->Group on Config->Port, and fills in the other
 // fields.
-unsigned int DtlDrvGetIoConfig(OsDrv* Drv, DtlIoConfig* Config);
+unsigned int DtDrvGetIoConfig(OsDrv* Drv, DtIoConfig* Config);
 
 // Applies one configuration. The driver validates it; this layer only converts it, and
 // refuses a LOOPS2TS output whose ParXtra[1], the ISI, is outside 0 to 255 with
 // DTAPI_E_INVALID_ISI, as DTAPI does before sending it.
-unsigned int DtlDrvSetIoConfig(OsDrv* Drv, const DtlIoConfig* Config);
+unsigned int DtDrvSetIoConfig(OsDrv* Drv, const DtIoConfig* Config);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Time of day -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Reads the device's time-of-day clock.
-unsigned int DtlDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds);
+unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds);
 
-#endif // CDTAPILITE_DTL_DRV_H
+#endif // CDTAPILITE_DT_DRV_H

@@ -1,16 +1,16 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDrvAbi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDrvAbi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Single entry point for the vendored DtPcie driver ABI
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DTL_DRV_ABI_H
-#define CDTAPILITE_DTL_DRV_ABI_H
+#ifndef CDTAPILITE_DT_DRV_ABI_H
+#define CDTAPILITE_DT_DRV_ABI_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "DtlAbiTypes.h" // Base types the vendored header expects.
+#include "DtAbiTypes.h" // Base types the vendored header expects.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Vendored ABI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -74,4 +74,4 @@
     #pragma GCC diagnostic pop
 #endif
 
-#endif // CDTAPILITE_DTL_DRV_ABI_H
+#endif // CDTAPILITE_DT_DRV_ABI_H

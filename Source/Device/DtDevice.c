@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlDevice.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDevice.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Device layer: DtDevice and the hardware function scan - Implementation
 //
@@ -11,11 +11,11 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "Core/DtlAlloc.h" // Allocation seam.
-#include "Core/DtlVec.h"   // The scan's list of hardware functions.
-#include "DtlDevice.h"     // Interface being implemented.
-#include "DtlDrvAbi.h"     // DT_FWSTATUS_ values.
-#include "DtlIoConfig.h"   // I/O configuration validation.
+#include "Core/DtAlloc.h" // Allocation seam.
+#include "Core/DtVec.h"   // The scan's list of hardware functions.
+#include "DtDevice.h"     // Interface being implemented.
+#include "DtDrvAbi.h"     // DT_FWSTATUS_ values.
+#include "DtIoConfig.h"   // I/O configuration validation.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -25,16 +25,16 @@ static const struct
     const char* Name;
     uint32_t Flag;
 } g_PortCaps[] = {
-    {"CAP_12GSDI", DTL_CAP_12GSDI}, {"CAP_3GSDI", DTL_CAP_3GSDI},
-    {"CAP_6GSDI", DTL_CAP_6GSDI},   {"CAP_HDSDI", DTL_CAP_HDSDI},
-    {"CAP_SDI", DTL_CAP_SDI},       {"CAP_AVFIFO", DTL_CAP_AVFIFO},
-    {"CAP_INPUT", DTL_CAP_INPUT},   {"CAP_OUTPUT", DTL_CAP_OUTPUT},
+    {"CAP_12GSDI", DT_CAP_12GSDI}, {"CAP_3GSDI", DT_CAP_3GSDI},
+    {"CAP_6GSDI", DT_CAP_6GSDI},   {"CAP_HDSDI", DT_CAP_HDSDI},
+    {"CAP_SDI", DT_CAP_SDI},       {"CAP_AVFIFO", DT_CAP_AVFIFO},
+    {"CAP_INPUT", DT_CAP_INPUT},   {"CAP_OUTPUT", DT_CAP_OUTPUT},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
 
 // More public ports than any DekTec device has.
-#define DTL_MAX_PORTS 1024
+#define DT_MAX_PORTS 1024
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadPorts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -50,18 +50,18 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
     unsigned int Result;
 
     Result =
-        DtlDrvGetPropertyInt(Drv, "PORT_COUNT", DTL_PROPERTY_DEVICE, &Device->NumPorts);
+        DtDrvGetPropertyInt(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Device->NumPorts);
     if (Result != DTAPI_OK)
         return DTAPI_E_NO_SUCH_DEVICE;
 
-    if (DtlDrvGetPropertyInt(Drv, "MAIN_PORT_COUNT", DTL_PROPERTY_DEVICE,
-                             &Device->NumPublicPorts) != DTAPI_OK)
+    if (DtDrvGetPropertyInt(Drv, "MAIN_PORT_COUNT", DT_PROPERTY_DEVICE,
+                            &Device->NumPublicPorts) != DTAPI_OK)
     {
         Device->NumPublicPorts = Device->NumPorts;
     }
 
     if (Device->NumPorts < 0 || Device->NumPublicPorts < 0 ||
-        Device->NumPublicPorts > DTL_MAX_PORTS)
+        Device->NumPublicPorts > DT_MAX_PORTS)
     {
         return DTAPI_E_NO_SUCH_DEVICE;
     }
@@ -70,7 +70,7 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
         return DTAPI_OK;
 
     Device->PortCaps =
-        (uint32_t*)DtlMalloc((size_t)Device->NumPublicPorts * sizeof(uint32_t));
+        (uint32_t*)DtMalloc((size_t)Device->NumPublicPorts * sizeof(uint32_t));
     if (Device->PortCaps == NULL)
         return DTAPI_E_OUT_OF_MEM;
 
@@ -81,7 +81,7 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
         {
             bool Has = false;
 
-            if (DtlDrvGetPropertyBool(Drv, g_PortCaps[Cap].Name, (int)Port, &Has) ==
+            if (DtDrvGetPropertyBool(Drv, g_PortCaps[Cap].Name, (int)Port, &Has) ==
                     DTAPI_OK &&
                 Has)
             {
@@ -92,15 +92,15 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDeviceAttachIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDeviceAttachIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The order of the checks is DTAPI's: the driver version before the device's identity,
 // so that a driver that is too old is reported as such rather than as a missing device.
 //
-unsigned int DtlDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
-                                  int64_t Serial)
+unsigned int DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
+                                 int64_t Serial)
 {
-    DtlDriverVersion Version;
+    DtDriverVersion Version;
     unsigned int Result;
     OsDrv* Drv = OsDrvOpen(Index);
 
@@ -109,11 +109,11 @@ unsigned int DtlDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
 
     memset(Device, 0, sizeof(*Device));
 
-    if (DtlDrvGetDriverVersion(Drv, &Version) != DTAPI_OK)
+    if (DtDrvGetDriverVersion(Drv, &Version) != DTAPI_OK)
         Result = DTAPI_E_NO_SUCH_DEVICE;
-    else if (!DtlDrvVersionIsSupported(&Version))
+    else if (!DtDrvVersionIsSupported(&Version))
         Result = DTAPI_E_DRIVER_INCOMP;
-    else if (DtlDrvGetDeviceInfo(Drv, &Device->Info) != DTAPI_OK)
+    else if (DtDrvGetDeviceInfo(Drv, &Device->Info) != DTAPI_OK)
         Result = DTAPI_E_NO_SUCH_DEVICE;
     else if (MatchSerial && Device->Info.Serial != Serial)
         Result = DTAPI_E_NO_SUCH_DEVICE;
@@ -122,7 +122,7 @@ unsigned int DtlDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
 
     if (Result != DTAPI_OK)
     {
-        DtlFree(Device->PortCaps);
+        DtFree(Device->PortCaps);
         memset(Device, 0, sizeof(*Device));
         OsDrvClose(Drv);
         return Result;
@@ -132,25 +132,25 @@ unsigned int DtlDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDeviceRelease -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDeviceRelease -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtlDeviceRelease(DtDevice* Device)
+void DtDeviceRelease(DtDevice* Device)
 {
     OsDrvClose(Device->Drv);
-    DtlFree(Device->PortCaps);
+    DtFree(Device->PortCaps);
     memset(Device, 0, sizeof(*Device));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDeviceDescribe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDeviceDescribe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtapiDtHwFuncDesc2String, for the PCI category. DTAPI's special names for the DTA-107S2
 // and DTA-110T depend on capabilities of cards the DtPcie driver does not serve, and are
 // left out.
 //
-unsigned int DtlDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
-                               size_t Size)
+unsigned int DtDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
+                              size_t Size)
 {
     char Text[64];
     char SubTypeText[16] = "";
@@ -180,23 +180,23 @@ unsigned int DtlDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlDeviceHwFunc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDeviceHwFunc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtlDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
+void DtDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 {
     uint32_t Caps = Device->PortCaps[Port - 1];
 
     memset(Desc, 0, sizeof(*Desc));
     snprintf(Desc->DeviceName, sizeof(Desc->DeviceName), "%lld:%d",
              (long long)Device->Info.Serial, Port);
-    DtlDeviceDescribe(Device->Info.TypeNumber, Device->Info.SubType, Port,
-                      Desc->Description, sizeof(Desc->Description));
+    DtDeviceDescribe(Device->Info.TypeNumber, Device->Info.SubType, Port,
+                     Desc->Description, sizeof(Desc->Description));
     Desc->SerialNumber = Device->Info.Serial;
     Desc->Port = Port;
-    Desc->IsSdi = (Caps & DTL_CAP_ANY_SDI) != 0;
-    Desc->IsAvFifo = (Caps & DTL_CAP_AVFIFO) != 0;
-    Desc->IsInput = (Caps & DTL_CAP_INPUT) != 0;
-    Desc->IsOutput = (Caps & DTL_CAP_OUTPUT) != 0;
+    Desc->IsSdi = (Caps & DT_CAP_ANY_SDI) != 0;
+    Desc->IsAvFifo = (Caps & DT_CAP_AVFIFO) != 0;
+    Desc->IsInput = (Caps & DT_CAP_INPUT) != 0;
+    Desc->IsOutput = (Caps & DT_CAP_OUTPUT) != 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHwFuncScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -212,7 +212,7 @@ void DtlDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 //
 unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc* HwFuncs)
 {
-    DtlVec Found;
+    DtVec Found;
     unsigned int Result = DTAPI_OK;
     size_t Count, i;
     int Index;
@@ -223,28 +223,28 @@ unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc
         return DTAPI_E_INVALID_BUF;
 
     *NumEntriesResult = 0;
-    DtlVecInit(&Found, sizeof(DtHwFuncDesc));
+    DtVecInit(&Found, sizeof(DtHwFuncDesc));
 
-    for (Index = 0; Index < DTL_MAX_DEVICES && Result == DTAPI_OK; Index++)
+    for (Index = 0; Index < DT_MAX_DEVICES && Result == DTAPI_OK; Index++)
     {
         DtDevice Device;
         int Port;
 
-        if (DtlDeviceAttachIndex(&Device, Index, false, 0) != DTAPI_OK)
+        if (DtDeviceAttachIndex(&Device, Index, false, 0) != DTAPI_OK)
             continue;
 
         for (Port = 1; Port <= Device.NumPublicPorts && Result == DTAPI_OK; Port++)
         {
             DtHwFuncDesc Desc;
 
-            DtlDeviceHwFunc(&Device, Port, &Desc);
-            if (DtlVecPush(&Found, &Desc) != 0)
+            DtDeviceHwFunc(&Device, Port, &Desc);
+            if (DtVecPush(&Found, &Desc) != 0)
                 Result = DTAPI_E_OUT_OF_MEM;
         }
-        DtlDeviceRelease(&Device);
+        DtDeviceRelease(&Device);
     }
 
-    Count = DtlVecCount(&Found);
+    Count = DtVecCount(&Found);
     *NumEntriesResult = (int)Count;
 
     if (Result == DTAPI_OK && Count > (size_t)NumEntries)
@@ -253,17 +253,17 @@ unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc
     for (i = 0; Result == DTAPI_OK && i < (size_t)NumEntries; i++)
     {
         if (i < Count)
-            HwFuncs[i] = DTL_VEC_AT(&Found, DtHwFuncDesc, i);
+            HwFuncs[i] = DT_VEC_AT(&Found, DtHwFuncDesc, i);
         else
         {
             memset(&HwFuncs[i], 0, sizeof(HwFuncs[i]));
             snprintf(HwFuncs[i].DeviceName, sizeof(HwFuncs[i].DeviceName), "0:0");
-            DtlDeviceDescribe(0, 0, 0, HwFuncs[i].Description,
-                              sizeof(HwFuncs[i].Description));
+            DtDeviceDescribe(0, 0, 0, HwFuncs[i].Description,
+                             sizeof(HwFuncs[i].Description));
         }
     }
 
-    DtlVecFree(&Found);
+    DtVecFree(&Found);
     return Result;
 }
 
@@ -273,7 +273,7 @@ unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc
 //
 DtDevice* DtDevice_Alloc(void)
 {
-    DtDevice* Device = (DtDevice*)DtlMalloc(sizeof(DtDevice));
+    DtDevice* Device = (DtDevice*)DtMalloc(sizeof(DtDevice));
 
     if (Device != NULL)
         memset(Device, 0, sizeof(*Device));
@@ -287,8 +287,8 @@ void DtDevice_Free(DtDevice* Device)
     if (Device == NULL)
         return;
 
-    DtlDeviceRelease(Device);
-    DtlFree(Device);
+    DtDeviceRelease(Device);
+    DtFree(Device);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_Freep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -313,9 +313,9 @@ unsigned int DtDevice_AttachToSerial(DtDevice* Device, int64_t SerialNumber)
     if (Device->Drv != NULL)
         return DTAPI_E_ATTACHED;
 
-    for (Index = 0; Index < DTL_MAX_DEVICES; Index++)
+    for (Index = 0; Index < DT_MAX_DEVICES; Index++)
     {
-        unsigned int Result = DtlDeviceAttachIndex(Device, Index, true, SerialNumber);
+        unsigned int Result = DtDeviceAttachIndex(Device, Index, true, SerialNumber);
 
         if (Result == DTAPI_E_NO_SUCH_DEVICE)
             continue;
@@ -340,7 +340,7 @@ unsigned int DtDevice_Detach(DtDevice* Device)
     if (Device->Drv == NULL)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtlDeviceRelease(Device);
+    DtDeviceRelease(Device);
     return DTAPI_OK;
 }
 
@@ -352,7 +352,7 @@ unsigned int DtDevice_Detach(DtDevice* Device)
 unsigned int DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
                                   int SubValue)
 {
-    DtlIoConfig Config;
+    DtIoConfig Config;
     unsigned int Result;
 
     if (Device == NULL)
@@ -368,7 +368,7 @@ unsigned int DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group, int Val
     if (Port < 1 || Port > Device->NumPublicPorts)
         return DTAPI_E_NO_SUCH_PORT;
 
-    Result = DtlIoConfigIsValid(Group, Value, SubValue);
+    Result = DtIoConfigIsValid(Group, Value, SubValue);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -378,7 +378,7 @@ unsigned int DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group, int Val
     Config.SubValue = SubValue;
     Config.ParXtra[0] = -1;
     Config.ParXtra[1] = -1;
-    return DtlDrvSetIoConfig(Device->Drv, &Config);
+    return DtDrvSetIoConfig(Device->Drv, &Config);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetToOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -413,7 +413,7 @@ unsigned int DtDevice_GetTimeOfDay(const DtDevice* Device, DtTimeOfDay* TimeOfDa
     if (Device->Drv == NULL)
         return DTAPI_E_NOT_ATTACHED;
 
-    Result = DtlDrvGetTimeOfDay(Device->Drv, &Seconds, &Nanoseconds);
+    Result = DtDrvGetTimeOfDay(Device->Drv, &Seconds, &Nanoseconds);
     if (Result != DTAPI_OK)
         return Result;
 

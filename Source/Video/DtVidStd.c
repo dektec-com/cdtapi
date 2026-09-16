@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtlVidStd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtVidStd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Video standard classification and the video to I/O standard mapping
 //
@@ -7,14 +7,14 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "DtlVidStd.h"  // Link standards.
+#include "DtVidStd.h"   // Link standards.
 #include "CDtapiLite.h" // Public constants and the function being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtlVidStdIs4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdIs4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool DtlVidStdIs4k(int VidStd)
+bool DtVidStdIs4k(int VidStd)
 {
     switch (VidStd)
     {
@@ -62,18 +62,18 @@ unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
     *SubValue = -1;
 
     // A 4K standard needs one of the four ways of carrying it; anything else takes none.
-    Is4k = DtlVidStdIs4k(VideoStandard);
+    Is4k = DtVidStdIs4k(VideoStandard);
     if (Is4k)
     {
-        if (LinkStandard != DTL_VIDLNK_4K_SMPTE425 &&
-            LinkStandard != DTL_VIDLNK_4K_SMPTE425B &&
-            LinkStandard != DTL_VIDLNK_4K_SMPTE2081 &&
-            LinkStandard != DTL_VIDLNK_4K_SMPTE2082)
+        if (LinkStandard != DT_VIDLNK_4K_SMPTE425 &&
+            LinkStandard != DT_VIDLNK_4K_SMPTE425B &&
+            LinkStandard != DT_VIDLNK_4K_SMPTE2081 &&
+            LinkStandard != DT_VIDLNK_4K_SMPTE2082)
         {
             return DTAPI_E_INVALID_LINKSTD;
         }
     }
-    else if (LinkStandard != DTL_VIDLNK_NONE)
+    else if (LinkStandard != DT_VIDLNK_NONE)
     {
         return DTAPI_E_INVALID_LINKSTD;
     }
@@ -123,7 +123,7 @@ unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
     case DTAPI_VIDSTD_2160P25:
     case DTAPI_VIDSTD_2160P29_97:
     case DTAPI_VIDSTD_2160P30:
-        if (LinkStandard != DTL_VIDLNK_4K_SMPTE2081)
+        if (LinkStandard != DT_VIDLNK_4K_SMPTE2081)
             return DTAPI_E_NOT_IMPLEMENTED;
         *Value = DTAPI_IOCONFIG_6GSDI;
         break;
@@ -134,7 +134,7 @@ unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
     case DTAPI_VIDSTD_2160P59_94B:
     case DTAPI_VIDSTD_2160P60:
     case DTAPI_VIDSTD_2160P60B:
-        if (LinkStandard != DTL_VIDLNK_4K_SMPTE2082)
+        if (LinkStandard != DT_VIDLNK_4K_SMPTE2082)
             return DTAPI_E_NOT_IMPLEMENTED;
         *Value = DTAPI_IOCONFIG_12GSDI;
         break;

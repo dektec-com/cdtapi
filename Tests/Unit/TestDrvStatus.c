@@ -11,9 +11,9 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DTAPI result codes.
-#include "DtlDrvAbi.h"              // The DT_STATUS_ codes.
-#include "DtlDrvStatus.h"           // Interface under test.
-#include "DtlTest.h"                // Test framework.
+#include "DtDrvAbi.h"               // The DT_STATUS_ codes.
+#include "DtDrvStatus.h"            // Interface under test.
+#include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -73,84 +73,81 @@ static const StatusCase MappedCases[] = {
 
 #undef CASE
 
-DTL_TEST(EveryStatusMapsAsDtapiDoes)
+DT_TEST(EveryStatusMapsAsDtapiDoes)
 {
     size_t i;
 
     for (i = 0; i < sizeof(MappedCases) / sizeof(MappedCases[0]); i++)
     {
         const StatusCase* Case = &MappedCases[i];
-        unsigned int Result = DtlDrvStatusToResult(Case->Status);
+        unsigned int Result = DtDrvStatusToResult(Case->Status);
 
         if (Result != Case->Result)
-            DTL_FAIL("DT_STATUS_%s: expected 0x%X, got 0x%X", Case->Name, Case->Result,
-                     Result);
+            DT_FAIL("DT_STATUS_%s: expected 0x%X, got 0x%X", Case->Name, Case->Result,
+                    Result);
     }
 }
 
 // The encoding the other tests rely on, and that the backends' classification expects.
-DTL_TEST(StatusEncodingMatchesThePlatform)
+DT_TEST(StatusEncodingMatchesThePlatform)
 {
-    DTL_ASSERT_EQ(DT_STATUS_OK, 0);
+    DT_ASSERT_EQ(DT_STATUS_OK, 0);
 #if defined(_WIN32)
-    DTL_ASSERT_EQ(DT_STATUS_IN_USE, 0xE000000AUL);
+    DT_ASSERT_EQ(DT_STATUS_IN_USE, 0xE000000AUL);
 #else
-    DTL_ASSERT_EQ(DT_STATUS_IN_USE, 0x0001000AUL);
+    DT_ASSERT_EQ(DT_STATUS_IN_USE, 0x0001000AUL);
 #endif
 }
 
-DTL_TEST(SuccessIsOk)
+DT_TEST(SuccessIsOk)
 {
-    DTL_ASSERT_EQ(DtlDrvStatusToResult((uint32_t)DT_STATUS_OK), DTAPI_OK);
+    DT_ASSERT_EQ(DtDrvStatusToResult((uint32_t)DT_STATUS_OK), DTAPI_OK);
 }
 
 // A value that is not a DtStatus at all, such as a raw operating system error, is still
 // reported as a driver failure rather than passed through as if it were a result.
-DTL_TEST(UnknownStatusIsDriverFailure)
+DT_TEST(UnknownStatusIsDriverFailure)
 {
-    DTL_ASSERT_EQ(DtlDrvStatusToResult(0x12345678U), DTAPI_E_DEV_DRIVER);
-    DTL_ASSERT_EQ(DtlDrvStatusToResult(0xFFFFFFFFU), DTAPI_E_DEV_DRIVER);
-    DTL_ASSERT_EQ(DtlDrvStatusToResult((uint32_t)DT_STATUS_ERROR(0xFFFF)),
-                  DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtDrvStatusToResult(0x12345678U), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtDrvStatusToResult(0xFFFFFFFFU), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtDrvStatusToResult((uint32_t)DT_STATUS_ERROR(0xFFFF)),
+                 DTAPI_E_DEV_DRIVER);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Outcome +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-DTL_TEST(OutcomeOkIsOk)
+DT_TEST(OutcomeOkIsOk)
 {
-    DTL_ASSERT_EQ(DtlDrvOutcomeToResult(OS_IOCTL_OK, 0), DTAPI_OK);
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(OS_IOCTL_OK, 0), DTAPI_OK);
 }
 
-DTL_TEST(OutcomeDriverStatusUsesTheStatus)
+DT_TEST(OutcomeDriverStatusUsesTheStatus)
 {
-    DTL_ASSERT_EQ(
-        DtlDrvOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_IN_USE),
-        DTAPI_E_IN_USE);
-    DTL_ASSERT_EQ(
-        DtlDrvOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_NOT_SUPPORTED),
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_IN_USE),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(
+        DtDrvOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_NOT_SUPPORTED),
         DTAPI_E_NOT_SUPPORTED);
 }
 
 // Only a driver status is looked up. A status that comes with another outcome is ignored.
-DTL_TEST(OutcomeOsFailuresIgnoreTheStatus)
+DT_TEST(OutcomeOsFailuresIgnoreTheStatus)
 {
-    DTL_ASSERT_EQ(
-        DtlDrvOutcomeToResult(OS_IOCTL_NO_RESOURCES, (uint32_t)DT_STATUS_IN_USE),
-        DTAPI_E_OUT_OF_RESOURCES);
-    DTL_ASSERT_EQ(
-        DtlDrvOutcomeToResult(OS_IOCTL_COMMUNICATION, (uint32_t)DT_STATUS_IN_USE),
-        DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(OS_IOCTL_NO_RESOURCES, (uint32_t)DT_STATUS_IN_USE),
+                 DTAPI_E_OUT_OF_RESOURCES);
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(OS_IOCTL_COMMUNICATION, (uint32_t)DT_STATUS_IN_USE),
+                 DTAPI_E_COMMUNICATION);
 }
 
-DTL_TEST(UnknownOutcomeIsCommunication)
+DT_TEST(UnknownOutcomeIsCommunication)
 {
-    DTL_ASSERT_EQ(DtlDrvOutcomeToResult(-99, 0), DTAPI_E_COMMUNICATION);
-    DTL_ASSERT_EQ(DtlDrvOutcomeToResult(1, 0), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(-99, 0), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtDrvOutcomeToResult(1, 0), DTAPI_E_COMMUNICATION);
 }
 
-DTL_TEST_MAIN("DrvStatus", DTL_RUN(EveryStatusMapsAsDtapiDoes),
-              DTL_RUN(StatusEncodingMatchesThePlatform), DTL_RUN(SuccessIsOk),
-              DTL_RUN(UnknownStatusIsDriverFailure), DTL_RUN(OutcomeOkIsOk),
-              DTL_RUN(OutcomeDriverStatusUsesTheStatus),
-              DTL_RUN(OutcomeOsFailuresIgnoreTheStatus),
-              DTL_RUN(UnknownOutcomeIsCommunication))
+DT_TEST_MAIN("DrvStatus", DT_RUN(EveryStatusMapsAsDtapiDoes),
+             DT_RUN(StatusEncodingMatchesThePlatform), DT_RUN(SuccessIsOk),
+             DT_RUN(UnknownStatusIsDriverFailure), DT_RUN(OutcomeOkIsOk),
+             DT_RUN(OutcomeDriverStatusUsesTheStatus),
+             DT_RUN(OutcomeOsFailuresIgnoreTheStatus),
+             DT_RUN(UnknownOutcomeIsCommunication))
