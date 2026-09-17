@@ -317,6 +317,79 @@ DT_TEST(LoadBeyondTheReserveIsRefused)
     DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 14));
 }
 
+// Peeking further on: the offset counts from the read offset, the wrap is handled, and
+// nothing is consumed.
+DT_TEST(PeekAtAnOffset)
+{
+    DtRing Ring;
+    uint8_t Base[RING_SIZE];
+    uint8_t Out[4];
+
+    FillPattern(Base, RING_SIZE);
+    DT_ASSERT_OK(DtRingInit(&Ring, Base, RING_SIZE, 1));
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 14));
+    DT_ASSERT_OK(DtRingSkip(&Ring, 10));
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 6));
+    DT_ASSERT_EQ(DtRingLoad(&Ring), 12);
+
+    DT_ASSERT_OK(DtRingPeekAt(&Ring, 2, Out, 4)); // Offsets 12 to 15
+    DT_ASSERT_EQ(Out[0], 0x1C);
+    DT_ASSERT_EQ(Out[3], 0x1F);
+    DT_ASSERT_OK(DtRingPeekAt(&Ring, 4, Out, 4)); // Offsets 14, 15, 0 and 1
+    DT_ASSERT_EQ(Out[0], 0x1E);
+    DT_ASSERT_EQ(Out[2], 0x10);
+    DT_ASSERT_EQ(Out[3], 0x11);
+    DT_ASSERT_OK(DtRingPeekAt(&Ring, 8, Out, 4)); // Offsets 2 to 5, the last available
+    DT_ASSERT_EQ(Out[3], 0x15);
+
+    DT_ASSERT_EQ(DtRingPeekAt(&Ring, 9, Out, 4), -1);
+    DT_ASSERT_EQ(DtRingPeekAt(&Ring, 13, Out, 0), 0);
+    DT_ASSERT_EQ(DtRingPeekAt(&Ring, (size_t)-1, Out, 2), -1);
+    DT_ASSERT_EQ(DtRingPeekAt(&Ring, 2, Out, (size_t)-1), -1);
+    DT_ASSERT_EQ(DtRingReadOffset(&Ring), 10);
+    DT_ASSERT_EQ(DtRingLoad(&Ring), 12);
+}
+
+// A span is the buffer's own bytes when they lie in one piece, and NULL across the end or
+// beyond what is available.
+DT_TEST(SpanInOnePiece)
+{
+    DtRing Ring;
+    uint8_t Base[RING_SIZE];
+
+    DT_ASSERT_OK(DtRingInit(&Ring, Base, RING_SIZE, 1));
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 14));
+    DT_ASSERT_OK(DtRingSkip(&Ring, 10));
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 6));
+
+    DT_ASSERT(DtRingSpan(&Ring, 0, 6) == Base + 10);
+    DT_ASSERT(DtRingSpan(&Ring, 2, 4) == Base + 12);
+    DT_ASSERT(DtRingSpan(&Ring, 4, 4) == NULL);
+    DT_ASSERT(DtRingSpan(&Ring, 6, 6) == Base);
+    DT_ASSERT(DtRingSpan(&Ring, 6, 7) == NULL);
+    DT_ASSERT(DtRingSpan(NULL, 0, 1) == NULL);
+}
+
+// A restart empties the ring where reading and writing continue, inside the buffer only.
+DT_TEST(RestartEmptiesAtAnOffset)
+{
+    DtRing Ring;
+    uint8_t Base[RING_SIZE];
+
+    DT_ASSERT_OK(DtRingInit(&Ring, Base, RING_SIZE, 1));
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 9));
+
+    DT_ASSERT_OK(DtRingRestart(&Ring, 12));
+    DT_ASSERT_EQ(DtRingLoad(&Ring), 0);
+    DT_ASSERT_EQ(DtRingReadOffset(&Ring), 12);
+    DT_ASSERT_OK(DtRingSetWriteOffset(&Ring, 2));
+    DT_ASSERT_EQ(DtRingLoad(&Ring), 6);
+
+    DT_ASSERT_EQ(DtRingRestart(&Ring, RING_SIZE), -1);
+    DT_ASSERT_EQ(DtRingReadOffset(&Ring), 12);
+    DT_ASSERT_EQ(DtRingRestart(NULL, 0), -1);
+}
+
 DT_TEST_MAIN("Ring", DT_RUN(InitRejectsUnusableBuffers), DT_RUN(StartsEmpty),
              DT_RUN(WriteOffsetOutsideTheBufferIsRefused), DT_RUN(ReadWithoutWrapping),
              DT_RUN(ReadAcrossTheEndOfTheBuffer), DT_RUN(PeekDoesNotConsume),
@@ -324,4 +397,6 @@ DT_TEST_MAIN("Ring", DT_RUN(InitRejectsUnusableBuffers), DT_RUN(StartsEmpty),
              DT_RUN(FullRingHoldsSizeMinusOne), DT_RUN(ClearDropsEverythingAvailable),
              DT_RUN(ManyLapsStayConsistent), DT_RUN(NullIsAcceptedEverywhere),
              DT_RUN(PeekRejectsNullDestination), DT_RUN(ZeroedStructIsTreatedAsEmpty),
-             DT_RUN(ReserveOfOneDataWord), DT_RUN(LoadBeyondTheReserveIsRefused))
+             DT_RUN(ReserveOfOneDataWord), DT_RUN(LoadBeyondTheReserveIsRefused),
+             DT_RUN(PeekAtAnOffset), DT_RUN(SpanInOnePiece),
+             DT_RUN(RestartEmptiesAtAnOffset))

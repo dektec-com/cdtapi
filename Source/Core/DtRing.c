@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <string.h>
 
 // CDtapiLite includes
@@ -54,6 +55,18 @@ int DtRingSetWriteOffset(DtRing* Ring, size_t Offset)
     return 0;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingRestart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+int DtRingRestart(DtRing* Ring, size_t Offset)
+{
+    if (Ring == NULL || Ring->Base == NULL || Offset >= Ring->Size)
+        return -1;
+
+    Ring->ReadOffset = Offset;
+    Ring->WriteOffset = Offset;
+    return 0;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 size_t DtRingReadOffset(const DtRing* Ring)
@@ -94,7 +107,26 @@ size_t DtRingFree(const DtRing* Ring)
 //
 int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length)
 {
-    size_t ToEnd;
+    return DtRingPeekAt(Ring, 0, Dst, Length);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAvailable -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// True when the Length bytes from Offset past the read offset are all in the ring.
+// Written so that it cannot wrap: the load is less than the buffer's size.
+//
+static bool IsAvailable(const DtRing* Ring, size_t Offset, size_t Length)
+{
+    size_t Load = DtRingLoad(Ring);
+
+    return Offset <= Load && Length <= Load - Offset;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingPeekAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
+{
+    size_t Start, ToEnd;
 
     if (Ring == NULL || Ring->Base == NULL || Dst == NULL)
         return -1;
@@ -102,21 +134,35 @@ int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length)
     if (Length == 0)
         return 0;
 
-    if (Length > DtRingLoad(Ring))
+    if (!IsAvailable(Ring, Offset, Length))
         return -1;
 
-    ToEnd = Ring->Size - Ring->ReadOffset;
+    Start = (Ring->ReadOffset + Offset) % Ring->Size;
+    ToEnd = Ring->Size - Start;
     if (Length <= ToEnd)
     {
-        memcpy(Dst, Ring->Base + Ring->ReadOffset, Length);
+        memcpy(Dst, Ring->Base + Start, Length);
         return 0;
     }
 
     // The read crosses the end of the buffer, so it is two copies: the tail first, then
     // the rest from the start.
-    memcpy(Dst, Ring->Base + Ring->ReadOffset, ToEnd);
+    memcpy(Dst, Ring->Base + Start, ToEnd);
     memcpy((uint8_t*)Dst + ToEnd, Ring->Base, Length - ToEnd);
     return 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSpan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+const uint8_t* DtRingSpan(const DtRing* Ring, size_t Offset, size_t Length)
+{
+    size_t Start;
+
+    if (Ring == NULL || Ring->Base == NULL || !IsAvailable(Ring, Offset, Length))
+        return NULL;
+
+    Start = (Ring->ReadOffset + Offset) % Ring->Size;
+    return Length <= Ring->Size - Start ? Ring->Base + Start : NULL;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSkip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

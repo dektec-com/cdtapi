@@ -15,25 +15,26 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A view over the DMA buffer shared with the driver, not a queue that owns anything.
-// The hardware writes into that buffer and the driver reports how far it has got; the
-// library tracks how far it has read and tells the driver.
+// A view over a DMA ring buffer shared with the driver, not a queue that owns anything.
+// The card writes into the buffer and the driver reports how far it has got; the library
+// tracks how far it has read and tells the driver.
 //
-//   write offset   moves forward in the driver, read with
-//                  DT_CDMAC_CMD_GET_RX_WRITE_OFFSET
-//   read offset    moves forward here, written back with DT_CDMAC_CMD_SET_RX_READ_OFFSET
+//   write offset   moves forward in the driver, read with a command such as
+//                  DT_CHSDIRX_CMD_GET_WRITE_OFFSET
+//   read offset    moves forward here, written back with a command such as
+//                  DT_CHSDIRX_CMD_SET_READ_OFFSET
 //   load           how many bytes are available: (write + size - read) % size
 //
 // Part of the buffer is always kept free, because a completely full ring and a completely
 // empty one both have the two offsets equal and could not be told apart. The hardware
 // keeps one data word free, not one byte: for a PCIe data width of 64 bits that is eight
-// bytes. The reserve is therefore a parameter, taken from the DMA controller's
-// properties, and the maximum load is Size - Reserve.
+// bytes. The reserve is therefore a parameter, taken from the driver, and the maximum
+// load is Size - Reserve.
 //
 // The wrap is the part that gets written wrong, so it lives here once rather than in
 // every caller: a read that crosses the end of the buffer is two copies.
 //
-// Not thread-safe. The channel that owns the ring serialises access to it.
+// Not thread-safe: the caller serialises access to a ring.
 //
 
 typedef struct DtRing
@@ -55,6 +56,10 @@ int DtRingInit(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve);
 // the driver and the library disagree about the ring, and reading on would read garbage.
 int DtRingSetWriteOffset(DtRing* Ring, size_t Offset);
 
+// Empties the ring with both offsets at Offset, which is where reading and writing start
+// again. Returns 0 on success, -1 when Offset is not inside the buffer.
+int DtRingRestart(DtRing* Ring, size_t Offset);
+
 // How many bytes are available to read.
 size_t DtRingLoad(const DtRing* Ring);
 
@@ -64,6 +69,16 @@ size_t DtRingFree(const DtRing* Ring);
 // Copies Length bytes to Dst without consuming them, handling the wrap. Returns 0 on
 // success, -1 when fewer than Length bytes are available.
 int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length);
+
+// Copies Length bytes from Offset bytes past the read offset to Dst without consuming
+// anything, handling the wrap. Returns 0 on success, -1 when the bytes are not all
+// available.
+int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length);
+
+// The address of Length bytes from Offset bytes past the read offset, when they are
+// available and lie in one piece in the buffer; NULL when they are not available or run
+// across its end, in which case DtRingPeekAt copies them.
+const uint8_t* DtRingSpan(const DtRing* Ring, size_t Offset, size_t Length);
 
 // Consumes Length bytes without copying them. Returns 0 on success, -1 when fewer than
 // Length bytes are available.

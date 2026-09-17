@@ -16,14 +16,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DMA buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A DMA ring lives in memory the library allocates and then gives to the driver, which
-// locks it and lets the card write into it directly. That memory has to start on a page
-// boundary and cover whole pages, because the driver locks it page by page.
+// Memory the library allocates and gives to the driver, which locks it and lets the card
+// read or write it directly. It has to start on a page boundary and cover whole pages,
+// because the driver locks it page by page.
 //
 // On Linux it also has to be protected against fork(). Without MADV_DONTFORK a child
 // process gets copy-on-write mappings of these pages, the parent's next write moves it to
-// fresh pages, and the card keeps writing into the old ones. FFmpeg can start a child
-// process, so this is not hypothetical for the library's first user.
+// fresh pages, and the card keeps writing into the old ones.
 //
 
 typedef struct OsDmaBuffer

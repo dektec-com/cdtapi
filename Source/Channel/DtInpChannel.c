@@ -20,6 +20,7 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"         // Interface being implemented.
 #include "Core/DtAlloc.h"       // Allocation seam.
+#include "Core/DtRing.h"        // Reading the ring.
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
 #include "Device/DtDevice.h"    // The device and its port capabilities.
 #include "Device/DtFunc.h"      // Finding the receive channel.
@@ -97,15 +98,12 @@ struct DtInpChannelC
     // The configured channel.
     bool ChannelAttached;
     DtSdiFrameLayout Layout;
-    uint8_t* Ring;
-    int RingSize;
-    int MaxLoad;
+    DtRing Ring;      // Base NULL without a ring
     bool RingMapped;  // Mapped by CDtapiLite rather than by the driver
     uint8_t* LineBuf; // A coded line that runs across the end of the ring
     int QuarterMs;    // A quarter frame period, at least 1 ms
 
     // Reading.
-    uint32_t ReadOffset;
     bool InSync;
     int ExpectedId;
 };
@@ -150,7 +148,7 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
 //
 static size_t FramesInRing(const DtInpChannel* Chan)
 {
-    return (size_t)Chan->MaxLoad / DtSdiFrameCodedSize(&Chan->Layout);
+    return Chan->Ring.MaxLoad / DtSdiFrameCodedSize(&Chan->Layout);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -160,11 +158,9 @@ static size_t FramesInRing(const DtInpChannel* Chan)
 //
 static void ReleaseChannel(DtInpChannel* Chan)
 {
-    DtDrvChSdiRxUnmapDmaBuf(Chan->Device.Drv, Chan->Ring, Chan->RingSize,
+    DtDrvChSdiRxUnmapDmaBuf(Chan->Device.Drv, Chan->Ring.Base, (int)Chan->Ring.Size,
                             Chan->RingMapped);
-    Chan->Ring = NULL;
-    Chan->RingSize = 0;
-    Chan->MaxLoad = 0;
+    memset(&Chan->Ring, 0, sizeof(Chan->Ring));
     Chan->RingMapped = false;
     DtFree(Chan->LineBuf);
     Chan->LineBuf = NULL;
@@ -197,6 +193,8 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     char Name[DT_CHAN_FRIENDLY_NAME_MAX_LENGTH + 1];
     unsigned int Result;
     int Num, Den;
+    uint8_t* Base = NULL;
+    int BufSize = 0, MaxLoad = 0;
     bool Mapped = false;
 
     memset(&Props, 0, sizeof(Props));
@@ -267,8 +265,18 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
 
     Result = DtDrvChSdiRxConfigure(Drv, Chan->Uuid, Chan->PortIndex, &Config);
     if (Result == DTAPI_OK)
-        Result = DtDrvChSdiRxMapDmaBuf(Drv, Chan->Uuid, Chan->PortIndex, &Chan->Ring,
-                                       &Chan->RingSize, &Chan->MaxLoad, &Mapped);
+        Result = DtDrvChSdiRxMapDmaBuf(Drv, Chan->Uuid, Chan->PortIndex, &Base, &BufSize,
+                                       &MaxLoad, &Mapped);
+
+    // The driver keeps a data word of the ring free; a maximum load that keeps nothing
+    // free, or leaves no room, describes no ring that can be read.
+    if (Result == DTAPI_OK &&
+        (MaxLoad >= BufSize || DtRingInit(&Chan->Ring, Base, (size_t)BufSize,
+                                          (size_t)(BufSize - MaxLoad)) != 0))
+    {
+        DtDrvChSdiRxUnmapDmaBuf(Drv, Base, BufSize, Mapped);
+        Result = DTAPI_E_DEV_DRIVER;
+    }
     if (Result == DTAPI_OK)
     {
         Chan->RingMapped = Mapped;
@@ -284,52 +292,66 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
         return Result;
     }
 
-    Chan->ReadOffset = 0;
     Chan->InSync = false;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Load -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// Bytes between the read offset and the write offset.
-//
-static size_t Load(const DtInpChannel* Chan, uint32_t WriteOffset)
-{
-    size_t Size = (size_t)Chan->RingSize;
-
-    return ((size_t)WriteOffset % Size + Size - (size_t)Chan->ReadOffset % Size) % Size;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Peek -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// Copies Size bytes from Offset past the read offset, across the end of the ring.
-//
-static void Peek(const DtInpChannel* Chan, size_t Offset, uint8_t* Out, size_t Size)
-{
-    size_t RingSize = (size_t)Chan->RingSize;
-    size_t Start = ((size_t)Chan->ReadOffset + Offset) % RingSize;
-    size_t First = RingSize - Start < Size ? RingSize - Start : Size;
-
-    memcpy(Out, Chan->Ring + Start, First);
-    memcpy(Out + First, Chan->Ring, Size - First);
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Advance -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Moves the read offset on by Bytes and tells the driver.
+// Moves the read offset on by Bytes, which the ring holds, and tells the driver.
 //
 static unsigned int Advance(DtInpChannel* Chan, size_t Bytes)
 {
-    Chan->ReadOffset =
-        (uint32_t)(((size_t)Chan->ReadOffset + Bytes) % (size_t)Chan->RingSize);
+    if (DtRingSkip(&Chan->Ring, Bytes) != 0)
+        return DTAPI_E_INTERNAL;
     return DtDrvChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                                     Chan->ReadOffset);
+                                     (uint32_t)DtRingReadOffset(&Chan->Ring));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardTo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Everything written up to WriteOffset is skipped, to an aligned offset, as
+// MxChannelMemlessRx::MarkAsProcessed(-1) does after an out-of-sync event.
+//
+static unsigned int DiscardTo(DtInpChannel* Chan, uint32_t WriteOffset)
+{
+    size_t Alignment = (size_t)Chan->Layout.Alignment;
+    size_t Aligned = (size_t)WriteOffset / Alignment * Alignment;
+
+    Chan->InSync = false;
+    if (DtRingRestart(&Chan->Ring, Aligned) != 0 ||
+        DtRingSetWriteOffset(&Chan->Ring, WriteOffset) != 0)
+    {
+        return DTAPI_E_DEV_DRIVER;
+    }
+    return DtDrvChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
+                                     (uint32_t)Aligned);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Brings the ring up to how far the channel has written. A write offset that would put
+// more in the ring than the driver allows means the two disagree about where reading
+// starts, and what the ring holds is discarded; one outside the ring is a driver fault.
+//
+static unsigned int ReadWriteOffset(DtInpChannel* Chan)
+{
+    uint32_t WriteOffset = 0;
+    unsigned int Result = DtDrvChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid,
+                                                     Chan->PortIndex, &WriteOffset);
+
+    if (Result != DTAPI_OK)
+        return Result;
+    if (WriteOffset >= Chan->Ring.Size)
+        return DTAPI_E_DEV_DRIVER;
+    if (DtRingSetWriteOffset(&Chan->Ring, WriteOffset) != 0)
+        return DiscardTo(Chan, WriteOffset);
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Everything written so far is skipped, to an aligned offset, as
-// MxChannelMemlessRx::MarkAsProcessed(-1) does after an out-of-sync event.
+// Everything written so far is skipped, after an out-of-sync event.
 //
 static unsigned int DiscardAll(DtInpChannel* Chan)
 {
@@ -339,12 +361,9 @@ static unsigned int DiscardAll(DtInpChannel* Chan)
 
     if (Result != DTAPI_OK)
         return Result;
-
-    Chan->InSync = false;
-    Chan->ReadOffset =
-        WriteOffset / (uint32_t)Chan->Layout.Alignment * (uint32_t)Chan->Layout.Alignment;
-    return DtDrvChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                                     Chan->ReadOffset);
+    if (WriteOffset >= Chan->Ring.Size)
+        return DTAPI_E_DEV_DRIVER;
+    return DiscardTo(Chan, WriteOffset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -353,10 +372,11 @@ static unsigned int DiscardAll(DtInpChannel* Chan)
 // alignment, as MxChannelMemlessRx::FindFrameHeader does. The positions searched without
 // finding one are skipped. Returns true with the read offset at the header.
 //
-static bool FindHeader(DtInpChannel* Chan, size_t Available, unsigned int* Result)
+static bool FindHeader(DtInpChannel* Chan, unsigned int* Result)
 {
     const DtSdiFrameLayout* Layout = &Chan->Layout;
     uint8_t Bytes[DT_SDIFRAME_HEADER_BYTES];
+    size_t Available = DtRingLoad(&Chan->Ring);
     size_t Offset;
 
     *Result = DTAPI_OK;
@@ -365,7 +385,7 @@ static bool FindHeader(DtInpChannel* Chan, size_t Available, unsigned int* Resul
     {
         DtSdiFrameHeader Header;
 
-        Peek(Chan, Offset, Bytes, sizeof(Bytes));
+        DtRingPeekAt(&Chan->Ring, Offset, Bytes, sizeof(Bytes));
         DtSdiFrameDecodeHeader(Bytes, &Header);
         if (DtSdiFrameCheckHeader(Layout, &Header, -1) == DTAPI_OK)
         {
@@ -392,20 +412,18 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
     size_t Frame = DtSdiFrameCodedSize(Layout);
     uint8_t Bytes[DT_SDIFRAME_HEADER_BYTES];
     DtSdiFrameHeader Header;
-    uint32_t WriteOffset = 0;
     unsigned int Result;
     size_t Available;
     int Line;
 
     *Taken = false;
-    Result = DtDrvChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                                        &WriteOffset);
+    Result = ReadWriteOffset(Chan);
     if (Result != DTAPI_OK)
         return Result;
-    Available = Load(Chan, WriteOffset);
+    Available = DtRingLoad(&Chan->Ring);
 
     // A ring that has filled up has lost data.
-    if (Available + (size_t)Layout->Stride >= (size_t)Chan->MaxLoad)
+    if (Available + (size_t)Layout->Stride >= Chan->Ring.MaxLoad)
     {
         Chan->FifoOvf = true;
         Chan->FifoOvfLatched = true;
@@ -420,47 +438,47 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
     {
         if (!Chan->InSync)
         {
-            if (!FindHeader(Chan, Available, &Result))
+            if (!FindHeader(Chan, &Result))
                 return Result;
-            Available = Load(Chan, WriteOffset);
+            Available = DtRingLoad(&Chan->Ring);
         }
         if (Available < Frame)
             return DTAPI_OK;
 
-        Peek(Chan, 0, Bytes, sizeof(Bytes));
+        DtRingPeekAt(&Chan->Ring, 0, Bytes, sizeof(Bytes));
         DtSdiFrameDecodeHeader(Bytes, &Header);
         if (DtSdiFrameCheckHeader(Layout, &Header, Chan->ExpectedId) == DTAPI_OK)
         {
             uint8_t First[DT_SDIFRAME_LINE_START_BYTES];
             uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
 
-            Peek(Chan, (size_t)Layout->HeaderBytes, First, sizeof(First));
-            Peek(Chan,
-                 (size_t)Layout->HeaderBytes +
-                     (size_t)(Layout->NumLines - 1) * (size_t)Layout->Stride,
-                 Last, sizeof(Last));
+            DtRingPeekAt(&Chan->Ring, (size_t)Layout->HeaderBytes, First, sizeof(First));
+            DtRingPeekAt(&Chan->Ring,
+                         (size_t)Layout->HeaderBytes +
+                             (size_t)(Layout->NumLines - 1) * (size_t)Layout->Stride,
+                         Last, sizeof(Last));
             if (DtSdiFrameCheckLines(Layout, First, Last) == DTAPI_OK)
                 break;
 
             Result = Advance(Chan, (size_t)Layout->Alignment);
             if (Result != DTAPI_OK)
                 return Result;
-            Available = Load(Chan, WriteOffset);
+            Available = DtRingLoad(&Chan->Ring);
         }
         Chan->InSync = false;
     }
 
+    // A line that runs across the end of the ring is copied into one piece first.
     memset(Buffer, 0, DtSdiFrameRawSize(Layout, Chan->SymbolBits));
     for (Line = 0; Line < Layout->NumLines; Line++)
     {
         size_t Offset =
             (size_t)Layout->HeaderBytes + (size_t)Line * (size_t)Layout->Stride;
-        size_t Start = ((size_t)Chan->ReadOffset + Offset) % (size_t)Chan->RingSize;
-        const uint8_t* Coded = Chan->Ring + Start;
+        const uint8_t* Coded = DtRingSpan(&Chan->Ring, Offset, (size_t)Layout->Stride);
 
-        if (Start + (size_t)Layout->Stride > (size_t)Chan->RingSize)
+        if (Coded == NULL)
         {
-            Peek(Chan, Offset, Chan->LineBuf, (size_t)Layout->Stride);
+            DtRingPeekAt(&Chan->Ring, Offset, Chan->LineBuf, (size_t)Layout->Stride);
             Coded = Chan->LineBuf;
         }
         DtSdiFrameConvertLine(Layout, Chan->SymbolBits, Coded, Line, Buffer);
@@ -470,7 +488,7 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
     if (Result != DTAPI_OK)
         return Result;
 
-    if (Available - Frame + (size_t)Layout->Stride < (size_t)Chan->MaxLoad)
+    if (Available - Frame + (size_t)Layout->Stride < Chan->Ring.MaxLoad)
         Chan->FifoOvf = false;
     Chan->ExpectedId = (Header.FrameId + 1) & 0xFFFF;
     *Taken = true;
@@ -496,11 +514,11 @@ static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
     if (RxControl == DTAPI_RXCTRL_IDLE)
         Result =
             DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
-    else if (Chan->SymbolBits == 8 || Chan->Ring == NULL)
+    else if (Chan->SymbolBits == 8 || Chan->Ring.Base == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
-        Chan->ReadOffset = 0;
+        DtRingRestart(&Chan->Ring, 0);
         Chan->InSync = false;
         Result = DtDrvChSdiRxSetReadOffset(Drv, Chan->Uuid, Chan->PortIndex, 0);
         if (Result == DTAPI_OK)
@@ -877,7 +895,6 @@ unsigned int DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value, int*
 //
 unsigned int DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad)
 {
-    uint32_t WriteOffset = 0;
     unsigned int Result = DTAPI_OK;
 
     if (InpChannel == NULL || FifoLoad == NULL)
@@ -888,14 +905,13 @@ unsigned int DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad)
     // The complete frames from the read offset on, counted also before a read has found
     // the first header.
     *FifoLoad = 0;
-    if (InpChannel->RxControl == DTAPI_RXCTRL_RCV && InpChannel->Ring != NULL)
+    if (InpChannel->RxControl == DTAPI_RXCTRL_RCV && InpChannel->Ring.Base != NULL)
     {
-        Result = DtDrvChSdiRxGetWriteOffset(InpChannel->Device.Drv, InpChannel->Uuid,
-                                            InpChannel->PortIndex, &WriteOffset);
+        Result = ReadWriteOffset(InpChannel);
         if (Result == DTAPI_OK)
         {
             size_t Frames =
-                Load(InpChannel, WriteOffset) / DtSdiFrameCodedSize(&InpChannel->Layout);
+                DtRingLoad(&InpChannel->Ring) / DtSdiFrameCodedSize(&InpChannel->Layout);
             *FifoLoad = (int)(Frames * DtSdiFrameRawSize(&InpChannel->Layout,
                                                          InpChannel->SymbolBits));
         }
@@ -915,7 +931,7 @@ unsigned int DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel, int* MaxFifoS
 
     // The load GetFifoLoad reports for a full ring. A channel without a ring, on a 4K
     // port, gives DTAPI's size.
-    if (InpChannel->Ring == NULL)
+    if (InpChannel->Ring.Base == NULL)
         *MaxFifoSize = DT_FIFO_SIZE_MAX;
     else
         *MaxFifoSize =

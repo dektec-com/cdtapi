@@ -16,19 +16,18 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtBuf +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A block of bytes with a reference count and an optional release callback, so that a
-// frame can be handed to a consumer without copying it. At 12G-SDI a copy per frame is
-// about 1.5 GB/s per stream, which is the whole reason this type exists.
+// frame can be handed to a consumer that keeps it for as long as it needs, without
+// copying it again. At 12G-SDI a copy per frame is about 1.5 GB/s per stream.
 //
 // Two ways to make one:
 //
 //   DtBufAlloc  allocates the bytes and frees them when the last reference goes.
 //   DtBufWrap   takes bytes that already exist, and calls the supplied release
-//                function when the last reference goes. That is how a frame pointing
-//                into a DMA ring is handed out: the callback returns the space to the
-//                ring rather than freeing it.
+//                function when the last reference goes, for example to return a
+//                frame to a pool rather than free it.
 //
-// The count is atomic, because a buffer produced on the receive thread is routinely
-// released on the caller's thread.
+// The count is atomic, because a buffer made on one thread is routinely released on
+// another.
 //
 // Ownership rule: DtBufAlloc and DtBufWrap return a buffer with one reference, which
 // belongs to the caller. Every DtBufRef must be matched by a DtBufUnref.

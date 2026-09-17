@@ -45,7 +45,6 @@ set(CDTAPILITE_SOURCES
     Source/Core/DtAlloc.c
     Source/Core/DtBuf.c
     Source/Core/DtRing.c
-    Source/Core/DtStr.c
     Source/Core/DtVec.c
     Source/Device/DtAvInput.c
     Source/Device/DtDevice.c

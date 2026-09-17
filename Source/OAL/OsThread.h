@@ -16,14 +16,10 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Primitives +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The receive path of a channel runs on its own thread: it waits on an event with a
-// short timeout, drains the DMA ring, and stops when a kill event is set. That is the
-// pattern DTAPI uses in AsiSdiInpChannel_Bb2.cpp, and it is why this layer provides
-// these three primitives. Waiting for a signal polls instead, which takes a sleep and a
-// clock to measure its timeout by.
-//
-// These belong to the operating system, not to a device, so they are the same whether
-// the device behind a channel is real or emulated.
+// Threads, auto-reset events with a time-out, non-recursive mutexes, sleeping, a
+// monotonic clock and the identity of the process, with the same behaviour on Windows
+// and on Linux. They belong to the operating system rather than to a device, so they are
+// the same for a real and an emulated device.
 //
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Thread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -40,10 +36,10 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context);
 // on an event and returns when it is set; the caller sets that event and then joins.
 void OsThreadJoin(OsThread* Thread);
 
-// Raises the calling thread's scheduling priority, for the thread that drains the DMA
-// ring. Returns 0 on success and -1 when the platform refuses, which on Linux is the
-// normal answer without the right privilege. A refusal is not fatal: the thread still
-// runs, only with less headroom against a busy system.
+// Raises the calling thread's scheduling priority. Returns 0 on success and -1 when the
+// platform refuses, which on Linux is the normal answer without the right privilege. A
+// refusal is not fatal: the thread still runs, only with less headroom against a busy
+// system.
 int OsThreadRaisePriority(void);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Event -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -93,8 +89,8 @@ uint64_t OsMonotonicMs(void);
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Process -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Writes the name the process runs under into Buf, which holds Size bytes, cut to fit:
-// the executable's file name on Windows, the name it was invoked by on Linux, as DTAPI
-// takes them for a channel's friendly name. Empty when it cannot be read.
+// the executable's file name on Windows, the name it was invoked by on Linux. Empty when
+// it cannot be read.
 void OsProcessName(char* Buf, size_t Size);
 
 // The process's identifier.
