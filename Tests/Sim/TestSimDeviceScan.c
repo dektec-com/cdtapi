@@ -27,10 +27,8 @@
 // having recorded a failure, when it is not.
 static bool StartSim(int* DtFailures)
 {
-    OsDrv* Drv;
-
     SimDtPcieReset();
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrvIsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
@@ -47,10 +45,9 @@ static bool StartSim(int* DtFailures)
 static bool ScanOne(DtDeviceDesc* Desc, int* DtFailures)
 {
     int Count = -1;
-    unsigned int Result;
 
     memset(Desc, 0xA5, sizeof(*Desc));
-    Result = DtapiDeviceScan(1, &Count, Desc);
+    DtapiResult Result = DtapiDeviceScan(1, &Count, Desc);
     if (Result != DTAPI_OK || Count != 1)
     {
         printf("    FAIL: scan gave 0x%X with %d devices\n", Result, Count);
@@ -73,12 +70,12 @@ static void SetDirectionCaps(int PortIndex, bool Input, bool Output, bool Ip)
 
 DT_TEST(RefusesBadArguments)
 {
-    DtDeviceDesc Desc;
     int Count = 7;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtDeviceDesc Desc;
     DT_ASSERT_EQ(DtapiDeviceScan(1, NULL, &Desc), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtapiDeviceScan(-1, &Count, &Desc), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtapiDeviceScan(1, &Count, NULL), DTAPI_E_INVALID_BUF);
@@ -104,15 +101,14 @@ DT_TEST(CountsWithoutAnArray)
 // A zero-sized array that is not NULL is also allowed, and left alone.
 DT_TEST(ZeroEntriesLeavesTheArrayAlone)
 {
-    DtDeviceDesc Desc;
-    DtDeviceDesc Before;
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtDeviceDesc Desc;
     memset(&Desc, 0x5A, sizeof(Desc));
-    Before = Desc;
+    DtDeviceDesc Before = Desc;
     DT_ASSERT_EQ(DtapiDeviceScan(0, &Count, &Desc), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, 1);
     DT_ASSERT_MEM(&Desc, &Before, sizeof(Desc));
@@ -121,15 +117,14 @@ DT_TEST(ZeroEntriesLeavesTheArrayAlone)
 // Entries beyond the devices found are not written.
 DT_TEST(LeavesSpareEntriesAlone)
 {
-    DtDeviceDesc Descs[3];
-    DtDeviceDesc Spare;
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtDeviceDesc Descs[3];
     memset(Descs, 0x5A, sizeof(Descs));
-    Spare = Descs[1];
+    DtDeviceDesc Spare = Descs[1];
     DT_ASSERT_OK(DtapiDeviceScan(3, &Count, Descs));
     DT_ASSERT_EQ(Count, 1);
     DT_ASSERT_EQ(Descs[0].Serial, SIM_SERIAL);
@@ -140,13 +135,13 @@ DT_TEST(LeavesSpareEntriesAlone)
 // No device, or only one whose driver is too old, is no error: a full scan finds nothing.
 DT_TEST(NothingFoundIsNoError)
 {
-    DtDeviceDesc Desc;
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
     SimDtPcieSetIndex(DT_MAX_DEVICES);
+    DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
 
@@ -161,12 +156,11 @@ DT_TEST(NothingFoundIsNoError)
 // The device is found past the indices before it.
 DT_TEST(FindsTheDeviceAtALaterIndex)
 {
-    DtDeviceDesc Desc;
-
     if (!StartSim(DtFailures))
         return;
 
     SimDtPcieSetIndex(DT_MAX_DEVICES - 1);
+    DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
     DT_ASSERT_EQ(Desc.Serial, SIM_SERIAL);
@@ -226,12 +220,11 @@ DT_TEST(DescribesTheCard)
 // A driver without GET_DEV_INFO2 describes the same device, without the slot power.
 DT_TEST(OlderDeviceInfoHasNoSlotPower)
 {
-    DtDeviceDesc Desc;
-
     if (!StartSim(DtFailures))
         return;
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_NOT_SUPPORTED);
+    DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
     DT_ASSERT_EQ(Desc.Serial, SIM_SERIAL);
@@ -259,13 +252,12 @@ DT_TEST(ConvertsTheFirmwareStatus)
         {6, DTAPI_FWSTATUS_UNDEFINED},
         {-2, DTAPI_FWSTATUS_UNDEFINED},
     };
-    DtDeviceDesc Desc;
-    size_t i;
 
     if (!StartSim(DtFailures))
         return;
 
-    for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    DtDeviceDesc Desc;
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         SimDtPcieSetFirmwareStatus(Cases[i].Driver);
         if (!ScanOne(&Desc, DtFailures))
@@ -278,7 +270,6 @@ DT_TEST(ConvertsTheFirmwareStatus)
 DT_TEST(CountsByTheCurrentDirection)
 {
     DtDevice* Device = NULL;
-    DtDeviceDesc Desc;
 
     if (!StartSim(DtFailures))
         return;
@@ -291,6 +282,7 @@ DT_TEST(CountsByTheCurrentDirection)
     DT_ASSERT_OK(DtDevice_SetToOutput(Device, 1));
     DtDevice_Free(Device);
 
+    DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
     DT_ASSERT_EQ(Desc.NumDtInpChan, SIM_SDI_PORT_COUNT / 2 + 1);
@@ -301,8 +293,6 @@ DT_TEST(CountsByTheCurrentDirection)
 // and an IP port counts as both.
 DT_TEST(CountsByCapabilitiesFirst)
 {
-    DtDeviceDesc Desc;
-
     if (!StartSim(DtFailures))
         return;
 
@@ -314,6 +304,7 @@ DT_TEST(CountsByCapabilitiesFirst)
     // are, since the emulator holds eight overrides.
     SimDtPcieOverrideProperty("CAP_IP", 8, true, 1);
 
+    DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
     DT_ASSERT_EQ(Desc.NumDtInpChan, SIM_SDI_PORT_COUNT / 2 + 1);
@@ -323,8 +314,6 @@ DT_TEST(CountsByCapabilitiesFirst)
 // When a direction cannot be read, counting stops there and the scan still succeeds.
 DT_TEST(StopsCountingWhenADirectionFails)
 {
-    DtDeviceDesc Desc;
-
     if (!StartSim(DtFailures))
         return;
 
@@ -332,6 +321,7 @@ DT_TEST(StopsCountingWhenADirectionFails)
     SetDirectionCaps(0, true, false, false);
     SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_FAIL);
 
+    DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
     DT_ASSERT_EQ(Desc.NumDtInpChan, 1);
@@ -343,7 +333,6 @@ DT_TEST(StopsCountingWhenADirectionFails)
 // A device whose identity cannot be read is left out.
 DT_TEST(LeavesOutADeviceThatCannotBeRead)
 {
-    DtDeviceDesc Desc;
     int Count = -1;
 
     if (!StartSim(DtFailures))
@@ -351,6 +340,7 @@ DT_TEST(LeavesOutADeviceThatCannotBeRead)
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
+    DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
     DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
@@ -393,12 +383,11 @@ DT_TEST(TypesFollowDtapi)
         offsetof(DtDeviceDesc, PcieMaxReadRequestSize),
         offsetof(DtDeviceDesc, PcieMaxSlotPower),
     };
-    DtDeviceDesc Desc;
-    size_t i;
 
-    for (i = 1; i < sizeof(Offsets) / sizeof(Offsets[0]); i++)
+    for (size_t i = 1; i < sizeof(Offsets) / sizeof(Offsets[0]); i++)
         DT_ASSERT(Offsets[i] > Offsets[i - 1]);
 
+    DtDeviceDesc Desc;
     DT_ASSERT_EQ(sizeof(Desc.Serial), 8);
     DT_ASSERT_EQ(sizeof(Desc.Ip), 4);
     DT_ASSERT_EQ(sizeof(Desc.IpV6), 3 * 16);

@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 // CDtapiLite includes
+#include "CDtapiLite.h" // DtapiResult.
 #include "Core/DtVec.h" // The parts found.
 #include "DtPcieCmd.h"  // Properties and the driver version.
 
@@ -56,8 +57,8 @@ typedef struct DtFuncInstance
 // do not fit in memory.
 //
 // Instance is empty after a failure. Release it with DtFuncRelease after a success.
-unsigned int DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
-                        DtFuncInstance* Instance);
+DtapiResult DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
+                       DtFuncInstance* Instance);
 
 // Frees the parts of an instance, which is then empty.
 void DtFuncRelease(DtFuncInstance* Instance);
@@ -74,11 +75,10 @@ const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
 // over. The first other failure stops the command and is returned; when acquiring, the
 // parts acquired before it are released again. Releasing goes on past failures, and
 // returns the first.
-unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
+DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
 
 // Checks that the driver is new enough for a part's proxy, as DtAf::GetPal does before
 // using it (DtProxy.cpp, PROXY_MIN_DRV_VERSIONS): DTAPI_OK, DTAPI_E_DRIVER_INCOMP when it
 // is older, and DTAPI_E_INTERNAL for a type the table does not have. The table holds the
 // types CDtapiLite uses.
-unsigned int DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
-                                      int Type);
+DtapiResult DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type);

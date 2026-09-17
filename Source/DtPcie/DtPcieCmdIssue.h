@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 // CDtapiLite includes
+#include "CDtapiLite.h"             // DtapiResult.
 #include "DtPcieAbi.h"              // DtIoctlInputDataHdr.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 
@@ -42,5 +43,5 @@ void DtPcieCmdInitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIn
 // That check only has teeth on Windows and against the emulator. The Linux driver does
 // not report how much it wrote, so there OsDrvIoCtl leaves the size as it was and a
 // short answer cannot be detected here.
-unsigned int DtPcieCmdIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
-                            void* Out, size_t OutSize);
+DtapiResult DtPcieCmdIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
+                           void* Out, size_t OutSize);

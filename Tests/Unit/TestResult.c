@@ -21,7 +21,7 @@
 
 typedef struct HeaderCode
 {
-    unsigned int Code;
+    DtapiResult Code;
     const char* Macro;
 } HeaderCode;
 
@@ -48,12 +48,10 @@ static const char* ExpectedName(const char* Macro)
 
 DT_TEST(EveryHeaderCodeHasItsName)
 {
-    size_t i;
-
     // Sanity: the generated list really holds the header's codes.
     DT_ASSERT(sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]) > 290);
 
-    for (i = 0; i < sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]); i++)
+    for (size_t i = 0; i < sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]); i++)
     {
         const char* Name = DtapiResult2Str(g_HeaderCodes[i].Code);
         const char* Expected = ExpectedName(g_HeaderCodes[i].Macro);

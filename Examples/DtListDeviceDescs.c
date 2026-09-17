@@ -77,12 +77,9 @@ static void PrintDevice(int Number, const DtDeviceDesc* Desc)
 //
 int main(int Argc, char** Argv)
 {
-    DtDeviceDesc* Descs;
     int64_t Serial = 0;
     int Count = 0;
     int Listed = 0;
-    int i;
-    unsigned int Result;
 
     if (!ExampleCheckArguments(Argc, Argv, "Describes every DekTec device.", g_Options,
                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
@@ -91,11 +88,12 @@ int main(int Argc, char** Argv)
         return EXAMPLE_FAILED;
     }
 
-    Result = DtapiDeviceScan(0, &Count, NULL);
+    unsigned int Result = DtapiDeviceScan(0, &Count, NULL);
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
         return ExampleFailed("DtapiDeviceScan", Result);
 
-    Descs = (DtDeviceDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtDeviceDesc));
+    DtDeviceDesc* Descs =
+        (DtDeviceDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtDeviceDesc));
     if (Descs == NULL)
         return ExampleFailed("calloc", DTAPI_E_OUT_OF_MEM);
 
@@ -106,7 +104,7 @@ int main(int Argc, char** Argv)
         return ExampleFailed("DtapiDeviceScan", Result);
     }
 
-    for (i = 0; i < Count; i++)
+    for (int i = 0; i < Count; i++)
     {
         if (Serial != 0 && Descs[i].Serial != Serial)
             continue;

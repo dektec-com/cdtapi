@@ -18,21 +18,18 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindInstance -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static unsigned int FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
-                                 const char* Role, int* Instance)
+static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
+                                const char* Role, int* Instance)
 {
     char Key[PROPERTY_NAME_MAX_SIZE];
     char InstanceRole[DT_PROPERTY_STR_SIZE];
-    int N;
 
-    for (N = 1;; N++)
+    for (int N = 1;; N++)
     {
-        unsigned int Result;
-
         if (snprintf(Key, sizeof(Key), "%s#%d", Name, N) >= (int)sizeof(Key))
             return DTAPI_E_BUF_TOO_SMALL;
-        Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, InstanceRole,
-                                         sizeof(InstanceRole));
+        DtapiResult Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, InstanceRole,
+                                                     sizeof(InstanceRole));
         if (Result != DTAPI_OK)
             return Result;
         if (strcmp(InstanceRole, Role) == 0)
@@ -51,14 +48,13 @@ static unsigned int FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
 //
 static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
 {
-    char Key[PROPERTY_NAME_MAX_SIZE];
-
     if (DtPcieCmdGetPropertyStr(Drv, Part->Name, PortIndex, Part->Role,
                                 sizeof(Part->Role)) != DTAPI_OK)
     {
         return false;
     }
 
+    char Key[PROPERTY_NAME_MAX_SIZE];
     if (snprintf(Key, sizeof(Key), "%s_TYPE", Part->Name) >= (int)sizeof(Key) ||
         DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
     {
@@ -82,22 +78,20 @@ static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncFind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
-                        DtFuncInstance* Instance)
+DtapiResult DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
+                       DtFuncInstance* Instance)
 {
-    char Key[PROPERTY_NAME_MAX_SIZE];
     int Number = 0;
-    int K;
-    unsigned int Result;
 
     Instance->PortIndex = PortIndex;
     DtVecInit(&Instance->Parts, sizeof(DtFuncPart));
 
-    Result = FindInstance(Drv, PortIndex, Name, Role, &Number);
+    DtapiResult Result = FindInstance(Drv, PortIndex, Name, Role, &Number);
     if (Result != DTAPI_OK)
         return Result;
 
-    for (K = 1;; K++)
+    char Key[PROPERTY_NAME_MAX_SIZE];
+    for (int K = 1;; K++)
     {
         DtFuncPart Part;
 
@@ -152,17 +146,17 @@ const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
+DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
 {
     size_t Count = DtVecCount(&Instance->Parts);
-    unsigned int Result = DTAPI_OK;
+    DtapiResult Result = DTAPI_OK;
     size_t i;
 
     for (i = 0;
          i < Count && (Result == DTAPI_OK || Cmd == DT_EXCLUSIVE_ACCESS_CMD_RELEASE); i++)
     {
         const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
-        unsigned int PartResult =
+        DtapiResult PartResult =
             DtPcieCmdExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
 
         if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
@@ -207,11 +201,10 @@ static const struct
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncCheckDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type)
+DtapiResult DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type)
 {
-    size_t i;
-
-    for (i = 0; i < sizeof(g_MinDriverVersions) / sizeof(g_MinDriverVersions[0]); i++)
+    for (size_t i = 0; i < sizeof(g_MinDriverVersions) / sizeof(g_MinDriverVersions[0]);
+         i++)
     {
         const DtDriverVersion* Min = &g_MinDriverVersions[i].Minimum;
 

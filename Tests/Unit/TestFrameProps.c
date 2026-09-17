@@ -19,17 +19,13 @@
 // 2160p standard has those of the 1080p frame one link carries.
 DT_TEST(InitGivesTheLineTimingOfEveryStandard)
 {
-    int i;
-
     DT_ASSERT_EQ(SDI_FORMAT_COUNT, 40);
 
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         DtFrameProps Props;
-        const DtFieldProps* Last;
         int NumActive = 0;
-        int f;
 
         if (!DtFramePropsInit(&Props, Format->VidStd))
             DT_FAIL("%s: not initialised", Format->Name);
@@ -46,12 +42,12 @@ DT_TEST(InitGivesTheLineTimingOfEveryStandard)
         SDI_ASSERT_EQ(Format, Props.LineNumSymVanc, SdiFormatVancSymbols(Format));
 
         // The fields are numbered from line 1 without a gap, and hold the active lines.
-        Last = &Props.Fields[Props.NumFields - 1];
+        const DtFieldProps* Last = &Props.Fields[Props.NumFields - 1];
         SDI_ASSERT_EQ(Format, Props.Fields[0].StartLine, 1);
         SDI_ASSERT_EQ(Format, Last->EndLine, Format->Lines);
         if (Props.NumFields == 2)
             SDI_ASSERT_EQ(Format, Props.Fields[1].StartLine, Props.Fields[0].EndLine + 1);
-        for (f = 0; f < Props.NumFields; f++)
+        for (int f = 0; f < Props.NumFields; f++)
         {
             const DtFieldProps* Field = &Props.Fields[f];
 
@@ -90,9 +86,8 @@ DT_TEST(InitRefusesWhatIsNoStandard)
     DtFrameProps Props;
     int Num;
     int Den;
-    size_t i;
 
-    for (i = 0; i < sizeof(NoStandards) / sizeof(NoStandards[0]); i++)
+    for (size_t i = 0; i < sizeof(NoStandards) / sizeof(NoStandards[0]); i++)
     {
         Props.VidStd = DTAPI_VIDSTD_1080I50;
         DT_ASSERT(!DtFramePropsInit(&Props, NoStandards[i]));
@@ -111,9 +106,7 @@ DT_TEST(InitRefusesWhatIsNoStandard)
 // what its payload says; PsF counts as interlaced.
 DT_TEST(ClassificationFollowsTheLineTiming)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         bool Is3g = Format->Lines == 1125 && SdiFormatFps(Format) >= 50.0 &&
@@ -166,9 +159,7 @@ static int DeduceFormat(const SdiFormat* Format, double Fps, uint32_t Vpid)
 //
 static const SdiFormat* FormatNamed(int VidStd)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         if (g_SdiFormats[i].VidStd == VidStd)
             return &g_SdiFormats[i];
@@ -180,9 +171,7 @@ static const SdiFormat* FormatNamed(int VidStd)
 // show: PsF at 25 frames and up is taken as interlaced, and four level-B links as one.
 DT_TEST(CountersAloneGiveTheStandard)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
 
@@ -195,12 +184,12 @@ DT_TEST(CountersAloneGiveTheStandard)
 DT_TEST(DeducedPropertiesAreComplete)
 {
     DtFrameProps Deduced;
-    DtFrameProps Expected;
     const SdiFormat* Format = FormatNamed(DTAPI_VIDSTD_1080I59_94);
 
     DtFramePropsDeduce(&Deduced, Format->LinesF1, SdiFormatLinesF2(Format),
                        SdiFormatHancSymbols(Format), SdiFormatVancSymbols(Format),
                        SdiFormatFps(Format), false, 0, DT_SDIRATE_HD);
+    DtFrameProps Expected;
     DtFramePropsInit(&Expected, DTAPI_VIDSTD_1080I59_94);
     DT_ASSERT_MEM(&Deduced, &Expected, sizeof(Expected));
 }
@@ -209,9 +198,7 @@ DT_TEST(DeducedPropertiesAreComplete)
 // counters; the 2160p payloads at 6G and 12G give 2160p.
 DT_TEST(VpidSeparatesStandardsWithTheSameCounters)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         int Expected = Format->VidStd;

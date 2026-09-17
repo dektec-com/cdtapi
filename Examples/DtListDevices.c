@@ -64,12 +64,9 @@ static void PrintKinds(const DtHwFuncDesc* Port)
 //
 int main(int Argc, char** Argv)
 {
-    DtHwFuncDesc* Ports;
     int64_t Serial = 0;
     int Count = 0;
     int Listed = 0;
-    int i;
-    unsigned int Result;
 
     if (!ExampleCheckArguments(Argc, Argv, "Lists every port of every DekTec device.",
                                g_Options,
@@ -79,11 +76,12 @@ int main(int Argc, char** Argv)
         return EXAMPLE_FAILED;
     }
 
-    Result = DtapiHwFuncScan(0, &Count, NULL);
+    unsigned int Result = DtapiHwFuncScan(0, &Count, NULL);
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
         return ExampleFailed("DtapiHwFuncScan", Result);
 
-    Ports = (DtHwFuncDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtHwFuncDesc));
+    DtHwFuncDesc* Ports =
+        (DtHwFuncDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtHwFuncDesc));
     if (Ports == NULL)
         return ExampleFailed("calloc", DTAPI_E_OUT_OF_MEM);
 
@@ -94,7 +92,7 @@ int main(int Argc, char** Argv)
         return ExampleFailed("DtapiHwFuncScan", Result);
     }
 
-    for (i = 0; i < Count; i++)
+    for (int i = 0; i < Count; i++)
     {
         if (Serial != 0 && Ports[i].SerialNumber != Serial)
             continue;

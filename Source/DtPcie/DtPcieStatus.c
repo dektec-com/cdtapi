@@ -21,7 +21,7 @@
 // reports as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
 // case of their own and fall to the default.
 //
-unsigned int DtPcieStatusToResult(uint32_t Status)
+DtapiResult DtPcieStatusToResult(uint32_t Status)
 {
     switch (Status)
     {
@@ -90,7 +90,7 @@ unsigned int DtPcieStatusToResult(uint32_t Status)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtPcieOutcomeToResult(int Outcome, uint32_t Status)
+DtapiResult DtPcieOutcomeToResult(int Outcome, uint32_t Status)
 {
     switch (Outcome)
     {

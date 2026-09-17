@@ -25,19 +25,17 @@
 
 DT_TEST(ScanAttachConfigureDetach)
 {
-    DtHwFuncDesc* Funcs;
-    DtDevice* Device;
-    DtTimeOfDay Tod;
-    int Count = 0, Found = 0;
-    int Output = -1, Input = -1;
-    int i;
+    int Count = 0;
+    int Found = 0;
+    int Output = -1;
+    int Input = -1;
 
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT(Count > 0);
     if (Count <= 0)
         return;
 
-    Funcs = (DtHwFuncDesc*)calloc((size_t)Count, sizeof(DtHwFuncDesc));
+    DtHwFuncDesc* Funcs = (DtHwFuncDesc*)calloc((size_t)Count, sizeof(DtHwFuncDesc));
     DT_ASSERT(Funcs != NULL);
     if (Funcs == NULL)
         return;
@@ -45,7 +43,7 @@ DT_TEST(ScanAttachConfigureDetach)
     DT_ASSERT_EQ(DtapiHwFuncScan(Count, &Found, Funcs), DTAPI_OK);
     DT_ASSERT_EQ(Found, Count);
 
-    for (i = 0; i < Found; i++)
+    for (int i = 0; i < Found; i++)
     {
         if (Funcs[i].IsSdi && Funcs[i].IsOutput && Output < 0)
             Output = i;
@@ -60,7 +58,7 @@ DT_TEST(ScanAttachConfigureDetach)
     }
     DT_ASSERT(strstr(Funcs[Output].Description, "DTA-") == Funcs[Output].Description);
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT(Device != NULL);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, Funcs[Output].SerialNumber), DTAPI_OK);
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, Funcs[Output].Port), DTAPI_OK);
@@ -68,6 +66,7 @@ DT_TEST(ScanAttachConfigureDetach)
     DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, Funcs[Output].Port, DTAPI_IOCONFIG_IODIR,
                                       DTAPI_IOCONFIG_OUTPUT, -1),
                  DTAPI_E_INVALID_ARG);
+    DtTimeOfDay Tod;
     DT_ASSERT_EQ(DtDevice_GetTimeOfDay(Device, &Tod), DTAPI_OK);
     DT_ASSERT(Tod.Nanoseconds < 1000000000U);
     DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_OK);
@@ -84,15 +83,13 @@ DT_TEST(ScanAttachConfigureDetach)
 DT_TEST(DetectVideoStandard)
 {
     DtHwFuncDesc Funcs[64];
-    DtDevice* Device;
-    DtDetVidStd Info;
     int Found = 0;
-    int Output = -1, Input = -1, NoInput = -1;
-    int VidStd;
-    int i;
+    int Output = -1;
+    int Input = -1;
+    int NoInput = -1;
 
     DT_ASSERT_EQ(DtapiHwFuncScan(64, &Found, Funcs), DTAPI_OK);
-    for (i = 0; i < Found; i++)
+    for (int i = 0; i < Found; i++)
     {
         if (!Funcs[i].IsInput && NoInput < 0)
             NoInput = i;
@@ -108,12 +105,12 @@ DT_TEST(DetectVideoStandard)
     if (Input < 0 || Output < 0 || NoInput < 0)
         return;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, Funcs[Input].SerialNumber), DTAPI_OK);
     DT_ASSERT_EQ(DtDevice_SetToInput(Device, Funcs[Input].Port), DTAPI_OK);
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, Funcs[Output].Port), DTAPI_OK);
 
-    VidStd = 12345;
+    int VidStd = 12345;
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Funcs[Input].Port, &VidStd), DTAPI_OK);
     DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_UNKNOWN);
 
@@ -125,7 +122,7 @@ DT_TEST(DetectVideoStandard)
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, Found + 1, &VidStd), DTAPI_E_NO_SUCH_PORT);
 
-    Info = DtDevice_WaitForSignal(Device, Funcs[NoInput].Port);
+    DtDetVidStd Info = DtDevice_WaitForSignal(Device, Funcs[NoInput].Port);
     DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_UNKNOWN);
     DT_ASSERT_EQ(Info.LinkStd, -1);
     DT_ASSERT_EQ(Info.LinkNr, -1);

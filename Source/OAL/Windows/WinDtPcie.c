@@ -29,6 +29,53 @@ typedef struct WinDevice
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenListedInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Opens the Index-th interface of the list DevInfo. Returns INVALID_HANDLE_VALUE when
+// there is no interface at that index or it cannot be opened.
+//
+static HANDLE OpenListedInterface(HDEVINFO DevInfo, int Index)
+{
+    SP_DEVICE_INTERFACE_DATA InterfaceData;
+    InterfaceData.cbSize = sizeof(InterfaceData);
+    if (!SetupDiEnumDeviceInterfaces(DevInfo, NULL, &GUID_DEVINTERFACE_DTPCIE,
+                                     (DWORD)Index, &InterfaceData))
+    {
+        return INVALID_HANDLE_VALUE;
+    }
+
+    // The first call only measures. It is expected to fail with a buffer that is too
+    // small; any other failure means the interface cannot be read.
+    DWORD Size = 0;
+    if (!SetupDiGetDeviceInterfaceDetailA(DevInfo, &InterfaceData, NULL, 0, &Size,
+                                          NULL) &&
+        GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+    {
+        return INVALID_HANDLE_VALUE;
+    }
+
+    PSP_DEVICE_INTERFACE_DETAIL_DATA_A Detail =
+        (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtMalloc(Size);
+    if (Detail == NULL)
+        return INVALID_HANDLE_VALUE;
+
+    // cbSize is the size of the fixed part, not of the whole allocation.
+    Detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
+    HANDLE Handle = INVALID_HANDLE_VALUE;
+    if (SetupDiGetDeviceInterfaceDetailA(DevInfo, &InterfaceData, Detail, Size, NULL,
+                                         NULL))
+    {
+        // Shared, so that another tool such as DtInfo can still open the same card while
+        // this library holds it. Exclusive use of a port is arbitrated by the driver, per
+        // channel, not by who opened the device first.
+        Handle = CreateFileA(Detail->DevicePath, GENERIC_READ | GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+                             FILE_ATTRIBUTE_NORMAL, NULL);
+    }
+    DtFree(Detail);
+    return Handle;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Opens the Index-th present DtPcie device interface. Index counts interfaces that
@@ -38,54 +85,12 @@ typedef struct WinDevice
 //
 static HANDLE OpenInterface(int Index)
 {
-    SP_DEVICE_INTERFACE_DATA InterfaceData;
-    PSP_DEVICE_INTERFACE_DETAIL_DATA_A Detail = NULL;
-    HDEVINFO DevInfo;
-    HANDLE Handle = INVALID_HANDLE_VALUE;
-    DWORD Size = 0;
-
-    DevInfo = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_DTPCIE, NULL, NULL,
-                                   DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    HDEVINFO DevInfo = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_DTPCIE, NULL, NULL,
+                                            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (DevInfo == INVALID_HANDLE_VALUE)
         return INVALID_HANDLE_VALUE;
 
-    InterfaceData.cbSize = sizeof(InterfaceData);
-    if (!SetupDiEnumDeviceInterfaces(DevInfo, NULL, &GUID_DEVINTERFACE_DTPCIE,
-                                     (DWORD)Index, &InterfaceData))
-    {
-        goto Cleanup;
-    }
-
-    // The first call only measures. It is expected to fail with a buffer that is too
-    // small; any other failure means the interface cannot be read.
-    if (!SetupDiGetDeviceInterfaceDetailA(DevInfo, &InterfaceData, NULL, 0, &Size,
-                                          NULL) &&
-        GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-    {
-        goto Cleanup;
-    }
-
-    Detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtMalloc(Size);
-    if (Detail == NULL)
-        goto Cleanup;
-
-    // cbSize is the size of the fixed part, not of the whole allocation.
-    Detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
-    if (!SetupDiGetDeviceInterfaceDetailA(DevInfo, &InterfaceData, Detail, Size, NULL,
-                                          NULL))
-    {
-        goto Cleanup;
-    }
-
-    // Shared, so that another tool such as DtInfo can still open the same card while
-    // this library holds it. Exclusive use of a port is arbitrated by the driver, per
-    // channel, not by who opened the device first.
-    Handle = CreateFileA(Detail->DevicePath, GENERIC_READ | GENERIC_WRITE,
-                         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-                         FILE_ATTRIBUTE_NORMAL, NULL);
-
-Cleanup:
-    DtFree(Detail);
+    HANDLE Handle = OpenListedInterface(DevInfo, Index);
     SetupDiDestroyDeviceInfoList(DevInfo);
     return Handle;
 }
@@ -96,13 +101,12 @@ Cleanup:
 //
 static void* WinOpen(int Index)
 {
-    WinDevice* Dev;
     HANDLE Handle = OpenInterface(Index);
 
     if (Handle == INVALID_HANDLE_VALUE)
         return NULL;
 
-    Dev = (WinDevice*)DtMalloc(sizeof(WinDevice));
+    WinDevice* Dev = (WinDevice*)DtMalloc(sizeof(WinDevice));
     if (Dev == NULL)
     {
         CloseHandle(Handle);

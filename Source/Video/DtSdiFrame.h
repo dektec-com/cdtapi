@@ -13,6 +13,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// CDtapiLite includes
+#include "CDtapiLite.h" // DtapiResult.
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The firmware exchanges SDI frames with the DMA buffers in two formats: "SDI RX simple"
@@ -101,8 +104,8 @@ void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
 // Checks a header as MxChannelMemlessRx::CheckFrameHeader does: DTAPI_E_OUT_OF_SYNC for
 // a wrong sync word; DTAPI_E_INVALID when ExpectedId is not -1 and the frame ID differs;
 // DTAPI_E_INVALID_FORMAT for a format the layout does not expect; otherwise DTAPI_OK.
-unsigned int DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
-                                   const DtSdiFrameHeader* Header, int ExpectedId);
+DtapiResult DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
+                                  const DtSdiFrameHeader* Header, int ExpectedId);
 
 // A transmit header, decoded. Fields keep the widths the header gives them.
 typedef struct DtSdiFrameTxHeader
@@ -142,8 +145,8 @@ void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes);
 // their upper eight bits. FirstLine and LastLine point to DT_SDIFRAME_LINE_START_BYTES
 // bytes at the start of the first and the last coded line. Returns DTAPI_OK or
 // DTAPI_E_OUT_OF_SYNC.
-unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
-                                  const uint8_t* FirstLine, const uint8_t* LastLine);
+DtapiResult DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout, const uint8_t* FirstLine,
+                                 const uint8_t* LastLine);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

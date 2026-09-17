@@ -14,14 +14,11 @@
 
 DT_TEST(AllocationsAreCounted)
 {
-    void* First;
-    void* Second;
-
     DtAllocResetCount();
     DT_ASSERT_EQ(DtAllocCount(), 0);
 
-    First = DtMalloc(16);
-    Second = DtMalloc(16);
+    void* First = DtMalloc(16);
+    void* Second = DtMalloc(16);
     DT_ASSERT(First != NULL);
     DT_ASSERT(Second != NULL);
     DT_ASSERT_EQ(DtAllocCount(), 2);
@@ -33,12 +30,10 @@ DT_TEST(AllocationsAreCounted)
 
 DT_TEST(InjectionFailsTheChosenAllocation)
 {
-    void* Ptr;
-
     DtAllocResetCount();
     DtAllocFailAfter(1);
 
-    Ptr = DtMalloc(16);
+    void* Ptr = DtMalloc(16);
     DT_ASSERT(Ptr != NULL);
     DtFree(Ptr);
 
@@ -55,10 +50,8 @@ DT_TEST(InjectionFailsTheChosenAllocation)
 
 DT_TEST(ReallocGrowsThroughTheSeam)
 {
-    unsigned char* Ptr;
-
     DtAllocResetCount();
-    Ptr = (unsigned char*)DtMalloc(4);
+    unsigned char* Ptr = (unsigned char*)DtMalloc(4);
     DT_ASSERT(Ptr != NULL);
     Ptr[0] = 0x42;
 
@@ -101,13 +94,11 @@ DT_TEST(ResetDisarmsInjection)
 DT_TEST(LiveBlocksAreCounted)
 {
     int Before = DtAllocLive();
-    void* Block;
-    void* Grown;
 
-    Block = DtMalloc(16);
+    void* Block = DtMalloc(16);
     DT_ASSERT_EQ(DtAllocLive(), Before + 1);
 
-    Grown = DtRealloc(Block, 64);
+    void* Grown = DtRealloc(Block, 64);
     DT_ASSERT(Grown != NULL);
     DT_ASSERT_EQ(DtAllocLive(), Before + 1);
 
@@ -130,10 +121,8 @@ DT_TEST(LiveBlocksAreCounted)
 
 DT_TEST(FreeAcceptsNull)
 {
-    int Before;
-
     DtAllocResetCount();
-    Before = DtAllocCount();
+    int Before = DtAllocCount();
 
     DtFree(NULL);
 

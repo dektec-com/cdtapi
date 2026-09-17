@@ -28,7 +28,6 @@
 static int Grow(DtVec* Vec, size_t Needed)
 {
     size_t NewCapacity;
-    uint8_t* NewData;
 
     if (DtGrowCapacity(Vec->Capacity, Needed, Vec->ElemSize, DT_VEC_MIN_CAPACITY,
                        &NewCapacity) != 0)
@@ -39,7 +38,7 @@ static int Grow(DtVec* Vec, size_t Needed)
     if (NewCapacity == Vec->Capacity)
         return 0;
 
-    NewData = (uint8_t*)DtRealloc(Vec->Data, NewCapacity * Vec->ElemSize);
+    uint8_t* NewData = (uint8_t*)DtRealloc(Vec->Data, NewCapacity * Vec->ElemSize);
     if (NewData == NULL)
         return -1;
 

@@ -143,9 +143,7 @@ static void EnsureState(void)
 //
 static const SimFault* FindFault(int FunctionCode)
 {
-    int i;
-
-    for (i = 0; i < SIM_MAX_FAULTS; i++)
+    for (int i = 0; i < SIM_MAX_FAULTS; i++)
     {
         if (g_Sim.Faults[i].FunctionCode == FunctionCode)
             return &g_Sim.Faults[i];
@@ -160,10 +158,8 @@ static const SimFault* FindFault(int FunctionCode)
 //
 static void AddFault(int FunctionCode, bool Short, uint32_t Status)
 {
-    int i;
-
     EnsureState();
-    for (i = 0; i < SIM_MAX_FAULTS; i++)
+    for (int i = 0; i < SIM_MAX_FAULTS; i++)
     {
         SimFault* Fault = &g_Sim.Faults[i];
 
@@ -183,9 +179,7 @@ static void AddFault(int FunctionCode, bool Short, uint32_t Status)
 //
 static SimOverride* FindOverride(const char* Name, int PortIndex, bool IsString)
 {
-    int i;
-
-    for (i = 0; i < SIM_MAX_OVERRIDES; i++)
+    for (int i = 0; i < SIM_MAX_OVERRIDES; i++)
     {
         SimOverride* Override = &g_Sim.Overrides[i];
 
@@ -205,12 +199,9 @@ static SimOverride* FindOverride(const char* Name, int PortIndex, bool IsString)
 //
 static SimOverride* AddOverride(const char* Name, int PortIndex, bool IsString)
 {
-    SimOverride* Override;
-    int i;
-
     EnsureState();
-    Override = FindOverride(Name, PortIndex, IsString);
-    for (i = 0; Override == NULL && i < SIM_MAX_OVERRIDES; i++)
+    SimOverride* Override = FindOverride(Name, PortIndex, IsString);
+    for (int i = 0; Override == NULL && i < SIM_MAX_OVERRIDES; i++)
     {
         if (!g_Sim.Overrides[i].Active)
             Override = &g_Sim.Overrides[i];
@@ -288,17 +279,17 @@ static bool CodeFromName(const char* Field, int* Code)
 //
 static bool IsSupported(int PortIndex, int Code)
 {
-    char CapName[4 + IOCONFIG_NAME_MAX_SIZE];
     uint64_t Value = 0;
-    int Type;
 
     const SimOverride* Override;
 
+    char CapName[4 + IOCONFIG_NAME_MAX_SIZE];
     memcpy(CapName, "CAP_", 4);
     DtIoConfigGetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
     Override = FindOverride(CapName, PortIndex, false);
     if (Override != NULL)
         return Override->Status == 0 && Override->Present && Override->Value != 0;
+    int Type;
     return SimDta2178GetProperty(CapName, PortIndex, &Type, &Value) && Value != 0;
 }
 
@@ -309,14 +300,13 @@ static bool IsSupported(int PortIndex, int Code)
 static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* OutSize,
                             uint32_t* DrvStatus)
 {
-    DtIoctlGetDriverVersionOutput* Version;
     int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlGetDriverVersionInput), Out,
                              OutSize, sizeof(DtIoctlGetDriverVersionOutput), DrvStatus);
 
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    Version = (DtIoctlGetDriverVersionOutput*)Out;
+    DtIoctlGetDriverVersionOutput* Version = (DtIoctlGetDriverVersionOutput*)Out;
     *Version = g_Sim.DriverVersion;
 
     *OutSize = sizeof(DtIoctlGetDriverVersionOutput);
@@ -331,14 +321,13 @@ static int GetDriverVersion(SimDevice* Dev, size_t InSize, void* Out, size_t* Ou
 static int GetDevInfo(SimDevice* Dev, int FunctionCode, size_t InSize, void* Out,
                       size_t* OutSize, uint32_t* DrvStatus)
 {
-    DtIoctlGetDevInfoOutput* Info;
     int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlGetDevInfoInput), Out, OutSize,
                              sizeof(DtIoctlGetDevInfoOutput), DrvStatus);
 
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    Info = (DtIoctlGetDevInfoOutput*)Out;
+    DtIoctlGetDevInfoOutput* Info = (DtIoctlGetDevInfoOutput*)Out;
     memset(Info, 0, sizeof(*Info));
 
     Info->m_TypeNumber = SIM_TYPE_NUMBER;
@@ -382,25 +371,21 @@ static int GetDevInfo(SimDevice* Dev, int FunctionCode, size_t InSize, void* Out
 static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* Out,
                           size_t* OutSize, uint32_t* DrvStatus)
 {
-    DtIoctlPropCmdGetStrInput Request;
-    DtIoctlPropCmdGetStrOutput* Answer;
-    const SimOverride* Override;
     const char* Str = NULL;
-    size_t Length;
-    int Outcome;
 
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlPropCmdGetStrInput), Out, OutSize,
-                         sizeof(DtIoctlPropCmdGetStrOutput), DrvStatus);
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlPropCmdGetStrInput), Out, OutSize,
+                             sizeof(DtIoctlPropCmdGetStrOutput), DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
+    DtIoctlPropCmdGetStrInput Request;
     memcpy(&Request, In, sizeof(Request));
     Request.m_Name[sizeof(Request.m_Name) - 1] = '\0';
 
-    Answer = (DtIoctlPropCmdGetStrOutput*)Out;
+    DtIoctlPropCmdGetStrOutput* Answer = (DtIoctlPropCmdGetStrOutput*)Out;
     memset(Answer, 0, sizeof(*Answer));
 
-    Override = FindOverride(Request.m_Name, Request.m_PortIndex, true);
+    const SimOverride* Override = FindOverride(Request.m_Name, Request.m_PortIndex, true);
     if (Override != NULL)
     {
         if (Override->Status != 0)
@@ -411,7 +396,7 @@ static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* O
     }
     else if (SimDta2178GetString(Request.m_Name, Request.m_PortIndex, &Str))
     {
-        Length = strlen(Str);
+        size_t Length = strlen(Str);
         memcpy(Answer->m_Str, Str,
                Length < sizeof(Answer->m_Str) ? Length : sizeof(Answer->m_Str));
     }
@@ -430,12 +415,8 @@ static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* O
 static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, void* Out,
                        size_t* OutSize, uint32_t* DrvStatus)
 {
-    DtIoctlPropCmdGetValueInput Request;
-    DtIoctlPropCmdGetValueOutput* Answer;
-    const SimOverride* Override;
     uint64_t Value = 0;
     int Type = 0;
-    int Outcome;
 
     if (Cmd == DT_PROP_CMD_GET_STR)
         return PropertyGetStr(Dev, In, InSize, Out, OutSize, DrvStatus);
@@ -443,15 +424,17 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     if (Cmd != DT_PROP_CMD_GET_VALUE)
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
 
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlPropCmdGetValueInput), Out, OutSize,
-                         sizeof(DtIoctlPropCmdGetValueOutput), DrvStatus);
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlPropCmdGetValueInput), Out,
+                             OutSize, sizeof(DtIoctlPropCmdGetValueOutput), DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
+    DtIoctlPropCmdGetValueInput Request;
     memcpy(&Request, In, sizeof(Request));
     Request.m_Name[sizeof(Request.m_Name) - 1] = '\0';
 
-    Override = FindOverride(Request.m_Name, Request.m_PortIndex, false);
+    const SimOverride* Override =
+        FindOverride(Request.m_Name, Request.m_PortIndex, false);
     if (Override != NULL)
     {
         if (Override->Status != 0)
@@ -465,7 +448,7 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
     else if (!SimDta2178GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
         return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
 
-    Answer = (DtIoctlPropCmdGetValueOutput*)Out;
+    DtIoctlPropCmdGetValueOutput* Answer = (DtIoctlPropCmdGetValueOutput*)Out;
     memset(Answer, 0, sizeof(*Answer));
     Answer->m_Scope = PROPERTY_SCOPE_DTAPI | PROPERTY_SCOPE_DRIVER;
     Answer->m_Type = Type;
@@ -484,37 +467,33 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
 static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
                        size_t* OutSize, uint32_t* DrvStatus)
 {
-    const DtIoctlIoConfigCmdGetIoConfigInput* Request;
-    DtIoctlIoConfigCmdGetIoConfigOutput* Answer;
-    size_t InNeeded, OutNeeded, Count, i;
-    int Outcome;
-
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlIoConfigCmdGetIoConfigInput), Out,
-                         OutSize, sizeof(DtIoctlIoConfigCmdGetIoConfigOutput), DrvStatus);
+    int Outcome =
+        CheckSizes(Dev, InSize, sizeof(DtIoctlIoConfigCmdGetIoConfigInput), Out, OutSize,
+                   sizeof(DtIoctlIoConfigCmdGetIoConfigOutput), DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    Request = (const DtIoctlIoConfigCmdGetIoConfigInput*)In;
+    const DtIoctlIoConfigCmdGetIoConfigInput* Request =
+        (const DtIoctlIoConfigCmdGetIoConfigInput*)In;
     if (Request->m_IoConfigCount < 0)
         return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
 
-    Count = (size_t)Request->m_IoConfigCount;
-    InNeeded =
+    size_t Count = (size_t)Request->m_IoConfigCount;
+    size_t InNeeded =
         sizeof(DtIoctlIoConfigCmdGetIoConfigInput) + Count * sizeof(DtIoctlIoConfigId);
-    OutNeeded = sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) +
-                Count * sizeof(DtIoctlIoConfigValue);
+    size_t OutNeeded = sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) +
+                       Count * sizeof(DtIoctlIoConfigValue);
     Outcome = CheckSizes(Dev, InSize, InNeeded, Out, OutSize, OutNeeded, DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    Answer = (DtIoctlIoConfigCmdGetIoConfigOutput*)Out;
-    for (i = 0; i < Count; i++)
+    DtIoctlIoConfigCmdGetIoConfigOutput* Answer =
+        (DtIoctlIoConfigCmdGetIoConfigOutput*)Out;
+    for (size_t i = 0; i < Count; i++)
     {
         const DtIoctlIoConfigId* Id = &Request->m_IoCfgId[i];
         DtIoctlIoConfigValue* Value = &Answer->m_IoCfgValue[i];
-        const SimConfig* Config;
         int Group;
-        int j;
 
         if (!CodeFromName(Id->m_Group, &Group) || Group < 0 || Id->m_PortIndex < 0 ||
             Id->m_PortIndex >= SIM_PORT_COUNT)
@@ -522,11 +501,11 @@ static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
             return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
         }
 
-        Config = &g_Sim.Config[Id->m_PortIndex][Group];
+        const SimConfig* Config = &g_Sim.Config[Id->m_PortIndex][Group];
         memset(Value, 0, sizeof(*Value));
         DtIoConfigGetName(Config->Value, Value->m_Value, sizeof(Value->m_Value));
         DtIoConfigGetName(Config->SubValue, Value->m_SubValue, sizeof(Value->m_SubValue));
-        for (j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
+        for (int j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
             Value->m_ParXtra[j] = Config->ParXtra[j];
     }
 
@@ -545,20 +524,17 @@ static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
 //
 static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* DrvStatus)
 {
-    const DtIoctlIoConfigCmdSetIoConfigInput* Request;
-    size_t Count, i;
-    int Outcome;
-
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlIoConfigCmdSetIoConfigInput), NULL,
-                         NULL, 0, DrvStatus);
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlIoConfigCmdSetIoConfigInput),
+                             NULL, NULL, 0, DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    Request = (const DtIoctlIoConfigCmdSetIoConfigInput*)In;
+    const DtIoctlIoConfigCmdSetIoConfigInput* Request =
+        (const DtIoctlIoConfigCmdSetIoConfigInput*)In;
     if (Request->m_IoConfigCount < 0)
         return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
 
-    Count = (size_t)Request->m_IoConfigCount;
+    size_t Count = (size_t)Request->m_IoConfigCount;
     Outcome = CheckSizes(Dev, InSize,
                          sizeof(DtIoctlIoConfigCmdSetIoConfigInput) +
                              Count * sizeof(DtIoctlIoConfig),
@@ -566,12 +542,14 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
+    size_t i;
     for (i = 0; i < Count; i++)
     {
         const DtIoctlIoConfig* Pars = &Request->m_IoCfgPars[i];
         int Port = Pars->m_PortIndex;
-        int Group, Value, SubValue;
-        bool Supported;
+        int Group;
+        int Value;
+        int SubValue;
 
         if (!CodeFromName(Pars->m_Group, &Group) ||
             !CodeFromName(Pars->m_Value, &Value) ||
@@ -583,6 +561,7 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
 
         // A boolean I/O capability must itself be supported; any other group needs its
         // value and sub-value to be.
+        bool Supported;
         if (DtIoConfigIsValid(Group, Value, SubValue) != DTAPI_OK)
             Supported = false;
         else if (Value == DTAPI_IOCONFIG_TRUE || Value == DTAPI_IOCONFIG_FALSE)
@@ -598,15 +577,13 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
     for (i = 0; i < Count; i++)
     {
         const DtIoctlIoConfig* Pars = &Request->m_IoCfgPars[i];
-        SimConfig* Config;
         int Group = -1;
-        int j;
 
         CodeFromName(Pars->m_Group, &Group);
-        Config = &g_Sim.Config[Pars->m_PortIndex][Group];
+        SimConfig* Config = &g_Sim.Config[Pars->m_PortIndex][Group];
         CodeFromName(Pars->m_Value, &Config->Value);
         CodeFromName(Pars->m_SubValue, &Config->SubValue);
-        for (j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
+        for (int j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
             Config->ParXtra[j] = Pars->m_ParXtra[j];
     }
 
@@ -637,21 +614,18 @@ static int IoConfigCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
 static int TodCmd(SimDevice* Dev, int Cmd, size_t InSize, void* Out, size_t* OutSize,
                   uint32_t* DrvStatus)
 {
-    DtIoctlTodCmdGetTimeOutput* Answer;
-    struct timespec Now;
-    int Outcome;
-
     if (Cmd != DT_TOD_CMD_GET_TIME)
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
 
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlTodCmdGetTimeInput), Out, OutSize,
-                         sizeof(DtIoctlTodCmdGetTimeOutput), DrvStatus);
+    int Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlTodCmdGetTimeInput), Out, OutSize,
+                             sizeof(DtIoctlTodCmdGetTimeOutput), DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
+    struct timespec Now;
     timespec_get(&Now, TIME_UTC);
 
-    Answer = (DtIoctlTodCmdGetTimeOutput*)Out;
+    DtIoctlTodCmdGetTimeOutput* Answer = (DtIoctlTodCmdGetTimeOutput*)Out;
     memset(Answer, 0, sizeof(*Answer));
     Answer->m_Time.m_Seconds = (UInt32)Now.tv_sec;
     Answer->m_Time.m_Nanoseconds = (UInt32)Now.tv_nsec;
@@ -671,21 +645,20 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
                     size_t* OutSize, uint32_t* DrvStatus)
 {
     const SimSdiSignal* Signal = &g_Sim.Signals[PortIndex];
-    DtIoctlSdiRxCmdGetSdiStatusOutput2* Answer;
-    int Outcome;
 
     if (Cmd != DT_SDIRX_CMD_GET_SDI_STATUS2)
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
 
-    Outcome = CheckSizes(Dev, InSize, sizeof(DtIoctlSdiRxCmdGetSdiStatusInput), Out,
-                         OutSize, sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2), DrvStatus);
+    int Outcome =
+        CheckSizes(Dev, InSize, sizeof(DtIoctlSdiRxCmdGetSdiStatusInput), Out, OutSize,
+                   sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2), DrvStatus);
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
     if (g_Sim.Config[PortIndex][DTAPI_IOCONFIG_IODIR].Value != DTAPI_IOCONFIG_INPUT)
         return SimFail(Dev, DT_STATUS_NOT_ENABLED, DrvStatus);
 
-    Answer = (DtIoctlSdiRxCmdGetSdiStatusOutput2*)Out;
+    DtIoctlSdiRxCmdGetSdiStatusOutput2* Answer = (DtIoctlSdiRxCmdGetSdiStatusOutput2*)Out;
     memset(Answer, 0, sizeof(*Answer));
     *OutSize = sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2);
 
@@ -725,19 +698,16 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
 static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
                       size_t InSize, void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
-    uint32_t Status;
-
     if (Cmd == DT_CHSDIRX_CMD_GET_SDI_STATUS)
     {
         size_t Size = OutSize != NULL ? *OutSize : 0;
-        int Outcome;
 
         // The channel's status answer has the layout of GET_SDI_STATUS2's.
         _Static_assert(sizeof(DtIoctlChSdiRxCmdGetSdiStatusOutput) ==
                            sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2),
                        "The two status answers must have one layout");
-        Outcome = SdiRxCmd(Dev, PortIndex, DT_SDIRX_CMD_GET_SDI_STATUS2, InSize, Out,
-                           &Size, DrvStatus);
+        int Outcome = SdiRxCmd(Dev, PortIndex, DT_SDIRX_CMD_GET_SDI_STATUS2, InSize, Out,
+                               &Size, DrvStatus);
         if (Outcome == OS_IOCTL_OK)
         {
             ((DtIoctlChSdiRxCmdGetSdiStatusOutput*)Out)->m_CarrierDetect = 0;
@@ -746,7 +716,8 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
         return Outcome;
     }
 
-    Status = SimChSdiRxCmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, &Dev->SleepMs);
+    uint32_t Status =
+        SimChSdiRxCmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, &Dev->SleepMs);
     if (Status != DT_STATUS_OK)
         return SimFail(Dev, Status, DrvStatus);
     return OS_IOCTL_OK;
@@ -781,11 +752,9 @@ static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, i
 //
 static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvStatus)
 {
-    void** Owner;
-
     if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
         return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
-    Owner = &g_Sim.ExclOwners[PartIndex];
+    void** Owner = &g_Sim.ExclOwners[PartIndex];
 
     switch (Cmd)
     {
@@ -822,14 +791,12 @@ static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvSt
 //
 static void* SimOpen(int Index)
 {
-    SimDevice* Dev;
-
     EnsureState();
 
     if (Index != g_Sim.Index)
         return NULL;
 
-    Dev = (SimDevice*)DtMalloc(sizeof(SimDevice));
+    SimDevice* Dev = (SimDevice*)DtMalloc(sizeof(SimDevice));
     if (Dev == NULL)
         return NULL;
 
@@ -843,12 +810,10 @@ static void* SimOpen(int Index)
 //
 static void SimClose(void* State)
 {
-    int i;
-
     Lock();
     SimChSdiRxCloseHandle(State);
     SimSdiTxCloseHandle(State);
-    for (i = 0; i < SIM_MAX_PARTS; i++)
+    for (int i = 0; i < SIM_MAX_PARTS; i++)
     {
         if (g_Sim.ExclOwners[i] == State)
             g_Sim.ExclOwners[i] = NULL;
@@ -877,10 +842,11 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
     const DtIoctlInputDataHdr* Hdr = (const DtIoctlInputDataHdr*)In;
     int Cmd = Hdr->m_Cmd;
     const char* Role = NULL;
-    int PortIndex, Type;
 
     if (Hdr->m_Uuid != DT_UUID_CORE)
     {
+        int PortIndex;
+        int Type;
         if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 ||
             !SimDta2178FindFunction(Hdr->m_Uuid, &PortIndex, &Type, &Role))
         {
@@ -940,7 +906,6 @@ static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size
                           void* Out, size_t* OutSize, uint32_t* DrvStatus)
 {
     const SimFault* Fault = FindFault(FunctionCode);
-    int Outcome;
 
     g_Sim.LastFunctionCode = FunctionCode;
     g_Sim.LastInputSize = InSize;
@@ -953,7 +918,7 @@ static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size
     if (Fault != NULL && !Fault->Short)
         return SimFail(Dev, Fault->Status, DrvStatus);
 
-    Outcome = Dispatch(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
+    int Outcome = Dispatch(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
 
     if (Outcome == OS_IOCTL_OK && Fault != NULL && OutSize != NULL && *OutSize > 0)
         (*OutSize)--;
@@ -970,11 +935,10 @@ static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
 {
     SimDevice* Dev = (SimDevice*)State;
     int FunctionCode = (int)DT_IOCTL_TO_FUNCTION(Code);
-    int Outcome;
 
     Lock();
     Dev->SleepMs = 0;
-    Outcome = SimIoCtlLocked(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
+    int Outcome = SimIoCtlLocked(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
     Unlock();
 
     if (Dev->SleepMs > 0)
@@ -986,10 +950,8 @@ static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
 //
 static void* SimMapMemory(void* State, uint64_t Offset, size_t Size)
 {
-    void* Address;
-
     Lock();
-    Address = SimChSdiRxMap(State, Offset, Size);
+    void* Address = SimChSdiRxMap(State, Offset, Size);
     Unlock();
     return Address;
 }
@@ -1018,11 +980,11 @@ static uint32_t SimLastError(const void* State)
 //
 void SimDtPcieReset(void)
 {
-    int Port, Group, j;
+    int j;
 
-    for (Port = 0; Port < SIM_PORT_COUNT; Port++)
+    for (int Port = 0; Port < SIM_PORT_COUNT; Port++)
     {
-        for (Group = 0; Group < SIM_IOCONFIG_COUNT; Group++)
+        for (int Group = 0; Group < SIM_IOCONFIG_COUNT; Group++)
         {
             SimConfig* Config = &g_Sim.Config[Port][Group];
 
@@ -1124,7 +1086,6 @@ void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
                              const char* Value)
 {
     SimOverride* Override = AddOverride(Name, PortIndex, true);
-    size_t Length;
 
     if (Override == NULL)
         return;
@@ -1132,7 +1093,7 @@ void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
     if (!Present || Value == NULL)
         return;
 
-    Length = strlen(Value);
+    size_t Length = strlen(Value);
     if (Length > sizeof(Override->Str))
         Length = sizeof(Override->Str);
     memcpy(Override->Str, Value, Length);
@@ -1153,13 +1114,11 @@ void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
 //
 void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
 {
-    SimSdiSignal* Port;
-
     EnsureState();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return;
 
-    Port = &g_Sim.Signals[PortIndex];
+    SimSdiSignal* Port = &g_Sim.Signals[PortIndex];
     g_Sim.SignalDelays[PortIndex] = 0;
     if (Signal != NULL)
     {
@@ -1189,12 +1148,10 @@ int SimDtPcieOpenHandles(void)
 //
 size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
 {
-    size_t Kept;
-
     EnsureState();
     *FunctionCode = g_Sim.LastFunctionCode;
-    Kept = g_Sim.LastInputSize < sizeof(g_Sim.LastInput) ? g_Sim.LastInputSize
-                                                         : sizeof(g_Sim.LastInput);
+    size_t Kept = g_Sim.LastInputSize < sizeof(g_Sim.LastInput) ? g_Sim.LastInputSize
+                                                                : sizeof(g_Sim.LastInput);
     memcpy(Buf, g_Sim.LastInput, Size < Kept ? Size : Kept);
     return g_Sim.LastInputSize;
 }
@@ -1203,11 +1160,9 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
 //
 uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex)
 {
-    void* Owner;
-
     if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
         return DT_STATUS_EXCL_ACCESS_REQD;
-    Owner = g_Sim.ExclOwners[PartIndex];
+    void* Owner = g_Sim.ExclOwners[PartIndex];
     if (Owner == NULL)
         return DT_STATUS_EXCL_ACCESS_REQD;
     return Owner == Handle ? DT_STATUS_OK : DT_STATUS_IN_USE;

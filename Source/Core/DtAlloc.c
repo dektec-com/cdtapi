@@ -76,12 +76,10 @@ static int ShouldFail(void)
 //
 void* DtMalloc(size_t Size)
 {
-    void* Block;
-
     if (ShouldFail())
         return NULL;
 
-    Block = malloc(Size);
+    void* Block = malloc(Size);
     if (Block != NULL)
         DtAtomicIncrement(&g_Live);
     return Block;
@@ -94,12 +92,10 @@ void* DtMalloc(size_t Size)
 //
 void* DtRealloc(void* Ptr, size_t Size)
 {
-    void* Block;
-
     if (ShouldFail())
         return NULL;
 
-    Block = realloc(Ptr, Size);
+    void* Block = realloc(Ptr, Size);
     if (Block != NULL && Ptr == NULL)
         DtAtomicIncrement(&g_Live);
     return Block;
@@ -121,8 +117,6 @@ void DtFree(void* Ptr)
 int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
                    size_t* Out)
 {
-    size_t Capacity;
-
     if (Out == NULL || ElemSize == 0)
         return -1;
 
@@ -132,7 +126,7 @@ int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCap
         return 0;
     }
 
-    Capacity = Current != 0 ? Current : MinCapacity;
+    size_t Capacity = Current != 0 ? Current : MinCapacity;
     while (Capacity < Needed)
     {
         // Doubling again would wrap the capacity back to a small number, so stop at

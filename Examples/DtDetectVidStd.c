@@ -49,12 +49,11 @@ static bool IsSdiInput(const DtHwFuncDesc* Port)
 //
 int main(int Argc, char** Argv)
 {
-    DtHwFuncDesc Port;
-    DtDevice* Device;
-    int64_t Serial = 0, PortNumber = 0, TimeoutMs = 0;
+    int64_t Serial = 0;
+    int64_t PortNumber = 0;
+    int64_t TimeoutMs = 0;
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     int64_t Waited = 0;
-    unsigned int Result;
 
     if (!ExampleCheckArguments(Argc, Argv, "Detects the video standard on an SDI input.",
                                g_Options,
@@ -66,7 +65,8 @@ int main(int Argc, char** Argv)
         return EXAMPLE_FAILED;
     }
 
-    Result = ExampleFindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
+    DtHwFuncDesc Port;
+    unsigned int Result = ExampleFindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
     if (Result == DTAPI_E_NOT_FOUND)
     {
         printf("No SDI input that suits\n");
@@ -75,7 +75,7 @@ int main(int Argc, char** Argv)
     if (Result != DTAPI_OK)
         return ExampleFailed("DtapiHwFuncScan", Result);
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL)
         return ExampleFailed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
 

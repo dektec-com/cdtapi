@@ -49,12 +49,10 @@ static void* ThreadEntry(void* Arg)
 //
 OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
 {
-    OsThread* Thread;
-
     if (Func == NULL)
         return NULL;
 
-    Thread = (OsThread*)DtMalloc(sizeof(OsThread));
+    OsThread* Thread = (OsThread*)DtMalloc(sizeof(OsThread));
     if (Thread == NULL)
         return NULL;
 
@@ -115,34 +113,33 @@ struct OsEvent
 //
 OsEvent* OsEventCreate(void)
 {
-    pthread_condattr_t Attr;
     OsEvent* Event = (OsEvent*)DtMalloc(sizeof(OsEvent));
-
     if (Event == NULL)
         return NULL;
-
     if (pthread_mutex_init(&Event->Mutex, NULL) != 0)
-        goto FreeEvent;
-
-    if (pthread_condattr_init(&Attr) != 0)
-        goto DestroyMutex;
-
-    if (pthread_condattr_setclock(&Attr, CLOCK_MONOTONIC) != 0 ||
-        pthread_cond_init(&Event->Cond, &Attr) != 0)
     {
-        pthread_condattr_destroy(&Attr);
-        goto DestroyMutex;
+        DtFree(Event);
+        return NULL;
     }
 
-    pthread_condattr_destroy(&Attr);
+    // The condition times its waits on the monotonic clock.
+    pthread_condattr_t Attr;
+    int Made = pthread_condattr_init(&Attr) == 0;
+    if (Made)
+    {
+        Made = pthread_condattr_setclock(&Attr, CLOCK_MONOTONIC) == 0 &&
+               pthread_cond_init(&Event->Cond, &Attr) == 0;
+        pthread_condattr_destroy(&Attr);
+    }
+    if (!Made)
+    {
+        pthread_mutex_destroy(&Event->Mutex);
+        DtFree(Event);
+        return NULL;
+    }
+
     Event->Signalled = 0;
     return Event;
-
-DestroyMutex:
-    pthread_mutex_destroy(&Event->Mutex);
-FreeEvent:
-    DtFree(Event);
-    return NULL;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventDestroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -175,20 +172,20 @@ void OsEventSet(OsEvent* Event)
 //
 int OsEventWait(OsEvent* Event, int TimeoutMs)
 {
-    struct timespec Now;
-    struct timespec Deadline;
-    int64_t DeadlineSec;
-    long DeadlineNsec;
     int Result = OS_WAIT_SIGNALLED;
 
     if (Event == NULL)
         return OS_WAIT_ERROR;
 
+    struct timespec Deadline;
     if (TimeoutMs >= 0)
     {
+        struct timespec Now;
         if (clock_gettime(CLOCK_MONOTONIC, &Now) != 0)
             return OS_WAIT_ERROR;
 
+        int64_t DeadlineSec;
+        long DeadlineNsec;
         LinTimeAddMs((int64_t)Now.tv_sec, Now.tv_nsec, TimeoutMs, &DeadlineSec,
                      &DeadlineNsec);
         Deadline.tv_sec = (time_t)DeadlineSec;
@@ -281,11 +278,10 @@ void OsMutexUnlock(OsMutex* Mutex)
 //
 void OsSleepMs(int Ms)
 {
-    struct timespec Remaining;
-
     if (Ms <= 0)
         return;
 
+    struct timespec Remaining;
     Remaining.tv_sec = Ms / 1000;
     Remaining.tv_nsec = (long)(Ms % 1000) * 1000000L;
     while (nanosleep(&Remaining, &Remaining) != 0 && errno == EINTR)

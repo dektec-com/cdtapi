@@ -91,7 +91,7 @@ DT_TEST(EveryStandardMapsAsDtapiDoes)
         const Expected* E = &g_Expected[i];
         int Value = 0;
         int SubValue = 0;
-        unsigned int Result = DtapiVidStd2IoStd(E->VidStd, E->LinkStd, &Value, &SubValue);
+        DtapiResult Result = DtapiVidStd2IoStd(E->VidStd, E->LinkStd, &Value, &SubValue);
 
         if (Result != DTAPI_OK)
             DT_FAIL("%s: result 0x%X", E->Name, Result);
@@ -111,9 +111,8 @@ DT_TEST(EveryStandardMapsAsDtapiDoes)
 DT_TEST(OnlyThe2160pStandardsAre4k)
 {
     int Count = 0;
-    int VidStd;
 
-    for (VidStd = -10; VidStd < 1000; VidStd++)
+    for (int VidStd = -10; VidStd < 1000; VidStd++)
     {
         if (DtVidStdIs4k(VidStd))
             Count++;
@@ -129,14 +128,12 @@ DT_TEST(OnlyThe2160pStandardsAre4k)
 // A standard that is not 4K takes no link standard, and says so before anything else.
 DT_TEST(NonUhdStandardRefusesALinkStandard)
 {
-    int Link;
-    int i;
-
-    for (i = 0; i < EXPECTED_COUNT; i++)
+    for (int i = 0; i < EXPECTED_COUNT; i++)
     {
         if (DtVidStdIs4k(g_Expected[i].VidStd))
             continue;
 
+        int Link;
         for (Link = 0; Link <= 3; Link++)
         {
             int Value = 7;
@@ -172,9 +169,7 @@ DT_TEST(UhdStandardNeedsAValidLinkStandard)
 //
 static const SdiFormat* OneLinkOf(const SdiFormat* Uhd)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
 
@@ -194,22 +189,18 @@ static const SdiFormat* OneLinkOf(const SdiFormat* Uhd)
 // HD-SDI or 3G-SDI. That includes a 50 Hz standard on 6G and a 30 Hz one on 12G.
 DT_TEST(FourLinkUhdTakesTheStandardOfOneLink)
 {
-    int i;
-    int Link;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
-        const SdiFormat* Link1;
-        bool High;
 
         if (!DtVidStdIs4k(Format->VidStd))
             continue;
-        Link1 = OneLinkOf(Format);
+        const SdiFormat* Link1 = OneLinkOf(Format);
         if (Link1 == NULL)
             DT_FAIL("%s: no format of one link", Format->Name);
-        High = SdiFormatFps(Format) >= 50.0;
+        bool High = SdiFormatFps(Format) >= 50.0;
 
+        int Link;
         for (Link = DT_VIDLNK_4K_SMPTE425; Link <= DT_VIDLNK_4K_SMPTE2082; Link++)
         {
             int Value = 7;
@@ -234,10 +225,7 @@ DT_TEST(FourLinkUhdTakesTheStandardOfOneLink)
 // and has the frame of one link.
 DT_TEST(PropertiesHoldTheFrameOfOneLink)
 {
-    int i;
-    int Link;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
@@ -255,6 +243,7 @@ DT_TEST(PropertiesHoldTheFrameOfOneLink)
         SDI_ASSERT_EQ(Format, Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
         SDI_ASSERT_EQ(Format, Props.Frame.VidStd, DTAPI_VIDSTD_UNKNOWN);
 
+        int Link;
         for (Link = DT_VIDLNK_4K_SMPTE425; Link <= DT_VIDLNK_4K_SMPTE2082; Link++)
         {
             SDI_ASSERT_EQ(Format, DtVidStdPropsInit(&Props, Format->VidStd, Link), true);
@@ -318,9 +307,7 @@ static int LinkOfPayload(int Payload)
 // The VPID of every standard gives that standard, and for 2160p how it is carried.
 DT_TEST(VpidGivesEveryStandard)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
@@ -370,9 +357,8 @@ DT_TEST(VpidOutsideItsPayloadGivesNothing)
         0x00000000,
     };
     DtVidStdProps Props;
-    size_t i;
 
-    for (i = 0; i < sizeof(NoStandard) / sizeof(NoStandard[0]); i++)
+    for (size_t i = 0; i < sizeof(NoStandard) / sizeof(NoStandard[0]); i++)
     {
         DtVidStdPropsFromSmpte352(&Props, NoStandard[i]);
         if (Props.VidStd != DTAPI_VIDSTD_UNKNOWN || Props.LinkStd != DT_VIDLNK_NONE)
@@ -397,9 +383,7 @@ static void DeduceFormat(DtVidStdProps* Props, const SdiFormat* Format, double F
 // With its VPID every standard is found exactly, with how it is carried.
 DT_TEST(DeduceWithVpidFindsEveryStandard)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
@@ -414,12 +398,9 @@ DT_TEST(DeduceWithVpidFindsEveryStandard)
 // SDI rate.
 DT_TEST(DeduceWithoutVpidTakesTheRateForTheLink)
 {
-    int i;
-
-    for (i = 0; i < SDI_FORMAT_COUNT; i++)
+    for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
-        DtVidStdProps Props;
         int Link = DT_VIDLNK_NONE;
 
         if (Format->SdiRate == DT_SDIRATE_6G)
@@ -427,6 +408,7 @@ DT_TEST(DeduceWithoutVpidTakesTheRateForTheLink)
         else if (Format->SdiRate == DT_SDIRATE_12G)
             Link = DT_VIDLNK_4K_SMPTE2082;
 
+        DtVidStdProps Props;
         DeduceFormat(&Props, Format, SdiFormatFps(Format), 0);
         SDI_ASSERT_EQ(Format, Props.VidStd, Format->NoVpid);
         SDI_ASSERT_EQ(Format, Props.LinkStd, Link);
@@ -440,12 +422,12 @@ DT_TEST(DeduceTrustsAVpidThatFitsTheCounters)
     const SdiFormat* Sd = &g_SdiFormats[1];
     const SdiFormat* P25 = &g_SdiFormats[12];
     const SdiFormat* I50 = &g_SdiFormats[20];
-    DtVidStdProps Props;
 
     DT_ASSERT_EQ(Sd->VidStd, DTAPI_VIDSTD_625I50);
     DT_ASSERT_EQ(P25->VidStd, DTAPI_VIDSTD_1080P25);
     DT_ASSERT_EQ(I50->VidStd, DTAPI_VIDSTD_1080I50);
 
+    DtVidStdProps Props;
     DeduceFormat(&Props, P25, 0.0, SdiFormatVpid(P25));
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_1080P25);
 
@@ -460,11 +442,11 @@ DT_TEST(DeduceTrustsAVpidThatFitsTheCounters)
 DT_TEST(Deduce2160pNeedsARateWithALink)
 {
     DtFrameProps Frame;
-    DtVidStdProps Props;
 
     DtFramePropsDeduce(&Frame, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
                        DT_SDIRATE_3G);
     DT_ASSERT_EQ(Frame.VidStd, DTAPI_VIDSTD_2160P50);
+    DtVidStdProps Props;
     DtVidStdPropsDeduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
                         DT_SDIRATE_3G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);

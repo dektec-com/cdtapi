@@ -21,13 +21,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInputAttach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
+DtapiResult DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
 {
-    DtFuncInstance Func;
-    const DtFuncPart* SdiRx;
-    uint32_t Caps;
-    unsigned int Result;
-
     memset(Input, 0, sizeof(*Input));
 
     if (Device == NULL || Device->Drv == NULL)
@@ -41,7 +36,7 @@ unsigned int DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
     if (Port < 1 || Port > Device->NumPorts)
         return DTAPI_E_NO_SUCH_PORT;
 
-    Caps = Device->PortCaps[Port - 1];
+    uint32_t Caps = Device->PortCaps[Port - 1];
     if ((Caps & (DT_CAP_INPUT | DT_CAP_INTINPUT)) == 0)
         return DTAPI_E_NOT_SUPPORTED;
     if ((Caps & (DT_CAP_MATRIX2 | DT_CAP_SDIRX | DT_CAP_HDMI)) == 0)
@@ -54,10 +49,11 @@ unsigned int DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
     // AvInputStatusProxy::Init makes the proxies of the ASI/SDI receiver function with
     // the empty role. DtPalSDIRX then takes the SDI receiver with the empty role from
     // them, which DTAPI only does when it detects.
-    Result = DtFuncFind(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
+    DtFuncInstance Func;
+    DtapiResult Result = DtFuncFind(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
     if (Result != DTAPI_OK)
         return Result;
-    SdiRx = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncPart* SdiRx = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     if (SdiRx != NULL)
     {
         Input->Device = Device;
@@ -92,16 +88,14 @@ void DtAvInputSetUnknown(DtDetVidStd* Info)
 // come from the VPID when there is one. A 4K standard on one link, 6G or 12G, that the
 // port scales to 3G is reported as the 1080p standard that link carries.
 //
-unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
+DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
 {
     OsDrv* Drv = Input->Device->Drv;
-    DtSdiRxStatus Status;
-    DtVidStdProps Props;
     bool Scale = false;
-    unsigned int Result;
 
     DtAvInputSetUnknown(Info);
 
+    DtapiResult Result;
     if ((Input->Caps & DT_CAP_SCALE_12GTO3G) != 0)
     {
         DtIoConfig Config;
@@ -120,6 +114,7 @@ unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
     if (Result != DTAPI_OK)
         return Result;
 
+    DtSdiRxStatus Status;
     Result = DtPcieCmdSdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
     if (Result != DTAPI_OK)
         return Result;
@@ -127,6 +122,7 @@ unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
     if (!Status.Valid || !Status.SdiLock)
         return DTAPI_OK;
 
+    DtVidStdProps Props;
     DtVidStdPropsDeduce(&Props, Status.NumLinesF1, Status.NumLinesF2, Status.NumSymsHanc,
                         Status.NumSymsVidVanc, Status.FrameRate, Status.IsLevelB,
                         Status.PayloadId, Status.SdiRate);

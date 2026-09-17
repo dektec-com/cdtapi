@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*# CDtapiLite_Constants.h *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// *#*#*#*#*#*#*#*#*#*#*#* CDtapiLite_Constants.h *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDtapiLite - Result codes and configuration constants shared with CDTAPI and DTAPI
 //

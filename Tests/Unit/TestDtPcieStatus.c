@@ -22,7 +22,7 @@ typedef struct StatusCase
 {
     const char* Name;
     uint32_t Status;
-    unsigned int Result;
+    DtapiResult Result;
 } StatusCase;
 
 #define CASE(Status, Result) {#Status, (uint32_t)DT_STATUS_##Status, DTAPI_E_##Result}
@@ -80,7 +80,7 @@ DT_TEST(EveryStatusMapsAsDtapiDoes)
     for (i = 0; i < sizeof(MappedCases) / sizeof(MappedCases[0]); i++)
     {
         const StatusCase* Case = &MappedCases[i];
-        unsigned int Result = DtPcieStatusToResult(Case->Status);
+        DtapiResult Result = DtPcieStatusToResult(Case->Status);
 
         if (Result != Case->Result)
             DT_FAIL("DT_STATUS_%s: expected 0x%X, got 0x%X", Case->Name, Case->Result,

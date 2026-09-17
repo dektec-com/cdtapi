@@ -38,8 +38,6 @@ int DtRingInit(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
 //
 int DtRingSetWriteOffset(DtRing* Ring, size_t Offset)
 {
-    size_t Load;
-
     // The offset comes from the driver. A value outside the buffer means the two sides
     // disagree about the ring, and continuing would read arbitrary memory.
     if (Ring == NULL || Ring->Base == NULL || Offset >= Ring->Size)
@@ -47,7 +45,7 @@ int DtRingSetWriteOffset(DtRing* Ring, size_t Offset)
 
     // The producer never fills the reserve, so a load beyond MaxLoad cannot come from a
     // consistent driver either. It is refused rather than read.
-    Load = (Offset + Ring->Size - Ring->ReadOffset) % Ring->Size;
+    size_t Load = (Offset + Ring->Size - Ring->ReadOffset) % Ring->Size;
     if (Load > Ring->MaxLoad)
         return -1;
 
@@ -90,14 +88,12 @@ size_t DtRingLoad(const DtRing* Ring)
 //
 size_t DtRingFree(const DtRing* Ring)
 {
-    size_t Load;
-
     if (Ring == NULL || Ring->Base == NULL)
         return 0;
 
     // Equal to DTAPI's (Read + MaxLoad - Write) % Size whenever the load is within
     // MaxLoad, which SetWriteOffset guarantees; written this way it cannot wrap.
-    Load = DtRingLoad(Ring);
+    size_t Load = DtRingLoad(Ring);
     return Load >= Ring->MaxLoad ? 0 : Ring->MaxLoad - Load;
 }
 
@@ -126,8 +122,6 @@ static bool IsAvailable(const DtRing* Ring, size_t Offset, size_t Length)
 //
 int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
 {
-    size_t Start, ToEnd;
-
     if (Ring == NULL || Ring->Base == NULL || Dst == NULL)
         return -1;
 
@@ -137,8 +131,8 @@ int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
     if (!IsAvailable(Ring, Offset, Length))
         return -1;
 
-    Start = (Ring->ReadOffset + Offset) % Ring->Size;
-    ToEnd = Ring->Size - Start;
+    size_t Start = (Ring->ReadOffset + Offset) % Ring->Size;
+    size_t ToEnd = Ring->Size - Start;
     if (Length <= ToEnd)
     {
         memcpy(Dst, Ring->Base + Start, Length);
@@ -152,16 +146,14 @@ int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSpan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSpan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const uint8_t* DtRingSpan(const DtRing* Ring, size_t Offset, size_t Length)
 {
-    size_t Start;
-
     if (Ring == NULL || Ring->Base == NULL || !IsAvailable(Ring, Offset, Length))
         return NULL;
 
-    Start = (Ring->ReadOffset + Offset) % Ring->Size;
+    size_t Start = (Ring->ReadOffset + Offset) % Ring->Size;
     return Length <= Ring->Size - Start ? Ring->Base + Start : NULL;
 }
 

@@ -136,7 +136,9 @@ endforeach()
 #     Names       every macro CDTAPI.h defines is defined by CDtapiLite.h, or an #error
 #                 generated per name fails the build.
 #     Prototypes  every function both headers declare, declared again as CDTAPI.h has
-#                 it after CDtapiLite.h, so that a differing signature fails the build.
+#                 it after CDtapiLite.h, so that a differing signature fails the build;
+#                 but for the frame buffers of ReadFrame and Write, which CDtapiLite
+#                 takes as void pointers so that char and uint8_t buffers both fit.
 #     Values      CDtapiLite_Constants.h and CDTAPI.h in one translation unit; a macro
 #                 with a different definition fails as a redefinition, warnings being
 #                 errors. The full headers cannot share a unit, as both define types.
@@ -158,6 +160,11 @@ set(CompatLayouts
     "DtTimeOfDay:Seconds,Nanoseconds"
     "DtHwFuncDesc:DeviceName,Description,SerialNumber,Port,IsSdi,IsAvFifo,IsInput,IsOutput"
     "DtDetVidStd:VidStd,LinkStd,LinkNr,Vpid,Vpid2,AspectRatio,OriginalVidStd,OriginalLinkStd")
+
+# The functions whose frame buffer CDtapiLite declares as void* and const void*, where
+# CDTAPI.h has char*. Code written for CDTAPI.h passes a char* to them unchanged, which
+# the Sim suites show under warnings as errors.
+set(CompatBufferDepartures DtInpChannel_ReadFrame DtOutpChannel_Write)
 
 # The enumerators both headers define. They are no macros, so the name and value checks
 # do not see them; their values are compared with the layout.
@@ -207,7 +214,8 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
     foreach(Line IN LISTS CompatLines)
         if(Line MATCHES "^[A-Za-z].*[ *](Dtapi[A-Za-z0-9]*|Dt[A-Za-z]+_[A-Za-z0-9]+)\\(")
             string(FIND "${LiteText}" " ${CMAKE_MATCH_1}(" LiteDeclares)
-            if(LiteDeclares GREATER -1)
+            list(FIND CompatBufferDepartures "${CMAKE_MATCH_1}" Departure)
+            if(LiteDeclares GREATER -1 AND Departure EQUAL -1)
                 string(REPLACE "@SEMICOLON@" ";" Line "${Line}")
                 string(APPEND ProtoLines "${Line}\n")
                 math(EXPR ProtoCount "${ProtoCount} + 1")

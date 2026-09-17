@@ -40,15 +40,14 @@ DT_TEST(HeaderCountsAgainstTheInputSide)
 DT_TEST(HeaderPrecedesInput)
 {
     uint8_t In[16];
-    uint8_t Buf[32];
-    uint32_t Sizes[2];
-    size_t i;
 
-    for (i = 0; i < sizeof(In); i++)
+    for (size_t i = 0; i < sizeof(In); i++)
         In[i] = (uint8_t)(0xA0 + i);
 
+    uint8_t Buf[32];
     DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), 16, Buf, sizeof(Buf)));
 
+    uint32_t Sizes[2];
     memcpy(Sizes, Buf, sizeof(Sizes));
     DT_ASSERT_EQ(Sizes[0], 16);
     DT_ASSERT_EQ(Sizes[1], 16);
@@ -70,26 +69,25 @@ DT_TEST(RestOfTheBufferIsCleared)
 {
     uint8_t In[4] = {9, 9, 9, 9};
     uint8_t Buf[64];
-    size_t i;
 
     memset(Buf, 0xEE, sizeof(Buf));
     DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), 64, Buf, sizeof(Buf)));
 
-    for (i = 8 + sizeof(In); i < sizeof(Buf); i++)
+    for (size_t i = 8 + sizeof(In); i < sizeof(Buf); i++)
         DT_ASSERT_EQ(Buf[i], 0);
 }
 
 DT_TEST(PackRefusesBadArguments)
 {
     uint8_t In[16];
-    uint8_t Small[8];
-    uint8_t Buf[32];
 
     memset(In, 0, sizeof(In));
 
     // Too small for header plus input.
+    uint8_t Small[8];
     DT_ASSERT_EQ(LinIoctlPack(true, In, sizeof(In), 0, Small, sizeof(Small)), -1);
     DT_ASSERT_EQ(LinIoctlPack(true, In, sizeof(In), 0, NULL, 32), -1);
+    uint8_t Buf[32];
     DT_ASSERT_EQ(LinIoctlPack(true, NULL, 4, 0, Buf, sizeof(Buf)), -1);
 
     // No input at all is allowed.
@@ -103,11 +101,10 @@ DT_TEST(PackRefusesBadArguments)
 // size check runs before anything is written, and that ordering is what this checks.
 DT_TEST(SizeBeyondThirtyTwoBitsIsRefused)
 {
-    uint8_t Buf[16];
-
     if (sizeof(size_t) <= sizeof(uint32_t))
         return;
 
+    uint8_t Buf[16];
     DT_ASSERT_EQ(LinIoctlPack(true, NULL, 0, (size_t)UINT32_MAX + 1, Buf, (size_t)-1),
                  -1);
 }
@@ -119,15 +116,14 @@ DT_TEST(SizeBeyondThirtyTwoBitsIsRefused)
 DT_TEST(AnswerIsReadFromOffsetZero)
 {
     uint8_t In[16];
-    uint8_t Buf[24];
-    uint8_t Out[16];
-    size_t i;
 
     memset(In, 0x11, sizeof(In));
+    uint8_t Buf[24];
+    uint8_t Out[16];
     DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), sizeof(Out), Buf, sizeof(Buf)));
 
     // What the driver does: overwrite the start of the block with its answer.
-    for (i = 0; i < sizeof(Out); i++)
+    for (size_t i = 0; i < sizeof(Out); i++)
         Buf[i] = (uint8_t)(0x50 + i);
 
     DT_ASSERT_OK(LinIoctlUnpack(Buf, sizeof(Buf), Out, sizeof(Out)));
@@ -138,10 +134,10 @@ DT_TEST(AnswerIsReadFromOffsetZero)
 DT_TEST(UnpackRefusesBadArguments)
 {
     uint8_t Buf[8];
-    uint8_t Out[16];
 
     memset(Buf, 0, sizeof(Buf));
 
+    uint8_t Out[16];
     DT_ASSERT_EQ(LinIoctlUnpack(Buf, sizeof(Buf), Out, sizeof(Out)), -1);
     DT_ASSERT_EQ(LinIoctlUnpack(NULL, 8, Out, 4), -1);
     DT_ASSERT_EQ(LinIoctlUnpack(Buf, sizeof(Buf), NULL, 4), -1);

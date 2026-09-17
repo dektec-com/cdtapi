@@ -16,7 +16,7 @@
 
 typedef struct ResultName
 {
-    unsigned int Code;
+    DtapiResult Code;
     const char* Name;
 } ResultName;
 
@@ -31,7 +31,7 @@ static const ResultName g_ResultNames[] = {
 // A linear search over some three hundred entries, as a name is looked up for a message
 // and not in a loop.
 //
-const char* DtapiResult2Str(unsigned int Result)
+const char* DtapiResult2Str(DtapiResult Result)
 {
     size_t i;
 

@@ -43,10 +43,10 @@ DT_TEST(FreeIsIdempotent)
 DT_TEST(GrowthPreservesContents)
 {
     DtVec Vec;
-    int i;
 
     DtVecInit(&Vec, sizeof(int));
 
+    int i;
     for (i = 0; i < 1000; i++)
         DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
@@ -92,14 +92,12 @@ DT_TEST(IndexOutOfRangeGivesNull)
 DT_TEST(ClearKeepsCapacity)
 {
     DtVec Vec;
-    size_t CapacityBefore;
-    int i;
 
     DtVecInit(&Vec, sizeof(int));
-    for (i = 0; i < 50; i++)
+    for (int i = 0; i < 50; i++)
         DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
-    CapacityBefore = Vec.Capacity;
+    size_t CapacityBefore = Vec.Capacity;
     DtVecClear(&Vec);
 
     DT_ASSERT_EQ(DtVecCount(&Vec), 0);
@@ -112,7 +110,6 @@ DT_TEST(ResizeZeroFillsWhenGrowing)
 {
     DtVec Vec;
     int Value = 0x5A5A;
-    size_t i;
 
     DtVecInit(&Vec, sizeof(int));
     DT_ASSERT_OK(DtVecPush(&Vec, &Value));
@@ -120,7 +117,7 @@ DT_TEST(ResizeZeroFillsWhenGrowing)
 
     DT_ASSERT_EQ(DtVecCount(&Vec), 10);
     DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, 0), 0x5A5A);
-    for (i = 1; i < 10; i++)
+    for (size_t i = 1; i < 10; i++)
         DT_ASSERT_EQ(DT_VEC_AT(&Vec, int, i), 0);
 
     DtVecFree(&Vec);
@@ -129,10 +126,9 @@ DT_TEST(ResizeZeroFillsWhenGrowing)
 DT_TEST(ResizeDownDropsElements)
 {
     DtVec Vec;
-    int i;
 
     DtVecInit(&Vec, sizeof(int));
-    for (i = 0; i < 20; i++)
+    for (int i = 0; i < 20; i++)
         DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
     DT_ASSERT_OK(DtVecResize(&Vec, 5));
@@ -169,16 +165,14 @@ DT_TEST(LargeElementsWork)
     } Big;
 
     DtVec Vec;
-    Big Item;
-    Big* Stored;
-
     DtVecInit(&Vec, sizeof(Big));
+    Big Item;
     memset(Item.Name, 'x', sizeof(Item.Name));
     Item.Name[0] = 'A';
     Item.Port = 3;
 
     DT_ASSERT_OK(DtVecPush(&Vec, &Item));
-    Stored = (Big*)DtVecAt(&Vec, 0);
+    Big* Stored = (Big*)DtVecAt(&Vec, 0);
     DT_ASSERT(Stored != NULL);
     DT_ASSERT_EQ(Stored->Port, 3);
     DT_ASSERT_EQ(Stored->Name[0], 'A');
@@ -231,10 +225,9 @@ DT_TEST(FailedGrowthLeavesTheVectorIntact)
 {
     DtVec Vec;
     int Value = 11;
-    int i;
 
     DtVecInit(&Vec, sizeof(int));
-    for (i = 0; i < 8; i++)
+    for (int i = 0; i < 8; i++)
         DT_ASSERT_OK(DtVecPush(&Vec, &i));
 
     DtAllocResetCount();

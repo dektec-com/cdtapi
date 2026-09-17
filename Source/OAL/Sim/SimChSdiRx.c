@@ -94,9 +94,7 @@ static void EnsureRx(void)
 //
 static SimRxUser* FindUser(SimRxChannel* Channel, void* Handle)
 {
-    int i;
-
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         if (Channel->Users[i].Handle == Handle)
             return &Channel->Users[i];
@@ -108,8 +106,6 @@ static SimRxUser* FindUser(SimRxChannel* Channel, void* Handle)
 //
 static void Unconfigure(SimRxChannel* Channel)
 {
-    int i;
-
     DtFree(Channel->Ring);
     Channel->Ring = NULL;
     Channel->RingSize = 0;
@@ -118,7 +114,7 @@ static void Unconfigure(SimRxChannel* Channel)
     Channel->Configured = false;
     Channel->Running = false;
     Channel->InFrame = false;
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         Channel->Users[i].Mapped = false;
         Channel->Users[i].ReadOffset = 0;
@@ -135,9 +131,7 @@ static void Unconfigure(SimRxChannel* Channel)
 //
 static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 {
-    int Bit;
-
-    for (Bit = 0; Bit < 10; Bit++)
+    for (int Bit = 0; Bit < 10; Bit++)
     {
         uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
 
@@ -194,17 +188,17 @@ static uint32_t WithParity(uint32_t Nine)
 int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
 {
     DtFrameProps Props;
-    int Blank, Total, NumLines, i;
 
     if (DtVidStdIs4k(VidStd) || !DtFramePropsInit(&Props, VidStd))
         return 0;
 
-    NumLines = DtFramePropsNumLines(&Props);
-    Blank = DtFramePropsLineSymbolsHanc(&Props);
-    Total = Blank + Props.LineNumSymVanc;
+    int NumLines = DtFramePropsNumLines(&Props);
+    int Blank = DtFramePropsLineSymbolsHanc(&Props);
+    int Total = Blank + Props.LineNumSymVanc;
     if (Line < 1 || Line > NumLines || Total > SIM_RX_MAX_LINE_SYMBOLS)
         return 0;
 
+    int i;
     for (i = 0; i < Total; i++)
         Symbols[i] = (uint16_t)DataSymbol(FrameNumber, Line, i);
 
@@ -266,10 +260,11 @@ int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols
 static void PackSection(const uint16_t* Symbols, int Count, uint8_t* Out, int Bytes)
 {
     uint64_t Accu = 0;
-    int Have = 0, i, Byte = 0;
+    int Have = 0;
+    int Byte = 0;
 
     memset(Out, 0, (size_t)Bytes);
-    for (i = 0; i < Count; i++)
+    for (int i = 0; i < Count; i++)
     {
         Accu |= (uint64_t)(Symbols[i] & 0x3FF) << Have;
         Have += 10;
@@ -292,18 +287,16 @@ static void PackSection(const uint16_t* Symbols, int Count, uint8_t* Out, int By
 static size_t RingFree(const SimRxChannel* Channel)
 {
     size_t Load = 0;
-    int i;
 
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         const SimRxUser* User = &Channel->Users[i];
-        size_t UserLoad;
 
         if (User->Handle == NULL || User->OpMode != DT_FUNC_OPMODE_RUN)
             continue;
-        UserLoad = ((size_t)Channel->WriteOffset + Channel->RingSize -
-                    (size_t)User->ReadOffset % Channel->RingSize) %
-                   Channel->RingSize;
+        size_t UserLoad = ((size_t)Channel->WriteOffset + Channel->RingSize -
+                           (size_t)User->ReadOffset % Channel->RingSize) %
+                          Channel->RingSize;
         if (UserLoad > Load)
             Load = UserLoad;
     }
@@ -340,7 +333,6 @@ static void StartFrame(SimRxChannel* Channel)
 {
     const DtIoctlChSdiRxCmdConfigureInput* Config = &Channel->Config;
     DtSdiFrameLayout* Layout = &Channel->Layout;
-    uint8_t Header[64];
 
     Channel->FrameNumber = Channel->NextFrame;
     if (Channel->Faults[SIM_RX_FAULT_SKIP_FRAME])
@@ -354,6 +346,7 @@ static void StartFrame(SimRxChannel* Channel)
     Channel->Dropped = false;
     Channel->LinesWritten = 0;
 
+    uint8_t Header[64];
     Channel->FrameInSync =
         DtSdiFrameLayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
@@ -399,19 +392,18 @@ static void StartFrame(SimRxChannel* Channel)
 static void WriteLines(SimRxChannel* Channel, int Upto)
 {
     const DtSdiFrameLayout* Layout = &Channel->Layout;
-    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
-    uint8_t* Coded;
 
     if (!Channel->FrameInSync || Channel->Dropped || Channel->LinesWritten >= Upto)
         return;
 
-    Coded = (uint8_t*)DtMalloc((size_t)Layout->Stride);
+    uint8_t* Coded = (uint8_t*)DtMalloc((size_t)Layout->Stride);
     if (Coded == NULL)
     {
         Channel->Dropped = true;
         return;
     }
 
+    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
     while (Channel->LinesWritten < Upto)
     {
         int Line = Channel->LinesWritten + 1;
@@ -437,12 +429,10 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
 static void NextEvent(SimRxChannel* Channel,
                       DtIoctlChSdiRxCmdWaitForFmtEventOutput* Event)
 {
-    int Quarter;
-
     if (!Channel->InFrame)
         StartFrame(Channel);
 
-    Quarter = Channel->SeqNumber;
+    int Quarter = Channel->SeqNumber;
     if (Channel->FrameInSync)
         WriteLines(Channel, (Channel->Layout.NumLines * (Quarter + 1) + 3) / 4);
 
@@ -476,13 +466,10 @@ static bool Fits(size_t InSize, size_t InNeeded, const void* Out, const size_t* 
 static uint32_t Attach(SimRxChannel* Channel, void* Handle,
                        const DtIoctlChSdiRxCmdAttachInput* Request)
 {
-    SimRxUser* Slot;
-    int i;
-
     if (FindUser(Channel, Handle) != NULL)
         return DT_STATUS_IN_USE;
 
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         if (Channel->Users[i].Handle != NULL &&
             (Channel->Users[i].Exclusive || Request->m_ReqExclusiveAccess != 0))
@@ -491,7 +478,7 @@ static uint32_t Attach(SimRxChannel* Channel, void* Handle,
         }
     }
 
-    Slot = FindUser(Channel, NULL);
+    SimRxUser* Slot = FindUser(Channel, NULL);
     if (Slot == NULL)
         return DT_STATUS_IN_USE;
 
@@ -509,8 +496,6 @@ static uint32_t Attach(SimRxChannel* Channel, void* Handle,
 //
 static void Detach(SimRxChannel* Channel, SimRxUser* User)
 {
-    int i;
-
     memset(User, 0, sizeof(*User));
     Channel->NumUsers--;
     if (Channel->NumUsers == 0)
@@ -520,7 +505,7 @@ static void Detach(SimRxChannel* Channel, SimRxUser* User)
     }
 
     Channel->Running = false;
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         if (Channel->Users[i].Handle != NULL &&
             Channel->Users[i].OpMode == DT_FUNC_OPMODE_RUN)
@@ -540,8 +525,6 @@ static uint32_t Configure(SimRxChannel* Channel,
                           const DtIoctlChSdiRxCmdConfigureInput* In)
 {
     const size_t Unit = SIM_RX_PREFETCH_PAGES * 4096;
-    size_t Size;
-    uint8_t* Ring;
 
     if (In->m_DmaBuf.m_MinSize < (Int)Unit || In->m_DmaBuf.m_MinSize > SIM_RX_MAX_RING)
     {
@@ -554,7 +537,7 @@ static uint32_t Configure(SimRxChannel* Channel,
         return DT_STATUS_NOT_SUPPORTED;
     }
 
-    Size = ((size_t)In->m_DmaBuf.m_MinSize + Unit - 1) / Unit * Unit;
+    size_t Size = ((size_t)In->m_DmaBuf.m_MinSize + Unit - 1) / Unit * Unit;
     if (g_Rx.RingLimit > 0 && Size > g_Rx.RingLimit)
         Size = g_Rx.RingLimit < Unit ? Unit : g_Rx.RingLimit / Unit * Unit;
 
@@ -567,7 +550,7 @@ static uint32_t Configure(SimRxChannel* Channel,
     }
 
     Unconfigure(Channel);
-    Ring = (uint8_t*)DtMalloc(Size);
+    uint8_t* Ring = (uint8_t*)DtMalloc(Size);
     if (Ring == NULL)
         return DT_STATUS_OUT_OF_MEMORY;
     memset(Ring, 0, Size);
@@ -588,7 +571,6 @@ static uint32_t Configure(SimRxChannel* Channel,
 static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
 {
     bool WasRunning = Channel->Running;
-    int i;
 
     if (OpMode != DT_FUNC_OPMODE_IDLE && OpMode != DT_FUNC_OPMODE_STANDBY &&
         OpMode != DT_FUNC_OPMODE_RUN)
@@ -600,7 +582,7 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
 
     User->OpMode = OpMode;
     Channel->Running = false;
-    for (i = 0; i < SIM_RX_MAX_USERS; i++)
+    for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         if (Channel->Users[i].Handle != NULL &&
             Channel->Users[i].OpMode == DT_FUNC_OPMODE_RUN)
@@ -624,14 +606,11 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
 static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
                        size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
 {
-    SimRxChannel* Channel;
-    SimRxUser* User;
-
     EnsureRx();
     *SleepMs = 0;
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return DT_STATUS_NOT_SUPPORTED;
-    Channel = &g_Rx.Channels[PortIndex];
+    SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
 
     if (g_Rx.FailCmd == Cmd && g_Rx.FailStatus != 0)
         return g_Rx.FailStatus;
@@ -673,7 +652,7 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
         return DT_STATUS_NOT_SUPPORTED;
     }
 
-    User = FindUser(Channel, Handle);
+    SimRxUser* User = FindUser(Channel, Handle);
     if (Handle == NULL || User == NULL)
         return DT_STATUS_NOT_FOUND;
 
@@ -791,19 +770,16 @@ uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
 void* SimChSdiRxMap(void* Handle, uint64_t Offset, size_t Size)
 {
     const uint64_t Segment = 256ull * 1024 * 1024;
-    SimRxChannel* Channel;
-    SimRxUser* User;
-    uint64_t Port;
 
     EnsureRx();
     if (Offset % Segment != 0 || Offset / Segment < 1)
         return NULL;
-    Port = Offset / Segment - 1;
+    uint64_t Port = Offset / Segment - 1;
     if (Port >= SIM_SDI_PORT_COUNT)
         return NULL;
 
-    Channel = &g_Rx.Channels[Port];
-    User = FindUser(Channel, Handle);
+    SimRxChannel* Channel = &g_Rx.Channels[Port];
+    SimRxUser* User = FindUser(Channel, Handle);
     if (Handle == NULL || User == NULL || !Channel->Configured ||
         Size != Channel->RingSize)
         return NULL;
@@ -816,10 +792,8 @@ void* SimChSdiRxMap(void* Handle, uint64_t Offset, size_t Size)
 //
 void SimChSdiRxCloseHandle(void* Handle)
 {
-    int Port;
-
     EnsureRx();
-    for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
+    for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
     {
         SimRxChannel* Channel = &g_Rx.Channels[Port];
         SimRxUser* User = FindUser(Channel, Handle);
@@ -833,9 +807,7 @@ void SimChSdiRxCloseHandle(void* Handle)
 //
 void SimChSdiRxReset(void)
 {
-    int Port;
-
-    for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
+    for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
     {
         SimRxChannel* Channel = &g_Rx.Channels[Port];
 
@@ -869,13 +841,11 @@ void SimDtPcieSetRxSource(int PortIndex, int VidStd)
 //
 void SimDtPcieRunRxEvents(int PortIndex, int Events)
 {
-    DtIoctlChSdiRxCmdWaitForFmtEventOutput Event;
-    int i;
-
     EnsureRx();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return;
-    for (i = 0; i < Events && g_Rx.Channels[PortIndex].Running; i++)
+    DtIoctlChSdiRxCmdWaitForFmtEventOutput Event;
+    for (int i = 0; i < Events && g_Rx.Channels[PortIndex].Running; i++)
         NextEvent(&g_Rx.Channels[PortIndex], &Event);
 }
 

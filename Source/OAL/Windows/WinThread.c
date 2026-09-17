@@ -43,20 +43,17 @@ static unsigned __stdcall ThreadEntry(void* Arg)
 //
 OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
 {
-    OsThread* Thread;
-    uintptr_t Handle;
-
     if (Func == NULL)
         return NULL;
 
-    Thread = (OsThread*)DtMalloc(sizeof(OsThread));
+    OsThread* Thread = (OsThread*)DtMalloc(sizeof(OsThread));
     if (Thread == NULL)
         return NULL;
 
     Thread->Func = Func;
     Thread->Context = Context;
 
-    Handle = _beginthreadex(NULL, 0, ThreadEntry, Thread, 0, NULL);
+    uintptr_t Handle = _beginthreadex(NULL, 0, ThreadEntry, Thread, 0, NULL);
     if (Handle == 0)
     {
         DtFree(Thread);
@@ -224,20 +221,17 @@ uint64_t OsMonotonicMs(void)
 //
 void OsProcessName(char* Buf, size_t Size)
 {
-    char Path[MAX_PATH];
-    DWORD Length;
-    const char* Name;
-    size_t i;
-
     if (Buf == NULL || Size == 0)
         return;
     Buf[0] = '\0';
 
-    Length = GetModuleFileNameA(NULL, Path, (DWORD)sizeof(Path));
+    char Path[MAX_PATH];
+    DWORD Length = GetModuleFileNameA(NULL, Path, (DWORD)sizeof(Path));
     if (Length == 0 || Length >= sizeof(Path))
         return;
 
-    Name = Path;
+    const char* Name = Path;
+    size_t i;
     for (i = 0; i < Length; i++)
     {
         if (Path[i] == '\\' || Path[i] == '/')

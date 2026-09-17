@@ -30,10 +30,9 @@ DT_TEST(TableCoversEveryCode)
 DT_TEST(EveryCodeRoundTrips)
 {
     char Name[IOCONFIG_NAME_MAX_SIZE];
-    int Code;
     int Back;
 
-    for (Code = 0; Code < DtIoConfigCount(); Code++)
+    for (int Code = 0; Code < DtIoConfigCount(); Code++)
     {
         if (DtIoConfigGetName(Code, Name, sizeof(Name)) != DTAPI_OK)
             DT_FAIL("code %d has no name", Code);
@@ -48,9 +47,8 @@ DT_TEST(EveryCodeRoundTrips)
 DT_TEST(EveryNameFitsTheDriverField)
 {
     char Name[256];
-    int Code;
 
-    for (Code = 0; Code < DtIoConfigCount(); Code++)
+    for (int Code = 0; Code < DtIoConfigCount(); Code++)
     {
         DT_ASSERT_OK(DtIoConfigGetName(Code, Name, sizeof(Name)));
         if (strlen(Name) + 1 > IOCONFIG_NAME_MAX_SIZE)
@@ -140,13 +138,13 @@ DT_TEST(NameMustFitTheBuffer)
 
 DT_TEST(NullArgumentsAreRefused)
 {
-    char Name[8];
     int Code;
 
     DT_ASSERT_EQ(DtIoConfigGetCode(NULL, &Code), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(Code, -1);
     DT_ASSERT_EQ(DtIoConfigGetCode("IODIR", NULL), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtIoConfigGetName(0, NULL, 8), DTAPI_E_INVALID_ARG);
+    char Name[8];
     DT_ASSERT_EQ(DtIoConfigGetName(0, Name, 0), DTAPI_E_INVALID_ARG);
 }
 
@@ -188,14 +186,13 @@ static bool IsListedValid(int Group, int Value, int SubValue)
 DT_TEST(EveryCombinationMatchesDtapi)
 {
     int Count = DtIoConfigCount();
-    int Group, Value, SubValue;
     size_t Valid = 0;
 
-    for (Group = -1; Group <= Count; Group++)
+    for (int Group = -1; Group <= Count; Group++)
     {
-        for (Value = -1; Value <= Count; Value++)
+        for (int Value = -1; Value <= Count; Value++)
         {
-            for (SubValue = -2; SubValue <= Count; SubValue++)
+            for (int SubValue = -2; SubValue <= Count; SubValue++)
             {
                 bool Expected = IsListedValid(Group, Value, SubValue);
                 bool Actual = DtIoConfigIsValid(Group, Value, SubValue) == DTAPI_OK;

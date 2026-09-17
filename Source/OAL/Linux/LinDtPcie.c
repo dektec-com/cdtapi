@@ -81,6 +81,41 @@ static void LinClose(void* State)
     DtFree(Dev);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTransfer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Packs the input into the block Buf of BufSize bytes, issues the ioctl and unpacks the
+// output. Returns one of the OS_IOCTL_ outcomes, with the device's last error set.
+//
+static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const void* In,
+                       size_t InSize, void* Out, size_t OutBytes, uint8_t* Buf,
+                       size_t BufSize, uint32_t* DrvStatus)
+{
+    if (LinIoctlPack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
+    {
+        Dev->LastError = (uint32_t)EINVAL;
+        return OS_IOCTL_COMMUNICATION;
+    }
+
+    int Rc = ioctl(Dev->Fd, (unsigned long)Code, Buf);
+    if (Rc != 0)
+    {
+        int Result = OsIoctlClassifyLinux(Rc, DrvStatus);
+        Dev->LastError =
+            (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (uint32_t)errno;
+        return Result;
+    }
+
+    if (LinIoctlUnpack(Buf, BufSize, Out, OutBytes) != 0)
+    {
+        Dev->LastError = (uint32_t)EINVAL;
+        return OS_IOCTL_COMMUNICATION;
+    }
+
+    // The Linux driver does not report how much it wrote, so *OutSize is left as the
+    // caller set it. See the OsDrvIoCtl contract.
+    return OS_IOCTL_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // ioctl takes a single pointer, so input and output share one block laid out by
@@ -94,14 +129,12 @@ static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
                     size_t* OutSize, uint32_t* DrvStatus)
 {
     LinDevice* Dev = (LinDevice*)State;
-    uint8_t Stack[LIN_STACK_BUFFER_BYTES];
-    uint8_t* Buf = Stack;
     size_t OutBytes = (Out != NULL && OutSize != NULL) ? *OutSize : 0;
     bool SizeHeader = _IOC_TYPE(Code) == DT_IOCTL_MAGIC_SIZE;
     size_t BufSize = LinIoctlBufferSize(SizeHeader, InSize, OutBytes);
-    int Result = OS_IOCTL_COMMUNICATION;
-    int Rc;
 
+    uint8_t Stack[LIN_STACK_BUFFER_BYTES];
+    uint8_t* Buf = Stack;
     if (BufSize > sizeof(Stack))
     {
         Buf = (uint8_t*)DtMalloc(BufSize);
@@ -112,36 +145,10 @@ static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
         }
     }
 
-    if (LinIoctlPack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
-    {
-        Dev->LastError = (uint32_t)EINVAL;
-        goto Cleanup;
-    }
-
-    Rc = ioctl(Dev->Fd, (unsigned long)Code, Buf);
-    if (Rc != 0)
-    {
-        Result = OsIoctlClassifyLinux(Rc, DrvStatus);
-        Dev->LastError =
-            (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (uint32_t)errno;
-        goto Cleanup;
-    }
-
-    if (LinIoctlUnpack(Buf, BufSize, Out, OutBytes) != 0)
-    {
-        Dev->LastError = (uint32_t)EINVAL;
-        goto Cleanup;
-    }
-
-    // The Linux driver does not report how much it wrote, so *OutSize is left as the
-    // caller set it. See the OsDrvIoCtl contract.
-
-    Result = OS_IOCTL_OK;
-
-Cleanup:
+    int Result = LinTransfer(Dev, Code, SizeHeader, In, InSize, Out, OutBytes, Buf,
+                             BufSize, DrvStatus);
     if (Buf != Stack)
         DtFree(Buf);
-
     return Result;
 }
 

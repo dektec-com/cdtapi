@@ -40,12 +40,10 @@ static void ReleaseOwned(void* Opaque, uint8_t* Data, size_t Size)
 //
 DtBuf* DtBufWrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opaque)
 {
-    DtBuf* Buf;
-
     if (Data == NULL || Size == 0)
         return NULL;
 
-    Buf = (DtBuf*)DtMalloc(sizeof(DtBuf));
+    DtBuf* Buf = (DtBuf*)DtMalloc(sizeof(DtBuf));
     if (Buf == NULL)
         return NULL;
 
@@ -62,17 +60,14 @@ DtBuf* DtBufWrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opa
 //
 DtBuf* DtBufAlloc(size_t Size)
 {
-    uint8_t* Data;
-    DtBuf* Buf;
-
     if (Size == 0)
         return NULL;
 
-    Data = (uint8_t*)DtMalloc(Size);
+    uint8_t* Data = (uint8_t*)DtMalloc(Size);
     if (Data == NULL)
         return NULL;
 
-    Buf = DtBufWrap(Data, Size, ReleaseOwned, NULL);
+    DtBuf* Buf = DtBufWrap(Data, Size, ReleaseOwned, NULL);
     if (Buf == NULL)
     {
         DtFree(Data);
@@ -99,12 +94,10 @@ DtBuf* DtBufRef(DtBuf* Buf)
 //
 void DtBufUnref(DtBuf** Buf)
 {
-    DtBuf* Target;
-
     if (Buf == NULL || *Buf == NULL)
         return;
 
-    Target = *Buf;
+    DtBuf* Target = *Buf;
 
     // Cleared before the count is dropped. After the decrement another thread may
     // already have destroyed the buffer, so Target must not be touched again on that

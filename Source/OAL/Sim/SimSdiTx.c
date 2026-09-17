@@ -180,22 +180,20 @@ static void Disable(SimTxPort* Port)
 //
 static void Advance(SimTxPort* Port)
 {
-    size_t Load, Take, i;
-
     if (Port->Pipeline == NULL || Port->BurstMode == DT_BLOCK_OPMODE_IDLE ||
         !Port->Registered || Port->Direction != DT_CDMAC_DIR_TX)
     {
         return;
     }
 
-    Load = ((size_t)Port->WriteOffset + Port->BufferSize - Port->ReadOffset) %
-           Port->BufferSize;
-    Take = SIM_TX_PIPELINE - Port->PipeLoad;
+    size_t Load = ((size_t)Port->WriteOffset + Port->BufferSize - Port->ReadOffset) %
+                  Port->BufferSize;
+    size_t Take = SIM_TX_PIPELINE - Port->PipeLoad;
     if (Take > Load)
         Take = Load;
     Take = Take / SIM_TX_WORD * SIM_TX_WORD;
 
-    for (i = 0; i < Take; i++)
+    for (size_t i = 0; i < Take; i++)
     {
         size_t To = (Port->PipeHead + Port->PipeLoad + i) % SIM_TX_PIPELINE;
         Port->Pipeline[To] = Port->Buffer[(Port->ReadOffset + i) % Port->BufferSize];
@@ -263,7 +261,6 @@ static bool ReadHeader(SimTxPort* Port)
     uint32_t Word2 = Word32(Port, 8);
     uint32_t Word3 = Word32(Port, 12);
     uint32_t Word4 = Word32(Port, 16);
-    size_t Frame;
 
     if (Word32(Port, 0) != 0xFFEFFBFEu || (Word1 & 0xF) != 0 || (Word1 >> 4 & 0xF) != 0 ||
         (Word1 >> 8 & 1) != 1 || (Word1 >> 9 & 7) > DT_DRV_SDIRATE_12G)
@@ -284,7 +281,8 @@ static bool ReadHeader(SimTxPort* Port)
     {
         return false;
     }
-    Frame = HeaderBytes() + (size_t)Port->NumLines * (Port->BytesHanc + Port->BytesVideo);
+    size_t Frame =
+        HeaderBytes() + (size_t)Port->NumLines * (Port->BytesHanc + Port->BytesVideo);
     return Frame <= SIM_TX_MAX_FRAME;
 }
 
@@ -295,9 +293,9 @@ static bool ReadHeader(SimTxPort* Port)
 static void UnpackSection(const SimTxPort* Port, size_t Offset, int Count, uint16_t* Out)
 {
     uint32_t Accu = 0;
-    int Have = 0, i;
+    int Have = 0;
 
-    for (i = 0; i < Count; i++)
+    for (int i = 0; i < Count; i++)
     {
         while (Have < 10)
         {
@@ -316,8 +314,6 @@ static void UnpackSection(const SimTxPort* Port, size_t Offset, int Count, uint1
 //
 static void KeepFrame(SimTxPort* Port)
 {
-    SimTxKept* Slot;
-
     if (Port->NumKept == SIM_TX_KEPT_FRAMES)
     {
         DtFree(Port->Kept[0].Symbols);
@@ -325,7 +321,7 @@ static void KeepFrame(SimTxPort* Port)
                 (SIM_TX_KEPT_FRAMES - 1) * sizeof(Port->Kept[0]));
         Port->NumKept--;
     }
-    Slot = &Port->Kept[Port->NumKept++];
+    SimTxKept* Slot = &Port->Kept[Port->NumKept++];
     Slot->FrameId = Port->FrameId;
     Slot->NumLines = Port->NumLines;
     Slot->SymsHanc = Port->SymsHanc;
@@ -379,8 +375,7 @@ static bool IsSending(const SimTxPort* Port)
 //
 static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Event)
 {
-    size_t Header = 0, Stride, Needed;
-    int Lines, i;
+    size_t Header = 0;
 
     Advance(Port);
     if (!IsSending(Port))
@@ -411,12 +406,12 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
     }
 
     // The card reads the buffer while it sends, so a part can exceed the pipeline.
-    Stride = Port->BytesHanc + Port->BytesVideo;
-    Lines =
+    size_t Stride = Port->BytesHanc + Port->BytesVideo;
+    int Lines =
         Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (Port->NumLines + 3) / 4;
     if (Lines > Port->NumLines - Port->LinesDone)
         Lines = Port->NumLines - Port->LinesDone;
-    Needed = Header + (size_t)Lines * Stride;
+    size_t Needed = Header + (size_t)Lines * Stride;
     if (Available(Port) < Needed)
     {
         Underflow(Port);
@@ -437,7 +432,7 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
         Port->SeqNumber = 0;
     }
 
-    for (i = 0; i < Lines; i++)
+    for (int i = 0; i < Lines; i++)
     {
         uint16_t* Line = Port->Symbols + (size_t)Port->LinesDone *
                                              (size_t)(Port->SymsHanc + Port->SymsVideo);
@@ -817,12 +812,11 @@ static uint32_t BurstFifoCmd(SimTxPort* Port, int Cmd, const void* In, void* Out
 static double PartPeriodMs(const SimTxPort* Port, int VidStd)
 {
     DtFrameProps Props;
-    int Lines, NumLines;
 
     if (!DtFramePropsInit(&Props, VidStd) || Props.FpsNum <= 0)
         return 0;
-    NumLines = DtFramePropsNumLines(&Props);
-    Lines = Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (NumLines + 3) / 4;
+    int NumLines = DtFramePropsNumLines(&Props);
+    int Lines = Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (NumLines + 3) / 4;
     return 1000.0 * Props.FpsDen / Props.FpsNum / ((NumLines + Lines - 1) / Lines);
 }
 
@@ -1050,9 +1044,6 @@ uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
                      const void* In, size_t InSize, void* Out, size_t* OutSize,
                      int* SleepMs)
 {
-    const SimTxCmdProps* Props;
-    SimTxPort* Port;
-
     EnsureTx();
     *SleepMs = 0;
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT ||
@@ -1060,9 +1051,9 @@ uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
     {
         return DT_STATUS_NOT_SUPPORTED;
     }
-    Port = &g_Tx.Ports[PortIndex];
+    SimTxPort* Port = &g_Tx.Ports[PortIndex];
 
-    Props = FindCmd(FunctionCode, Cmd);
+    const SimTxCmdProps* Props = FindCmd(FunctionCode, Cmd);
     if (Props == NULL)
         return DT_STATUS_NOT_SUPPORTED;
     if (InSize < Props->InSize ||
@@ -1112,10 +1103,8 @@ uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
 //
 void SimSdiTxCloseHandle(void* Handle)
 {
-    int i;
-
     EnsureTx();
-    for (i = 0; i < SIM_SDI_PORT_COUNT; i++)
+    for (int i = 0; i < SIM_SDI_PORT_COUNT; i++)
     {
         SimTxPort* Port = &g_Tx.Ports[i];
 
@@ -1134,9 +1123,7 @@ void SimSdiTxCloseHandle(void* Handle)
 //
 void SimSdiTxReset(void)
 {
-    int i, k;
-
-    for (i = 0; i < SIM_SDI_PORT_COUNT; i++)
+    for (int i = 0; i < SIM_SDI_PORT_COUNT; i++)
     {
         SimTxPort* Port = &g_Tx.Ports[i];
 
@@ -1144,7 +1131,7 @@ void SimSdiTxReset(void)
         {
             DtFree(Port->Pipeline);
             DtFree(Port->Symbols);
-            for (k = 0; k < Port->NumKept; k++)
+            for (int k = 0; k < Port->NumKept; k++)
                 DtFree(Port->Kept[k].Symbols);
         }
         memset(Port, 0, sizeof(*Port));
@@ -1197,13 +1184,12 @@ void SimDtPcieSetTxAlignment(int AlignmentBits)
 //
 int SimDtPcieRunTxEvents(int PortIndex, int Events)
 {
-    DtIoctlSdiTxFCmdWaitForFmtEventOutput Event;
-    int i;
-
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return 0;
     SimDtPcieLock();
     EnsureTx();
+    DtIoctlSdiTxFCmdWaitForFmtEventOutput Event;
+    int i;
     for (i = 0; i < Events && NextEvent(&g_Tx.Ports[PortIndex], &Event); i++)
     {
     }
@@ -1226,12 +1212,10 @@ void SimDtPcieStarveTx(int PortIndex, int Events)
 //
 void SimDtPcieSetTxRealTime(bool RealTime)
 {
-    int i;
-
     SimDtPcieLock();
     EnsureTx();
     g_Tx.RealTime = RealTime;
-    for (i = 0; i < SIM_SDI_PORT_COUNT; i++)
+    for (int i = 0; i < SIM_SDI_PORT_COUNT; i++)
         g_Tx.Ports[i].NextPartMs = 0;
     SimDtPcieUnlock();
 }
@@ -1266,14 +1250,12 @@ void SimDtPcieFailTxCmd(int FunctionCode, int Cmd, uint32_t Status)
 //
 void SimDtPcieGetTxState(int PortIndex, SimTxState* State)
 {
-    const SimTxPort* Port;
-
     memset(State, 0, sizeof(*State));
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return;
     SimDtPcieLock();
     EnsureTx();
-    Port = &g_Tx.Ports[PortIndex];
+    const SimTxPort* Port = &g_Tx.Ports[PortIndex];
 
     State->CdmacMode = Port->CdmacMode;
     State->BurstMode = Port->BurstMode;
@@ -1308,13 +1290,11 @@ void SimDtPcieGetTxState(int PortIndex, SimTxState* State)
 //
 int SimDtPcieTxFrameCount(int PortIndex)
 {
-    int Count;
-
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return 0;
     SimDtPcieLock();
     EnsureTx();
-    Count = g_Tx.Ports[PortIndex].NumKept;
+    int Count = g_Tx.Ports[PortIndex].NumKept;
     SimDtPcieUnlock();
     return Count;
 }
@@ -1323,18 +1303,15 @@ int SimDtPcieTxFrameCount(int PortIndex)
 //
 bool SimDtPcieGetTxFrame(int PortIndex, int Index, SimTxFrame* Frame)
 {
-    const SimTxKept* Kept;
-    bool Found;
-
     memset(Frame, 0, sizeof(*Frame));
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Index < 0)
         return false;
     SimDtPcieLock();
     EnsureTx();
-    Found = Index < g_Tx.Ports[PortIndex].NumKept;
+    bool Found = Index < g_Tx.Ports[PortIndex].NumKept;
     if (Found)
     {
-        Kept = &g_Tx.Ports[PortIndex].Kept[Index];
+        const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[Index];
         Frame->FrameId = Kept->FrameId;
         Frame->NumLines = Kept->NumLines;
         Frame->SymsHanc = Kept->SymsHanc;
@@ -1351,14 +1328,13 @@ bool SimDtPcieCopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
                           size_t MaxSymbols, SimTxFrame* Frame)
 {
     bool Found = false;
-    int k;
 
     memset(Frame, 0, sizeof(*Frame));
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
         return false;
     SimDtPcieLock();
     EnsureTx();
-    for (k = g_Tx.Ports[PortIndex].NumKept - 1; k >= 0 && !Found; k--)
+    for (int k = g_Tx.Ports[PortIndex].NumKept - 1; k >= 0 && !Found; k--)
     {
         const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[k];
         size_t Count =

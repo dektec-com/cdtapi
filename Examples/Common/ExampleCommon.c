@@ -38,9 +38,7 @@
 static const ExampleOption* FindOption(const char* Name, const ExampleOption* Options,
                                        int NumOptions)
 {
-    int i;
-
-    for (i = 0; i < NumOptions; i++)
+    for (int i = 0; i < NumOptions; i++)
     {
         if (strcmp(Options[i].Name, Name) == 0)
             return &Options[i];
@@ -53,10 +51,8 @@ static const ExampleOption* FindOption(const char* Name, const ExampleOption* Op
 static void PrintUsage(const char* Program, const char* Usage,
                        const ExampleOption* Options, int NumOptions)
 {
-    int i;
-
     printf("Usage: %s [options]\n%s\n\nOptions:\n", Program, Usage);
-    for (i = 0; i < NumOptions; i++)
+    for (int i = 0; i < NumOptions; i++)
     {
         printf("  %s%s\n      %s\n", Options[i].Name,
                Options[i].TakesValue ? " <value>" : "", Options[i].Help);
@@ -69,19 +65,15 @@ static void PrintUsage(const char* Program, const char* Usage,
 bool ExampleCheckArguments(int Argc, char** Argv, const char* Usage,
                            const ExampleOption* Options, int NumOptions)
 {
-    int i;
-
-    for (i = 1; i < Argc; i++)
+    for (int i = 1; i < Argc; i++)
     {
-        const ExampleOption* Option;
-
         if (strcmp(Argv[i], "--help") == 0)
         {
             PrintUsage(Argv[0], Usage, Options, NumOptions);
             return false;
         }
 
-        Option = FindOption(Argv[i], Options, NumOptions);
+        const ExampleOption* Option = FindOption(Argv[i], Options, NumOptions);
         if (Option == NULL)
         {
             printf("Unknown option: %s; --help lists the options\n", Argv[i]);
@@ -104,9 +96,7 @@ bool ExampleCheckArguments(int Argc, char** Argv, const char* Usage,
 //
 bool ExampleHasFlag(int Argc, char** Argv, const char* Name)
 {
-    int i;
-
-    for (i = 1; i < Argc; i++)
+    for (int i = 1; i < Argc; i++)
     {
         if (strcmp(Argv[i], Name) == 0)
             return true;
@@ -121,9 +111,7 @@ bool ExampleHasFlag(int Argc, char** Argv, const char* Name)
 //
 const char* ExampleValue(int Argc, char** Argv, const char* Name)
 {
-    int i;
-
-    for (i = 1; i + 1 < Argc; i++)
+    for (int i = 1; i + 1 < Argc; i++)
     {
         if (strcmp(Argv[i], Name) == 0)
             return Argv[i + 1];
@@ -137,13 +125,12 @@ bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value)
 {
     const char* Text = ExampleValue(Argc, Argv, Name);
     char* End = NULL;
-    int64_t Parsed;
 
     if (Text == NULL)
         return true;
 
     errno = 0;
-    Parsed = strtoll(Text, &End, 10);
+    int64_t Parsed = strtoll(Text, &End, 10);
     if (End == Text || *End != '\0' || errno != 0)
     {
         printf("Option %s needs a number, not \"%s\"\n", Name, Text);
@@ -162,9 +149,7 @@ bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value)
 unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
                              DtHwFuncDesc* Found)
 {
-    DtHwFuncDesc* Ports;
     int Count = 0;
-    int i;
     unsigned int Result = DtapiHwFuncScan(0, &Count, NULL);
 
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
@@ -172,7 +157,7 @@ unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
     if (Count <= 0)
         return DTAPI_E_NOT_FOUND;
 
-    Ports = (DtHwFuncDesc*)calloc((size_t)Count, sizeof(DtHwFuncDesc));
+    DtHwFuncDesc* Ports = (DtHwFuncDesc*)calloc((size_t)Count, sizeof(DtHwFuncDesc));
     if (Ports == NULL)
         return DTAPI_E_OUT_OF_MEM;
 
@@ -180,7 +165,7 @@ unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
     if (Result == DTAPI_OK)
     {
         Result = DTAPI_E_NOT_FOUND;
-        for (i = 0; i < Count; i++)
+        for (int i = 0; i < Count; i++)
         {
             if ((Serial == 0 || Ports[i].SerialNumber == Serial) &&
                 (Port == 0 || Ports[i].Port == Port) &&
@@ -255,9 +240,7 @@ const char* ExampleVidStdName(int VidStd)
 //
 bool ExampleVidStdFromName(const char* Name, int* VidStd)
 {
-    int i;
-
-    for (i = 0; i < VIDSTD_COUNT; i++)
+    for (int i = 0; i < VIDSTD_COUNT; i++)
     {
         const char* A = g_VidStds[i].Name;
         const char* B = Name;
@@ -306,10 +289,7 @@ void ExampleSleepMs(int Ms)
 #ifdef _WIN32
     Sleep((DWORD)Ms);
 #else
-    struct timespec Time;
-
-    Time.tv_sec = Ms / 1000;
-    Time.tv_nsec = (long)(Ms % 1000) * 1000000L;
+    struct timespec Time = {.tv_sec = Ms / 1000, .tv_nsec = (long)(Ms % 1000) * 1000000L};
     nanosleep(&Time, NULL);
 #endif
 }

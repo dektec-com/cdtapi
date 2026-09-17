@@ -203,9 +203,9 @@ static void CopyWithin(DtOutpChannel* Chan, size_t From, size_t To, size_t Size)
 static void PutHeader(DtOutpChannel* Chan, size_t Offset, int FrameId)
 {
     uint8_t Bytes[DT_MAX_TX_HEADER];
-    DtSdiFrameTxHeader Header;
 
     memset(Bytes, 0, sizeof(Bytes));
+    DtSdiFrameTxHeader Header;
     DtSdiFrameTxHeaderInit(&Chan->Layout, FrameId, &Header);
     DtSdiFrameEncodeTxHeader(&Header, Bytes);
     PutAt(Chan, Offset, Bytes, (size_t)Chan->Layout.TxHeaderBytes);
@@ -217,11 +217,11 @@ static void PutHeader(DtOutpChannel* Chan, size_t Offset, int FrameId)
 // controller is set running a DTA-2178 reports a read offset of an earlier run for a
 // while; the load is therefore never more than what was committed since.
 //
-static unsigned int ReadLoad(DtOutpChannel* Chan, size_t* Load)
+static DtapiResult ReadLoad(DtOutpChannel* Chan, size_t* Load)
 {
     uint32_t ReadOffset = 0;
-    unsigned int Result = DtPcieCmdCdmacGetTxReadOffset(Chan->Device.Drv, Chan->Cdmac,
-                                                        Chan->PortIndex, &ReadOffset);
+    DtapiResult Result = DtPcieCmdCdmacGetTxReadOffset(Chan->Device.Drv, Chan->Cdmac,
+                                                       Chan->PortIndex, &ReadOffset);
 
     *Load = 0;
     if (Result != DTAPI_OK)
@@ -267,10 +267,10 @@ static void ResetFrame(DtOutpChannel* Chan)
 //
 // The frame at the write offset is complete: the card may take it.
 //
-static unsigned int CommitFrame(DtOutpChannel* Chan)
+static DtapiResult CommitFrame(DtOutpChannel* Chan)
 {
     size_t Offset = Wrap(Chan, Chan->WriteOffset + Chan->CodedSize);
-    unsigned int Result = DtPcieCmdCdmacSetTxWriteOffset(
+    DtapiResult Result = DtPcieCmdCdmacSetTxWriteOffset(
         Chan->Device.Drv, Chan->Cdmac, Chan->PortIndex, (uint32_t)Offset);
 
     if (Result != DTAPI_OK)
@@ -287,13 +287,12 @@ static unsigned int CommitFrame(DtOutpChannel* Chan)
 // moves one frame further, with the next frame ID; when the buffer has no room for both,
 // the black frame takes its place and the write looks for the next frame.
 //
-static unsigned int InsertBlack(DtOutpChannel* Chan, size_t Load)
+static DtapiResult InsertBlack(DtOutpChannel* Chan, size_t Load)
 {
     const DtSdiFrameLayout* Layout = &Chan->Layout;
     size_t Coded = Chan->CodedSize;
     size_t Free = Chan->MaxLoad - Load;
     size_t Partial = 0;
-    unsigned int Result;
 
     if (Free < Coded)
         return DTAPI_OK;
@@ -319,7 +318,7 @@ static unsigned int InsertBlack(DtOutpChannel* Chan, size_t Load)
     PutAt(Chan, Wrap(Chan, Chan->WriteOffset + (size_t)Layout->TxHeaderBytes),
           Chan->Black, (size_t)Layout->NumLines * (size_t)Layout->Stride);
 
-    Result = CommitFrame(Chan);
+    DtapiResult Result = CommitFrame(Chan);
     if (Result == DTAPI_OK)
         Chan->FifoUfl = Chan->FifoUflLatched = true;
     return Result;
@@ -337,25 +336,22 @@ static unsigned int InsertBlack(DtOutpChannel* Chan, size_t Load)
 static void Keeper(void* Context)
 {
     DtOutpChannel* Chan = (DtOutpChannel*)Context;
-    OsDrv* Drv;
-    int Txf, PortIndex, WaitMs;
 
     OsThreadRaisePriority();
     OsMutexLock(Chan->Lock);
-    Drv = Chan->Device.Drv;
-    Txf = Chan->Txf;
-    PortIndex = Chan->PortIndex;
-    WaitMs = Chan->QuarterMs < 1000 ? Chan->QuarterMs : 1000;
+    OsDrv* Drv = Chan->Device.Drv;
+    int Txf = Chan->Txf;
+    int PortIndex = Chan->PortIndex;
+    int WaitMs = Chan->QuarterMs < 1000 ? Chan->QuarterMs : 1000;
     OsMutexUnlock(Chan->Lock);
 
     for (;;)
     {
         DtSdiTxFEvent Event;
-        unsigned int Result;
-        size_t Load;
         bool Failed = false;
 
-        Result = DtPcieCmdSdiTxFWaitForFmtEvent(Drv, Txf, PortIndex, WaitMs, &Event);
+        DtapiResult Result =
+            DtPcieCmdSdiTxFWaitForFmtEvent(Drv, Txf, PortIndex, WaitMs, &Event);
 
         OsMutexLock(Chan->Lock);
         if (Chan->StopThread)
@@ -390,6 +386,7 @@ static void Keeper(void* Context)
         }
 
         // The frame going out is the last: a black frame follows it.
+        size_t Load;
         if (Chan->Started && UnsentFrames(Chan) <= 1 && ReadLoad(Chan, &Load) == DTAPI_OK)
             InsertBlack(Chan, Load);
         OsEventSet(Chan->Room);
@@ -427,12 +424,11 @@ static void StopKeeper(DtOutpChannel* Chan)
 // Every block idle, downstream first, as DoStandbyToIdleImpl. Returns the first failure;
 // the blocks after it are set idle all the same.
 //
-static unsigned int BlocksToIdle(DtOutpChannel* Chan)
+static DtapiResult BlocksToIdle(DtOutpChannel* Chan)
 {
     OsDrv* Drv = Chan->Device.Drv;
     int Index = Chan->PortIndex;
-    unsigned int Results[8];
-    size_t i;
+    DtapiResult Results[8];
 
     Results[0] = DtPcieCmdSdiTxPhySetOpMode(Drv, Chan->Phy, Index, DT_FUNC_OPMODE_IDLE);
     Results[1] = DtPcieCmdSdiTxPSetOpMode(Drv, Chan->Txp, Index, DT_BLOCK_OPMODE_IDLE);
@@ -446,7 +442,7 @@ static unsigned int BlocksToIdle(DtOutpChannel* Chan)
         DtPcieCmdBurstFifoSetOpMode(Drv, Chan->Burst, Index, DT_BLOCK_OPMODE_IDLE);
     Results[7] = DtPcieCmdCdmacSetOpMode(Drv, Chan->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
 
-    for (i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
+    for (size_t i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
     {
         if (Results[i] != DTAPI_OK)
             return Results[i];
@@ -460,16 +456,15 @@ static unsigned int BlocksToIdle(DtOutpChannel* Chan)
 // PHY waits. With 8-bit symbols or a 4K standard holding fails as the Matrix's row
 // validation fails DTAPI's (MxOutpDma::ValidateRowConfigRaw), before a block changes.
 //
-static unsigned int IdleToHold(DtOutpChannel* Chan)
+static DtapiResult IdleToHold(DtOutpChannel* Chan)
 {
     OsDrv* Drv = Chan->Device.Drv;
     int Index = Chan->PortIndex;
-    unsigned int Result;
 
     if (Chan->SymbolBits == 8 || !Chan->Registered)
         return DTAPI_E_CONFIG_RAW_SDI;
 
-    Result = DtPcieCmdCdmacIssueChannelFlush(Drv, Chan->Cdmac, Index);
+    DtapiResult Result = DtPcieCmdCdmacIssueChannelFlush(Drv, Chan->Cdmac, Index);
     if (Result == DTAPI_OK)
         Result = DtPcieCmdCdmacSetTxWriteOffset(Drv, Chan->Cdmac, Index, 0);
     if (Result == DTAPI_OK)
@@ -515,18 +510,17 @@ static unsigned int IdleToHold(DtOutpChannel* Chan)
 // reorder buffer's statistics are cleared, and the PHY runs. The PHY's underflow flag of
 // an earlier run is cleared too.
 //
-static unsigned int HoldToSend(DtOutpChannel* Chan)
+static DtapiResult HoldToSend(DtOutpChannel* Chan)
 {
     OsDrv* Drv = Chan->Device.Drv;
     int Index = Chan->PortIndex;
     DtBurstFifoStatus Status = {0};
-    unsigned int Result;
-    int Poll;
 
     if (UnsentFrames(Chan) < 1)
         return DTAPI_E_INSUF_LOAD;
 
-    for (Poll = 0; Poll < DT_BURST_POLLS; Poll++)
+    DtapiResult Result;
+    for (int Poll = 0; Poll < DT_BURST_POLLS; Poll++)
     {
         Result = DtPcieCmdBurstFifoGetStatus(Drv, Chan->Burst, Index, &Status);
         if (Result != DTAPI_OK)
@@ -562,13 +556,11 @@ static unsigned int HoldToSend(DtOutpChannel* Chan)
 // DoRunToStandbyImpl, after the thread has stopped; the underflow status is cleared, the
 // latched flag kept, as TxSend2Hold does.
 //
-static unsigned int SendToHold(DtOutpChannel* Chan)
+static DtapiResult SendToHold(DtOutpChannel* Chan)
 {
-    unsigned int Result;
-
     StopKeeper(Chan);
-    Result = DtPcieCmdSdiTxPhySetOpMode(Chan->Device.Drv, Chan->Phy, Chan->PortIndex,
-                                        DT_FUNC_OPMODE_STANDBY);
+    DtapiResult Result = DtPcieCmdSdiTxPhySetOpMode(
+        Chan->Device.Drv, Chan->Phy, Chan->PortIndex, DT_FUNC_OPMODE_STANDBY);
     Chan->FifoUfl = false;
     Chan->TxControl = DTAPI_TXCTRL_HOLD;
     return Result;
@@ -579,9 +571,9 @@ static unsigned int SendToHold(DtOutpChannel* Chan)
 // Every block idle; what the buffer held is forgotten. The channel is idle afterwards
 // even when a block refused.
 //
-static unsigned int HoldToIdle(DtOutpChannel* Chan)
+static DtapiResult HoldToIdle(DtOutpChannel* Chan)
 {
-    unsigned int Result = BlocksToIdle(Chan);
+    DtapiResult Result = BlocksToIdle(Chan);
 
     ResetFrame(Chan);
     Chan->TxControl = DTAPI_TXCTRL_IDLE;
@@ -592,9 +584,9 @@ static unsigned int HoldToIdle(DtOutpChannel* Chan)
 //
 // SdiTxImpl_Bb2::SetTxControl: IDLE to SEND goes through HOLD, and SEND to IDLE too.
 //
-static unsigned int SetTxControl(DtOutpChannel* Chan, int TxControl)
+static DtapiResult SetTxControl(DtOutpChannel* Chan, int TxControl)
 {
-    unsigned int Result = DTAPI_OK;
+    DtapiResult Result = DTAPI_OK;
 
     if (Chan->TxControl == TxControl)
         return DTAPI_OK;
@@ -620,9 +612,9 @@ static unsigned int SetTxControl(DtOutpChannel* Chan, int TxControl)
 //
 // SdiTxImpl_Bb2::Reset: idle, which forgets what the buffer held, and every flag cleared.
 //
-static unsigned int ResetFifo(DtOutpChannel* Chan)
+static DtapiResult ResetFifo(DtOutpChannel* Chan)
 {
-    unsigned int Result = SetTxControl(Chan, DTAPI_TXCTRL_IDLE);
+    DtapiResult Result = SetTxControl(Chan, DTAPI_TXCTRL_IDLE);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -683,17 +675,14 @@ static void FreeBuffer(DtOutpChannel* Chan)
 // changes. A 4K standard, which DTAPI's raw row does not take, leaves the channel without
 // a buffer; see IdleToHold.
 //
-static unsigned int ConfigureChannel(DtOutpChannel* Chan)
+static DtapiResult ConfigureChannel(DtOutpChannel* Chan)
 {
     OsDrv* Drv = Chan->Device.Drv;
     int Index = Chan->PortIndex;
-    DtFrameProps Frame;
     DtCdmacProps Props = {0};
     DtBurstFifoProps Burst = {0};
     DtSdiFrameLayout Layout = {0};
-    unsigned int Result;
-    size_t Size, Line;
-    int Alignment = 0, Num, Den;
+    int Alignment = 0;
 
     if (Chan->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
         Chan->IoStdValue == DTAPI_IOCONFIG_12GSDI || DtVidStdIs4k(Chan->IoStdSubValue))
@@ -701,13 +690,15 @@ static unsigned int ConfigureChannel(DtOutpChannel* Chan)
         FreeBuffer(Chan);
         return DTAPI_OK;
     }
+    DtFrameProps Frame;
     if (!DtFramePropsInit(&Frame, Chan->IoStdSubValue))
     {
         FreeBuffer(Chan);
         return DTAPI_E_INVALID_VIDSTD;
     }
 
-    Result = DtPcieCmdSdiTxFGetStreamAlignment(Drv, Chan->Txf, Index, &Alignment);
+    DtapiResult Result =
+        DtPcieCmdSdiTxFGetStreamAlignment(Drv, Chan->Txf, Index, &Alignment);
     if (Result == DTAPI_OK &&
         !DtSdiFrameLayoutInit(&Layout, Chan->IoStdSubValue, Alignment))
         Result = DTAPI_E_INTERNAL;
@@ -734,7 +725,7 @@ static unsigned int ConfigureChannel(DtOutpChannel* Chan)
         return Result;
     }
 
-    Size = Chan->Buf.Size;
+    size_t Size = Chan->Buf.Size;
     if (Chan->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
         Chan->Layout.Stride != Layout.Stride ||
         Chan->Layout.NumLines != Layout.NumLines ||
@@ -747,7 +738,7 @@ static unsigned int ConfigureChannel(DtOutpChannel* Chan)
     Chan->RawSize = DtSdiFrameRawSize(&Layout, Chan->SymbolBits);
 
     // The standard's black frame and the buffers of a write.
-    Line = DtSdiFrameRawLineBits(&Layout, 16) / 8 + 2;
+    size_t Line = DtSdiFrameRawLineBits(&Layout, 16) / 8 + 2;
     DtFree(Chan->Black);
     DtFree(Chan->LineBuf);
     DtFree(Chan->RawBuf);
@@ -798,6 +789,8 @@ static unsigned int ConfigureChannel(DtOutpChannel* Chan)
     }
     Chan->BurstFifoSize = Burst.FifoSize;
 
+    int Num;
+    int Den;
     DtVidStdFps(Chan->IoStdSubValue, &Num, &Den);
     Chan->QuarterMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
     if (Chan->QuarterMs < 1)
@@ -951,18 +944,16 @@ static void FindFrameBoundary(DtOutpChannel* Chan, const uint8_t** Data, size_t*
 // and the wait looks again every quarter frame. Returns DTAPI_E_CANCELLED for a detach,
 // and DTAPI_E_IDLE when the channel went idle meanwhile.
 //
-static unsigned int WaitForRoom(DtOutpChannel* Chan)
+static DtapiResult WaitForRoom(DtOutpChannel* Chan)
 {
     for (;;)
     {
-        size_t Load;
-        unsigned int Result;
-
         if (Chan->Detachers > 0)
             return DTAPI_E_CANCELLED;
         if (Chan->TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
-        Result = ReadLoad(Chan, &Load);
+        size_t Load;
+        DtapiResult Result = ReadLoad(Chan, &Load);
         if (Result != DTAPI_OK)
             return Result;
         if (Chan->MaxLoad - Load >= Chan->CodedSize)
@@ -983,19 +974,16 @@ static unsigned int WaitForRoom(DtOutpChannel* Chan)
 // frame's header is written first, when there is room for the whole frame. A line whose
 // last byte is shared with the next line leaves that byte for the next.
 //
-static unsigned int TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* Left)
+static DtapiResult TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* Left)
 {
     const DtSdiFrameLayout* Layout = &Chan->Layout;
     size_t Bits = DtSdiFrameRawLineBits(Layout, Chan->SymbolBits);
     size_t Need = ((size_t)Chan->Phase + Bits + 7) / 8;
     size_t Used = ((size_t)Chan->Phase + Bits) / 8;
-    size_t Offset;
-    const uint8_t* Src;
-    uint8_t* Dst;
 
     if (!Chan->Reserved)
     {
-        unsigned int Result = WaitForRoom(Chan);
+        DtapiResult Result = WaitForRoom(Chan);
 
         if (Result != DTAPI_OK || Chan->Stage != DT_STAGE_LINES || Chan->Reserved)
             return Result;
@@ -1003,6 +991,7 @@ static unsigned int TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* 
         Chan->Reserved = true;
     }
 
+    const uint8_t* Src;
     if (Chan->RawHave == 0 && *Left >= Need)
     {
         Src = *Data;
@@ -1026,10 +1015,11 @@ static unsigned int TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* 
         Src = Chan->RawBuf;
     }
 
-    Offset = Wrap(Chan, Chan->WriteOffset + (size_t)Layout->TxHeaderBytes +
-                            (size_t)Chan->LinesDone * (size_t)Layout->Stride);
-    Dst = Offset + (size_t)Layout->Stride <= Chan->Buf.Size ? Chan->Buf.Data + Offset
-                                                            : Chan->LineBuf;
+    size_t Offset = Wrap(Chan, Chan->WriteOffset + (size_t)Layout->TxHeaderBytes +
+                                   (size_t)Chan->LinesDone * (size_t)Layout->Stride);
+    uint8_t* Dst = Offset + (size_t)Layout->Stride <= Chan->Buf.Size
+                       ? Chan->Buf.Data + Offset
+                       : Chan->LineBuf;
     DtSdiFrameCodeLine(Layout, Chan->SymbolBits, Src, Chan->Phase, Dst);
     if (Dst == Chan->LineBuf)
         PutAt(Chan, Offset, Chan->LineBuf, (size_t)Layout->Stride);
@@ -1058,9 +1048,9 @@ static unsigned int TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* 
 // lock is released after every line, so that the thread is not kept waiting, and the
 // state is looked at again after it was.
 //
-static unsigned int WriteSdi(DtOutpChannel* Chan, const uint8_t* Data, size_t Left)
+static DtapiResult WriteSdi(DtOutpChannel* Chan, const uint8_t* Data, size_t Left)
 {
-    unsigned int Result = DTAPI_OK;
+    DtapiResult Result = DTAPI_OK;
 
     while (Result == DTAPI_OK)
     {
@@ -1109,7 +1099,7 @@ static unsigned int WriteSdi(DtOutpChannel* Chan, const uint8_t* Data, size_t Le
 // Takes the lock of an attached channel, as DtOutpChannel's DetachLock admits a call.
 // Returns DTAPI_E_NOT_ATTACHED, without the lock, otherwise.
 //
-static unsigned int LockAttached(DtOutpChannel* Chan)
+static DtapiResult LockAttached(DtOutpChannel* Chan)
 {
     OsMutexLock(Chan->Lock);
     if (!Chan->Attached)
@@ -1172,10 +1162,8 @@ static void PadToWord(DtOutpChannel* Chan)
 // attached and usable; one that finds the channel detached by another while it waited
 // returns DTAPI_E_NOT_ATTACHED.
 //
-static unsigned int Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
+static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 {
-    int Try;
-
     if (LockAttached(Chan) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
     if ((DetachMode & DT_INSTANT_DETACH) != 0 && (DetachMode & DT_WAIT_UNTIL_SENT) != 0)
@@ -1185,7 +1173,7 @@ static unsigned int Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
     }
 
     Chan->Detachers++;
-    for (Try = 0; Chan->Attached && Chan->Writers > 0; Try++)
+    for (int Try = 0; Chan->Attached && Chan->Writers > 0; Try++)
     {
         if (Try == Tries)
         {
@@ -1217,13 +1205,14 @@ static unsigned int Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
         PadToWord(Chan);
         while (Chan->NextFrameId != 0)
         {
-            DtSdiTxFEvent Event;
             OsDrv* Drv = Chan->Device.Drv;
-            int Txf = Chan->Txf, Index = Chan->PortIndex;
-            unsigned int Result;
+            int Txf = Chan->Txf;
+            int Index = Chan->PortIndex;
 
             OsMutexUnlock(Chan->Lock);
-            Result = DtPcieCmdSdiTxFWaitForFmtEvent(Drv, Txf, Index, WaitMs, &Event);
+            DtSdiTxFEvent Event;
+            DtapiResult Result =
+                DtPcieCmdSdiTxFWaitForFmtEvent(Drv, Txf, Index, WaitMs, &Event);
             OsMutexLock(Chan->Lock);
 
             if (Result == DTAPI_OK)
@@ -1307,12 +1296,12 @@ void DtOutpChannel_Freep(DtOutpChannel** OutpChannel)
     *OutpChannel = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// FindParts: the eight parts of AF_ASISDITX and AF_DMA the channel drives, and whether
-// the driver is new enough for each.
+// The eight parts of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is
+// new enough for each.
 //
-static unsigned int FindParts(DtOutpChannel* Chan)
+static DtapiResult FindParts(DtOutpChannel* Chan)
 {
     typedef struct
     {
@@ -1332,15 +1321,13 @@ static unsigned int FindParts(DtOutpChannel* Chan)
         {&Chan->AfTx, false, DT_BLOCK_TYPE_SDITXP, "", &Chan->Txp},
         {&Chan->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "", &Chan->Phy},
     };
-    unsigned int Result;
-    size_t i;
 
-    Result =
+    DtapiResult Result =
         DtFuncFind(Chan->Device.Drv, Chan->PortIndex, "AF_ASISDITX", "", &Chan->AfTx);
     if (Result == DTAPI_OK)
         Result =
             DtFuncFind(Chan->Device.Drv, Chan->PortIndex, "AF_DMA", "", &Chan->AfDma);
-    for (i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
+    for (size_t i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
     {
         const DtFuncPart* Part =
             DtFuncGet(Parts[i].Instance, Parts[i].IsDf, Parts[i].Type, Parts[i].Role);
@@ -1357,39 +1344,19 @@ static unsigned int FindParts(DtOutpChannel* Chan)
     return Result;
 }
 
-// DtOutpChannel::AttachToPort, AsiSdiOutpChannel_Bb2::InitOutpChannel,
-// SdiTxImpl_Bb2::SetIoConfig and MxChannelMemlessTx::Attach, in their order.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static unsigned int Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
+// AttachToPort's steps once the channel has its own handle to the device. The caller
+// releases everything when they fail.
+//
+static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint32_t Caps)
 {
-    DtIoConfig Config;
-    unsigned int Result;
-    uint32_t Caps;
-
-    if (Device == NULL || Device->Drv == NULL)
-        return DTAPI_E_DEVICE;
-    if (Device->Info.FirmwareStatus == DT_FWSTATUS_OBSOLETE)
-        return DTAPI_E_OBSOLETE_FW;
-    if (Device->Info.FirmwareStatus == DT_FWSTATUS_TAINTED)
-        return DTAPI_E_TAINTED_FW;
-    if (Port < 1 || Port > Device->NumPublicPorts)
-        return DTAPI_E_NO_SUCH_PORT;
-
-    Caps = Device->PortCaps[Port - 1];
-    if ((Caps & DT_CAP_OUTPUT) == 0 && (Caps & DT_CAP_IP) == 0)
-        return DTAPI_E_NO_DT_OUTPUT;
-    if ((Caps & DT_CAP_MATRIX) != 0 || (Caps & DT_CAP_ASI) == 0)
-        return DTAPI_E_NOT_SUPPORTED;
-
-    Result = DtDeviceAttachIndex(&Chan->Device, Device->Index, true, Device->Info.Serial);
-    if (Result != DTAPI_OK)
-        return Result;
-
     Chan->Port = Port;
     Chan->PortIndex = Port - 1;
     Chan->Caps = Caps;
 
     // The DMA-rate test mode is switched off first.
+    DtIoConfig Config;
     memset(&Config, 0, sizeof(Config));
     Config.Port = Port;
     Config.ParXtra[0] = Config.ParXtra[1] = -1;
@@ -1398,24 +1365,24 @@ static unsigned int Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
         Config.Group = DTAPI_IOCONFIG_DMATESTMODE;
         Config.Value = DTAPI_IOCONFIG_FALSE;
         Config.SubValue = -1;
-        Result = DtPcieCmdSetIoConfig(Chan->Device.Drv, &Config);
+        DtapiResult Result = DtPcieCmdSetIoConfig(Chan->Device.Drv, &Config);
         if (Result != DTAPI_OK)
-            goto Failed;
+            return Result;
     }
 
     Config.Group = DTAPI_IOCONFIG_IODIR;
-    Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Config);
+    DtapiResult Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Config);
     if (Result == DTAPI_OK && Config.Value != DTAPI_IOCONFIG_OUTPUT)
         Result = DTAPI_E_NO_DT_OUTPUT;
     if (Result != DTAPI_OK)
-        goto Failed;
+        return Result;
 
     Config.Group = DTAPI_IOCONFIG_IOSTD;
     Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Config);
     if (Result == DTAPI_OK && Config.Value == DTAPI_IOCONFIG_ASI)
         Result = DTAPI_E_NOT_SUPPORTED;
     if (Result != DTAPI_OK)
-        goto Failed;
+        return Result;
     Chan->IoStdValue = Config.Value;
     Chan->IoStdSubValue = Config.SubValue;
 
@@ -1427,7 +1394,7 @@ static unsigned int Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
     Chan->DmaUfl = Chan->DmaUflLatched = false;
     Result = DtPcieCmdSetIoConfig(Chan->Device.Drv, &Config);
     if (Result != DTAPI_OK)
-        goto Failed;
+        return Result;
 
     // Exclusive access to the transmitter and the DMA, all blocks idle, the encoder's
     // corrections on, and the channel set up for the standard.
@@ -1436,29 +1403,17 @@ static unsigned int Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
         Result = DtFuncExclAccess(Chan->Device.Drv, &Chan->AfTx,
                                   DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)
-    {
         Result = DtFuncExclAccess(Chan->Device.Drv, &Chan->AfDma,
                                   DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
-        if (Result != DTAPI_OK)
-            DtFuncExclAccess(Chan->Device.Drv, &Chan->AfTx,
-                             DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
-        else
-        {
-            Result = BlocksToIdle(Chan);
-            if (Result == DTAPI_OK)
-                Result = DtPcieCmdSdiTxPSetGenerationMode(
-                    Chan->Device.Drv, Chan->Txp, Chan->PortIndex, true, true, true);
-            if (Result == DTAPI_OK)
-                Result = ConfigureChannel(Chan);
-            if (Result != DTAPI_OK)
-            {
-                ReleaseAll(Chan);
-                return Result;
-            }
-        }
-    }
+    if (Result == DTAPI_OK)
+        Result = BlocksToIdle(Chan);
+    if (Result == DTAPI_OK)
+        Result = DtPcieCmdSdiTxPSetGenerationMode(Chan->Device.Drv, Chan->Txp,
+                                                  Chan->PortIndex, true, true, true);
+    if (Result == DTAPI_OK)
+        Result = ConfigureChannel(Chan);
     if (Result != DTAPI_OK)
-        goto Failed;
+        return Result;
 
     // A fail-safe port in fail-safe mode is reported, as a success.
     if ((Caps & DT_CAP_FAILSAFE) != 0)
@@ -1468,31 +1423,56 @@ static unsigned int Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
         FailSafe.Group = DTAPI_IOCONFIG_FAILSAFE;
         Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &FailSafe);
         if (Result != DTAPI_OK)
-        {
-            ReleaseAll(Chan);
             return Result;
-        }
         if (FailSafe.Value == DTAPI_IOCONFIG_TRUE)
             return DTAPI_OK_FAILSAFE;
     }
     return DTAPI_OK;
+}
 
-Failed:
-    DtFuncRelease(&Chan->AfTx);
-    DtFuncRelease(&Chan->AfDma);
-    DtDeviceRelease(&Chan->Device);
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// DtOutpChannel::AttachToPort, AsiSdiOutpChannel_Bb2::InitOutpChannel,
+// SdiTxImpl_Bb2::SetIoConfig and MxChannelMemlessTx::Attach, in their order. A failure
+// after the channel has its own handle lets go of all of it; releasing the exclusive
+// access of a part the handle does not hold changes nothing.
+//
+static DtapiResult Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
+{
+    if (Device == NULL || Device->Drv == NULL)
+        return DTAPI_E_DEVICE;
+    if (Device->Info.FirmwareStatus == DT_FWSTATUS_OBSOLETE)
+        return DTAPI_E_OBSOLETE_FW;
+    if (Device->Info.FirmwareStatus == DT_FWSTATUS_TAINTED)
+        return DTAPI_E_TAINTED_FW;
+    if (Port < 1 || Port > Device->NumPublicPorts)
+        return DTAPI_E_NO_SUCH_PORT;
+
+    uint32_t Caps = Device->PortCaps[Port - 1];
+    if ((Caps & DT_CAP_OUTPUT) == 0 && (Caps & DT_CAP_IP) == 0)
+        return DTAPI_E_NO_DT_OUTPUT;
+    if ((Caps & DT_CAP_MATRIX) != 0 || (Caps & DT_CAP_ASI) == 0)
+        return DTAPI_E_NOT_SUPPORTED;
+
+    DtapiResult Result =
+        DtDeviceAttachIndex(&Chan->Device, Device->Index, true, Device->Info.Serial);
+    if (Result != DTAPI_OK)
+        return Result;
+
+    Result = AttachPort(Chan, Port, Caps);
+    if (Result >= DTAPI_E)
+        ReleaseAll(Chan);
     return Result;
 }
 
-unsigned int DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel, DtDevice* Device,
-                                        int Port)
+DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel, DtDevice* Device,
+                                       int Port)
 {
-    unsigned int Result;
-
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
 
     OsMutexLock(OutpChannel->Lock);
+    DtapiResult Result;
     if (OutpChannel->Attached)
         Result = DTAPI_E_ATTACHED;
     else
@@ -1506,7 +1486,7 @@ unsigned int DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel, DtDevice* De
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
+DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
 {
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -1517,25 +1497,23 @@ unsigned int DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel)
+DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel)
 {
-    unsigned int Result;
-
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    Result = ResetFifo(OutpChannel);
+    DtapiResult Result = ResetFifo(OutpChannel);
     OsMutexUnlock(OutpChannel->Lock);
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetFifoLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel, int* FifoLoad)
+DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel, int* FifoLoad)
 {
-    unsigned int Result = DTAPI_OK;
+    DtapiResult Result = DTAPI_OK;
 
     if (OutpChannel == NULL || FifoLoad == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -1565,7 +1543,7 @@ unsigned int DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel, int* FifoLoad
 // The load GetFifoLoad reports for a full buffer. A channel without a buffer, on a 4K
 // port, gives DTAPI's typical size, and its maximum size for GetMaxFifoSize.
 //
-static unsigned int GetFifoSize(DtOutpChannel* Chan, int* FifoSize, int NoBuffer)
+static DtapiResult GetFifoSize(DtOutpChannel* Chan, int* FifoSize, int NoBuffer)
 {
     if (Chan == NULL || FifoSize == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -1581,19 +1559,19 @@ static unsigned int GetFifoSize(DtOutpChannel* Chan, int* FifoSize, int NoBuffer
     return DTAPI_OK;
 }
 
-unsigned int DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel, int* FifoSize)
+DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel, int* FifoSize)
 {
     return GetFifoSize(OutpChannel, FifoSize, DT_FIFO_SIZE_TYP);
 }
 
-unsigned int DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel, int* MaxFifoSize)
+DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel, int* MaxFifoSize)
 {
     return GetFifoSize(OutpChannel, MaxFifoSize, DT_FIFO_SIZE_MAX);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int* Latched)
+DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int* Latched)
 {
     if (OutpChannel == NULL || Status == NULL || Latched == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -1614,16 +1592,13 @@ unsigned int DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int
 // also refuses a configuration the port lacks a capability for; here the driver does.
 // The transmit mode is kept.
 //
-unsigned int DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int Value,
-                                       int SubValue)
+DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int Value,
+                                      int SubValue)
 {
-    DtIoConfig Config;
-    unsigned int Result;
-
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    Result = DtIoConfigIsValid(Group, Value, SubValue);
+    DtapiResult Result = DtIoConfigIsValid(Group, Value, SubValue);
     if (Result != DTAPI_OK)
         return Result;
     if (LockAttached(OutpChannel) != DTAPI_OK)
@@ -1645,6 +1620,7 @@ unsigned int DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, in
         Result = DTAPI_E_NOT_SUPPORTED;
     else
     {
+        DtIoConfig Config;
         Config.Port = OutpChannel->Port;
         Config.Group = Group;
         Config.Value = Value;
@@ -1665,16 +1641,14 @@ unsigned int DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, in
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl)
+DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl)
 {
-    unsigned int Result;
-
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    Result = SetTxControl(OutpChannel, TxControl);
+    DtapiResult Result = SetTxControl(OutpChannel, TxControl);
     OsMutexUnlock(OutpChannel->Lock);
     return Result;
 }
@@ -1684,10 +1658,9 @@ unsigned int DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxContro
 // DtOutpChannel::SetTxMode's checks, then SdiTxImpl_Bb2::SetTxMode's. The mode is kept
 // for the channel's life, also across a change of I/O standard.
 //
-unsigned int DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
-                                     int StuffMode)
+DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int StuffMode)
 {
-    unsigned int Result = DTAPI_OK;
+    DtapiResult Result = DTAPI_OK;
 
     (void)StuffMode;
     if (OutpChannel == NULL)
@@ -1743,11 +1716,9 @@ unsigned int DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
 // channel, as it does in DTAPI. Then one write at a time converts the bytes into the
 // buffer, waiting for room without the lock.
 //
-unsigned int DtOutpChannel_Write(DtOutpChannel* OutpChannel, char* Buffer,
-                                 int NumBytesToWrite)
+DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
+                                int NumBytesToWrite)
 {
-    unsigned int Result;
-
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
     if (NumBytesToWrite < 0)
@@ -1760,7 +1731,8 @@ unsigned int DtOutpChannel_Write(DtOutpChannel* OutpChannel, char* Buffer,
         return DTAPI_E_NOT_ATTACHED;
     }
 
-    Result = OutpChannel->TxControl == DTAPI_TXCTRL_IDLE ? DTAPI_E_IDLE : DTAPI_OK;
+    DtapiResult Result =
+        OutpChannel->TxControl == DTAPI_TXCTRL_IDLE ? DTAPI_E_IDLE : DTAPI_OK;
     if ((uintptr_t)Buffer % 4 != 0 || NumBytesToWrite % 4 != 0 ||
         (Buffer == NULL && NumBytesToWrite > 0))
     {

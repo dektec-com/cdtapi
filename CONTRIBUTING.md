@@ -21,6 +21,10 @@
 8. **A header guards itself with `#pragma once`**, as the first line after the file
    header, rather than with an `#ifndef` guard, as `LibDekTec_C` does. The vendored driver
    ABI keeps its own guards.
+9. **A variable is declared where it is first needed**, with its first value when it has
+   one, one declaration per line; a loop counter in its `for`. Results are `DtapiResult`.
+   No `goto`: a function that must clean up after failures hands the steps to a helper
+   and cleans up after it.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,
@@ -50,6 +54,7 @@ copy-pasted header naming the wrong file otherwise survives for years.
 | 6 | `clang-format` |
 | 7 | Review |
 | 8 | `Scripts/check_style.sh` |
+| 9 | Review |
 | Everything else | `clang-tidy`, warnings-as-errors |
 
 Run them locally:

@@ -83,27 +83,26 @@ static const DtFuncPart* PartAt(const DtFuncInstance* Instance, size_t Index)
 // card's order.
 DT_TEST(PartsOfTheReceiverFunction)
 {
-    DtFuncInstance Func;
     int Live;
-    size_t i;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
         return;
 
+    DtFuncInstance Func;
     DT_ASSERT_OK(DtFuncFind(Drv, 5, "AF_ASISDIRX", "", &Func));
     DT_ASSERT_EQ(Func.PortIndex, 5);
     DT_ASSERT_EQ(DtVecCount(&Func.Parts), PART_COUNT);
-    for (i = 0; i < PART_COUNT && i < DtVecCount(&Func.Parts); i++)
+    for (size_t i = 0; i < PART_COUNT && i < DtVecCount(&Func.Parts); i++)
     {
         const DtFuncPart* Part = PartAt(&Func, i);
-        char Key[PROPERTY_NAME_MAX_SIZE];
         int Uuid = 0;
 
         DT_ASSERT_STR(Part->Name, g_Parts[i].Name);
         DT_ASSERT_STR(Part->Role, g_Parts[i].Role);
         DT_ASSERT_EQ(Part->IsDf, g_Parts[i].IsDf);
         DT_ASSERT_EQ(Part->Type, g_Parts[i].Type);
+        char Key[PROPERTY_NAME_MAX_SIZE];
         snprintf(Key, sizeof(Key), "%s_UUID", g_Parts[i].Name);
         DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, Key, 5, &Uuid));
         DT_ASSERT_EQ(Part->Uuid, Uuid);
@@ -139,23 +138,22 @@ DT_TEST(PartsOfTheTransmitFunctions)
         {"AF_DMA", "BC_CONSTSINK#1", "", false, DT_BLOCK_TYPE_CONSTSINK},
     };
     const size_t Count = sizeof(Expected) / sizeof(Expected[0]);
-    DtFuncInstance None;
     int Live;
-    int Port;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
         return;
 
-    for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
+    for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
     {
-        DtFuncInstance Tx, Dma;
-        size_t i;
+        DtFuncInstance Tx;
 
         DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_ASISDITX", "", &Tx));
+        DtFuncInstance Dma;
         DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_DMA", "", &Dma));
         DT_ASSERT_EQ(DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts), Count);
-        for (i = 0; i < Count && i < DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts); i++)
+        for (size_t i = 0;
+             i < Count && i < DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts); i++)
         {
             bool InTx = strcmp(Expected[i].Af, "AF_ASISDITX") == 0;
             size_t At = InTx ? i : i - DtVecCount(&Tx.Parts);
@@ -171,6 +169,7 @@ DT_TEST(PartsOfTheTransmitFunctions)
         DtFuncRelease(&Tx);
         DtFuncRelease(&Dma);
     }
+    DtFuncInstance None;
     DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_DMA", "", &None),
                  DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDITX", "", &None),
@@ -186,8 +185,10 @@ DT_TEST(UuidsAreUnique)
     int Uuids[SIM_SDI_PORT_COUNT * 32];
     int Count = 0;
     int Live;
-    int Port, j;
-    size_t f, i;
+    int Port;
+    int j;
+    size_t f;
+    size_t i;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
@@ -226,20 +227,20 @@ DT_TEST(UuidsAreUnique)
 // empty; a name too long for a property is refused.
 DT_TEST(MissingFunctionIsNotFound)
 {
-    char TooLong[PROPERTY_NAME_MAX_SIZE];
-    DtFuncInstance Func;
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
         return;
 
+    DtFuncInstance Func;
     DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIMON", "", &Func), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
     DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIRX", "OTHER", &Func), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDIRX", "", &Func),
                  DTAPI_E_NOT_FOUND);
 
+    char TooLong[PROPERTY_NAME_MAX_SIZE];
     memset(TooLong, 'A', sizeof(TooLong) - 1);
     TooLong[sizeof(TooLong) - 1] = '\0';
     DT_ASSERT_EQ(DtFuncFind(Drv, 5, TooLong, "", &Func), DTAPI_E_BUF_TOO_SMALL);
@@ -251,7 +252,6 @@ DT_TEST(MissingFunctionIsNotFound)
 // The first instance with the role is read; parts end at the first one not found.
 DT_TEST(InstanceIsChosenByRole)
 {
-    DtFuncInstance Func;
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
@@ -263,6 +263,7 @@ DT_TEST(InstanceIsChosenByRole)
     SimDtPcieOverrideString("AF_ASISDIRX#3", 1, true, "SECOND");
     SimDtPcieOverrideString("AF_ASISDIRX#3.1", 1, true, "DF_SDIRX#1");
 
+    DtFuncInstance Func;
     DT_ASSERT_OK(DtFuncFind(Drv, 1, "AF_ASISDIRX", "SECOND", &Func));
     DT_ASSERT_EQ(DtVecCount(&Func.Parts), 1);
     DT_ASSERT_STR(PartAt(&Func, 0)->Name, "DF_ASIRX#1");
@@ -280,7 +281,6 @@ DT_TEST(InstanceIsChosenByRole)
 // read a part's role, type or UUID, or a name of another kind, leaves the part out.
 DT_TEST(ReadFailures)
 {
-    DtFuncInstance Func;
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
@@ -288,6 +288,7 @@ DT_TEST(ReadFailures)
         return;
 
     SimDtPcieFailProperty("AF_ASISDIRX#1", 2, true, DT_STATUS_TIMEOUT);
+    DtFuncInstance Func;
     DT_ASSERT_EQ(DtFuncFind(Drv, 2, "AF_ASISDIRX", "", &Func), DTAPI_E_TIMEOUT);
 
     SimDtPcieFailProperty("AF_ASISDIRX#1.8", 3, true, DT_STATUS_BUSY);
@@ -313,7 +314,6 @@ DT_TEST(ReadFailures)
 // When memory runs out the parts found are freed and the failure returned.
 DT_TEST(OutOfMemory)
 {
-    DtFuncInstance Func;
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
@@ -321,6 +321,7 @@ DT_TEST(OutOfMemory)
         return;
 
     DtAllocFailAfter(0);
+    DtFuncInstance Func;
     DT_ASSERT_EQ(DtFuncFind(Drv, 0, "AF_ASISDIRX", "", &Func), DTAPI_E_OUT_OF_MEM);
     DtAllocFailAfter(-1);
     DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
@@ -333,17 +334,16 @@ DT_TEST(OutOfMemory)
 // A part is got by kind, type and role; of parts alike the last.
 DT_TEST(PartsAreGotByKindTypeAndRole)
 {
-    DtFuncInstance Func;
-    const DtFuncPart* Part;
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
         return;
 
+    DtFuncInstance Func;
     DT_ASSERT_OK(DtFuncFind(Drv, 0, "AF_ASISDIRX", "", &Func));
 
-    Part = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncPart* Part = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "DF_SDIRX#1") == 0);
     Part = DtFuncGet(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#3") == 0);
@@ -390,9 +390,8 @@ DT_TEST(DriverVersionPerProxy)
         {false, DT_BLOCK_TYPE_SWITCH, {1, 0, 4, 48}, {1, 0, 4, 47}},
     };
     const DtDriverVersion Newest = {3, 6, 4, 398};
-    size_t i;
 
-    for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         bool IsDf = Cases[i].IsDf;
 

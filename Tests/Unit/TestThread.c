@@ -83,11 +83,10 @@ DT_TEST(RaisingPriorityDoesNotFailHere)
 DT_TEST(UnsetEventTimesOut)
 {
     OsEvent* Event = OsEventCreate();
-    int64_t Start;
 
     DT_ASSERT(Event != NULL);
 
-    Start = NowMs();
+    int64_t Start = NowMs();
     DT_ASSERT_EQ(OsEventWait(Event, 50), OS_WAIT_TIMEOUT);
 
     // It really waited. The lower bound allows for a coarse timer tick.
@@ -154,15 +153,13 @@ static void SetAfterDelay(void* Context)
 DT_TEST(SetFromAnotherThreadWakesTheWaiter)
 {
     DelayedSet Job;
-    OsThread* Thread;
-    int64_t Start;
 
     Job.Event = OsEventCreate();
     Job.DelayMs = 30;
     DT_ASSERT(Job.Event != NULL);
 
-    Start = NowMs();
-    Thread = OsThreadStart(SetAfterDelay, &Job);
+    int64_t Start = NowMs();
+    OsThread* Thread = OsThreadStart(SetAfterDelay, &Job);
     DT_ASSERT(Thread != NULL);
 
     // Woken by the other thread, long before the five-second timeout.
@@ -204,19 +201,17 @@ static void PollUntilKilled(void* Context)
 DT_TEST(KillEventStopsAPollingThread)
 {
     Worker Self;
-    OsThread* Thread;
-    int64_t Start;
 
     Self.Kill = OsEventCreate();
     Self.Rounds = 0;
     DT_ASSERT(Self.Kill != NULL);
 
-    Thread = OsThreadStart(PollUntilKilled, &Self);
+    OsThread* Thread = OsThreadStart(PollUntilKilled, &Self);
     DT_ASSERT(Thread != NULL);
 
     PauseMs(80);
 
-    Start = NowMs();
+    int64_t Start = NowMs();
     OsEventSet(Self.Kill);
     OsThreadJoin(Thread);
 
@@ -256,13 +251,13 @@ static void IncrementManyTimes(void* Context)
 DT_TEST(MutexLosesNoUpdates)
 {
     Counter Shared;
-    OsThread* Threads[INCREMENT_THREADS];
-    int i;
 
     Shared.Lock = OsMutexCreate();
     Shared.Value = 0;
     DT_ASSERT(Shared.Lock != NULL);
 
+    OsThread* Threads[INCREMENT_THREADS];
+    int i;
     for (i = 0; i < INCREMENT_THREADS; i++)
     {
         Threads[i] = OsThreadStart(IncrementManyTimes, &Shared);
@@ -294,10 +289,9 @@ DT_TEST(MutexDestroyAcceptsNull)
 DT_TEST(SleepIsMeasuredByTheClock)
 {
     uint64_t Start = OsMonotonicMs();
-    uint64_t Elapsed;
 
     OsSleepMs(60);
-    Elapsed = OsMonotonicMs() - Start;
+    uint64_t Elapsed = OsMonotonicMs() - Start;
     if (Elapsed < 60 - 17 || Elapsed > 5000)
         DT_FAIL("a 60 ms sleep took %llu ms", (unsigned long long)Elapsed);
 }
@@ -307,15 +301,12 @@ DT_TEST(NoSleepForNothing)
 {
     uint64_t Start = OsMonotonicMs();
     uint64_t Last = Start;
-    int i;
 
-    for (i = 0; i < 1000; i++)
+    for (int i = 0; i < 1000; i++)
     {
-        uint64_t Now;
-
         OsSleepMs(0);
         OsSleepMs(-10);
-        Now = OsMonotonicMs();
+        uint64_t Now = OsMonotonicMs();
         DT_ASSERT(Now >= Last);
         Last = Now;
     }

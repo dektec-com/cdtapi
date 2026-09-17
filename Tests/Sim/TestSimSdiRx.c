@@ -68,9 +68,9 @@ static OsDrv* OpenSim(int* DtFailures)
 static int UuidOf(OsDrv* Drv, const char* Name, int PortIndex)
 {
     char Key[PROPERTY_NAME_MAX_SIZE];
-    int Uuid;
 
     snprintf(Key, sizeof(Key), "%s_UUID", Name);
+    int Uuid;
     return DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Uuid) == DTAPI_OK ? Uuid : -1;
 }
 
@@ -79,7 +79,6 @@ static int RawSdiRx(OsDrv* Drv, int Uuid, int PortIndex, int Cmd, size_t InSize,
                     size_t OutSize, uint32_t* Status)
 {
     DtIoctlInputDataHdr In;
-    DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
     size_t Returned = OutSize;
 
     memset(&In, 0, sizeof(In));
@@ -87,6 +86,7 @@ static int RawSdiRx(OsDrv* Drv, int Uuid, int PortIndex, int Cmd, size_t InSize,
     In.m_PortIndex = PortIndex;
     In.m_Cmd = Cmd;
     In.m_CmdEx = DT_IOCTL_CMD_NOP;
+    DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
     return OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_SDIRX_CMD), &In, InSize, &Out,
                       &Returned, Status);
 }
@@ -117,12 +117,12 @@ static SimSdiSignal Signal1080i50(void)
 
 DT_TEST(StringPropertiesAreRead)
 {
-    char Str[DT_PROPERTY_STR_SIZE];
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
     DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "");
@@ -138,16 +138,15 @@ DT_TEST(StringPropertiesAreRead)
 // command.
 DT_TEST(StringRequestCarriesTheFilter)
 {
-    DtIoctlPropCmdGetStrInput In;
-    char Name[PROPERTY_NAME_MAX_SIZE];
-    char Str[DT_PROPERTY_STR_SIZE];
-    int FunctionCode;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Str[DT_PROPERTY_STR_SIZE];
     DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 2, Str, sizeof(Str)));
+    DtIoctlPropCmdGetStrInput In;
+    int FunctionCode;
     DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &In, sizeof(In)), sizeof(In));
     DT_ASSERT_EQ(sizeof(In), 104);
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_PROPERTY_CMD);
@@ -166,6 +165,7 @@ DT_TEST(StringRequestCarriesTheFilter)
     DT_ASSERT_EQ(In.m_DtapiMin, 13);
     DT_ASSERT_EQ(In.m_DtapiBugfix, 0);
 
+    char Name[PROPERTY_NAME_MAX_SIZE];
     memset(Name, 0, sizeof(Name));
     memcpy(Name, "AF_ASISDIRX#1", 13);
     DT_ASSERT_MEM(In.m_Name, Name, sizeof(Name));
@@ -176,12 +176,12 @@ DT_TEST(StringRequestCarriesTheFilter)
 // A string the port or the card does not have is not found, and leaves the buffer empty.
 DT_TEST(MissingStringIsNotFound)
 {
-    char Str[DT_PROPERTY_STR_SIZE];
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
     DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#2", 0, Str, sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
@@ -211,17 +211,17 @@ DT_TEST(MissingStringIsNotFound)
 // of DT_PROPERTY_STR_SIZE, and one byte less is too small.
 DT_TEST(StringMustFitTheBuffer)
 {
-    char Filled[PROPERTY_STR_MAX_SIZE + 1];
-    char Str[DT_PROPERTY_STR_SIZE];
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Filled[PROPERTY_STR_MAX_SIZE + 1];
     memset(Filled, 'L', PROPERTY_STR_MAX_SIZE);
     Filled[PROPERTY_STR_MAX_SIZE] = '\0';
     SimDtPcieOverrideString("LONG", 0, true, Filled);
 
+    char Str[DT_PROPERTY_STR_SIZE];
     DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "LONG", 0, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, Filled);
 
@@ -242,20 +242,20 @@ DT_TEST(StringMustFitTheBuffer)
 
 DT_TEST(StringNameMustFit)
 {
-    char Name[PROPERTY_NAME_MAX_SIZE + 1];
-    char Str[DT_PROPERTY_STR_SIZE];
-    int FunctionCode;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Name[PROPERTY_NAME_MAX_SIZE + 1];
     memset(Name, 'N', PROPERTY_NAME_MAX_SIZE);
     Name[PROPERTY_NAME_MAX_SIZE] = '\0';
+    char Str[DT_PROPERTY_STR_SIZE];
     DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, Name, 0, Str, sizeof(Str)),
                  DTAPI_E_BUF_TOO_SMALL);
 
     // Refused before anything reaches the driver.
+    int FunctionCode;
     DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, Str, 0), 0);
 
     OsDrvClose(Drv);
@@ -263,12 +263,12 @@ DT_TEST(StringNameMustFit)
 
 DT_TEST(StringNullArgumentsAreRefused)
 {
-    char Str[DT_PROPERTY_STR_SIZE];
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
     DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(NULL, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
                  DTAPI_E_INVALID_ARG);
@@ -287,13 +287,13 @@ DT_TEST(StringNullArgumentsAreRefused)
 
 DT_TEST(StringFailuresBecomeResults)
 {
-    char Str[DT_PROPERTY_STR_SIZE];
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
+    char Str[DT_PROPERTY_STR_SIZE];
     DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
                  DTAPI_E_TIMEOUT);
 
@@ -310,7 +310,6 @@ DT_TEST(StringFailuresBecomeResults)
 // A string override replaces the string only, and is found or hidden per port.
 DT_TEST(StringOverridesAreSeparate)
 {
-    char Str[DT_PROPERTY_STR_SIZE];
     int Value = 0;
     OsDrv* Drv = OpenSim(DtFailures);
 
@@ -320,6 +319,7 @@ DT_TEST(StringOverridesAreSeparate)
     SimDtPcieOverrideString("DF_SDIRX#1", 1, true, "ROLE");
     SimDtPcieOverrideString("AF_ASISDIRX#1.6", 1, false, NULL);
 
+    char Str[DT_PROPERTY_STR_SIZE];
     DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "DF_SDIRX#1", 1, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "ROLE");
     DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "DF_SDIRX#1", 0, Str, sizeof(Str)));
@@ -347,28 +347,28 @@ DT_TEST(StringOverridesAreSeparate)
 // parts share a UUID, also across ports. The genlock ports have none.
 DT_TEST(EverySdiPortHasTheReceiverFunction)
 {
-    int Uuids[SIM_SDI_PORT_COUNT * FUNCTION_COUNT];
     int Count = 0;
-    int Port, i, j;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    int Uuids[SIM_SDI_PORT_COUNT * FUNCTION_COUNT];
+    int Port;
     for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
     {
         char Str[DT_PROPERTY_STR_SIZE];
-        char Key[PROPERTY_NAME_MAX_SIZE];
 
         DT_ASSERT_OK(
             DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", Port, Str, sizeof(Str)));
         DT_ASSERT_STR(Str, "");
 
+        int i;
+        char Key[PROPERTY_NAME_MAX_SIZE];
         for (i = 0; i < FUNCTION_COUNT; i++)
         {
             const Function* F = &g_Functions[i];
             int Type = -1;
-            int Uuid;
 
             snprintf(Key, sizeof(Key), "AF_ASISDIRX#1.%d", i + 1);
             DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, Key, Port, Str, sizeof(Str)));
@@ -380,10 +380,11 @@ DT_TEST(EverySdiPortHasTheReceiverFunction)
             DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, Key, Port, &Type));
             DT_ASSERT_EQ(Type, F->Type);
 
-            Uuid = UuidOf(Drv, F->Name, Port);
+            int Uuid = UuidOf(Drv, F->Name, Port);
             DT_ASSERT_EQ(Uuid & DT_UUID_FLAG_MASK,
                          F->IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
             DT_ASSERT((Uuid & DT_UUID_INDEX_MASK) != 0);
+            int j;
             for (j = 0; j < Count; j++)
                 DT_ASSERT(Uuids[j] != Uuid);
             Uuids[Count++] = Uuid;
@@ -409,14 +410,13 @@ DT_TEST(PartNumbersAreDecimal)
         "AF_ASISDIRX#10",  "AF_ASISDIRX#1x",   "DF_SDIRX#1_UUIDX",
         "DF_SDIRX#",
     };
-    char Str[DT_PROPERTY_STR_SIZE];
-    size_t i;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
-    for (i = 0; i < sizeof(NoPart) / sizeof(NoPart[0]); i++)
+    char Str[DT_PROPERTY_STR_SIZE];
+    for (size_t i = 0; i < sizeof(NoPart) / sizeof(NoPart[0]); i++)
     {
         if (DtPcieCmdGetPropertyStr(Drv, NoPart[i], 0, Str, sizeof(Str)) !=
             DTAPI_E_NOT_FOUND)
@@ -431,7 +431,6 @@ DT_TEST(PartNumbersAreDecimal)
 // The device itself is UUID 0 and only with port index -1.
 DT_TEST(DeviceCommandsNeedTheDevicePortIndex)
 {
-    DtIoctlGetDriverVersionInput In;
     DtIoctlGetDriverVersionOutput Out;
     size_t OutSize = sizeof(Out);
     uint32_t Status = 0;
@@ -440,6 +439,7 @@ DT_TEST(DeviceCommandsNeedTheDevicePortIndex)
     if (Drv == NULL)
         return;
 
+    DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = 0;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
@@ -461,13 +461,12 @@ DT_TEST(DeviceCommandsNeedTheDevicePortIndex)
 DT_TEST(UnknownUuidHasNoIoStub)
 {
     uint32_t Status = 0;
-    int Uuid;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
-    Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
+    int Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
     DT_ASSERT(Uuid > 0);
 
     DT_ASSERT_EQ(RawSdiRx(Drv, DT_UUID_DF_FLAG | 0xFFFF, 0, DT_SDIRX_CMD_GET_SDI_STATUS2,
@@ -549,13 +548,13 @@ DT_TEST(OnlyTheReceiverTakesItsCommand)
 DT_TEST(UuidAlonePicksTheFunction)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
     SimDtPcieSetSdiSignal(2, &Signal);
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 2), 4, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 4), 2, &S));
@@ -569,17 +568,16 @@ DT_TEST(UuidAlonePicksTheFunction)
 // The request is a header for the function and port.
 DT_TEST(StatusRequestIsAHeaderForTheFunction)
 {
-    DtIoctlInputDataHdr Hdr;
-    DtSdiRxStatus S;
-    int FunctionCode;
-    int Uuid;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
-    Uuid = UuidOf(Drv, "DF_SDIRX#1", 6);
+    int Uuid = UuidOf(Drv, "DF_SDIRX#1", 6);
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 6, &S));
+    DtIoctlInputDataHdr Hdr;
+    int FunctionCode;
     DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_SDIRX_CMD);
     DT_ASSERT_EQ(Hdr.m_Uuid, Uuid);
@@ -593,12 +591,12 @@ DT_TEST(StatusRequestIsAHeaderForTheFunction)
 // An input without a signal reports nothing, with the rate unknown.
 DT_TEST(InputWithoutSignalReportsNothing)
 {
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
@@ -621,13 +619,13 @@ DT_TEST(InputWithoutSignalReportsNothing)
 DT_TEST(StatusFollowsTheSignal)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
     SimDtPcieSetSdiSignal(0, &Signal);
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
@@ -676,13 +674,12 @@ DT_TEST(StatusFollowsTheSignal)
 // A flag is true for any non-zero value the driver writes.
 DT_TEST(AnyNonZeroFlagIsTrue)
 {
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
-    SimSdiSignal Signal;
 
     if (Drv == NULL)
         return;
 
+    SimSdiSignal Signal;
     memset(&Signal, 0, sizeof(Signal));
     Signal.CarrierDetect = 2;
     Signal.SdiLock = -1;
@@ -690,6 +687,7 @@ DT_TEST(AnyNonZeroFlagIsTrue)
     Signal.Valid = 3;
     Signal.IsLevelB = 4;
     SimDtPcieSetSdiSignal(0, &Signal);
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
@@ -713,16 +711,15 @@ DT_TEST(FramePeriodBecomesARate)
                  {1, 1e9},
                  {0, 0.0},
                  {-40000000, 0.0}};
-    SimSdiSignal Signal;
-    DtSdiRxStatus S;
-    size_t i;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    SimSdiSignal Signal;
     memset(&Signal, 0, sizeof(Signal));
-    for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    DtSdiRxStatus S;
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         Signal.FramePeriod = Cases[i].Period;
         SimDtPcieSetSdiSignal(0, &Signal);
@@ -737,16 +734,15 @@ DT_TEST(FramePeriodBecomesARate)
 // The driver's rates come through as they are, and anything else is unknown.
 DT_TEST(RateOutsideTheDriverValuesIsUnknown)
 {
-    SimSdiSignal Signal;
-    DtSdiRxStatus S;
-    int Rate;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    SimSdiSignal Signal;
     memset(&Signal, 0, sizeof(Signal));
-    for (Rate = -3; Rate <= 7; Rate++)
+    DtSdiRxStatus S;
+    for (int Rate = -3; Rate <= 7; Rate++)
     {
         int Expected =
             Rate >= DT_DRV_SDIRATE_SD && Rate <= DT_DRV_SDIRATE_12G ? Rate : -1;
@@ -766,14 +762,13 @@ DT_TEST(RateOutsideTheDriverValuesIsUnknown)
 DT_TEST(OutputPortReceiverIsNotEnabled)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtIoConfig Cfg;
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
     SimDtPcieSetSdiSignal(1, &Signal);
+    DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
     DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S),
                  DTAPI_E_INVALID_MODE);
@@ -781,6 +776,7 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
     DT_ASSERT_EQ(S.NumLinesF1, 0);
 
     // Once the port is an input, the signal is seen.
+    DtIoConfig Cfg;
     Cfg.Port = 2;
     Cfg.Group = DTAPI_IOCONFIG_IODIR;
     Cfg.Value = DTAPI_IOCONFIG_INPUT;
@@ -798,13 +794,12 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
 DT_TEST(AsiReportsTheCarrierOnly)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtIoConfig Cfg;
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    DtIoConfig Cfg;
     Cfg.Port = 1;
     Cfg.Group = DTAPI_IOCONFIG_IOSTD;
     Cfg.Value = DTAPI_IOCONFIG_ASI;
@@ -814,6 +809,7 @@ DT_TEST(AsiReportsTheCarrierOnly)
     DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
 
     SimDtPcieSetSdiSignal(0, &Signal);
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
@@ -833,13 +829,12 @@ DT_TEST(AsiReportsTheCarrierOnly)
 DT_TEST(StatusRequestSizesAreChecked)
 {
     uint32_t Status = 0;
-    int Uuid;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
-    Uuid = UuidOf(Drv, "DF_SDIRX#1", 1);
+    int Uuid = UuidOf(Drv, "DF_SDIRX#1", 1);
     DT_ASSERT_EQ(RawSdiRx(Drv, Uuid, 1, DT_SDIRX_CMD_GET_SDI_STATUS2,
                           sizeof(DtIoctlInputDataHdr),
                           sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2) - 1, &Status),
@@ -869,17 +864,16 @@ DT_TEST(StatusRequestSizesAreChecked)
 DT_TEST(StatusFailuresBecomeResults)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtSdiRxStatus S;
-    int Uuid;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
-    Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
+    int Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
     SimDtPcieSetSdiSignal(0, &Signal);
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
+    DtSdiRxStatus S;
     DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_TIMEOUT);
 
     SimDtPcieReset();
@@ -898,7 +892,6 @@ DT_TEST(StatusFailuresBecomeResults)
 DT_TEST(SignalsAreResetAndPerSdiPort)
 {
     SimSdiSignal Signal = Signal1080i50();
-    DtSdiRxStatus S;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
@@ -906,6 +899,7 @@ DT_TEST(SignalsAreResetAndPerSdiPort)
 
     SimDtPcieSetSdiSignal(0, &Signal);
     SimDtPcieReset();
+    DtSdiRxStatus S;
     DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
@@ -941,9 +935,8 @@ DT_TEST(VersionsCompareNumberByNumber)
         {{1, 5, 0, 0}, true},     {{2, 0, 0, 0}, true},      {{3, 6, 4, 398}, true},
         {{1, 3, 99, 999}, false}, {{0, 99, 99, 999}, false}, {{1, 4, 0, 0}, false},
     };
-    size_t i;
 
-    for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         const DtDriverVersion* V = &Cases[i].Version;
 

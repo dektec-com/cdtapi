@@ -74,12 +74,12 @@ DT_TEST(OutOfRangeIndexIsRefused)
 
 DT_TEST(NullHandleIsAccepted)
 {
-    uint8_t In[16];
     uint32_t Status = 0xDEAD;
 
     OsDrvClose(NULL);
     DT_ASSERT(!OsDrvIsEmulated(NULL));
     DT_ASSERT_EQ(OsDrvLastError(NULL), 0);
+    uint8_t In[16];
     DT_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
@@ -90,13 +90,13 @@ DT_TEST(NullHandleIsAccepted)
 // A request without input never reaches the driver, so there is no driver status.
 DT_TEST(RequestWithoutInputIsRefused)
 {
-    uint8_t In[16];
     uint32_t Status = 0xDEAD;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    uint8_t In[16];
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
                             sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
@@ -113,12 +113,12 @@ DT_TEST(RequestWithoutInputIsRefused)
 
 DT_TEST(DriverVersionComesThrough)
 {
-    DtDriverVersion Version;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    DtDriverVersion Version;
     DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, &Version), DTAPI_OK);
     DT_ASSERT_EQ(Version.Major, SIM_DRIVER_MAJOR);
     DT_ASSERT_EQ(Version.Minor, SIM_DRIVER_MINOR);
@@ -130,12 +130,12 @@ DT_TEST(DriverVersionComesThrough)
 
 DT_TEST(DeviceInfoComesThrough)
 {
-    DtDeviceInfo Info;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    DtDeviceInfo Info;
     DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, &Info), DTAPI_OK);
     DT_ASSERT_EQ(Info.TypeNumber, SIM_TYPE_NUMBER);
     DT_ASSERT_EQ(Info.Serial, (int64_t)SIM_SERIAL);
@@ -151,15 +151,15 @@ DT_TEST(DeviceInfoComesThrough)
 
 DT_TEST(CommandsRejectNullArguments)
 {
-    DtDriverVersion Version;
-    DtDeviceInfo Info;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    DtDriverVersion Version;
     DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(NULL, &Version), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DtDeviceInfo Info;
     DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(NULL, &Info), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, NULL), DTAPI_E_INVALID_ARG);
 
@@ -175,7 +175,6 @@ DT_TEST(CommandsRejectNullArguments)
 
 DT_TEST(OutputBufferTooSmallIsRefused)
 {
-    DtIoctlGetDriverVersionInput In;
     uint8_t Out[sizeof(DtIoctlGetDriverVersionOutput) - 1];
     size_t OutSize = sizeof(Out);
     uint32_t Status = 0;
@@ -184,6 +183,7 @@ DT_TEST(OutputBufferTooSmallIsRefused)
     if (Drv == NULL)
         return;
 
+    DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
@@ -198,7 +198,6 @@ DT_TEST(OutputBufferTooSmallIsRefused)
 
 DT_TEST(InputShorterThanHeaderIsRefused)
 {
-    uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     DtIoctlGetDevInfoOutput Out;
     size_t OutSize = sizeof(Out);
     uint32_t Status = 0;
@@ -207,6 +206,7 @@ DT_TEST(InputShorterThanHeaderIsRefused)
     if (Drv == NULL)
         return;
 
+    uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
                             &Out, &OutSize, &Status),
@@ -221,13 +221,13 @@ DT_TEST(InputShorterThanHeaderIsRefused)
 // parameter even for a command the emulator does not model.
 DT_TEST(ShortInputIsRefusedBeforeTheCommand)
 {
-    uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     uint32_t Status = 0;
     OsDrv* Drv = OpenSim(DtFailures);
 
     if (Drv == NULL)
         return;
 
+    uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In), NULL,
                             NULL, &Status),
@@ -239,7 +239,6 @@ DT_TEST(ShortInputIsRefusedBeforeTheCommand)
 
 DT_TEST(DeviceInfoOutputTooSmallIsRefused)
 {
-    DtIoctlGetDevInfoInput In;
     uint8_t Out[sizeof(DtIoctlGetDevInfoOutput) - 1];
     size_t OutSize = sizeof(Out);
     uint32_t Status = 0;
@@ -248,6 +247,7 @@ DT_TEST(DeviceInfoOutputTooSmallIsRefused)
     if (Drv == NULL)
         return;
 
+    DtIoctlGetDevInfoInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
@@ -264,7 +264,6 @@ DT_TEST(DeviceInfoOutputTooSmallIsRefused)
 // yields DT_STATUS_NOT_SUPPORTED rather than DT_STATUS_INVALID_PARAMETER.
 DT_TEST(UnmodelledCommandIsRefused)
 {
-    DtIoctlInputDataHdr In;
     uint8_t Out[64];
     size_t OutSize = sizeof(Out);
     uint32_t Status = 0;
@@ -273,6 +272,7 @@ DT_TEST(UnmodelledCommandIsRefused)
     if (Drv == NULL)
         return;
 
+    DtIoctlInputDataHdr In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
     DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,

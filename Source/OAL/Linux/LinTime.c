@@ -13,8 +13,6 @@
 //
 void LinTimeAddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec)
 {
-    int64_t TotalNsec;
-
     if (Ms < 0)
         Ms = 0;
 
@@ -22,7 +20,7 @@ void LinTimeAddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec
     // stays small: at most 999,999,999 plus 999,000,000, which fits comfortably in 64
     // bits and in a 32-bit long after the carry.
     Sec += Ms / 1000;
-    TotalNsec = (int64_t)Nsec + (int64_t)(Ms % 1000) * 1000000;
+    int64_t TotalNsec = (int64_t)Nsec + (int64_t)(Ms % 1000) * 1000000;
 
     if (TotalNsec >= LIN_NSEC_PER_SEC)
     {

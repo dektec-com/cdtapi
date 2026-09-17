@@ -64,16 +64,16 @@ static bool IsSdi(const DtHwFuncDesc* Port)
 //
 int main(int Argc, char** Argv)
 {
-    DtHwFuncDesc Port;
-    DtDevice* Device;
-    int64_t Serial = 0, PortNumber = 0, LinkStd = -1;
+    int64_t Serial = 0;
+    int64_t PortNumber = 0;
+    int64_t LinkStd = -1;
     bool Input = ExampleHasFlag(Argc, Argv, "--input");
     bool Output = ExampleHasFlag(Argc, Argv, "--output");
     const char* VidStdName = ExampleValue(Argc, Argv, "--vidstd");
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
-    int Value = -1, SubValue = -1;
+    int Value = -1;
+    int SubValue = -1;
     int Exit = EXAMPLE_OK;
-    unsigned int Result;
 
     if (!ExampleCheckArguments(Argc, Argv,
                                "Makes an SDI port an input or output, and sets its I/O "
@@ -98,6 +98,7 @@ int main(int Argc, char** Argv)
     }
 
     // Check the video standard before anything changes on the device.
+    unsigned int Result;
     if (VidStdName != NULL)
     {
         if (!ExampleVidStdFromName(VidStdName, &VidStd))
@@ -110,6 +111,7 @@ int main(int Argc, char** Argv)
             return ExampleFailed("DtapiVidStd2IoStd", Result);
     }
 
+    DtHwFuncDesc Port;
     Result = ExampleFindPort(Serial, (int)PortNumber,
                              Input ? IsSdiInput : (Output ? IsSdiOutput : IsSdi), &Port);
     if (Result == DTAPI_E_NOT_FOUND)
@@ -120,7 +122,7 @@ int main(int Argc, char** Argv)
     if (Result != DTAPI_OK)
         return ExampleFailed("DtapiHwFuncScan", Result);
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL)
         return ExampleFailed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
 

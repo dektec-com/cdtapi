@@ -35,9 +35,8 @@ DT_TEST(PictureRateCodes)
         {0x8, 48, 1},       {0x9, 50, 1}, {0xA, 60000, 1001}, {0xB, 60, 1},
         {0xC, 0, 0},        {0xD, 0, 0},  {0xE, 0, 0},        {0xF, 0, 0},
     };
-    size_t i;
 
-    for (i = 0; i < sizeof(Rates) / sizeof(Rates[0]); i++)
+    for (size_t i = 0; i < sizeof(Rates) / sizeof(Rates[0]); i++)
     {
         int Num = -1;
         int Den = -1;

@@ -55,11 +55,10 @@ DT_TEST(BufferIsPageAlignedAndRounded)
 DT_TEST(WholeBufferIsZeroedAndWritable)
 {
     OsDmaBuffer Buf;
-    size_t i;
 
     DT_ASSERT_OK(OsDmaBufferAlloc(5 * OsPageSize() + 17, &Buf));
 
-    for (i = 0; i < Buf.Size; i++)
+    for (size_t i = 0; i < Buf.Size; i++)
     {
         if (Buf.Data[i] != 0)
             DT_FAIL("byte %zu is %u, not zero", i, (unsigned)Buf.Data[i]);
@@ -105,10 +104,9 @@ DT_TEST(FreeEmptiesTheBufferAndCanRepeat)
 
 DT_TEST(AllocRejectsBadArguments)
 {
-    OsDmaBuffer Buf;
-
     DT_ASSERT_EQ(OsDmaBufferAlloc(100, NULL), -1);
 
+    OsDmaBuffer Buf;
     DT_ASSERT_EQ(OsDmaBufferAlloc(0, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
 
@@ -124,11 +122,10 @@ DT_TEST(AllocRejectsBadArguments)
 
 DT_TEST(AllocationFailureLeavesTheBufferEmpty)
 {
-    OsDmaBuffer Buf;
-
     DtAllocResetCount();
     DtAllocFailAfter(0);
 
+    OsDmaBuffer Buf;
     DT_ASSERT_EQ(OsDmaBufferAlloc(100, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
     DT_ASSERT(Buf.Block == NULL);
@@ -144,11 +141,11 @@ DT_TEST(AllocationFailureLeavesTheBufferEmpty)
 DT_TEST(HandOffAsTheOutputBuffer)
 {
     OsDmaBuffer Buf;
-    OsDmaHandOff HandOff;
-    uint8_t Fixed[4];
 
     DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
 
+    OsDmaHandOff HandOff;
+    uint8_t Fixed[4];
     OsDmaDescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT_EQ(HandOff.BufferAddr, 0);
     DT_ASSERT(HandOff.Out == Buf.Data);
@@ -162,11 +159,11 @@ DT_TEST(HandOffAsTheOutputBuffer)
 DT_TEST(HandOffAsAnAddress)
 {
     OsDmaBuffer Buf;
-    OsDmaHandOff HandOff;
-    uint8_t Fixed[4];
 
     DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
 
+    OsDmaHandOff HandOff;
+    uint8_t Fixed[4];
     OsDmaDescribeHandOffAs(false, &Buf, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT(HandOff.BufferAddr == (uint64_t)(uintptr_t)Buf.Data);
     DT_ASSERT(HandOff.Out == Fixed);
@@ -179,13 +176,12 @@ DT_TEST(HandOffAsAnAddress)
 DT_TEST(HandOffMatchesThisPlatform)
 {
     OsDmaBuffer Buf;
-    OsDmaHandOff Actual;
-    OsDmaHandOff Expected;
-    uint8_t Fixed[4];
-
     DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
 
+    uint8_t Fixed[4];
+    OsDmaHandOff Actual;
     OsDmaDescribeHandOff(&Buf, Fixed, sizeof(Fixed), &Actual);
+    OsDmaHandOff Expected;
 #if defined(_WIN32) || defined(_WIN64)
     OsDmaDescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &Expected);
 #else
@@ -204,10 +200,10 @@ DT_TEST(HandOffMatchesThisPlatform)
 DT_TEST(EmptyBufferDescribesNothing)
 {
     OsDmaBuffer Empty;
-    OsDmaHandOff HandOff;
-    uint8_t Fixed[4];
 
     memset(&Empty, 0, sizeof(Empty));
+    OsDmaHandOff HandOff;
+    uint8_t Fixed[4];
     OsDmaDescribeHandOffAs(false, &Empty, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT_EQ(HandOff.BufferAddr, 0);
     DT_ASSERT(HandOff.Out == NULL);

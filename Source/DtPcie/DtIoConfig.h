@@ -11,6 +11,9 @@
 // Standard includes
 #include <stddef.h>
 
+// CDtapiLite includes
+#include "CDtapiLite.h" // DtapiResult.
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Code and name +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The API takes I/O configuration as integers, DTAPI_IOCONFIG_IODIR and so on. The driver
@@ -28,12 +31,12 @@ int DtIoConfigCount(void);
 // Looks up the code for Name. Sets *Code to -1 first. An empty name succeeds with -1; an
 // unknown name fails with DTAPI_E_INVALID_ARG and leaves -1. The match is exact and
 // case-sensitive, as it is in the driver.
-unsigned int DtIoConfigGetCode(const char* Name, int* Code);
+DtapiResult DtIoConfigGetCode(const char* Name, int* Code);
 
 // Writes the name for Code into Name, which holds Size bytes including the terminator.
 // Code -1 writes the empty name. Fails with DTAPI_E_INVALID_ARG for a code out of range,
 // and with DTAPI_E_BUF_TOO_SMALL when the name does not fit; Name is then empty.
-unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size);
+DtapiResult DtIoConfigGetName(int Code, char* Name, size_t Size);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Validation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -57,4 +60,4 @@ unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size);
 // Returns DTAPI_OK when Value belongs to Group and SubValue to Value, SubValue -1 being
 // required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
 // checks and their order are those of DTAPI's DtConfigDefs::IsValidConfig.
-unsigned int DtIoConfigIsValid(int Group, int Value, int SubValue);
+DtapiResult DtIoConfigIsValid(int Group, int Value, int SubValue);

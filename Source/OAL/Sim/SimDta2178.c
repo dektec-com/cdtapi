@@ -171,11 +171,9 @@ static int FunctionUuid(int Af, int PortIndex, int Index)
 //
 static bool FindFunction(const char* Name, const char* Suffix, int* Af, int* Index)
 {
-    int a, i;
-
-    for (a = 0; a < API_FUNCTION_COUNT; a++)
+    for (int a = 0; a < API_FUNCTION_COUNT; a++)
     {
-        for (i = 0; i < g_ApiFunctions[a].NumParts; i++)
+        for (int i = 0; i < g_ApiFunctions[a].NumParts; i++)
         {
             const char* PartName = g_ApiFunctions[a].Parts[i].Name;
             size_t Length = strlen(PartName);
@@ -205,9 +203,7 @@ static bool HasFunctions(int PortIndex)
 //
 static bool InList(const char* const* List, size_t Count, const char* Name)
 {
-    size_t i;
-
-    for (i = 0; i < Count; i++)
+    for (size_t i = 0; i < Count; i++)
     {
         if (strcmp(List[i], Name) == 0)
             return true;
@@ -255,7 +251,8 @@ bool SimDta2178GetProperty(const char* Name, int PortIndex, int* Type, uint64_t*
 
     if (HasFunctions(PortIndex))
     {
-        int Af, Index;
+        int Af;
+        int Index;
 
         if (FindFunction(Name, "_TYPE", &Af, &Index))
         {
@@ -282,11 +279,10 @@ bool SimDta2178GetProperty(const char* Name, int PortIndex, int* Type, uint64_t*
 //
 bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
 {
-    int a, Index;
-
     if (!HasFunctions(PortIndex))
         return false;
 
+    int a;
     for (a = 0; a < API_FUNCTION_COUNT; a++)
     {
         const SimApiFunction* Api = &g_ApiFunctions[a];
@@ -316,6 +312,7 @@ bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
         return true;
     }
 
+    int Index;
     if (!FindFunction(Name, "", &a, &Index))
         return false;
     *Str = g_ApiFunctions[a].Parts[Index].Role;
@@ -327,9 +324,8 @@ bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
 bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
 {
     int Flat = (Uuid & DT_UUID_INDEX_MASK) - 1;
-    int a;
 
-    for (a = 0; a < API_FUNCTION_COUNT && Flat >= 0; a++)
+    for (int a = 0; a < API_FUNCTION_COUNT && Flat >= 0; a++)
     {
         const SimApiFunction* Api = &g_ApiFunctions[a];
         int Count = Api->NumParts * SIM_SDI_PORT_COUNT;
@@ -356,9 +352,8 @@ bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type, const char** Ro
 int SimDta2178PartCount(void)
 {
     int Count = 0;
-    int a;
 
-    for (a = 0; a < API_FUNCTION_COUNT; a++)
+    for (int a = 0; a < API_FUNCTION_COUNT; a++)
         Count += g_ApiFunctions[a].NumParts * SIM_SDI_PORT_COUNT;
     return Count;
 }

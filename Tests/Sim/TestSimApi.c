@@ -28,10 +28,8 @@
 // having recorded a failure, when it is not.
 static bool StartSim(int* DtFailures)
 {
-    OsDrv* Drv;
-
     SimDtPcieReset();
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrvIsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
@@ -46,12 +44,10 @@ static bool StartSim(int* DtFailures)
 // An attached device object, or NULL with a failure recorded.
 static DtDevice* AttachSim(int* DtFailures)
 {
-    DtDevice* Device;
-
     if (!StartSim(DtFailures))
         return NULL;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL || DtDevice_AttachToSerial(Device, SIM_SERIAL) != DTAPI_OK)
     {
         printf("    FAIL: cannot attach to the emulated device\n");
@@ -113,18 +109,17 @@ DT_TEST(ScanCountsThePorts)
 // not the current direction, decide IsInput and IsOutput.
 DT_TEST(ScanDescribesEveryPort)
 {
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
-    char Expected[64];
     int Count = -1;
-    int i;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
 
-    for (i = 0; i < SIM_PORT_COUNT; i++)
+    char Expected[64];
+    for (int i = 0; i < SIM_PORT_COUNT; i++)
     {
         const DtHwFuncDesc* Func = &Funcs[i];
         bool Sdi = i < SIM_SDI_PORT_COUNT;
@@ -147,17 +142,17 @@ DT_TEST(ScanDescribesEveryPort)
 // value-initialised ones.
 DT_TEST(ScanFillsTheRestOfTheArray)
 {
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT + 2];
-    DtHwFuncDesc Zero;
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT + 2];
     memset(Funcs, 0x5A, sizeof(Funcs));
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT + 2, &Count, Funcs));
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
 
+    DtHwFuncDesc Zero;
     memset(&Zero, 0, sizeof(Zero));
     snprintf(Zero.DeviceName, sizeof(Zero.DeviceName), "0:0");
     snprintf(Zero.Description, sizeof(Zero.Description), "DTA-0 port 0");
@@ -168,14 +163,14 @@ DT_TEST(ScanFillsTheRestOfTheArray)
 // Too small an array is left as it was.
 DT_TEST(ScanWithTooSmallAnArrayChangesNothing)
 {
-    DtHwFuncDesc Funcs[3];
-    DtHwFuncDesc Before[3];
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtHwFuncDesc Funcs[3];
     memset(Funcs, 0x5A, sizeof(Funcs));
+    DtHwFuncDesc Before[3];
     memcpy(Before, Funcs, sizeof(Funcs));
     DT_ASSERT_EQ(DtapiHwFuncScan(3, &Count, Funcs), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
@@ -185,12 +180,12 @@ DT_TEST(ScanWithTooSmallAnArrayChangesNothing)
 // One entry too few is too few.
 DT_TEST(ScanNeedsRoomForEveryPort)
 {
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_EQ(DtapiHwFuncScan(SIM_PORT_COUNT - 1, &Count, Funcs),
                  DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
@@ -200,13 +195,12 @@ DT_TEST(ScanNeedsRoomForEveryPort)
 // number, up to the last index the driver has.
 DT_TEST(DevicesAreFoundAtAnyIndex)
 {
-    DtDevice* Device;
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     SimDtPcieSetIndex(7);
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
@@ -229,13 +223,13 @@ DT_TEST(DevicesAreFoundAtAnyIndex)
 // A device that cannot be attached is left out, whatever the reason.
 DT_TEST(ScanLeavesOutDevicesItCannotAttach)
 {
-    DtHwFuncDesc Funcs[1];
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
     SimDtPcieSetDriverVersion(1, 3, 0, 0);
+    DtHwFuncDesc Funcs[1];
     DT_ASSERT_OK(DtapiHwFuncScan(1, &Count, Funcs));
     DT_ASSERT_EQ(Count, 0);
     DT_ASSERT_STR(Funcs[0].Description, "DTA-0 port 0");
@@ -249,9 +243,7 @@ DT_TEST(ScanLeavesOutDevicesItCannotAttach)
 
 DT_TEST(ScanSurvivesAllocationFailure)
 {
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
-    int Needed;
     int Live = DtAllocLive();
 
     if (!StartSim(DtFailures))
@@ -259,17 +251,16 @@ DT_TEST(ScanSurvivesAllocationFailure)
 
     // Count what a successful scan allocates, then fail each of those in turn.
     DtAllocResetCount();
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    Needed = DtAllocCount();
+    int Needed = DtAllocCount();
     DT_ASSERT(Needed > 0);
 
     for (int Fail = 0; Fail < Needed; Fail++)
     {
-        unsigned int Result;
-
         DtAllocResetCount();
         DtAllocFailAfter(Fail);
-        Result = DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs);
+        DtapiResult Result = DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs);
         DtAllocResetCount();
 
         // Either the device could not be opened, and is left out, or the list could
@@ -320,12 +311,10 @@ DT_TEST(FreepDetachesAndClears)
 
 DT_TEST(UnknownSerialIsNoSuchDevice)
 {
-    DtDevice* Device;
-
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL + 1), DTAPI_E_NO_SUCH_DEVICE);
     DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
@@ -336,12 +325,10 @@ DT_TEST(UnknownSerialIsNoSuchDevice)
 // reported as such even for a serial number no device has.
 DT_TEST(OldDriverIsIncompatible)
 {
-    DtDevice* Device;
-
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     SimDtPcieSetDriverVersion(1, 3, 0, 0);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL + 1), DTAPI_E_DRIVER_INCOMP);
@@ -354,12 +341,10 @@ DT_TEST(OldDriverIsIncompatible)
 
 DT_TEST(FirmwareStatusIsAWarning)
 {
-    DtDevice* Device;
-
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     SimDtPcieSetFirmwareStatus(DT_FWSTATUS_OBSOLETE);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_OK_OBSOLETE_FW);
     DT_ASSERT_EQ(DtDevice_SetToInput(Device, 1), DTAPI_E_OBSOLETE_FW);
@@ -380,14 +365,11 @@ DT_TEST(FirmwareStatusIsAWarning)
 // A device whose identity or port count cannot be read is no device.
 DT_TEST(UnreadableDeviceIsNoSuchDevice)
 {
-    DtDevice* Device;
-    int Live;
-
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
-    Live = DtAllocLive();
+    DtDevice* Device = DtDevice_Alloc();
+    int Live = DtAllocLive();
 
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
     SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
@@ -425,7 +407,6 @@ DT_TEST(UnreadableDeviceIsNoSuchDevice)
 // Only the public ports are ports: MAIN_PORT_COUNT when there is one, else PORT_COUNT.
 DT_TEST(PublicPortsComeFromMainPortCount)
 {
-    DtDevice* Device;
     int Count = -1;
 
     if (!StartSim(DtFailures))
@@ -435,7 +416,7 @@ DT_TEST(PublicPortsComeFromMainPortCount)
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, 8);
 
-    Device = DtDevice_Alloc();
+    DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DT_ASSERT_OK(DtDevice_SetToOutput(Device, 8));
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, 9), DTAPI_E_NO_SUCH_PORT);
@@ -457,13 +438,13 @@ DT_TEST(PublicPortsComeFromMainPortCount)
 // A capability the driver cannot report counts as absent, as in DTAPI.
 DT_TEST(UnreadableCapabilityIsAbsent)
 {
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
 
     if (!StartSim(DtFailures))
         return;
 
     SimDtPcieOverrideProperty("CAP_OUTPUT", 1, false, 0);
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
     DT_ASSERT_EQ(Funcs[0].IsOutput, 1);
     DT_ASSERT_EQ(Funcs[1].IsOutput, 0);
@@ -480,15 +461,15 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
 {
     static const char* const Rates[] = {"CAP_12GSDI", "CAP_6GSDI", "CAP_3GSDI",
                                         "CAP_HDSDI", "CAP_SDI"};
-    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
-    size_t i;
 
     if (!StartSim(DtFailures))
         return;
 
+    size_t i;
     for (i = 0; i < sizeof(Rates) / sizeof(Rates[0]); i++)
         SimDtPcieOverrideProperty(Rates[i], 9, true, 0);
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
     DT_ASSERT_EQ(Funcs[9].IsSdi, 0);
 
@@ -504,29 +485,23 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
 
 DT_TEST(AttachSurvivesAllocationFailure)
 {
-    DtDevice* Device;
-    int Needed, Fail;
-    int Live;
-
     if (!StartSim(DtFailures))
         return;
 
-    Device = DtDevice_Alloc();
-    Live = DtAllocLive();
+    DtDevice* Device = DtDevice_Alloc();
+    int Live = DtAllocLive();
     DtAllocResetCount();
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
-    Needed = DtAllocCount();
+    int Needed = DtAllocCount();
     DtDevice_Detach(Device);
     DT_ASSERT_EQ(DtAllocLive(), Live);
     DT_ASSERT(Needed >= 3);
 
-    for (Fail = 0; Fail < Needed; Fail++)
+    for (int Fail = 0; Fail < Needed; Fail++)
     {
-        unsigned int Result;
-
         DtAllocResetCount();
         DtAllocFailAfter(Fail);
-        Result = DtDevice_AttachToSerial(Device, SIM_SERIAL);
+        DtapiResult Result = DtDevice_AttachToSerial(Device, SIM_SERIAL);
         DtAllocResetCount();
 
         // The handle's own allocations fail as a device that cannot be opened; the
@@ -545,7 +520,6 @@ DT_TEST(AttachSurvivesAllocationFailure)
 DT_TEST(DirectionsReachTheCard)
 {
     DtDevice* Device = AttachSim(DtFailures);
-    int SubValue;
 
     if (Device == NULL)
         return;
@@ -559,6 +533,7 @@ DT_TEST(DirectionsReachTheCard)
         DT_ASSERT_EQ(Sent.m_IoCfgPars.m_ParXtra[0], -1);
         DT_ASSERT_EQ(Sent.m_IoCfgPars.m_ParXtra[1], -1);
     }
+    int SubValue;
     DT_ASSERT_EQ(Direction(1, &SubValue), DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(SubValue, DTAPI_IOCONFIG_OUTPUT);
 
@@ -610,24 +585,21 @@ DT_TEST(ConfigurationIsCheckedFirst)
 DT_TEST(TimeOfDayComesFromTheCard)
 {
     DtTimeOfDay Tod = {0, 0};
-    time_t Before, After;
     DtDevice* Device = AttachSim(DtFailures);
 
     if (Device == NULL)
         return;
 
-    Before = time(NULL);
+    time_t Before = time(NULL);
     DT_ASSERT_OK(DtDevice_GetTimeOfDay(Device, &Tod));
-    After = time(NULL);
+    time_t After = time(NULL);
     DT_ASSERT((time_t)Tod.Seconds + 1 >= Before);
     DT_ASSERT((time_t)Tod.Seconds <= After + 1);
     DT_ASSERT(Tod.Nanoseconds < 1000000000U);
 
     // Both parts come through: of a few readings, not every one is a whole second.
     {
-        int Tries;
-
-        for (Tries = 0; Tod.Nanoseconds == 0 && Tries < 5; Tries++)
+        for (int Tries = 0; Tod.Nanoseconds == 0 && Tries < 5; Tries++)
             DtDevice_GetTimeOfDay(Device, &Tod);
         DT_ASSERT(Tod.Nanoseconds != 0);
     }

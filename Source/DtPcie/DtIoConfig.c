@@ -49,10 +49,8 @@ int DtIoConfigCount(void)
 // A linear search. There are about a hundred entries and configuration is set rarely, so
 // a hash or a sorted index would add code without making anything measurably faster.
 //
-unsigned int DtIoConfigGetCode(const char* Name, int* Code)
+DtapiResult DtIoConfigGetCode(const char* Name, int* Code)
 {
-    int i;
-
     if (Code == NULL)
         return DTAPI_E_INVALID_ARG;
 
@@ -64,7 +62,7 @@ unsigned int DtIoConfigGetCode(const char* Name, int* Code)
     if (Name[0] == '\0')
         return DTAPI_OK;
 
-    for (i = 0; i < IO_CONFIG_COUNT; i++)
+    for (int i = 0; i < IO_CONFIG_COUNT; i++)
     {
         if (strcmp(Name, g_IoConfigs[i].Name) == 0)
         {
@@ -81,11 +79,8 @@ unsigned int DtIoConfigGetCode(const char* Name, int* Code)
 // The table is in numeric order, so a code indexes it directly. The unit test that checks
 // every code appears exactly once is what makes that safe.
 //
-unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size)
+DtapiResult DtIoConfigGetName(int Code, char* Name, size_t Size)
 {
-    const char* Found;
-    size_t Length;
-
     if (Name == NULL || Size == 0)
         return DTAPI_E_INVALID_ARG;
 
@@ -97,8 +92,8 @@ unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size)
     if (Code < -1 || Code >= IO_CONFIG_COUNT)
         return DTAPI_E_INVALID_ARG;
 
-    Found = g_IoConfigs[Code].Name;
-    Length = strlen(Found);
+    const char* Found = g_IoConfigs[Code].Name;
+    size_t Length = strlen(Found);
     if (Length + 1 > Size)
         return DTAPI_E_BUF_TOO_SMALL;
 
@@ -129,9 +124,7 @@ static bool IsKind(int Code, int Kinds)
 //
 static bool HasParent(int Code, int Parent)
 {
-    int i;
-
-    for (i = 0; i < 2; i++)
+    for (int i = 0; i < 2; i++)
     {
         int Slot = g_IoConfigs[Code].Parents[i];
 
@@ -150,9 +143,7 @@ static bool HasParent(int Code, int Parent)
 //
 static bool HasChildren(int Code)
 {
-    int i;
-
-    for (i = 0; i < IO_CONFIG_COUNT; i++)
+    for (int i = 0; i < IO_CONFIG_COUNT; i++)
     {
         if (HasParent(i, Code))
             return true;
@@ -162,7 +153,7 @@ static bool HasChildren(int Code)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigIsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtIoConfigIsValid(int Group, int Value, int SubValue)
+DtapiResult DtIoConfigIsValid(int Group, int Value, int SubValue)
 {
     if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
         return DTAPI_E_INVALID_ARG;

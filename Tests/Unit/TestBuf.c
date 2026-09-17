@@ -66,10 +66,9 @@ DT_TEST(AllocRejectsZeroSize)
 DT_TEST(AllocatedBytesAreWritable)
 {
     DtBuf* Buf = DtBufAlloc(16);
-    uint8_t* Data;
 
     DT_ASSERT(Buf != NULL);
-    Data = DtBufData(Buf);
+    uint8_t* Data = DtBufData(Buf);
     memset(Data, 0xA5, 16);
     DT_ASSERT_EQ(Data[0], 0xA5);
     DT_ASSERT_EQ(Data[15], 0xA5);
@@ -80,11 +79,10 @@ DT_TEST(AllocatedBytesAreWritable)
 DT_TEST(RefCountRisesAndFalls)
 {
     DtBuf* Buf = DtBufAlloc(8);
-    DtBuf* Second;
 
     DT_ASSERT(Buf != NULL);
 
-    Second = DtBufRef(Buf);
+    DtBuf* Second = DtBufRef(Buf);
     DT_ASSERT(Second == Buf);
     DT_ASSERT_EQ(DtBufRefCount(Buf), 2);
 
@@ -99,16 +97,14 @@ DT_TEST(RefCountRisesAndFalls)
 // the release happens exactly once.
 DT_TEST(ReleaseRunsOnceAtLastReference)
 {
-    uint8_t Bytes[32];
     int Marker = 7;
-    DtBuf* Buf;
-    DtBuf* Extra;
 
     ResetRecord();
-    Buf = DtBufWrap(Bytes, sizeof(Bytes), RecordingRelease, &Marker);
+    uint8_t Bytes[32];
+    DtBuf* Buf = DtBufWrap(Bytes, sizeof(Bytes), RecordingRelease, &Marker);
     DT_ASSERT(Buf != NULL);
 
-    Extra = DtBufRef(Buf);
+    DtBuf* Extra = DtBufRef(Buf);
     DtBufUnref(&Buf);
     DT_ASSERT_EQ(g_Record.Calls, 0);
 
@@ -133,9 +129,8 @@ DT_TEST(WrapAcceptsNoReleaseFunction)
 
 DT_TEST(WrapRejectsBadArguments)
 {
-    uint8_t Bytes[4];
-
     DT_ASSERT(DtBufWrap(NULL, 4, NULL, NULL) == NULL);
+    uint8_t Bytes[4];
     DT_ASSERT(DtBufWrap(Bytes, 0, NULL, NULL) == NULL);
 }
 
@@ -157,11 +152,11 @@ DT_TEST(NullIsAcceptedEverywhere)
 DT_TEST(ManyReferencesBalance)
 {
     DtBuf* Buf = DtBufAlloc(8);
-    DtBuf* Held[16];
-    int i;
 
     DT_ASSERT(Buf != NULL);
 
+    DtBuf* Held[16];
+    int i;
     for (i = 0; i < 16; i++)
         Held[i] = DtBufRef(Buf);
 
@@ -193,10 +188,9 @@ DT_TEST(AllocFailureFreesTheBytes)
 
 DT_TEST(WrapFailureIsReported)
 {
-    uint8_t Bytes[8];
-
     DtAllocResetCount();
     DtAllocFailAfter(0);
+    uint8_t Bytes[8];
     DT_ASSERT(DtBufWrap(Bytes, sizeof(Bytes), NULL, NULL) == NULL);
     DtAllocResetCount();
 }

@@ -39,10 +39,6 @@ size_t OsPageSize(void)
 int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
 {
     size_t Page = OsPageSize();
-    size_t Rounded;
-    size_t Total;
-    uint8_t* Block;
-    uint8_t* Data;
 
     if (Buf == NULL)
         return -1;
@@ -57,18 +53,18 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
 
     if (Size > (size_t)-1 - (Page - 1))
         return -1;
-    Rounded = (Size + Page - 1) & ~(Page - 1);
+    size_t Rounded = (Size + Page - 1) & ~(Page - 1);
 
     // No second check is needed. Having passed the one above, Rounded is at most the
     // largest page multiple that fits, SIZE_MAX - Page + 1, so adding Page - 1 reaches at
     // most SIZE_MAX.
-    Total = Rounded + Page - 1;
+    size_t Total = Rounded + Page - 1;
 
-    Block = (uint8_t*)DtMalloc(Total);
+    uint8_t* Block = (uint8_t*)DtMalloc(Total);
     if (Block == NULL)
         return -1;
 
-    Data = (uint8_t*)(((uintptr_t)Block + Page - 1) & ~((uintptr_t)Page - 1));
+    uint8_t* Data = (uint8_t*)(((uintptr_t)Block + Page - 1) & ~((uintptr_t)Page - 1));
     memset(Data, 0, Rounded);
 
     // A buffer that a child process could take over is worse than no buffer: the card

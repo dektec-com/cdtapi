@@ -34,11 +34,10 @@ static int PaddedBytes(int Symbols, int Alignment)
 //
 bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits)
 {
-    DtFrameProps Props;
-
     memset(Layout, 0, sizeof(*Layout));
     Layout->VidStd = DTAPI_VIDSTD_UNKNOWN;
 
+    DtFrameProps Props;
     if (AlignmentBits <= 0 || AlignmentBits % 8 != 0 || DtVidStdIs4k(VidStd) ||
         !DtFramePropsInit(&Props, VidStd))
     {
@@ -134,8 +133,8 @@ void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCheckHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
-                                   const DtSdiFrameHeader* Header, int ExpectedId)
+DtapiResult DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
+                                  const DtSdiFrameHeader* Header, int ExpectedId)
 {
     if (Header->SyncWord != DT_SDIFRAME_SYNC_WORD)
         return DTAPI_E_OUT_OF_SYNC;
@@ -283,7 +282,6 @@ static void CopySection10(const uint8_t* Section, size_t Symbols, uint8_t* Raw,
                           size_t Bit)
 {
     size_t Bits = Symbols * 10;
-    size_t i;
 
     if (Bit % 8 == 0)
     {
@@ -295,7 +293,7 @@ static void CopySection10(const uint8_t* Section, size_t Symbols, uint8_t* Raw,
         return;
     }
 
-    for (i = 0; i < Symbols; i++)
+    for (size_t i = 0; i < Symbols; i++)
         OrBits(Raw, Bit + i * 10, ReadSymbol(Section, i), 10);
 }
 
@@ -340,13 +338,12 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
         uint32_t Word = Read32(In);
         uint8_t* Out = Raw + 8 * i;
         uint32_t Values[4];
-        int j;
 
         Values[0] = Word & 0x3FF;
         Values[1] = (Word >> 10) & 0x3FF;
         Values[2] = (Word >> 20) & 0x3FF;
         Values[3] = (Word >> 30) | (uint32_t)In[4] << 2;
-        for (j = 0; j < 4; j++)
+        for (int j = 0; j < 4; j++)
         {
             Out[2 * j] = (uint8_t)Values[j];
             Out[2 * j + 1] = (uint8_t)(Values[j] >> 8);
@@ -408,13 +405,12 @@ static void CopyBits(const uint8_t* In, size_t Bit, size_t Count, uint8_t* Out,
     uint32_t Shift = (uint32_t)(Bit % 8);
     size_t Whole = Count / 8;
     uint32_t Rest = (uint32_t)(Count % 8);
-    size_t i;
 
     if (Shift == 0)
         memcpy(Out, Src, Whole);
     else
     {
-        for (i = 0; i < Whole; i++)
+        for (size_t i = 0; i < Whole; i++)
         {
             uint32_t Pair = (uint32_t)Src[i] | (uint32_t)Src[i + 1] << 8;
 
@@ -528,8 +524,6 @@ bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 //
 static int LineNumber(const uint8_t* Line)
 {
-    int Chroma, Luma;
-
     if ((ReadSymbol(Line, 0) & 0x3FC) != 0x3FC ||
         (ReadSymbol(Line, 1) & 0x3FC) != 0x3FC || ReadSymbol(Line, 2) != 0 ||
         ReadSymbol(Line, 3) != 0 || ReadSymbol(Line, 4) != 0 || ReadSymbol(Line, 5) != 0)
@@ -537,10 +531,10 @@ static int LineNumber(const uint8_t* Line)
         return -1;
     }
 
-    Chroma = (int)((ReadSymbol(Line, 8) >> 2) & 0x7F) |
-             (int)((ReadSymbol(Line, 10) >> 2) & 0xF) << 7;
-    Luma = (int)((ReadSymbol(Line, 9) >> 2) & 0x7F) |
-           (int)((ReadSymbol(Line, 11) >> 2) & 0xF) << 7;
+    int Chroma = (int)((ReadSymbol(Line, 8) >> 2) & 0x7F) |
+                 (int)((ReadSymbol(Line, 10) >> 2) & 0xF) << 7;
+    int Luma = (int)((ReadSymbol(Line, 9) >> 2) & 0x7F) |
+               (int)((ReadSymbol(Line, 11) >> 2) & 0xF) << 7;
     return Chroma == Luma ? Chroma : -1;
 }
 
@@ -550,9 +544,7 @@ static int LineNumber(const uint8_t* Line)
 //
 static bool MatchesSdEav(const uint8_t* Line, const uint32_t Eav[4])
 {
-    size_t i;
-
-    for (i = 0; i < 4; i++)
+    for (size_t i = 0; i < 4; i++)
     {
         if ((ReadSymbol(Line, i) & 0x3FC) != Eav[i])
             return false;
@@ -562,8 +554,8 @@ static bool MatchesSdEav(const uint8_t* Line, const uint32_t Eav[4])
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCheckLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
-                                  const uint8_t* FirstLine, const uint8_t* LastLine)
+DtapiResult DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout, const uint8_t* FirstLine,
+                                 const uint8_t* LastLine)
 {
     // The EAV of the first line, in the first field's vertical blanking, and of the last,
     // in the second field's.
@@ -596,9 +588,8 @@ static void SetSymbol(uint8_t* Section, size_t Index, uint32_t Value)
     uint32_t Shift = (uint32_t)(Bit % 8);
     uint32_t Bits = (Value & 0x3FF) << Shift;
     uint32_t Mask = 0x3FFu << Shift;
-    uint32_t Count;
 
-    for (Count = 10 + Shift; Count > 0; Count = Count > 8 ? Count - 8 : 0)
+    for (uint32_t Count = 10 + Shift; Count > 0; Count = Count > 8 ? Count - 8 : 0)
     {
         Section[Byte] = (uint8_t)(((uint32_t)Section[Byte] & ~Mask) | Bits);
         Byte++;
@@ -633,9 +624,7 @@ static void FillBlack(uint8_t* Section, size_t Symbols, size_t Bytes)
 //
 static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 {
-    int Bit;
-
-    for (Bit = 0; Bit < 10; Bit++)
+    for (int Bit = 0; Bit < 10; Bit++)
     {
         uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
 
@@ -680,27 +669,25 @@ void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
     const size_t Video = (size_t)Layout->LineSymsVideo;
     uint32_t ActiveCrc[2] = {0, 0};
     DtFrameProps Props;
-    int Line;
-    size_t i;
 
     if (!DtFramePropsInit(&Props, Layout->VidStd))
         return;
 
     // Every line's active part is black, so each channel's CRC starts the same.
-    for (i = 0; i < Video; i++)
+    for (size_t i = 0; i < Video; i++)
         ActiveCrc[i % 2] = Crc18(ActiveCrc[i % 2], i % 2 == 0 ? BLACK_C : BLACK_Y);
 
-    for (Line = 1; Line <= Layout->NumLines; Line++)
+    for (int Line = 1; Line <= Layout->NumLines; Line++)
     {
         uint8_t* Coded = Lines + (size_t)(Line - 1) * (size_t)Layout->Stride;
         const uint32_t Sync[3] = {0x3FF, 0x000, 0x000};
         const uint32_t Eav = Xyz(&Props, Line, true);
         const uint32_t Sav = Xyz(&Props, Line, false);
-        size_t Channel, j;
 
         FillBlack(Coded, Hanc, (size_t)Layout->LineBytesHanc);
         FillBlack(Coded + Layout->LineBytesHanc, Video, (size_t)Layout->LineBytesVideo);
 
+        size_t j;
         if (Props.LineNumSymEav == 4)
         {
             for (j = 0; j < 3; j++)
@@ -714,7 +701,7 @@ void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
         }
 
         // HD and 3G: each word once for each channel, chrominance first.
-        for (Channel = 0; Channel < 2; Channel++)
+        for (size_t Channel = 0; Channel < 2; Channel++)
         {
             uint32_t Words[8] = {0x3FF,
                                  0x000,

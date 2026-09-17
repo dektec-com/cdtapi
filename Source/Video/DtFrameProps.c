@@ -116,9 +116,8 @@ bool DtFramePropsInit(DtFrameProps* Props, int VidStd)
 int DtFramePropsNumLines(const DtFrameProps* Props)
 {
     int Lines = 0;
-    int i;
 
-    for (i = 0; i < Props->NumFields; i++)
+    for (int i = 0; i < Props->NumFields; i++)
         Lines += Props->Fields[i].EndLine - Props->Fields[i].StartLine + 1;
     return Lines;
 }
@@ -276,9 +275,7 @@ void DtFramePropsDeduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
                         bool Is3gLevelB, uint32_t Vpid, int SdiRate)
 {
-    int i;
-
-    for (i = 0; i < DtVidStdCount(); i++)
+    for (int i = 0; i < DtVidStdCount(); i++)
     {
         DtFramePropsInit(Props, DtVidStdAt(i)->VidStd);
         if (Matches(Props, NumLinesF1, NumLinesF2, LineNumSymHanc, LineNumSymVanc, Fps,

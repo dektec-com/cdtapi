@@ -33,9 +33,7 @@ static const DtVidStdInfo g_VidStds[] = {
 //
 const DtVidStdInfo* DtVidStdFind(int VidStd)
 {
-    int i;
-
-    for (i = 0; i < VIDSTD_COUNT; i++)
+    for (int i = 0; i < VIDSTD_COUNT; i++)
     {
         if (g_VidStds[i].VidStd == VidStd)
             return &g_VidStds[i];
@@ -50,14 +48,14 @@ int DtVidStdCount(void)
     return VIDSTD_COUNT;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const DtVidStdInfo* DtVidStdAt(int Index)
 {
     return Index >= 0 && Index < VIDSTD_COUNT ? &g_VidStds[Index] : NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsInfo4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsInfo4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The 2160p standards are the ones carried by 6G or 12G.
 //
@@ -110,9 +108,7 @@ bool DtVidStdPropsInit(DtVidStdProps* Props, int VidStd, int LinkStd)
 //
 static int FindStd(int IoStd, int NumLines, int Scan, int Num, int Den, bool LevelB)
 {
-    int i;
-
-    for (i = 0; i < VIDSTD_COUNT; i++)
+    for (int i = 0; i < VIDSTD_COUNT; i++)
     {
         const DtVidStdInfo* Info = &g_VidStds[i];
 
@@ -222,7 +218,6 @@ void DtVidStdPropsDeduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
                          int LineNumSymHanc, int LineNumSymVanc, double Fps,
                          bool Is3gLevelB, uint32_t Vpid, int SdiRate)
 {
-    DtFrameProps Frame;
     int LinkStd = DT_VIDLNK_NONE;
 
     if (Vpid != 0)
@@ -236,6 +231,7 @@ void DtVidStdPropsDeduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
         }
     }
 
+    DtFrameProps Frame;
     DtFramePropsDeduce(&Frame, NumLinesF1, NumLinesF2, LineNumSymHanc, LineNumSymVanc,
                        Fps, Is3gLevelB, Vpid, SdiRate);
     if (DtVidStdIs4k(Frame.VidStd))
@@ -282,12 +278,9 @@ int DtVidStdNumPhysicalLinks(int LinkStd)
 // the same rate. DTAPI decides this by the rate class alone, so a 50 Hz and up standard
 // on 6G is taken as that too: 2160p50 with SMPTE 2081 gives 3G-SDI 1080p50.
 //
-unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
-                               int* SubValue)
+DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
+                              int* SubValue)
 {
-    const DtVidStdInfo* Info;
-    bool Is4k;
-
     if (Value == NULL || SubValue == NULL)
         return DTAPI_E_INVALID_ARG;
 
@@ -295,8 +288,8 @@ unsigned int DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
     *SubValue = -1;
 
     // A 4K standard needs one of the four ways of carrying it; anything else takes none.
-    Info = DtVidStdFind(VideoStandard);
-    Is4k = IsInfo4k(Info);
+    const DtVidStdInfo* Info = DtVidStdFind(VideoStandard);
+    bool Is4k = IsInfo4k(Info);
     if (Is4k)
     {
         if (LinkStandard != DT_VIDLNK_4K_SMPTE425 &&
