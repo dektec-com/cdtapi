@@ -74,8 +74,9 @@ it installs no compatibility header. It also adds what CDTAPI.h leaves out and a
 application needs, such as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`,
 `DtInpChannel_ReadFrame2` with each frame's time of arrival, and
 `DtOutpChannel_WriteFrame`, which writes one whole frame with a time-out. `DtInpChannel`
-receives SD, HD and 3G, and `DtOutpChannel` transmits them. The interface of
-`CDTAPI_AvFifo.h`, for SMPTE 2110, has no equivalent yet.
+receives SD, HD and 3G, and `DtOutpChannel` transmits them. `CDtapiLite_AvFifo.h`
+follows `CDTAPI_AvFifo.h` for SMPTE 2110 video and audio, with a choice between hardware
+and software pipes and a specific result code for every failure.
 
 ## Versions
 

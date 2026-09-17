@@ -134,6 +134,19 @@ bool DtAvFramePool_Return(DtAvFramePool* Pool, AvFifo_Frame* Frame)
     return Returned;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvFramePool_Owns -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool DtAvFramePool_Owns(DtAvFramePool* Pool, const AvFifo_Frame* Frame)
+{
+    OsMutex_Lock(Pool->Mutex);
+    DtAvFrame* Found = Pool->All;
+    while (Found != NULL && &Found->Frame != Frame)
+        Found = Found->NextInPool;
+    bool Owns = Found != NULL && !Found->IsFree;
+    OsMutex_Unlock(Pool->Mutex);
+    return Owns;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvFramePool_NumFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 int DtAvFramePool_NumFrames(const DtAvFramePool* Pool)

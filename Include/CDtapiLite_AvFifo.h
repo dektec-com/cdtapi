@@ -278,6 +278,180 @@ typedef struct FrameProperties
 CDTAPILITE_API int GetFrameProperties(const AvFifo_Frame* Frame,
                                       FrameProperties* Properties);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The FIFOs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// A receive FIFO takes one SMPTE 2110 stream from an IP port of a DtPcie card that
+// reports DT_CAP_AVFIFO, a transmit FIFO sends one; each has a thread of its own, a pipe
+// of the card and a pool of frames. The order of use:
+//
+//   Alloc, Attach, Configure (audio or video), SetIpPars, Start,
+//   Read and ReturnToMemPool, or GetFromMemPool and Write, ..., Stop, Detach, Free
+//
+// The port of Attach counts from 0, as DTAPI's AV FIFO counts it, where DtInpChannel's
+// and DtOutpChannel's ports count from 1.
+//
+// Every function that returns a result gives DTAPI_OK or a failure, and a failure also
+// sets the text GetLastException gives on the calling thread. The failures:
+//
+//   DTAPI_E_INVALID_ARG         a NULL FIFO, frame or parameter, a parameter out of range
+//   DTAPI_E_DEVICE              a device that is NULL or not attached
+//   DTAPI_E_NO_SUCH_PORT        a port the device does not have
+//   DTAPI_E_NOT_SUPPORTED       a port without DT_CAP_AVFIFO
+//   DTAPI_E_ATTACHED            Attach of an attached FIFO
+//   DTAPI_E_NOT_ATTACHED        a FIFO that must be attached and is not
+//   DTAPI_E_STARTED             Clear, Configure, SetIpPars or Start of a started FIFO,
+//                               which keeps running
+//   DTAPI_E_NOT_STARTED         Write to a FIFO that is not started; UsesHwPipe before
+//                               Start when the preference leaves the pipe open
+//   DTAPI_E_CONFIG              Start or ReturnToMemPool before Configure
+//   DTAPI_E_NO_IPPARS           Start before SetIpPars
+//   DTAPI_E_NO_LINK             Start with the network link down
+//   DTAPI_E_DISABLED            Start with the port's network interface disabled
+//   DTAPI_E_NW_DRIVER           Start without the port's network interface
+//   DTAPI_E_VLAN_NOT_FOUND      Start without the VLAN interface or its address
+//   DTAPI_E_NO_ADAPTER_IP_ADDR  Start without an address of the IP version
+//   DTAPI_E_BIND                Start when the port's address cannot be bound
+//   DTAPI_E_OUT_OF_RESOURCES    Start with HwOrSwPipe_ForceHwPipe and no hardware pipe
+//                               free
+//   DTAPI_E_MULTICASTJOIN       Start when joining the multicast group fails
+//   DTAPI_E_DST_MAC_ADDR        Start of a transmit FIFO whose destination does not
+//                               answer
+//   DTAPI_E_INVALID_FORMAT      Write of a frame of the wrong size for the configuration
+//   DTAPI_E_FIFO_FULL           Write to a full FIFO; the frame stays the application's
+//   DTAPI_E_OUT_OF_MEM          no memory
+//
+// and the driver's own result for a command that fails. A failed Start leaves the FIFO
+// attached and stopped.
+//
+
+// Which kind of pipe a FIFO uses: the one its stream prefers, hardware for video and
+// software for audio, with software for video when no hardware pipe is free; only a
+// hardware pipe; only a software pipe; or a hardware pipe and else a software pipe.
+typedef enum HwOrSwPipe
+{
+    HwOrSwPipe_Auto,
+    HwOrSwPipe_ForceHwPipe,
+    HwOrSwPipe_UseSwPipe,
+    HwOrSwPipe_PreferHwPipe
+} HwOrSwPipe;
+
+// Returns the text of the calling thread's last failure, or an empty string. The text
+// stays until the next failure on that thread.
+CDTAPILITE_API const char* GetLastException(void);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receiving -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+typedef struct AvFifo_RxFifoC AvFifo_RxFifo;
+
+// Makes a receive FIFO, or returns NULL when there is no memory; frees it, detaching it
+// first; and frees it and sets *Fifo to NULL.
+CDTAPILITE_API AvFifo_RxFifo* AvFifo_RxFifo_Alloc(void);
+CDTAPILITE_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
+CDTAPILITE_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
+
+// Attaches the FIFO to a port, counted from 0, with HwOrSwPipe_Auto or a pipe
+// preference. The FIFO opens its own handle to the device.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Attach(AvFifo_RxFifo* Fifo,
+                                                const DtDevice* Device, int Port);
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Attach2(AvFifo_RxFifo* Fifo,
+                                                 const DtDevice* Device, int Port,
+                                                 HwOrSwPipe Pipe);
+
+// Stops and detaches the FIFO. Frames the application holds stay valid until Free.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
+
+// Returns the frames in the FIFO to the pool.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
+
+// Starts receiving: checks the network, opens a pipe, programs its filter and joins a
+// multicast group. The statistics start from zero.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
+
+// Stops receiving and gives up the pipe; the frames in the FIFO stay.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
+
+// Configures the FIFO for audio, with a FIFO of 400 frames unless its size was set, or
+// for video.
+CDTAPILITE_API DtapiResult
+AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo, const St2110_RxConfigAudio* Config);
+CDTAPILITE_API DtapiResult
+AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo, const St2110_RxConfigVideo* Config);
+
+// Sets the stream to receive. The sources are copied; at most three, of one address.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
+                                                   const AvFifo_IpPars* IpPars);
+
+// The frames in the FIFO, 0 for a NULL FIFO.
+CDTAPILITE_API int AvFifo_RxFifo_GetFifoLoad(const AvFifo_RxFifo* Fifo);
+
+// Takes the oldest frame, or returns NULL when there is none. The frame is the
+// application's until it returns it to the pool.
+CDTAPILITE_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
+
+// Returns a frame Read gave.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
+                                                         AvFifo_Frame* Frame);
+
+// The most frames the FIFO holds, 4 unless set, and setting it while stopped.
+CDTAPILITE_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
+CDTAPILITE_API void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size);
+
+// What the FIFO counted since Start.
+CDTAPILITE_API RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo);
+
+// Whether the FIFO receives through a hardware pipe: known once started, and before for
+// HwOrSwPipe_ForceHwPipe and HwOrSwPipe_UseSwPipe.
+CDTAPILITE_API DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo,
+                                                    int* UsesHwPipe);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+
+typedef struct AvFifo_TxFifoC AvFifo_TxFifo;
+
+// As for the receive FIFO.
+CDTAPILITE_API AvFifo_TxFifo* AvFifo_TxFifo_Alloc(void);
+CDTAPILITE_API void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo);
+CDTAPILITE_API void AvFifo_TxFifo_Freep(AvFifo_TxFifo** Fifo);
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Attach(AvFifo_TxFifo* Fifo,
+                                                const DtDevice* Device, int Port);
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo,
+                                                 const DtDevice* Device, int Port,
+                                                 HwOrSwPipe Pipe);
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
+
+// Starts transmitting: checks the network, resolves the destination's MAC address and
+// opens a pipe. Frames are sent at their time of day, as the card's clock has it.
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
+
+// Stops transmitting; frames not yet sent are dropped from the pipe but stay in the FIFO.
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
+
+CDTAPILITE_API DtapiResult
+AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo, const St2110_TxConfigAudio* Config);
+CDTAPILITE_API DtapiResult
+AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo, const St2110_TxConfigVideo* Config);
+
+// Sets the stream to send: destination, RTP payload type from 0 to 127 and port from 0
+// to 65535. The transport protocol is not used: the streams are RTP, as in DTAPI.
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
+                                                   const AvFifo_IpPars* IpPars);
+
+CDTAPILITE_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
+
+// Queues a frame from GetFromMemPool for sending; once sent it returns to the pool. The
+// frame's valid bytes must be those of the configuration.
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame);
+
+// A frame of Size bytes to fill, or NULL before Configure or without memory.
+CDTAPILITE_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
+
+CDTAPILITE_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
+CDTAPILITE_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
+CDTAPILITE_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
+CDTAPILITE_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
+                                                    int* UsesHwPipe);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Timing helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // Times of day on the media clock: the grid of frame or field periods for video and of

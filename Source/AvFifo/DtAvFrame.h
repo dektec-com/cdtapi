@@ -72,6 +72,9 @@ DtAvFrame* DtAvFramePool_Get(DtAvFramePool* Pool, size_t Size);
 // another pool, or one that is free already.
 bool DtAvFramePool_Return(DtAvFramePool* Pool, AvFifo_Frame* Frame);
 
+// Whether Frame is a frame of the pool that is not free.
+bool DtAvFramePool_Owns(DtAvFramePool* Pool, const AvFifo_Frame* Frame);
+
 // The frames the pool made, and those of them that are free.
 int DtAvFramePool_NumFrames(const DtAvFramePool* Pool);
 int DtAvFramePool_NumFree(const DtAvFramePool* Pool);

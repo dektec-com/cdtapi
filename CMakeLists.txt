@@ -44,11 +44,16 @@ configure_file(
 set(CDTAPILITE_SOURCES
     Source/Api/DtApi.c
     Source/Api/DtResult.c
+    Source/AvFifo/DtAvError.c
     Source/AvFifo/DtAvFrame.c
     Source/AvFifo/DtAvFrameProps.c
     Source/AvFifo/DtAvPacket.c
+    Source/AvFifo/DtAvPipe.c
+    Source/AvFifo/DtAvPort.c
+    Source/AvFifo/DtAvRxFifo.c
     Source/AvFifo/DtAvPixConv.c
     Source/AvFifo/DtAvTime.c
+    Source/AvFifo/DtAvTxFifo.c
     Source/AvFifo/DtSt2110Audio.c
     Source/AvFifo/DtSt2110Video.c
     Source/Channel/DtInpChannel.c

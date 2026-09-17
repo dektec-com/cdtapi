@@ -164,7 +164,8 @@ endif()
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
-                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimNw SimNet)
+                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimNw SimNet
+                 SimAvPipe SimAvFifo)
     cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
@@ -189,6 +190,9 @@ endforeach()
 #     Layout      the size of each shared structure and the offset of each of its
 #                 fields, taken once with CDTAPI.h and once with CDtapiLite.h, and
 #                 compared when the program runs.
+#     AV FIFO     CDTAPI_AvFifo.h, beside CDTAPI.h, against CDtapiLite_AvFifo.h: its
+#                 prototypes and its structures and enumerators as above. It defines no
+#                 macros but its guard.
 #   CdtapiDropIn  Compat/TestDropIn.c, which includes only CDTAPI.h, linked against
 #                 CDtapiLite and run against the emulator.
 #
@@ -214,11 +218,53 @@ set(CompatBufferDepartures DtInpChannel_ReadFrame DtOutpChannel_Write)
 # do not see them; their values are compared with the layout.
 set(CompatEnumerators DT_AR_UNKNOWN DT_AR_4_3 DT_AR_16_9 DT_AR_14_9)
 
+# The structures and enumerators of CDTAPI_AvFifo.h.
+set(CompatAvFifoLayouts
+    "Ratio:Numerator,Denominator"
+    "VideoSize:Width,Height"
+    "St2110_RxConfigAudio:Format,SampleRate"
+    "St2110_RxConfigVideo:Format"
+    "St2110_VideoPacking:OneLinePerPacket,PackingMode,PayloadSize"
+    "St2110_TxConfigAnc:VideoScanning"
+    "St2110_TxConfigAudio:Format,NumChannels,NumSamplesPerIpPacket,SampleRate"
+    "St2110_VideoTiming:Rate,Scheduling,VideoScanning"
+    "St2110_TxConfigRawVideo:ActiveVideo,Is420,NumRows,Packing,PGroup,RowSize,Timing,TrOffset"
+    "St2110_TxConfigVideo:Format,Packing,Resolution,Timing"
+    "IpSrcFlt:IpAddr,Port"
+    "AvFifo_IpPars:IpAddr,IpVersion,Port,SrcFlt,NSrcFlt,DiffServ,Gateway,RtpPayloadType,TimeToLive,TransportProtocol,Vlan"
+    "AvFifo_Frame:RtpTime,ToD,Data,Field,NumValidBytes,Size,Is420,NumRows"
+    "RxStatistics:FramesOk,FramesIncomplete,FramesSizeError,Gaps,IpPacketErrors,DroppedFrames,SyncErrors"
+    "TxStatistics:FramesOk"
+    "FrameProperties:Is420,NLines,BytesPerLine,BytesPerFrame,Width,Height,IsInterlaced,Subsampling,BitDepth")
+set(CompatAvFifoEnumerators
+    St2110_RxFrameFormat_Raw St2110_RxFrameFormat_Uyvy422_8b St2110_RxFrameFormat_Uyvy422_10b
+    St2110_RxFrameFormat_Uyvy422_10b_to_8b St2110_RxFrameFormat_Yuv422p_8b
+    St2110_AudioFormat_L16BE St2110_AudioFormat_L24BE St2110_AudioFormat_Raw
+    St2110_VideoScanning_Progressive St2110_VideoScanning_Interlaced St2110_VideoScanning_PsF
+    St2110_TxFrameFormat_Uyvy422_8b St2110_TxFrameFormat_Uyvy422_10b
+    St2110_PackingMode_General St2110_PackingMode_Block
+    St2110_Scheduling_Linear St2110_Scheduling_Gapped
+    IpProtocolVersion_IPv4 IpProtocolVersion_IPv6
+    IpTransportProtocol_Rtp IpTransportProtocol_Udp
+    ChromaSubsampling_Key ChromaSubsampling_420 ChromaSubsampling_422 ChromaSubsampling_444)
+
 if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
     get_filename_component(CompatHeader "${CDTAPILITE_CDTAPI_HEADER}" ABSOLUTE)
     get_filename_component(CompatHeaderDir "${CompatHeader}" DIRECTORY)
     set(CompatDir "${CMAKE_CURRENT_BINARY_DIR}/CdtapiCompat")
+    set(CompatAvFifoHeader "${CompatHeaderDir}/CDTAPI_AvFifo.h")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CompatHeader}")
+    if(EXISTS "${CompatAvFifoHeader}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            "${CompatAvFifoHeader}")
+        list(APPEND CompatLayouts ${CompatAvFifoLayouts})
+        list(APPEND CompatEnumerators ${CompatAvFifoEnumerators})
+        set(CompatOrigInclude "${CompatAvFifoHeader}")
+        set(CompatLiteInclude "CDtapiLite_AvFifo.h")
+    else()
+        set(CompatOrigInclude "${CompatHeader}")
+        set(CompatLiteInclude "CDtapiLite.h")
+    endif()
 
     # Names: every #define except the header's own guard.
     file(STRINGS "${CompatHeader}" CompatDefines REGEX "^#define [A-Za-z0-9_]+")
@@ -266,8 +312,34 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
             endif()
         endif()
     endforeach()
+
+    # The same for CDTAPI_AvFifo.h, whose functions carry no Dt prefix. Its brackets are
+    # masked too, as a CMake list does not split inside them.
+    if(EXISTS "${CompatAvFifoHeader}")
+        file(READ "${CompatAvFifoHeader}" CompatText)
+        file(READ "${CMAKE_SOURCE_DIR}/Include/CDtapiLite_AvFifo.h" LiteText)
+        string(REPLACE ";" "@SEMICOLON@" CompatText "${CompatText}")
+        string(REPLACE "[" "@LEFT@" CompatText "${CompatText}")
+        string(REPLACE "]" "@RIGHT@" CompatText "${CompatText}")
+        string(REPLACE "\n" ";" CompatLines "${CompatText}")
+        set(AvFifoFunctions
+            "AvFifo_[A-Za-z0-9_]+|GetFrameProperties|GetLastException|Tod2Grid_[A-Za-z]+")
+        string(APPEND AvFifoFunctions "|Rtp2Tod_[A-Za-z]+|Tod2Rtp_[A-Za-z]+")
+        foreach(Line IN LISTS CompatLines)
+            if(Line MATCHES "^[A-Za-z].*[ *](${AvFifoFunctions})\\(")
+                string(FIND "${LiteText}" " ${CMAKE_MATCH_1}(" LiteDeclares)
+                if(LiteDeclares GREATER -1)
+                    string(REPLACE "@SEMICOLON@" ";" Line "${Line}")
+                    string(REPLACE "@LEFT@" "[" Line "${Line}")
+                    string(REPLACE "@RIGHT@" "]" Line "${Line}")
+                    string(APPEND ProtoLines "${Line}\n")
+                    math(EXPR ProtoCount "${ProtoCount} + 1")
+                endif()
+            endif()
+        endforeach()
+    endif()
     file(WRITE "${CompatDir}/CdtapiPrototypes.c"
-        "#include \"CDtapiLite.h\"\n"
+        "#include \"${CompatLiteInclude}\"\n"
         "${ProtoLines}"
         "const int CdtapiPrototypesChecked = ${ProtoCount};\n")
 
@@ -292,9 +364,9 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
     endforeach()
     foreach(Side Orig Lite)
         if(Side STREQUAL "Orig")
-            set(SideHeader "${CompatHeader}")
+            set(SideHeader "${CompatOrigInclude}")
         else()
-            set(SideHeader "CDtapiLite.h")
+            set(SideHeader "${CompatLiteInclude}")
         endif()
         file(WRITE "${CompatDir}/CdtapiLayout${Side}.c"
             "#include <stddef.h>\n"
