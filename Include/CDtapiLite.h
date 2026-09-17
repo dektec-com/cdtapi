@@ -546,6 +546,25 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, i
 CDTAPILITE_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel,
                                                const void* Buffer, int NumBytesToWrite);
 
+// Writes one raw frame, which starts at line 1 and holds FrameSize bytes, exactly the
+// size of a frame of the channel's standard in the current transmit mode. The frame goes
+// into the card's buffer whole or not at all. Waits up to TimeOut milliseconds, or
+// without a limit for -1, for room. An addition of CDtapiLite: CDTAPI.h has no such
+// function.
+//
+// Returns: DTAPI_E_INVALID_TIMEOUT for a time-out of 0 or below -1; DTAPI_E_INVALID_SIZE
+// for a size that is not positive or not a multiple of 4; DTAPI_E_INVALID_BUF for a null
+// frame or an address not a multiple of 4; DTAPI_E_IDLE while idle; DTAPI_E_IN_USE while
+// a Write or WriteFrame on another thread has not returned; DTAPI_E_INCOMP_FRAME when a
+// Write left bytes not yet in a frame, which a Write must complete or ClearFifo discard;
+// DTAPI_E_INVALID_SIZE for a size other than a frame's; DTAPI_E_INVALID_FRAME for a frame
+// that does not start with the EAV and line number of line 1, in SD with the EAV of a
+// line in the vertical blanking of field 1; DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when
+// the channel is detached meanwhile, or DTAPI_E_IDLE when it is set idle meanwhile.
+CDTAPILITE_API DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel,
+                                                    const void* Frame, int FrameSize,
+                                                    int TimeOut);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

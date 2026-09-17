@@ -65,6 +65,9 @@
 // event.
 #define DT_SENT_STALL_MS 1000
 
+// The deadline of a wait without a time limit.
+#define DT_NO_DEADLINE UINT64_MAX
+
 // DoStandbyToRunImpl reads the burst FIFO's load at most five times for 75 % full.
 #define DT_BURST_POLLS 5
 
@@ -91,7 +94,7 @@ struct DtOutpChannelC
     OsMutex* Lock; // Guards everything below
     bool Attached;
     int Detachers; // Detaches waiting for writes to leave
-    int Writers;   // Write calls between their start and their return
+    int Writers;   // Write and WriteFrame calls between their start and their return
 
     DtDevice Device; // The channel's own handle to the device
     int Port;        // From 1
@@ -942,12 +945,13 @@ static void FindFrameBoundary(DtOutpChannel* Chan, const uint8_t** Data, size_t*
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForRoom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Waits, without the lock, until the buffer has room for a whole frame. While sending
-// the thread wakes the wait after every format event; while holding nothing goes out,
-// and the wait looks again every quarter frame. Returns DTAPI_E_CANCELLED for a detach,
-// and DTAPI_E_IDLE when the channel went idle meanwhile.
+// Waits, without the lock, until the buffer has room for a whole frame, or until the
+// monotonic clock reaches Deadline, DT_NO_DEADLINE for no limit. While sending the thread
+// wakes the wait after every format event; while holding nothing goes out, and the wait
+// looks again every quarter frame. Returns DTAPI_E_CANCELLED for a detach, DTAPI_E_IDLE
+// when the channel went idle meanwhile, and DTAPI_E_TIMEOUT.
 //
-static DtapiResult WaitForRoom(DtOutpChannel* Chan)
+static DtapiResult WaitForRoom(DtOutpChannel* Chan, uint64_t Deadline)
 {
     for (;;)
     {
@@ -962,11 +966,18 @@ static DtapiResult WaitForRoom(DtOutpChannel* Chan)
         if (Chan->MaxLoad - Load >= Chan->CodedSize)
             return DTAPI_OK;
 
+        uint64_t Now = OsTime_MonotonicMs();
+        if (Now >= Deadline)
+            return DTAPI_E_TIMEOUT;
+        int Wait = Chan->QuarterMs;
+        if (Deadline - Now < (uint64_t)Wait)
+            Wait = (int)(Deadline - Now);
+
         OsMutex_Unlock(Chan->Lock);
         if (Chan->Thread != NULL)
-            OsEvent_Wait(Chan->Room, Chan->QuarterMs);
+            OsEvent_Wait(Chan->Room, Wait);
         else
-            OsTime_SleepMs(Chan->QuarterMs);
+            OsTime_SleepMs(Wait);
         OsMutex_Lock(Chan->Lock);
     }
 }
@@ -974,10 +985,12 @@ static DtapiResult WaitForRoom(DtOutpChannel* Chan)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Codes the next line into its place in the buffer once all of its bytes are there. The
-// frame's header is written first, when there is room for the whole frame. A line whose
-// last byte is shared with the next line leaves that byte for the next.
+// frame's header is written first, when there is room for the whole frame, which is
+// waited for until Deadline. A line whose last byte is shared with the next line leaves
+// that byte for the next.
 //
-static DtapiResult TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* Left)
+static DtapiResult TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* Left,
+                            uint64_t Deadline)
 {
     const DtSdiFrameLayout* Layout = &Chan->Layout;
     size_t Bits = DtSdiFrame_RawLineBits(Layout, Chan->SymbolBits);
@@ -986,7 +999,7 @@ static DtapiResult TakeLine(DtOutpChannel* Chan, const uint8_t** Data, size_t* L
 
     if (!Chan->Reserved)
     {
-        DtapiResult Result = WaitForRoom(Chan);
+        DtapiResult Result = WaitForRoom(Chan, Deadline);
 
         if (Result != DTAPI_OK || Chan->Stage != DT_STAGE_LINES || Chan->Reserved)
             return Result;
@@ -1087,11 +1100,74 @@ static DtapiResult WriteSdi(DtOutpChannel* Chan, const uint8_t* Data, size_t Lef
             FindFrameBoundary(Chan, &Data, &Left);
         else
         {
-            Result = TakeLine(Chan, &Data, &Left);
+            Result = TakeLine(Chan, &Data, &Left, DT_NO_DEADLINE);
             OsMutex_Unlock(Chan->Lock);
             OsMutex_Lock(Chan->Lock);
         }
     }
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// WriteFrame's checks of a frame against the channel's standard and transmit mode:
+// DTAPI_E_INVALID_SIZE when FrameSize is not the size of a raw frame, and
+// DTAPI_E_INVALID_FRAME when the frame does not start as line 1 does. SD has no line
+// numbers, so there any line in the vertical blanking of field 1 passes.
+//
+static DtapiResult CheckFrame(DtOutpChannel* Chan, const uint8_t* Frame, int FrameSize)
+{
+    if ((size_t)FrameSize != Chan->RawSize)
+        return DTAPI_E_INVALID_SIZE;
+
+    Chan->SdSync = DT_SD_IN_SYNC;
+    return IsFrameStart(Chan, Frame) ? DTAPI_OK : DTAPI_E_INVALID_FRAME;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteWhole -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Codes a frame into the buffer line by line, as WriteSdi does, and commits it, waiting
+// for room until Deadline. The lock is released after every line. When the thread
+// writes a black frame in the place of the lines written, or the channel was set idle
+// and holding again meanwhile, the frame is checked again and written from its start.
+// On a failure nothing of the frame is committed. Write then looks for a frame again.
+//
+static DtapiResult WriteWhole(DtOutpChannel* Chan, const uint8_t* Frame, int FrameSize,
+                              uint64_t Deadline)
+{
+    const uint8_t* Data = Frame;
+    size_t Left = 0;
+    DtapiResult Result = DTAPI_OK;
+
+    while (Result == DTAPI_OK && Chan->Stage != DT_STAGE_PADDING)
+    {
+        if (Chan->Detachers > 0)
+            Result = DTAPI_E_CANCELLED;
+        else if (Chan->TxControl == DTAPI_TXCTRL_IDLE)
+            Result = DTAPI_E_IDLE;
+        else if (Chan->Stage == DT_STAGE_SEARCH)
+        {
+            Result = CheckFrame(Chan, Frame, FrameSize);
+            Data = Frame;
+            Left = (size_t)FrameSize;
+            if (Result == DTAPI_OK)
+                StartFrame(Chan, 0);
+        }
+        else
+        {
+            Result = TakeLine(Chan, &Data, &Left, Deadline);
+            OsMutex_Unlock(Chan->Lock);
+            OsMutex_Lock(Chan->Lock);
+        }
+    }
+
+    if (Result == DTAPI_OK)
+    {
+        Result = CommitFrame(Chan);
+        if (Result == DTAPI_OK)
+            Chan->FifoUfl = false;
+    }
+    ResetFrame(Chan);
     return Result;
 }
 
@@ -1756,6 +1832,49 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
     {
         OutpChannel->Writers++;
         Result = WriteSdi(OutpChannel, (const uint8_t*)Buffer, (size_t)NumBytesToWrite);
+        OutpChannel->Writers--;
+    }
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_WriteFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The argument checks, then the channel's: a write on another thread, or bytes a Write
+// left that are not yet in a frame, refuse the frame, so that it goes into the buffer
+// whole, directly after the frames before it.
+//
+DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Frame,
+                                     int FrameSize, int TimeOut)
+{
+    uint64_t Start = OsTime_MonotonicMs();
+
+    if (OutpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (TimeOut != -1 && TimeOut <= 0)
+        return DTAPI_E_INVALID_TIMEOUT;
+    if (FrameSize <= 0 || FrameSize % 4 != 0)
+        return DTAPI_E_INVALID_SIZE;
+    if (Frame == NULL || (uintptr_t)Frame % 4 != 0)
+        return DTAPI_E_INVALID_BUF;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtapiResult Result = DTAPI_OK;
+    if (OutpChannel->Detachers > 0)
+        Result = DTAPI_E_NOT_ATTACHED;
+    else if (OutpChannel->TxControl == DTAPI_TXCTRL_IDLE)
+        Result = DTAPI_E_IDLE;
+    else if (OutpChannel->Writers > 0)
+        Result = DTAPI_E_IN_USE;
+    else if (OutpChannel->Stage != DT_STAGE_SEARCH || OutpChannel->RawHave > 0)
+        Result = DTAPI_E_INCOMP_FRAME;
+    else
+    {
+        uint64_t Deadline = TimeOut == -1 ? DT_NO_DEADLINE : Start + (uint64_t)TimeOut;
+
+        OutpChannel->Writers++;
+        Result = WriteWhole(OutpChannel, (const uint8_t*)Frame, FrameSize, Deadline);
         OutpChannel->Writers--;
     }
     OsMutex_Unlock(OutpChannel->Lock);

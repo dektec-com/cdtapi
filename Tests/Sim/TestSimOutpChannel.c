@@ -180,6 +180,20 @@ static DtapiResult WriteFrame(DtOutpChannel* Channel, int VidStd, uint32_t Frame
     return Result;
 }
 
+// Writes frame FrameNumber of VidStd with WriteFrame.
+static DtapiResult WriteWholeFrame(DtOutpChannel* Channel, int VidStd,
+                                   uint32_t FrameNumber, int Bits, int TimeOut)
+{
+    size_t Size;
+    uint8_t* Frame = MakeFrame(VidStd, FrameNumber, Bits, &Size);
+    DtapiResult Result =
+        Frame == NULL ? DTAPI_E_OUT_OF_MEM
+                      : DtOutpChannel_WriteFrame(Channel, Frame, (int)Size, TimeOut);
+
+    free(Frame);
+    return Result;
+}
+
 // Waits until the card has sent Count frames. Returns false after SEND_TIMEOUT_MS.
 static bool WaitForFrames(int Count)
 {
@@ -338,6 +352,7 @@ DT_TEST(NullAndDetached)
                  DTAPI_E_INVALID_ARG);
     char Data[8];
     DT_ASSERT_EQ(DtOutpChannel_Write(NULL, Data, 8), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(NULL, Data, 8, 10), DTAPI_E_INVALID_ARG);
 
     // Detached: the checks DTAPI makes before it looks first.
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, -4), DTAPI_E_INVALID_SIZE);
@@ -346,6 +361,8 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD, 12345, -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, 8), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Data, 8, 10),
+                 DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtOutpChannel_Detach(Fix.Channel, 3), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtOutpChannel_ClearFifo(Fix.Channel), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtOutpChannel_GetFifoLoad(Fix.Channel, &Value), DTAPI_E_NOT_ATTACHED);
@@ -766,6 +783,333 @@ DT_TEST(AcrossTheEndOfTheBuffer)
     FINISH(Fix);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= WriteFrame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// WriteFrame's checks in their order. A refused frame leaves nothing in the buffer.
+DT_TEST(WriteFrameChecks)
+{
+    Fixture Fix;
+    int Load = -1;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    size_t Size;
+    uint8_t* Frame = MakeFrame(DTAPI_VIDSTD_1080I50, 0, 10, &Size);
+    DT_ASSERT(Frame != NULL);
+
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 0),
+                 DTAPI_E_INVALID_TIMEOUT);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, -2),
+                 DTAPI_E_INVALID_TIMEOUT);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, 0, 10),
+                 DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, -4, 10),
+                 DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size - 2, 10),
+                 DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, NULL, (int)Size, 10),
+                 DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame + 1, (int)Size, 10),
+                 DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10),
+                 DTAPI_E_IDLE);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size - 4, 10),
+                 DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size + 4, 10),
+                 DTAPI_E_INVALID_SIZE);
+
+    // Line 2 first, and line 1 with another line number.
+    uint8_t* Shifted = (uint8_t*)calloc(Size, 1);
+    DT_ASSERT(Shifted != NULL);
+    memcpy(Shifted, Frame + 3300, Size - 3300);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Shifted, (int)Size, 10),
+                 DTAPI_E_INVALID_FRAME);
+    memcpy(Shifted, Frame, Size);
+    Shifted[10] ^= 0x10;
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Shifted, (int)Size, 10),
+                 DTAPI_E_INVALID_FRAME);
+    free(Shifted);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 0);
+
+    // Part of a frame from Write, until Write completes it.
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame, 4000));
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10),
+                 DTAPI_E_INCOMP_FRAME);
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame + 4000, (int)Size - 4000));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10));
+
+    // Bytes too few to tell whether they start a frame, until ClearFifo.
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame, 8));
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10),
+                 DTAPI_E_INCOMP_FRAME);
+    DT_ASSERT_OK(DtOutpChannel_ClearFifo(Fix.Channel));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10));
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, (int)Size);
+    free(Frame);
+    FINISH(Fix);
+}
+
+// In SD, where lines have no numbers, a frame that starts in the active part of field 1
+// is refused, and the frame after it goes out as frame 0.
+DT_TEST(WriteFrameChecksTheSdStart)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    // From line 30, which starts at a byte boundary.
+    size_t Size;
+    uint8_t* Frame = MakeFrame(DTAPI_VIDSTD_525I59_94, 0, 10, &Size);
+    uint8_t* Shifted = (uint8_t*)calloc(Size, 1);
+    DT_ASSERT(Frame != NULL && Shifted != NULL);
+    memcpy(Shifted, Frame + 29 * 2145, Size - 29 * 2145);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Shifted, (int)Size, 10),
+                 DTAPI_E_INVALID_FRAME);
+    free(Shifted);
+    free(Frame);
+
+    DT_ASSERT_OK(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 1, 10, 100));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(SentAndHeld(Fix.Channel, 1));
+    DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 1));
+    FINISH(Fix);
+}
+
+// Frames from WriteFrame, alternated with frames from Write, reach the card bit for bit
+// with consecutive frame IDs.
+static void WholeFrames(int VidStd, int Bits, int NumFrames, int* DtFailures)
+{
+    int TxMode = DTAPI_TXMODE_SDI_FULL |
+                 (Bits == 16 ? DTAPI_TXMODE_SDI_16B : DTAPI_TXMODE_SDI_10B);
+    int Load;
+    int i;
+
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, VidStd, TxMode, DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    for (i = 0; i < NumFrames; i++)
+    {
+        if (i % 2 == 0)
+            DT_ASSERT_OK(WriteWholeFrame(Fix.Channel, VidStd, (uint32_t)i, Bits, 100));
+        else
+            DT_ASSERT_OK(WriteFrame(Fix.Channel, VidStd, (uint32_t)i, Bits));
+    }
+    DtSdiFrameLayout Layout;
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT));
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, NumFrames * (int)DtSdiFrame_RawSize(&Layout, Bits));
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(SentAndHeld(Fix.Channel, NumFrames));
+    for (i = 0; i < NumFrames; i++)
+    {
+        if (!SentFrameIs(i, VidStd, (uint32_t)i))
+        {
+            printf("    FAIL: standard %d, %d bits: frame %d differs\n", VidStd, Bits, i);
+            (*DtFailures)++;
+        }
+    }
+    FINISH(Fix);
+}
+
+DT_TEST(WholeFrames525i)
+{
+    WholeFrames(DTAPI_VIDSTD_525I59_94, 10, 3, DtFailures);
+    WholeFrames(DTAPI_VIDSTD_525I59_94, 16, 2, DtFailures);
+}
+
+DT_TEST(WholeFrames720p24)
+{
+    WholeFrames(DTAPI_VIDSTD_720P24, 10, 3, DtFailures);
+}
+
+DT_TEST(WholeFrames1080p50)
+{
+    WholeFrames(DTAPI_VIDSTD_1080P50, 16, 2, DtFailures);
+}
+
+// A frame for which the buffer has no room within the time-out is refused, nothing of it
+// is written and its frame ID stays free; once there is room it is written.
+DT_TEST(WriteFrameTimesOut)
+{
+    Fixture Fix;
+    int Load = 0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_1080I50, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    // The buffer holds 18 frames.
+    int i;
+    for (i = 0; i < 18; i++)
+        DT_ASSERT_OK(
+            WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10, 10));
+    uint64_t Start0 = OsTime_MonotonicMs();
+    DT_ASSERT_EQ(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 18, 10, 60),
+                 DTAPI_E_TIMEOUT);
+    uint64_t Took = OsTime_MonotonicMs() - Start0;
+    DT_ASSERT(Took >= 60 && Took < 1000);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 18 * 7425000);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 18, 10, -1));
+    DT_ASSERT(SentAndHeld(Fix.Channel, 19));
+    DT_ASSERT(SentFrameIs(17, DTAPI_VIDSTD_1080I50, 17));
+    DT_ASSERT(SentFrameIs(18, DTAPI_VIDSTD_1080I50, 18));
+    FINISH(Fix);
+}
+
+typedef struct FrameWriter
+{
+    DtOutpChannel* Channel;
+    int Written;
+    DtapiResult Result;
+} FrameWriter;
+
+// Writes 1080i50 frames with WriteFrame, without a time-out, until one fails.
+static void WriteFramesUntilFailure(void* Context)
+{
+    FrameWriter* W = (FrameWriter*)Context;
+    size_t Size;
+    uint8_t* Frame = MakeFrame(DTAPI_VIDSTD_1080I50, 0, 10, &Size);
+
+    W->Result = DTAPI_E_OUT_OF_MEM;
+    while (Frame != NULL)
+    {
+        W->Result = DtOutpChannel_WriteFrame(W->Channel, Frame, (int)Size, -1);
+        if (W->Result != DTAPI_OK)
+            break;
+        W->Written++;
+    }
+    free(Frame);
+}
+
+// While a WriteFrame on another thread waits for room, another WriteFrame is refused;
+// a detach ends the wait.
+DT_TEST(WriteFrameInUseAndCancelled)
+{
+    Fixture Fix;
+    int Load = 0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+
+    FrameWriter W;
+    W.Channel = Fix.Channel;
+    W.Written = 0;
+    W.Result = DTAPI_OK;
+    OsThread* Thread = OsThread_Start(WriteFramesUntilFailure, &W);
+    DT_ASSERT(Thread != NULL);
+
+    uint64_t Start0 = OsTime_MonotonicMs();
+    while (Load < 18 * 7425000 && OsTime_MonotonicMs() - Start0 < SEND_TIMEOUT_MS)
+    {
+        OsTime_SleepMs(10);
+        DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    }
+    DT_ASSERT_EQ(Load, 18 * 7425000);
+    OsTime_SleepMs(20);
+
+    DT_ASSERT_EQ(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10, 20),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
+    OsThread_Join(Thread);
+    DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
+    DT_ASSERT_EQ(W.Written, 18);
+    FINISH(Fix);
+}
+
+// The number of frames the card has sent.
+static int FramesSent(void)
+{
+    SimTxState State;
+
+    SimDtPcie_GetTxState(PORT - 1, &State);
+    return State.FramesSent;
+}
+
+// Frames written one at a time, each after the card sent two more frames, so that black
+// frames from the thread come between them, go out whole: every frame the card sent is
+// black or one of them, in the order written.
+DT_TEST(WholeFramesAmongBlackFrames)
+{
+    Fixture Fix;
+    int VidStd = DTAPI_VIDSTD_525I59_94;
+    uint8_t* Frames[4] = {NULL, NULL, NULL, NULL};
+    size_t Size = 0;
+    int Found = 0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, VidStd, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    for (uint32_t n = 0; n < 4; n++)
+    {
+        Frames[n] = MakeFrame(VidStd, n, 10, &Size);
+        DT_ASSERT(Frames[n] != NULL);
+    }
+
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frames[0], (int)Size, 100));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    for (int n = 1; n < 4; n++)
+    {
+        DT_ASSERT(WaitForFrames(FramesSent() + 2));
+        DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frames[n], (int)Size, 1000));
+    }
+    DT_ASSERT(SentAndHeld(Fix.Channel, FramesSent() + 3));
+    for (int n = 0; n < 4; n++)
+        free(Frames[n]);
+
+    int Count = SimDtPcie_TxFrameCount(PORT - 1);
+    uint32_t Next = 0;
+    for (int Index = 0; Index < Count; Index++)
+    {
+        SimTxFrame Frame;
+        DT_ASSERT(SimDtPcie_GetTxFrame(PORT - 1, Index, &Frame));
+        int Id = Frame.FrameId;
+        if (SentFrameIsBlack(Id, VidStd))
+            continue;
+        while (Next < 4 && !SentFrameIs(Id, VidStd, Next))
+            Next++;
+        DT_ASSERT(Next < 4);
+        Next++;
+        Found++;
+    }
+    DT_ASSERT(Found >= 2);
+    FINISH(Fix);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Signal +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // When the application stops writing, black frames follow with consecutive frame IDs,
@@ -1008,4 +1352,8 @@ DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AcrossTheEndOfTheBuffer), DT_RUN(BlackFramesWhenWritingStops),
              DT_RUN(BlackFrameBeforeAPartlyWrittenFrame), DT_RUN(UnderflowFlags),
              DT_RUN(StaleReadOffset), DT_RUN(DetachCancelsAWrite),
-             DT_RUN(DetachWaitsUntilSent), DT_RUN(FreeWhileSending))
+             DT_RUN(DetachWaitsUntilSent), DT_RUN(FreeWhileSending),
+             DT_RUN(WriteFrameChecks), DT_RUN(WriteFrameChecksTheSdStart),
+             DT_RUN(WholeFrames525i), DT_RUN(WholeFrames720p24),
+             DT_RUN(WholeFrames1080p50), DT_RUN(WriteFrameTimesOut),
+             DT_RUN(WriteFrameInUseAndCancelled), DT_RUN(WholeFramesAmongBlackFrames))
