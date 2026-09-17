@@ -849,6 +849,42 @@ DT_TEST(DetachCancelsARead)
     FINISH(Fix);
 }
 
+// A read while a read on another thread waits is refused, whatever its time-out, and the
+// waiting read goes on until the channel is detached.
+DT_TEST(SecondReadIsRefused)
+{
+    Fixture Fix;
+    int Size = BUFFER_SIZE;
+    DtTimeOfDay Arrival = {1, 1};
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+
+    Reader R;
+    R.Channel = Fix.Channel;
+    R.Buffer = Fix.Buffer;
+    R.Result = DTAPI_OK;
+    OsThread* Thread = OsThread_Start(ReadForever, &R);
+    DT_ASSERT(Thread != NULL);
+    OsTime_SleepMs(60);
+
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, -1),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame2(Fix.Channel, Fix.Buffer, &Size, 20, &Arrival),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(Arrival.Seconds, 0);
+    DT_ASSERT_EQ(Arrival.Nanoseconds, 0);
+
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 1));
+    OsThread_Join(Thread);
+    DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
+    FINISH(Fix);
+}
+
 // A detach that gives up while a read waits leaves the channel attached and usable, and a
 // later detach, once the read can return, ends it.
 DT_TEST(DetachThatTimesOutLeavesTheChannelUsable)
@@ -873,7 +909,7 @@ DT_TEST(DetachThatTimesOutLeavesTheChannelUsable)
 
     DT_ASSERT_EQ(DtInpChannel_Detach(Fix.Channel, 0), DTAPI_E_TIMEOUT);
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
-                 DTAPI_E_TIMEOUT);
+                 DTAPI_E_IN_USE);
 
     SimDtPcie_SlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 0);
     for (int Tries = 0; Tries < 10 && Result == DTAPI_E_TIMEOUT; Tries++)
@@ -1119,6 +1155,7 @@ DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),
              DT_RUN(SkipsAFrameThatLostLines), DT_RUN(FifoLoadBeforeTheFirstRead),
              DT_RUN(ReadFrameChecks), DT_RUN(ReadFrameTimesOut),
-             DT_RUN(DetachCancelsARead), DT_RUN(DetachThatTimesOutLeavesTheChannelUsable),
-             DT_RUN(FreeWaitsForARead), DT_RUN(ReadAfterAModeChangeChecksTheBuffer),
-             DT_RUN(ReceiveModes), DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))
+             DT_RUN(DetachCancelsARead), DT_RUN(SecondReadIsRefused),
+             DT_RUN(DetachThatTimesOutLeavesTheChannelUsable), DT_RUN(FreeWaitsForARead),
+             DT_RUN(ReadAfterAModeChangeChecksTheBuffer), DT_RUN(ReceiveModes),
+             DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))

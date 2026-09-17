@@ -416,7 +416,8 @@ CDTAPILITE_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int 
 // Returns, in DTAPI's order: DTAPI_E_BUF_TOO_SMALL for a size of 0;
 // DTAPI_E_INVALID_TIMEOUT for a time-out of 0 or below -1; DTAPI_E_INVALID_SIZE for a
 // negative size or one not a multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not
-// a multiple of 4; DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame;
+// a multiple of 4; DTAPI_E_IN_USE while a ReadFrame on another thread has not returned,
+// where DTAPI lets both wait; DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame;
 // DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is detached meanwhile.
 // *FrameSize is 0 after a failure from the buffer size check on.
 CDTAPILITE_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel,

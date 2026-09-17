@@ -77,8 +77,8 @@ struct DtInpChannelC
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;
-    int Detachers; // Detaches waiting for readers to leave
-    int Readers;   // ReadFrame calls between their start and their return
+    int Detachers; // Detaches waiting for the read to return
+    bool Reading;  // A ReadFrame call is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
     int Port;        // From 1
@@ -568,7 +568,7 @@ static DtapiResult LockAttached(DtInpChannel* Chan)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Asks reads on other threads to return, waits for them up to Tries pauses of 10 ms, or
+// Asks a read on another thread to return, waits for it up to Tries pauses of 10 ms, or
 // without a limit for -1, then stops and releases the receive channel and the device.
 //
 // A detach that gives up with DTAPI_E_TIMEOUT withdraws its request, so the channel stays
@@ -582,7 +582,7 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
         return DTAPI_E_NOT_ATTACHED;
 
     Chan->Detachers++;
-    for (int Try = 0; Chan->Attached && Chan->Readers > 0; Try++)
+    for (int Try = 0; Chan->Attached && Chan->Reading; Try++)
     {
         if (Try == Tries)
         {
@@ -818,7 +818,7 @@ DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel, DtDevice* Device
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtInpChannel::Detach: waits up to 100 ms for readers to leave, then stops, releases
+// DtInpChannel::Detach: waits up to 100 ms for a read to return, then stops, releases
 // the receive channel and the device.
 //
 DtapiResult DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode)
@@ -1113,10 +1113,12 @@ static DtapiResult CheckBuffer(const DtInpChannel* Chan, int FrameSize, size_t* 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ReadFrame2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtInpChannel::ReadFrame's checks. Then, until a frame is taken, the time is up or the
-// channel is being detached: take a frame if the ring holds one, and otherwise wait for
-// the next format event without the lock, as ReadWithTimeOut releases its lock while it
-// waits. An event out of sync discards everything written so far.
+// DtInpChannel::ReadFrame's checks, and DTAPI_E_IN_USE while a read on another thread has
+// not returned: two reads would take frames from the ring in no set order. Then, until a
+// frame is taken, the time is up or the channel is being detached: take a frame if the
+// ring holds one, and otherwise wait for the next format event without the lock, as
+// ReadWithTimeOut releases its lock while it waits. An event out of sync discards
+// everything written so far.
 //
 DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
                                     int* FrameSize, int TimeOut, DtTimeOfDay* ArrivalTime)
@@ -1143,11 +1145,16 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_NOT_ATTACHED;
     }
+    if (InpChannel->Reading)
+    {
+        OsMutex_Unlock(InpChannel->Lock);
+        return DTAPI_E_IN_USE;
+    }
 
     size_t RawSize;
     DtapiResult Result = CheckBuffer(InpChannel, *FrameSize, &RawSize);
 
-    InpChannel->Readers++;
+    InpChannel->Reading = true;
     while (Result == DTAPI_OK)
     {
         bool Taken = false;
@@ -1199,7 +1206,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         if (InpChannel->Detachers > 0)
             Result = DTAPI_E_CANCELLED;
     }
-    InpChannel->Readers--;
+    InpChannel->Reading = false;
 
     *FrameSize = Result == DTAPI_OK ? (int)RawSize : 0;
     if (ArrivalTime != NULL && Result == DTAPI_OK)
