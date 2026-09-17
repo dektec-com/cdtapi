@@ -19,7 +19,7 @@
 #include "CDtapiLite.h"             // Public API under test.
 #include "Core/DtAlloc.h"           // Live allocations and allocation failures.
 #include "Device/DtDevice.h"        // The device object, to change its firmware status.
-#include "DtDrvAbi.h"               // Driver statuses and commands.
+#include "DtPcieAbi.h"              // Driver statuses and commands.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Direct handles.
 #include "OAL/OsThread.h"           // A reader on another thread, and the clock.

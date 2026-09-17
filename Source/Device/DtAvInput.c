@@ -12,8 +12,8 @@
 
 // CDtapiLite includes
 #include "DtAvInput.h"        // Interface being implemented.
-#include "DtDrvAbi.h"         // DT_FWSTATUS_ values and DT_FUNC_TYPE_SDIRX.
 #include "DtFunc.h"           // The port's ASI/SDI receiver API function.
+#include "DtPcieAbi.h"        // DT_FWSTATUS_ values and DT_FUNC_TYPE_SDIRX.
 #include "Video/DtSmpte352.h" // Link number and aspect ratio from the VPID.
 #include "Video/DtVidStd.h"   // Deducing the standard.
 
@@ -109,7 +109,7 @@ unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         memset(&Config, 0, sizeof(Config));
         Config.Port = Input->PortIndex + 1;
         Config.Group = DTAPI_IOCONFIG_IODOWNSCALE;
-        Result = DtDrvGetIoConfig(Drv, &Config);
+        Result = DtPcieCmdGetIoConfig(Drv, &Config);
         if (Result != DTAPI_OK)
             return Result;
         Scale = Config.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
@@ -120,7 +120,7 @@ unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = DtDrvSdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
+    Result = DtPcieCmdSdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
     if (Result != DTAPI_OK)
         return Result;
 

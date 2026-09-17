@@ -14,7 +14,7 @@
 
 // CDtapiLite includes
 #include "Core/DtVec.h" // The parts found.
-#include "DtDrv.h"      // Properties and the driver version.
+#include "DtPcieCmd.h"  // Properties and the driver version.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

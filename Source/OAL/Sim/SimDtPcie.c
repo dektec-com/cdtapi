@@ -17,8 +17,8 @@
 #include "CDtapiLite.h"             // DTAPI_IOCONFIG_ codes.
 #include "Core/DtAlloc.h"           // Allocation seam.
 #include "Core/DtAtomic.h"          // The lock around commands.
-#include "DtDrvAbi.h"               // The driver ABI the emulator answers in.
 #include "DtIoConfig.h"             // I/O configuration names, codes and relation.
+#include "DtPcieAbi.h"              // The driver ABI the emulator answers in.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
 #include "OAL/OsThread.h"           // Pacing format events.

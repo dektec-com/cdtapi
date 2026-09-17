@@ -33,7 +33,7 @@ function(cdtapilite_add_test SuiteName SourceFile)
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/Source
         ${CMAKE_SOURCE_DIR}/Source/Device
-        ${CMAKE_SOURCE_DIR}/Source/Drv)
+        ${CMAKE_SOURCE_DIR}/Source/DtPcie)
     target_link_libraries(${TargetName} PRIVATE cdtapilite)
     target_compile_options(${TargetName} PRIVATE ${CDTAPILITE_WARN_FLAGS})
 
@@ -64,7 +64,7 @@ cdtapilite_add_test(Api Unit/TestApi.c)
 cdtapilite_add_test(Buf Unit/TestBuf.c)
 cdtapilite_add_test(Device Unit/TestDevice.c)
 cdtapilite_add_test(DmaBuffer Unit/TestDmaBuffer.c)
-cdtapilite_add_test(DrvStatus Unit/TestDrvStatus.c)
+cdtapilite_add_test(DtPcieStatus Unit/TestDtPcieStatus.c)
 cdtapilite_add_test(FrameProps Unit/TestFrameProps.c)
 cdtapilite_add_test(IoConfig Unit/TestIoConfig.c)
 cdtapilite_add_test(IoctlOutcome Unit/TestIoctlOutcome.c)

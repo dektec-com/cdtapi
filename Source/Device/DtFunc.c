@@ -11,8 +11,8 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtDrvAbi.h" // DT_FUNC_TYPE_ values.
-#include "DtFunc.h"   // Interface being implemented.
+#include "DtFunc.h"    // Interface being implemented.
+#include "DtPcieAbi.h" // DT_FUNC_TYPE_ values.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -31,8 +31,8 @@ static unsigned int FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
 
         if (snprintf(Key, sizeof(Key), "%s#%d", Name, N) >= (int)sizeof(Key))
             return DTAPI_E_BUF_TOO_SMALL;
-        Result =
-            DtDrvGetPropertyStr(Drv, Key, PortIndex, InstanceRole, sizeof(InstanceRole));
+        Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, InstanceRole,
+                                         sizeof(InstanceRole));
         if (Result != DTAPI_OK)
             return Result;
         if (strcmp(InstanceRole, Role) == 0)
@@ -53,14 +53,14 @@ static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
 {
     char Key[PROPERTY_NAME_MAX_SIZE];
 
-    if (DtDrvGetPropertyStr(Drv, Part->Name, PortIndex, Part->Role, sizeof(Part->Role)) !=
-        DTAPI_OK)
+    if (DtPcieCmdGetPropertyStr(Drv, Part->Name, PortIndex, Part->Role,
+                                sizeof(Part->Role)) != DTAPI_OK)
     {
         return false;
     }
 
     if (snprintf(Key, sizeof(Key), "%s_TYPE", Part->Name) >= (int)sizeof(Key) ||
-        DtDrvGetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
+        DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
     {
         return false;
     }
@@ -73,7 +73,7 @@ static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
         return false;
 
     if (snprintf(Key, sizeof(Key), "%s_UUID", Part->Name) >= (int)sizeof(Key) ||
-        DtDrvGetPropertyInt(Drv, Key, PortIndex, &Part->Uuid) != DTAPI_OK)
+        DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Part->Uuid) != DTAPI_OK)
     {
         return false;
     }
@@ -105,8 +105,8 @@ unsigned int DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char*
         if (snprintf(Key, sizeof(Key), "%s#%d.%d", Name, Number, K) >= (int)sizeof(Key))
             Result = DTAPI_E_BUF_TOO_SMALL;
         else
-            Result =
-                DtDrvGetPropertyStr(Drv, Key, PortIndex, Part.Name, sizeof(Part.Name));
+            Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, Part.Name,
+                                             sizeof(Part.Name));
 
         if (Result == DTAPI_E_NOT_FOUND)
             return DTAPI_OK;
@@ -163,7 +163,7 @@ unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
     {
         const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
         unsigned int PartResult =
-            DtDrvExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
+            DtPcieCmdExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
 
         if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
             Result = PartResult;
@@ -177,8 +177,8 @@ unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
         {
             const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
 
-            DtDrvExclAccess(Drv, Part->Uuid, Instance->PortIndex,
-                            DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+            DtPcieCmdExclAccess(Drv, Part->Uuid, Instance->PortIndex,
+                                DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         }
     }
     return Result;
@@ -217,8 +217,8 @@ unsigned int DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
 
         if (g_MinDriverVersions[i].IsDf != IsDf || g_MinDriverVersions[i].Type != Type)
             continue;
-        return DtDrvVersionAtLeast(Version, Min->Major, Min->Minor, Min->Micro,
-                                   Min->Build)
+        return DtPcieCmdVersionAtLeast(Version, Min->Major, Min->Minor, Min->Micro,
+                                       Min->Build)
                    ? DTAPI_OK
                    : DTAPI_E_DRIVER_INCOMP;
     }

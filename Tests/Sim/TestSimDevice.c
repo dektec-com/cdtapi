@@ -11,8 +11,8 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "DtDrv.h"                  // Driver commands under test.
-#include "DtDrvAbi.h"               // Raw structures for the wire-format cases.
+#include "DtPcieAbi.h"              // Raw structures for the wire-format cases.
+#include "DtPcieCmd.h"              // Driver commands under test.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // OS abstraction under test.
 #include "OAL/Sim/SimDtPcie.h"      // What the emulated card reports.
@@ -119,7 +119,7 @@ DT_TEST(DriverVersionComesThrough)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtDrvGetDriverVersion(Drv, &Version), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, &Version), DTAPI_OK);
     DT_ASSERT_EQ(Version.Major, SIM_DRIVER_MAJOR);
     DT_ASSERT_EQ(Version.Minor, SIM_DRIVER_MINOR);
     DT_ASSERT_EQ(Version.Micro, SIM_DRIVER_MICRO);
@@ -136,7 +136,7 @@ DT_TEST(DeviceInfoComesThrough)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtDrvGetDeviceInfo(Drv, &Info), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, &Info), DTAPI_OK);
     DT_ASSERT_EQ(Info.TypeNumber, SIM_TYPE_NUMBER);
     DT_ASSERT_EQ(Info.Serial, (int64_t)SIM_SERIAL);
     DT_ASSERT_EQ(Info.HardwareRevision, SIM_HARDWARE_REVISION);
@@ -158,10 +158,10 @@ DT_TEST(CommandsRejectNullArguments)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtDrvGetDriverVersion(NULL, &Version), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDrvGetDriverVersion(Drv, NULL), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDrvGetDeviceInfo(NULL, &Info), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDrvGetDeviceInfo(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(NULL, &Version), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(NULL, &Info), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, NULL), DTAPI_E_INVALID_ARG);
 
     OsDrvClose(Drv);
 }

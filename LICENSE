@@ -31,5 +31,5 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 Third-party and vendored components
 
-Source/Drv/Abi/DtCommon.h is copied verbatim from the DekTec SDK and is covered
-by the BSD-2-Clause notice contained in that file. See Source/Drv/Abi/VENDORED.md.
+Source/DtPcie/Abi/DtCommon.h is copied verbatim from the DekTec SDK and is covered
+by the BSD-2-Clause notice contained in that file. See Source/DtPcie/Abi/VENDORED.md.

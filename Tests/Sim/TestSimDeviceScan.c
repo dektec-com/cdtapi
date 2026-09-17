@@ -16,7 +16,7 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"             // Public API under test.
 #include "Core/DtAlloc.h"           // Allocation balance.
-#include "DtDrvAbi.h"               // Driver statuses, function codes, DT_FWSTATUS_.
+#include "DtPcieAbi.h"              // Driver statuses, function codes, DT_FWSTATUS_.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // DT_MAX_DEVICES and direct handles.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.

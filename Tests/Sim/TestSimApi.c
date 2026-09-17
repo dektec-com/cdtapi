@@ -16,8 +16,8 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"             // Public API under test.
 #include "Core/DtAlloc.h"           // Allocation failure injection.
-#include "DtDrv.h"                  // Reading back what was configured.
-#include "DtDrvAbi.h"               // Driver statuses and function codes.
+#include "DtPcieAbi.h"              // Driver statuses and function codes.
+#include "DtPcieCmd.h"              // Reading back what was configured.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Direct handles for reading back.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
@@ -87,7 +87,7 @@ static int Direction(int Port, int* SubValue)
     Config.Port = Port;
     Config.Group = DTAPI_IOCONFIG_IODIR;
     Config.Value = Config.SubValue = -2;
-    DtDrvGetIoConfig(Drv, &Config);
+    DtPcieCmdGetIoConfig(Drv, &Config);
     OsDrvClose(Drv);
     *SubValue = Config.SubValue;
     return Config.Value;

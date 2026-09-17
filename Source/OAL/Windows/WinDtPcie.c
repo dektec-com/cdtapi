@@ -6,9 +6,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes: DtDrvAbi.h brings in windows.h and the device interface GUID.
+// CDtapiLite includes: DtPcieAbi.h brings in windows.h and the device interface GUID.
 #include "Core/DtAlloc.h"       // Allocation seam.
-#include "DtDrvAbi.h"           // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
+#include "DtPcieAbi.h"          // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
 #include "OAL/OsBackend.h"      // Backend interface being implemented.
 #include "OAL/OsIoctlOutcome.h" // Classifies a failed DeviceIoControl.
 
@@ -131,7 +131,7 @@ static void WinClose(void* State)
 //
 // A driver-specific failure comes back from GetLastError with the customer bit, bit 29,
 // set. OsIoctlClassifyWindows separates it from errors of Windows itself; translating it
-// into a DTAPI result is the driver ABI layer's job, not this one's.
+// into a DTAPI result is the DtPcie command layer's job, not this one's.
 //
 static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
                     size_t* OutSize, uint32_t* DrvStatus)

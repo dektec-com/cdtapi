@@ -69,11 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Source/Drv/Abi holds files copied verbatim from the SDK. Reformatting one of them
-      # turns the next driver-ABI update from a copy into a merge, so catch it here.
+      # Source/DtPcie/Abi holds files copied verbatim from the SDK. Reformatting one of
+      # them turns the next driver-ABI update from a copy into a merge, so catch it here.
       - name: No local edits to vendored files
         run: |
-          if git log --oneline -1 --name-only | grep -q '^Source/Drv/Abi/DtCommon.h$'; then
+          if git log --oneline -1 --name-only | grep -q '^Source/DtPcie/Abi/DtCommon.h$'; then
             echo "DtCommon.h changed in this commit; confirm it is a verbatim refresh."
           fi
-          test -f Source/Drv/Abi/VENDORED.md
+          test -f Source/DtPcie/Abi/VENDORED.md

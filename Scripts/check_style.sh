@@ -13,7 +13,7 @@
 #           because clang-format reflows code but leaves an over-long comment alone.
 #   Rule 5  Every source file starts with a header naming the file.
 #
-# Source/Drv/Abi is skipped: it holds files vendored verbatim from the SDK.
+# Source/DtPcie/Abi is skipped: it holds files vendored verbatim from the SDK.
 
 set -uo pipefail
 
@@ -33,7 +33,7 @@ Fail()
 OwnFiles()
 {
     find Examples Include Source Tests Tools -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null \
-        | grep -v '^Source/Drv/Abi/' \
+        | grep -v '^Source/DtPcie/Abi/' \
         | sort
 }
 

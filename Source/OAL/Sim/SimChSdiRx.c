@@ -12,7 +12,7 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"         // DTAPI_VIDSTD_ codes.
 #include "Core/DtAlloc.h"       // Allocation seam.
-#include "DtDrvAbi.h"           // The driver ABI the emulator answers in.
+#include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "SimChSdiRx.h"         // Interface being implemented.
 #include "SimDtPcie.h"          // Port counts.
 #include "Video/DtFrameProps.h" // Frame geometry of the source.

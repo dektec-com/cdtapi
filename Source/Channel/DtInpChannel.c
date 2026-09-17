@@ -25,8 +25,8 @@
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
 #include "Device/DtDevice.h"    // The device and its port capabilities.
 #include "Device/DtFunc.h"      // Finding the receive channel.
-#include "DtDrvAbi.h"           // DT_FWSTATUS_, DT_FUNC_OPMODE_ and SDI rate values.
 #include "DtIoConfig.h"         // Validating I/O configurations.
+#include "DtPcieAbi.h"          // DT_FWSTATUS_, DT_FUNC_OPMODE_ and SDI rate values.
 #include "OAL/OsThread.h"       // The lock, sleeping, the clock, the process.
 #include "Video/DtFrameProps.h" // The frame rate and geometry.
 #include "Video/DtSdiFrame.h"   // The ring's format and the raw frame.
@@ -141,7 +141,7 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
     return (int)Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FramesInRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FramesInRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The complete frames the ring holds at the largest load the driver allows. Each frame
 // in the ring carries its header and the padding of every section to the alignment, and
@@ -159,8 +159,8 @@ static size_t FramesInRing(const DtInpChannel* Chan)
 //
 static void ReleaseChannel(DtInpChannel* Chan)
 {
-    DtDrvChSdiRxUnmapDmaBuf(Chan->Device.Drv, Chan->Ring.Base, (int)Chan->Ring.Size,
-                            Chan->RingMapped);
+    DtPcieCmdChSdiRxUnmapDmaBuf(Chan->Device.Drv, Chan->Ring.Base, (int)Chan->Ring.Size,
+                                Chan->RingMapped);
     memset(&Chan->Ring, 0, sizeof(Chan->Ring));
     Chan->RingMapped = false;
     DtFree(Chan->LineBuf);
@@ -170,9 +170,9 @@ static void ReleaseChannel(DtInpChannel* Chan)
 
     if (Chan->ChannelAttached)
     {
-        DtDrvChSdiRxSetOpMode(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                              DT_FUNC_OPMODE_IDLE);
-        DtDrvChSdiRxDetach(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex);
+        DtPcieCmdChSdiRxSetOpMode(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
+                                  DT_FUNC_OPMODE_IDLE);
+        DtPcieCmdChSdiRxDetach(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex);
     }
     Chan->ChannelAttached = false;
 }
@@ -219,12 +219,13 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     memcpy(Name, Full, sizeof(Name) - 1);
     Name[sizeof(Name) - 1] = '\0';
 
-    Result = DtDrvChSdiRxAttach(Drv, Chan->Uuid, Chan->PortIndex, true, Name);
+    Result = DtPcieCmdChSdiRxAttach(Drv, Chan->Uuid, Chan->PortIndex, true, Name);
     if (Result != DTAPI_OK)
         return Result;
     Chan->ChannelAttached = true;
 
-    Result = DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
+    Result =
+        DtPcieCmdChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
 
     // A 4K standard, which DTAPI's raw row does not take, attaches without a ring; see
     // SetRxControl.
@@ -236,7 +237,7 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     }
 
     if (Result == DTAPI_OK)
-        Result = DtDrvChSdiRxGetProps(Drv, Chan->Uuid, Chan->PortIndex, &Props);
+        Result = DtPcieCmdChSdiRxGetProps(Drv, Chan->Uuid, Chan->PortIndex, &Props);
     if (Result == DTAPI_OK &&
         !DtSdiFrameLayoutInit(&Chan->Layout, Chan->IoStdSubValue, Props.StreamAlignment))
     {
@@ -264,10 +265,10 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     Config.AssumeInterlaced = DtFramePropsIsInterlaced(&Frame);
     Config.Scale12GTo3G = Chan->Scale12GTo3G;
 
-    Result = DtDrvChSdiRxConfigure(Drv, Chan->Uuid, Chan->PortIndex, &Config);
+    Result = DtPcieCmdChSdiRxConfigure(Drv, Chan->Uuid, Chan->PortIndex, &Config);
     if (Result == DTAPI_OK)
-        Result = DtDrvChSdiRxMapDmaBuf(Drv, Chan->Uuid, Chan->PortIndex, &Base, &BufSize,
-                                       &MaxLoad, &Mapped);
+        Result = DtPcieCmdChSdiRxMapDmaBuf(Drv, Chan->Uuid, Chan->PortIndex, &Base,
+                                           &BufSize, &MaxLoad, &Mapped);
 
     // The driver keeps a data word of the ring free; a maximum load that keeps nothing
     // free, or leaves no room, describes no ring that can be read.
@@ -275,7 +276,7 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
         (MaxLoad >= BufSize || DtRingInit(&Chan->Ring, Base, (size_t)BufSize,
                                           (size_t)(BufSize - MaxLoad)) != 0))
     {
-        DtDrvChSdiRxUnmapDmaBuf(Drv, Base, BufSize, Mapped);
+        DtPcieCmdChSdiRxUnmapDmaBuf(Drv, Base, BufSize, Mapped);
         Result = DTAPI_E_DEV_DRIVER;
     }
     if (Result == DTAPI_OK)
@@ -305,8 +306,8 @@ static unsigned int Advance(DtInpChannel* Chan, size_t Bytes)
 {
     if (DtRingSkip(&Chan->Ring, Bytes) != 0)
         return DTAPI_E_INTERNAL;
-    return DtDrvChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                                     (uint32_t)DtRingReadOffset(&Chan->Ring));
+    return DtPcieCmdChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
+                                         (uint32_t)DtRingReadOffset(&Chan->Ring));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardTo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -325,8 +326,8 @@ static unsigned int DiscardTo(DtInpChannel* Chan, uint32_t WriteOffset)
     {
         return DTAPI_E_DEV_DRIVER;
     }
-    return DtDrvChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
-                                     (uint32_t)Aligned);
+    return DtPcieCmdChSdiRxSetReadOffset(Chan->Device.Drv, Chan->Uuid, Chan->PortIndex,
+                                         (uint32_t)Aligned);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -338,8 +339,8 @@ static unsigned int DiscardTo(DtInpChannel* Chan, uint32_t WriteOffset)
 static unsigned int ReadWriteOffset(DtInpChannel* Chan)
 {
     uint32_t WriteOffset = 0;
-    unsigned int Result = DtDrvChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid,
-                                                     Chan->PortIndex, &WriteOffset);
+    unsigned int Result = DtPcieCmdChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid,
+                                                         Chan->PortIndex, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -357,8 +358,8 @@ static unsigned int ReadWriteOffset(DtInpChannel* Chan)
 static unsigned int DiscardAll(DtInpChannel* Chan)
 {
     uint32_t WriteOffset = 0;
-    unsigned int Result = DtDrvChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid,
-                                                     Chan->PortIndex, &WriteOffset);
+    unsigned int Result = DtPcieCmdChSdiRxGetWriteOffset(Chan->Device.Drv, Chan->Uuid,
+                                                         Chan->PortIndex, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -513,18 +514,18 @@ static unsigned int SetRxControl(DtInpChannel* Chan, int RxControl)
         return DTAPI_OK;
 
     if (RxControl == DTAPI_RXCTRL_IDLE)
-        Result =
-            DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex, DT_FUNC_OPMODE_IDLE);
+        Result = DtPcieCmdChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex,
+                                           DT_FUNC_OPMODE_IDLE);
     else if (Chan->SymbolBits == 8 || Chan->Ring.Base == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
         DtRingRestart(&Chan->Ring, 0);
         Chan->InSync = false;
-        Result = DtDrvChSdiRxSetReadOffset(Drv, Chan->Uuid, Chan->PortIndex, 0);
+        Result = DtPcieCmdChSdiRxSetReadOffset(Drv, Chan->Uuid, Chan->PortIndex, 0);
         if (Result == DTAPI_OK)
-            Result = DtDrvChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex,
-                                           DT_FUNC_OPMODE_RUN);
+            Result = DtPcieCmdChSdiRxSetOpMode(Drv, Chan->Uuid, Chan->PortIndex,
+                                               DT_FUNC_OPMODE_RUN);
     }
     if (Result != DTAPI_OK)
         return Result;
@@ -707,20 +708,20 @@ static unsigned int Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
         Config.Group = DTAPI_IOCONFIG_DMATESTMODE;
         Config.Value = DTAPI_IOCONFIG_FALSE;
         Config.SubValue = -1;
-        Result = DtDrvSetIoConfig(Chan->Device.Drv, &Config);
+        Result = DtPcieCmdSetIoConfig(Chan->Device.Drv, &Config);
         if (Result != DTAPI_OK)
             goto Failed;
     }
 
     Config.Group = DTAPI_IOCONFIG_IODIR;
-    Result = DtDrvGetIoConfig(Chan->Device.Drv, &Config);
+    Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Config);
     if (Result == DTAPI_OK && Config.Value != DTAPI_IOCONFIG_INPUT)
         Result = DTAPI_E_NO_DT_INPUT;
     if (Result != DTAPI_OK)
         goto Failed;
 
     Config.Group = DTAPI_IOCONFIG_IOSTD;
-    Result = DtDrvGetIoConfig(Chan->Device.Drv, &Config);
+    Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Config);
     if (Result != DTAPI_OK)
         goto Failed;
     if (Config.Value == DTAPI_IOCONFIG_ASI)
@@ -758,7 +759,7 @@ static unsigned int Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
         DtIoConfig Scale = Config;
 
         Scale.Group = DTAPI_IOCONFIG_IODOWNSCALE;
-        Chan->Scale12GTo3G = DtDrvGetIoConfig(Chan->Device.Drv, &Scale) == DTAPI_OK &&
+        Chan->Scale12GTo3G = DtPcieCmdGetIoConfig(Chan->Device.Drv, &Scale) == DTAPI_OK &&
                              Scale.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
     }
     Chan->RxMode = DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B;
@@ -766,7 +767,7 @@ static unsigned int Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
     Chan->RxControl = DTAPI_RXCTRL_IDLE;
 
     // The I/O standard is applied again, and the receive channel set up for it.
-    Result = DtDrvSetIoConfig(Chan->Device.Drv, &Config);
+    Result = DtPcieCmdSetIoConfig(Chan->Device.Drv, &Config);
     if (Result == DTAPI_OK)
         Result = ConfigureChannel(Chan);
     if (Result != DTAPI_OK)
@@ -778,7 +779,7 @@ static unsigned int Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
         DtIoConfig FailSafe = Config;
 
         FailSafe.Group = DTAPI_IOCONFIG_FAILSAFE;
-        Result = DtDrvGetIoConfig(Chan->Device.Drv, &FailSafe);
+        Result = DtPcieCmdGetIoConfig(Chan->Device.Drv, &FailSafe);
         if (Result != DTAPI_OK)
         {
             ReleaseChannel(Chan);
@@ -997,7 +998,7 @@ unsigned int DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int V
         Config.Value = Value;
         Config.SubValue = SubValue;
         Config.ParXtra[0] = Config.ParXtra[1] = -1;
-        Result = DtDrvSetIoConfig(InpChannel->Device.Drv, &Config);
+        Result = DtPcieCmdSetIoConfig(InpChannel->Device.Drv, &Config);
 
         if (Result == DTAPI_OK && Group == DTAPI_IOCONFIG_IODOWNSCALE)
             InpChannel->Scale12GTo3G = Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
@@ -1192,7 +1193,7 @@ unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel, char* FrameBuffer,
             int PortIndex = InpChannel->PortIndex;
 
             OsMutexUnlock(InpChannel->Lock);
-            Result = DtDrvChSdiRxWaitForFmtEvent(Drv, Uuid, PortIndex, Wait, &Event);
+            Result = DtPcieCmdChSdiRxWaitForFmtEvent(Drv, Uuid, PortIndex, Wait, &Event);
             OsMutexLock(InpChannel->Lock);
 
             if (Result == DTAPI_OK && !Event.InSync && InpChannel->Detachers == 0)

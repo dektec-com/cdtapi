@@ -23,7 +23,7 @@
 
 // CDtapiLite includes
 #include "Core/DtAlloc.h"       // Allocation seam.
-#include "DtDrvAbi.h"           // Driver ABI; pulls in sys/ioctl.h.
+#include "DtPcieAbi.h"          // Driver ABI; pulls in sys/ioctl.h.
 #include "LinIoctlBuffer.h"     // Layout of the shared in/out buffer.
 #include "OAL/OsBackend.h"      // Backend interface being implemented.
 #include "OAL/OsIoctlOutcome.h" // Classifies the return value of ioctl.

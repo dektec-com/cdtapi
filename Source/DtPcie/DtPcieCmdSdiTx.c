@@ -1,6 +1,6 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtDrvSdiTx.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#* DtPcieCmdSdiTx.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Driver ABI layer: exclusive access and the SDI transmit blocks
+// CDtapiLite - DtPcie driver commands: exclusive access and the SDI transmit blocks
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,10 +12,10 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtDrv.h"        // Interface being implemented.
-#include "DtDrvAbi.h"     // Vendored driver structures and IOCTL codes.
-#include "DtDrvCommand.h" // Issuing commands.
-#include "DtDrvStatus.h"  // Driver status to result.
+#include "DtPcieAbi.h"      // Vendored driver structures and IOCTL codes.
+#include "DtPcieCmd.h"      // Interface being implemented.
+#include "DtPcieCmdIssue.h" // Issuing commands.
+#include "DtPcieStatus.h"   // Driver status to result.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -81,9 +81,9 @@ static unsigned int SetOpMode(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int 
     }
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, Cmd, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, Cmd, Uuid, PortIndex);
     In.m_OpMode = OpMode;
-    return DtDrvIssue(Drv, Code, &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, Code, &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Plain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -98,26 +98,27 @@ static unsigned int Plain(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int Port
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    DtDrvInitHeaderFor(&In, Cmd, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In, Cmd, Uuid, PortIndex);
     if (Out != NULL)
         memset(Out, 0, OutSize);
-    return DtDrvIssue(Drv, Code, &In, sizeof(In), Out, OutSize);
+    return DtPcieCmdIssue(Drv, Code, &In, sizeof(In), Out, OutSize);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exclusive access +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvExclAccess(OsDrv* Drv, int Uuid, int PortIndex, int Cmd)
+unsigned int DtPcieCmdExclAccess(OsDrv* Drv, int Uuid, int PortIndex, int Cmd)
 {
     return Plain(Drv, DT_IOCTL(DT_IOCTL_EXCL_ACCESS_CMD), Cmd, Uuid, PortIndex, NULL, 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= CDMAC +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvCdmacGetProps(OsDrv* Drv, int Uuid, int PortIndex, DtCdmacProps* Props)
+unsigned int DtPcieCmdCdmacGetProps(OsDrv* Drv, int Uuid, int PortIndex,
+                                    DtCdmacProps* Props)
 {
     DtIoctlCDmaCCmdGetPropertiesOutput Out;
     unsigned int Result;
@@ -139,14 +140,14 @@ unsigned int DtDrvCdmacGetProps(OsDrv* Drv, int Uuid, int PortIndex, DtCdmacProp
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacAllocateBufferAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacAllocateBufferAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtProxyCDMAC::AllocateBuffer. The answer must hold at least the command's fixed output
 // structure; on Linux that is all there is, and the driver writes nothing into it.
 //
-unsigned int DtDrvCdmacAllocateBufferAs(OsDrv* Drv, int Uuid, int PortIndex,
-                                        int Direction, const OsDmaBuffer* Buf,
-                                        bool BufferIsOutput)
+unsigned int DtPcieCmdCdmacAllocateBufferAs(OsDrv* Drv, int Uuid, int PortIndex,
+                                            int Direction, const OsDmaBuffer* Buf,
+                                            bool BufferIsOutput)
 {
     DtIoctlCDmaCCmdAllocateBufferInput In;
     DtIoctlCDmaCCmdAllocateBufferOutput Fixed;
@@ -164,7 +165,7 @@ unsigned int DtDrvCdmacAllocateBufferAs(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CDMAC_CMD_ALLOCATE_BUFFER, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_CDMAC_CMD_ALLOCATE_BUFFER, Uuid, PortIndex);
     In.m_Direction = Direction;
     In.m_BufferSize = (Int)Buf->Size;
     memset(&Fixed, 0, sizeof(Fixed));
@@ -175,53 +176,53 @@ unsigned int DtDrvCdmacAllocateBufferAs(OsDrv* Drv, int Uuid, int PortIndex,
     Outcome = OsDrvIoCtl(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In), HandOff.Out,
                          &Returned, &Status);
     if (Outcome != OS_IOCTL_OK)
-        return DtDrvOutcomeToResult(Outcome, Status);
+        return DtPcieOutcomeToResult(Outcome, Status);
     if (Returned < sizeof(Fixed))
         return DTAPI_E_DEV_DRIVER;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacAllocateBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacAllocateBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvCdmacAllocateBuffer(OsDrv* Drv, int Uuid, int PortIndex, int Direction,
-                                      const OsDmaBuffer* Buf)
+unsigned int DtPcieCmdCdmacAllocateBuffer(OsDrv* Drv, int Uuid, int PortIndex,
+                                          int Direction, const OsDmaBuffer* Buf)
 {
 #if defined(_WIN32) || defined(_WIN64)
-    return DtDrvCdmacAllocateBufferAs(Drv, Uuid, PortIndex, Direction, Buf, true);
+    return DtPcieCmdCdmacAllocateBufferAs(Drv, Uuid, PortIndex, Direction, Buf, true);
 #else
-    return DtDrvCdmacAllocateBufferAs(Drv, Uuid, PortIndex, Direction, Buf, false);
+    return DtPcieCmdCdmacAllocateBufferAs(Drv, Uuid, PortIndex, Direction, Buf, false);
 #endif
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacFreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacFreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvCdmacFreeBuffer(OsDrv* Drv, int Uuid, int PortIndex)
+unsigned int DtPcieCmdCdmacFreeBuffer(OsDrv* Drv, int Uuid, int PortIndex)
 {
     return Plain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), DT_CDMAC_CMD_FREE_BUFFER, Uuid,
                  PortIndex, NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacIssueChannelFlush -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacIssueChannelFlush -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvCdmacIssueChannelFlush(OsDrv* Drv, int Uuid, int PortIndex)
+unsigned int DtPcieCmdCdmacIssueChannelFlush(OsDrv* Drv, int Uuid, int PortIndex)
 {
     return Plain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), DT_CDMAC_CMD_ISSUE_CHANNEL_FLUSH,
                  Uuid, PortIndex, NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvCdmacSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdCdmacSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), DT_CDMAC_CMD_SET_OPERATIONAL_MODE,
                      Uuid, PortIndex, OpMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacSetTestMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacSetTestMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // DtProxyCDMAC::SetTestMode refuses a mode it cannot convert; so does this.
 //
-unsigned int DtDrvCdmacSetTestMode(OsDrv* Drv, int Uuid, int PortIndex, int TestMode)
+unsigned int DtPcieCmdCdmacSetTestMode(OsDrv* Drv, int Uuid, int PortIndex, int TestMode)
 {
     DtIoctlCDmaCCmdSetTestModeInput In;
 
@@ -234,15 +235,15 @@ unsigned int DtDrvCdmacSetTestMode(OsDrv* Drv, int Uuid, int PortIndex, int Test
     }
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CDMAC_CMD_SET_TEST_MODE, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_CDMAC_CMD_SET_TEST_MODE, Uuid, PortIndex);
     In.m_TestMode = TestMode;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In), NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacGetTxReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacGetTxReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvCdmacGetTxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                       uint32_t* Offset)
+unsigned int DtPcieCmdCdmacGetTxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                           uint32_t* Offset)
 {
     DtIoctlCDmaCCmdGetTxRdOffsetOutput Out;
     unsigned int Result;
@@ -259,10 +260,10 @@ unsigned int DtDrvCdmacGetTxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacSetTxWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacSetTxWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvCdmacSetTxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                        uint32_t Offset)
+unsigned int DtPcieCmdCdmacSetTxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                            uint32_t Offset)
 {
     DtIoctlCDmaCCmdSetTxWrOffsetInput In;
 
@@ -270,15 +271,15 @@ unsigned int DtDrvCdmacSetTxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CDMAC_CMD_SET_TX_WRITE_OFFSET, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_CDMAC_CMD_SET_TX_WRITE_OFFSET, Uuid, PortIndex);
     In.m_TxWriteOffset = Offset;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In), NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacGetReorderBufStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacGetReorderBufStatus -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvCdmacGetReorderBufStatus(OsDrv* Drv, int Uuid, int PortIndex, int* Load,
-                                           int* MinMaxLoad)
+unsigned int DtPcieCmdCdmacGetReorderBufStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                               int* Load, int* MinMaxLoad)
 {
     DtIoctlCDmaCCmdGetReorderBufStatusOutput Out;
     unsigned int Result;
@@ -296,9 +297,9 @@ unsigned int DtDrvCdmacGetReorderBufStatus(OsDrv* Drv, int Uuid, int PortIndex, 
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvCdmacClearReorderBufMinMax -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdCdmacClearReorderBufMinMax -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvCdmacClearReorderBufMinMax(OsDrv* Drv, int Uuid, int PortIndex)
+unsigned int DtPcieCmdCdmacClearReorderBufMinMax(OsDrv* Drv, int Uuid, int PortIndex)
 {
     return Plain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
                  DT_CDMAC_CMD_CLEAR_REORDER_BUF_MIN_MAX, Uuid, PortIndex, NULL, 0);
@@ -306,10 +307,10 @@ unsigned int DtDrvCdmacClearReorderBufMinMax(OsDrv* Drv, int Uuid, int PortIndex
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= BURSTFIFO +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvBurstFifoGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdBurstFifoGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvBurstFifoGetProps(OsDrv* Drv, int Uuid, int PortIndex,
-                                    DtBurstFifoProps* Props)
+unsigned int DtPcieCmdBurstFifoGetProps(OsDrv* Drv, int Uuid, int PortIndex,
+                                        DtBurstFifoProps* Props)
 {
     DtIoctlBurstFifoCmdGetPropertiesOutput Out;
     unsigned int Result;
@@ -330,10 +331,10 @@ unsigned int DtDrvBurstFifoGetProps(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvBurstFifoGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdBurstFifoGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvBurstFifoGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
-                                     DtBurstFifoStatus* Status)
+unsigned int DtPcieCmdBurstFifoGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                         DtBurstFifoStatus* Status)
 {
     DtIoctlBurstFifoCmdGetFifoStatusOutput Out;
     unsigned int Result;
@@ -355,10 +356,10 @@ unsigned int DtDrvBurstFifoGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvBurstFifoClearMax -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdBurstFifoClearMax -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvBurstFifoClearMax(OsDrv* Drv, int Uuid, int PortIndex, bool MaxFree,
-                                    bool MaxLoad)
+unsigned int DtPcieCmdBurstFifoClearMax(OsDrv* Drv, int Uuid, int PortIndex, bool MaxFree,
+                                        bool MaxLoad)
 {
     DtIoctlBurstFifoCmdClearFifoMaxInput In;
 
@@ -366,16 +367,17 @@ unsigned int DtDrvBurstFifoClearMax(OsDrv* Drv, int Uuid, int PortIndex, bool Ma
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_BURSTFIFO_CMD_CLEAR_FIFO_MAX, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_BURSTFIFO_CMD_CLEAR_FIFO_MAX, Uuid, PortIndex);
     In.m_ClearMaxFree = MaxFree ? 1 : 0;
     In.m_ClearMaxLoad = MaxLoad ? 1 : 0;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD), &In, sizeof(In), NULL,
+                          0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvBurstFifoGetOvfUflCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdBurstFifoGetOvfUflCount -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvBurstFifoGetOvfUflCount(OsDrv* Drv, int Uuid, int PortIndex,
-                                          uint32_t* Count)
+unsigned int DtPcieCmdBurstFifoGetOvfUflCount(OsDrv* Drv, int Uuid, int PortIndex,
+                                              uint32_t* Count)
 {
     DtIoctlBurstFifoCmdGetOvfUflCountOutput Out;
     unsigned int Result;
@@ -393,9 +395,9 @@ unsigned int DtDrvBurstFifoGetOvfUflCount(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvBurstFifoSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdBurstFifoSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvBurstFifoSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdBurstFifoSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
                      DT_BURSTFIFO_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
@@ -403,18 +405,19 @@ unsigned int DtDrvBurstFifoSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int Op
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDITXF +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxFSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxFSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxFSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdSdiTxFSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD),
                      DT_SDITXF_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxFSetFmtEventSetting -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxFSetFmtEventSetting -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvSdiTxFSetFmtEventSetting(OsDrv* Drv, int Uuid, int PortIndex,
-                                           int NumLinesPerEvent, int NumSofsBetweenTod)
+unsigned int DtPcieCmdSdiTxFSetFmtEventSetting(OsDrv* Drv, int Uuid, int PortIndex,
+                                               int NumLinesPerEvent,
+                                               int NumSofsBetweenTod)
 {
     DtIoctlSdiTxFCmdSetFmtEventSettingInput In;
 
@@ -422,17 +425,17 @@ unsigned int DtDrvSdiTxFSetFmtEventSetting(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_SDITXF_CMD_SET_FMT_EVENT_SETTING, Uuid,
-                       PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_SDITXF_CMD_SET_FMT_EVENT_SETTING, Uuid,
+                        PortIndex);
     In.m_NumLinesPerEvent = NumLinesPerEvent;
     In.m_NumSofsBetweenTod = NumSofsBetweenTod;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD), &In, sizeof(In), NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxFGetStreamAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxFGetStreamAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvSdiTxFGetStreamAlignment(OsDrv* Drv, int Uuid, int PortIndex,
-                                           int* AlignmentBits)
+unsigned int DtPcieCmdSdiTxFGetStreamAlignment(OsDrv* Drv, int Uuid, int PortIndex,
+                                               int* AlignmentBits)
 {
     DtIoctlSdiTxFCmdGetStreamAlignmentOutput Out;
     unsigned int Result;
@@ -449,10 +452,10 @@ unsigned int DtDrvSdiTxFGetStreamAlignment(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxFWaitForFmtEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxFWaitForFmtEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxFWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
-                                        int TimeoutMs, DtSdiTxFEvent* Event)
+unsigned int DtPcieCmdSdiTxFWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
+                                            int TimeoutMs, DtSdiTxFEvent* Event)
 {
     DtIoctlSdiTxFCmdWaitForFmtEventInput In;
     DtIoctlSdiTxFCmdWaitForFmtEventOutput Out;
@@ -464,11 +467,11 @@ unsigned int DtDrvSdiTxFWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_SDITXF_CMD_WAIT_FOR_FMT_EVENT, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_SDITXF_CMD_WAIT_FOR_FMT_EVENT, Uuid, PortIndex);
     In.m_Timeout = TimeoutMs;
     memset(&Out, 0, sizeof(Out));
-    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD), &In, sizeof(In), &Out,
-                        sizeof(Out));
+    Result = DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD), &In, sizeof(In), &Out,
+                            sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -483,10 +486,10 @@ unsigned int DtDrvSdiTxFWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SWITCH and SDIDMX12G +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSwitchSetPosition -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSwitchSetPosition -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSwitchSetPosition(OsDrv* Drv, int Uuid, int PortIndex, int InputIndex,
-                                    int OutputIndex)
+unsigned int DtPcieCmdSwitchSetPosition(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int InputIndex, int OutputIndex)
 {
     DtIoctlSwitchCmdSetPositionInput In;
 
@@ -494,23 +497,23 @@ unsigned int DtDrvSwitchSetPosition(OsDrv* Drv, int Uuid, int PortIndex, int Inp
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_SWITCH_CMD_SET_POSITION, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_SWITCH_CMD_SET_POSITION, Uuid, PortIndex);
     In.m_InputIndex = InputIndex;
     In.m_OutputIndex = OutputIndex;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SWITCH_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_SWITCH_CMD), &In, sizeof(In), NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSwitchSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSwitchSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSwitchSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdSwitchSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_SWITCH_CMD),
                      DT_SWITCH_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiDmx12GSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiDmx12GSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvSdiDmx12GSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdSdiDmx12GSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_SDIDMX12G_CMD),
                      DT_SDIDMX12G_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
@@ -518,18 +521,18 @@ unsigned int DtDrvSdiDmx12GSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int Op
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDITXP +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxPSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdSdiTxPSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_SDITXP_CMD),
                      DT_SDITXP_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPSetGenerationMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPSetGenerationMode -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxPSetGenerationMode(OsDrv* Drv, int Uuid, int PortIndex, bool Clamp,
-                                          bool AncChecksum, bool LineCrc)
+unsigned int DtPcieCmdSdiTxPSetGenerationMode(OsDrv* Drv, int Uuid, int PortIndex,
+                                              bool Clamp, bool AncChecksum, bool LineCrc)
 {
     DtIoctlSdiTxPCmdSetGenModeInput In;
 
@@ -537,27 +540,27 @@ unsigned int DtDrvSdiTxPSetGenerationMode(OsDrv* Drv, int Uuid, int PortIndex, b
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_SDITXP_CMD_SET_GENERATION_MODE, Uuid, PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_SDITXP_CMD_SET_GENERATION_MODE, Uuid, PortIndex);
     In.m_ClampEnable = Clamp ? 1 : 0;
     In.m_AdpChecksumEnable = AncChecksum ? 1 : 0;
     In.m_LineCrcEnable = LineCrc ? 1 : 0;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXP_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXP_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDITXPHY +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPhySetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPhySetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxPhySetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+unsigned int DtPcieCmdSdiTxPhySetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
 {
     return SetOpMode(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
                      DT_SDITXPHY_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPhyGetUnderflowFlag -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPhyGetUnderflowFlag -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvSdiTxPhyGetUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex,
-                                           bool* Underflow)
+unsigned int DtPcieCmdSdiTxPhyGetUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex,
+                                               bool* Underflow)
 {
     DtIoctlSdiTxPhyCmdGetUnderflowFlagOutput Out;
     unsigned int Result;
@@ -575,18 +578,18 @@ unsigned int DtDrvSdiTxPhyGetUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPhyClearUnderflowFlag -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPhyClearUnderflowFlag -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvSdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex)
+unsigned int DtPcieCmdSdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex)
 {
     return Plain(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
                  DT_SDITXPHY_CMD_CLEAR_UNDERFLOW_FLAG, Uuid, PortIndex, NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.- DtDrvSdiTxPhySetStartOfFrameOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.- DtPcieCmdSdiTxPhySetStartOfFrameOffset -.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvSdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                                int OffsetNs)
+unsigned int DtPcieCmdSdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                                    int OffsetNs)
 {
     DtIoctlSdiTxPhyCmdSetStartOfFrameOffsetInput In;
 
@@ -594,8 +597,8 @@ unsigned int DtDrvSdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIn
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_SDITXPHY_CMD_SET_START_OF_FRAME_OFFSET, Uuid,
-                       PortIndex);
+    DtPcieCmdInitHeader(&In.m_CmdHdr, DT_SDITXPHY_CMD_SET_START_OF_FRAME_OFFSET, Uuid,
+                        PortIndex);
     In.m_StartOfFrameOffsetNs = OffsetNs;
-    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD), &In, sizeof(In), NULL, 0);
+    return DtPcieCmdIssue(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD), &In, sizeof(In), NULL, 0);
 }

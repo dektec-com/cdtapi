@@ -1,27 +1,27 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtDrvStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Driver ABI layer: from a driver status to a DTAPI result - Implementation
+// CDtapiLite - DtPcie driver commands: driver statuses as DTAPI results - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDtapiLite includes
-#include "DtDrvStatus.h"            // Interface being implemented.
+#include "DtPcieStatus.h"           // Interface being implemented.
 #include "CDtapiLite.h"             // DTAPI result codes.
-#include "DtDrvAbi.h"               // The DT_STATUS_ codes.
+#include "DtPcieAbi.h"              // The DT_STATUS_ codes.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvStatusToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieStatusToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The DT_STATUS_ values are encoded differently on Windows and on Linux, so the cases are
 // written with the vendored names and never with numbers. Statuses DTAPI deliberately
 // reports as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
 // case of their own and fall to the default.
 //
-unsigned int DtDrvStatusToResult(uint32_t Status)
+unsigned int DtPcieStatusToResult(uint32_t Status)
 {
     switch (Status)
     {
@@ -88,16 +88,16 @@ unsigned int DtDrvStatusToResult(uint32_t Status)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned int DtDrvOutcomeToResult(int Outcome, uint32_t Status)
+unsigned int DtPcieOutcomeToResult(int Outcome, uint32_t Status)
 {
     switch (Outcome)
     {
     case OS_IOCTL_OK:
         return DTAPI_OK;
     case OS_IOCTL_DRIVER_STATUS:
-        return DtDrvStatusToResult(Status);
+        return DtPcieStatusToResult(Status);
     case OS_IOCTL_NO_RESOURCES:
         return DTAPI_E_OUT_OF_RESOURCES;
     default:

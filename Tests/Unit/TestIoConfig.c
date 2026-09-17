@@ -11,8 +11,8 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes and result codes.
-#include "DtDrvAbi.h"   // IOCONFIG_NAME_MAX_SIZE, the driver's field size.
 #include "DtIoConfig.h" // Interface under test.
+#include "DtPcieAbi.h"  // IOCONFIG_NAME_MAX_SIZE, the driver's field size.
 #include "DtTest.h"     // Test framework.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Completeness +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

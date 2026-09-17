@@ -15,8 +15,8 @@
 #include "Core/DtVec.h"   // The scan's list of hardware functions.
 #include "DtAvInput.h"    // Video standard detection.
 #include "DtDevice.h"     // Interface being implemented.
-#include "DtDrvAbi.h"     // DT_FWSTATUS_ values.
 #include "DtIoConfig.h"   // I/O configuration validation.
+#include "DtPcieAbi.h"    // DT_FWSTATUS_ values.
 #include "OAL/OsThread.h" // Sleeping and the clock while waiting for a signal.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -75,12 +75,12 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
     unsigned int Result;
 
     Result =
-        DtDrvGetPropertyInt(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Device->NumPorts);
+        DtPcieCmdGetPropertyInt(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Device->NumPorts);
     if (Result != DTAPI_OK)
         return DTAPI_E_NO_SUCH_DEVICE;
 
-    if (DtDrvGetPropertyInt(Drv, "MAIN_PORT_COUNT", DT_PROPERTY_DEVICE,
-                            &Device->NumPublicPorts) != DTAPI_OK)
+    if (DtPcieCmdGetPropertyInt(Drv, "MAIN_PORT_COUNT", DT_PROPERTY_DEVICE,
+                                &Device->NumPublicPorts) != DTAPI_OK)
     {
         Device->NumPublicPorts = Device->NumPorts;
     }
@@ -107,7 +107,7 @@ static unsigned int LoadPorts(DtDevice* Device, OsDrv* Drv)
         {
             bool Has = false;
 
-            if (DtDrvGetPropertyBool(Drv, g_PortCaps[Cap].Name, (int)Port, &Has) ==
+            if (DtPcieCmdGetPropertyBool(Drv, g_PortCaps[Cap].Name, (int)Port, &Has) ==
                     DTAPI_OK &&
                 Has)
             {
@@ -135,11 +135,11 @@ unsigned int DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
 
     memset(Device, 0, sizeof(*Device));
 
-    if (DtDrvGetDriverVersion(Drv, &Version) != DTAPI_OK)
+    if (DtPcieCmdGetDriverVersion(Drv, &Version) != DTAPI_OK)
         Result = DTAPI_E_NO_SUCH_DEVICE;
-    else if (!DtDrvVersionIsSupported(&Version))
+    else if (!DtPcieCmdVersionIsSupported(&Version))
         Result = DTAPI_E_DRIVER_INCOMP;
-    else if (DtDrvGetDeviceInfo(Drv, &Device->Info) != DTAPI_OK)
+    else if (DtPcieCmdGetDeviceInfo(Drv, &Device->Info) != DTAPI_OK)
         Result = DTAPI_E_NO_SUCH_DEVICE;
     else if (MatchSerial && Device->Info.Serial != Serial)
         Result = DTAPI_E_NO_SUCH_DEVICE;
@@ -295,7 +295,7 @@ unsigned int DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc
     return Result;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Device scan +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device scan +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -383,7 +383,7 @@ void DtDeviceDescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
             memset(&Config, 0, sizeof(Config));
             Config.Port = Port;
             Config.Group = DTAPI_IOCONFIG_IODIR;
-            if (DtDrvGetIoConfig(Device->Drv, &Config) != DTAPI_OK)
+            if (DtPcieCmdGetIoConfig(Device->Drv, &Config) != DTAPI_OK)
                 break;
             if (Config.Value == DTAPI_IOCONFIG_INPUT)
                 Desc->NumDtInpChan++;
@@ -536,7 +536,7 @@ unsigned int DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group, int Val
     Config.SubValue = SubValue;
     Config.ParXtra[0] = -1;
     Config.ParXtra[1] = -1;
-    return DtDrvSetIoConfig(Device->Drv, &Config);
+    return DtPcieCmdSetIoConfig(Device->Drv, &Config);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetToOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -571,7 +571,7 @@ unsigned int DtDevice_GetTimeOfDay(const DtDevice* Device, DtTimeOfDay* TimeOfDa
     if (Device->Drv == NULL)
         return DTAPI_E_NOT_ATTACHED;
 
-    Result = DtDrvGetTimeOfDay(Device->Drv, &Seconds, &Nanoseconds);
+    Result = DtPcieCmdGetTimeOfDay(Device->Drv, &Seconds, &Nanoseconds);
     if (Result != DTAPI_OK)
         return Result;
 

@@ -24,4 +24,4 @@ Scripts/hooks/*     text eol=lf
 # Vendored driver ABI headers are stored byte-for-byte as they came from the SDK, CRLF
 # included. Normalising them would make a diff against the SDK copy show every line as
 # changed, which is exactly the property that keeps a future ABI refresh a copy.
-Source/Drv/Abi/**   -text
+Source/DtPcie/Abi/**   -text

@@ -56,7 +56,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Include/` | Public headers |
 | `Source/Core/` | Containers used throughout the library |
 | `Source/OAL/` | OS abstraction: `Linux/`, `Windows/`, and the `Sim/` emulator |
-| `Source/Drv/` | Driver ABI, with the vendored header under `Abi/` |
+| `Source/DtPcie/` | Commands of the DtPcie driver, with its vendored ABI under `Abi/` |
 | `Source/Device/` | Device scan, attach and I/O configuration |
 | `Source/Channel/` | SDI input and output channels |
 | `Source/Video/` | Video-standard tables and detection |

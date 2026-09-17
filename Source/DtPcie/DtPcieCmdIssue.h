@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtDrvCommand.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#* DtPcieCmdIssue.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Driver ABI layer: issuing a command, shared by the files of the layer
+// CDtapiLite - DtPcie driver commands: issuing a command, shared by the layer's files
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_DRV_COMMAND_H
-#define CDTAPILITE_DT_DRV_COMMAND_H
+#ifndef CDTAPILITE_DT_PCIE_CMD_ISSUE_H
+#define CDTAPILITE_DT_PCIE_CMD_ISSUE_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -14,12 +14,12 @@
 #include <stdint.h>
 
 // CDtapiLite includes
-#include "DtDrvAbi.h"               // DtIoctlInputDataHdr.
+#include "DtPcieAbi.h"              // DtIoctlInputDataHdr.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Not for use outside the driver ABI layer, whose other headers keep the driver's
+// Not for use outside the DtPcie command layer, whose other headers keep the driver's
 // structures out of the layers above.
 //
 
@@ -30,7 +30,7 @@
 
 // Fills the header every command starts with, for the driver function or building block
 // with this UUID in the port with this index.
-void DtDrvInitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex);
+void DtPcieCmdInitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex);
 
 // Issues a command whose answer has a fixed size, and turns the outcome into a result:
 // a refused command into the result its DtStatus stands for, and a failure to reach the
@@ -43,7 +43,7 @@ void DtDrvInitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortInd
 // That check only has teeth on Windows and against the emulator. The Linux driver does
 // not report how much it wrote, so there OsDrvIoCtl leaves the size as it was and a
 // short answer cannot be detected here.
-unsigned int DtDrvIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
-                        void* Out, size_t OutSize);
+unsigned int DtPcieCmdIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
+                            void* Out, size_t OutSize);
 
-#endif // CDTAPILITE_DT_DRV_COMMAND_H
+#endif // CDTAPILITE_DT_PCIE_CMD_ISSUE_H

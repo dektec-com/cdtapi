@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # The major and minor number are those of the DTAPI whose behaviour CDtapiLite reproduces;
 # the patch number is CDtapiLite's own. The driver is told the major and minor number in
-# every property request, see Source/Drv/DtDrv.c.
+# every property request, see Source/DtPcie/DtPcieCmd.c.
 project(CDtapiLite
     VERSION 6.13.0
     DESCRIPTION "Native open-source C API for DekTec SDI interfaces"
@@ -52,10 +52,10 @@ set(CDTAPILITE_SOURCES
     Source/Device/DtAvInput.c
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
-    Source/Drv/DtDrv.c
-    Source/Drv/DtDrvSdiTx.c
-    Source/Drv/DtDrvStatus.c
-    Source/Drv/DtIoConfig.c
+    Source/DtPcie/DtPcieCmd.c
+    Source/DtPcie/DtPcieCmdSdiTx.c
+    Source/DtPcie/DtPcieStatus.c
+    Source/DtPcie/DtIoConfig.c
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
@@ -149,7 +149,7 @@ target_include_directories(cdtapilite
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Source
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/Device
-        ${CMAKE_CURRENT_SOURCE_DIR}/Source/Drv)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source/DtPcie)
 
 if(CDTAPILITE_SIM_ONLY)
     target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_SIM_ONLY=1)

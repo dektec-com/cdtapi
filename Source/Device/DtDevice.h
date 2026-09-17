@@ -15,7 +15,7 @@
 
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DtDevice and DtHwFuncDesc.
-#include "DtDrv.h"                  // Driver commands and DtDeviceInfo.
+#include "DtPcieCmd.h"              // Driver commands and DtDeviceInfo.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

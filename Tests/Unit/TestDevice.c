@@ -75,7 +75,7 @@ static bool Supported(int Major, int Minor, int Micro, int Build)
     Version.Minor = Minor;
     Version.Micro = Micro;
     Version.Build = Build;
-    return DtDrvVersionIsSupported(&Version);
+    return DtPcieCmdVersionIsSupported(&Version);
 }
 
 // 1.3.1 is the oldest DtPcie driver DTAPI accepts; each part decides only when the parts

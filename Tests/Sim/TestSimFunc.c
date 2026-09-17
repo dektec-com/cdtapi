@@ -14,8 +14,8 @@
 
 // CDtapiLite includes
 #include "Core/DtAlloc.h"           // Live allocations and allocation failures.
-#include "DtDrvAbi.h"               // Types, UUID flags and driver statuses.
 #include "DtFunc.h"                 // Functions under test.
+#include "DtPcieAbi.h"              // Types, UUID flags and driver statuses.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
@@ -105,7 +105,7 @@ DT_TEST(PartsOfTheReceiverFunction)
         DT_ASSERT_EQ(Part->IsDf, g_Parts[i].IsDf);
         DT_ASSERT_EQ(Part->Type, g_Parts[i].Type);
         snprintf(Key, sizeof(Key), "%s_UUID", g_Parts[i].Name);
-        DT_ASSERT_OK(DtDrvGetPropertyInt(Drv, Key, 5, &Uuid));
+        DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, Key, 5, &Uuid));
         DT_ASSERT_EQ(Part->Uuid, Uuid);
     }
     DtFuncRelease(&Func);

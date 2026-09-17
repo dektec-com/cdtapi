@@ -1,11 +1,11 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDrvAbi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieAbi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDtapiLite - Single entry point for the vendored DtPcie driver ABI
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_DRV_ABI_H
-#define CDTAPILITE_DT_DRV_ABI_H
+#ifndef CDTAPILITE_DT_PCIE_ABI_H
+#define CDTAPILITE_DT_PCIE_ABI_H
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -74,4 +74,4 @@
     #pragma GCC diagnostic pop
 #endif
 
-#endif // CDTAPILITE_DT_DRV_ABI_H
+#endif // CDTAPILITE_DT_PCIE_ABI_H
