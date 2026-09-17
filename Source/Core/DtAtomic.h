@@ -77,7 +77,7 @@ static inline long DtAtomicLoad(const DtAtomicInt* Value)
 
 static inline void DtAtomicStore(DtAtomicInt* Value, long Desired)
 {
-    __atomic_store_n(Value, Desired, __ATOMIC_ACQ_REL);
+    __sync_lock_test_and_set(Value, Desired);
 }
 
 #endif

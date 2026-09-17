@@ -21,8 +21,7 @@
 //
 // Including this file with X defined expands the list:
 //
-//     #define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, OneLink) \
-//         { DTAPI_VIDSTD_##Name, FpsNum },
+//     #define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, One) {Name},
 //     #include "Tables/DtVidStdList.inc"
 //     #undef X
 //
