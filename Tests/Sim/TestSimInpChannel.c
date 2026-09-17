@@ -415,6 +415,49 @@ DT_TEST(AttachCleansUpAfterFailures)
     FINISH(Fix);
 }
 
+// A ring whose largest load holds fewer than two frames fails the attach; one that holds
+// two attaches, and the channel's FIFO size is those two frames in the receive mode.
+DT_TEST(RingHoldsTwoFramesAtLeast)
+{
+    const size_t Unit = SIM_RX_PREFETCH_PAGES * 4096;
+    const size_t Word = SIM_RX_PCIE_DATA_WIDTH / 8;
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    SimRxState State;
+    size_t Coded;
+    int Max = 0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
+    DT_ASSERT(
+        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    Coded = DtSdiFrameCodedSize(&Layout);
+
+    // Two frames of ring, but not of load.
+    SimDtPcieLimitRxRing(2 * Coded);
+    DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_DEV_DRIVER);
+    SimDtPcieGetRxState(PORT - 1, &State);
+    DT_ASSERT_EQ(State.NumUsers, 0);
+
+    SimDtPcieLimitRxRing((2 * Coded + Word + Unit - 1) / Unit * Unit);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    SimDtPcieGetRxState(PORT - 1, &State);
+    DT_ASSERT((State.RingSize - Word) / Coded == 2);
+
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
+    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrameRawSize(&Layout, 10));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
+    DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
+    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrameRawSize(&Layout, 16));
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+    FINISH(Fix);
+}
+
 // The channel has its own handle: the device object may go.
 DT_TEST(OwnHandle)
 {
@@ -540,7 +583,7 @@ DT_TEST(FullRingSetsOverflow)
 {
     Fixture Fix;
     DtSdiFrameLayout Layout;
-    int Flags = -1, Latched = -1, Load = -1;
+    int Flags = -1, Latched = -1, Load = -1, Max = -1;
 
     if (!Start(&Fix, DtFailures))
         return;
@@ -560,8 +603,15 @@ DT_TEST(FullRingSetsOverflow)
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 16));
 
-    // Three more do not fit.
+    // That fills the ring's load, so the load is the FIFO size: the rest of the ring,
+    // less than a frame, never counts.
+    DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
+    DT_ASSERT_EQ(Load, Max);
+
+    // Three more do not fit, and the load stays within the FIFO size.
     SimDtPcieRunRxEvents(PORT - 1, 12);
+    DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT(Load <= Max);
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT_EQ(Latched, DTAPI_RX_FIFO_OVF);
@@ -731,6 +781,7 @@ DT_TEST(IoConfiguration)
 {
     Fixture Fix;
     SimRxState State;
+    DtSdiFrameLayout Layout;
     int Value = 0, SubValue = 0;
 
     if (!Start(&Fix, DtFailures))
@@ -776,8 +827,13 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_720P50, State.NextFrame, 16, DtFailures));
 
+    // The FIFO size follows the standard's ring.
+    DT_ASSERT(
+        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P50, SIM_RX_STREAM_ALIGNMENT));
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Value));
-    DT_ASSERT_EQ(Value, 48 * 1024 * 1024);
+    DT_ASSERT_EQ(Value,
+                 (int)((State.RingSize - SIM_RX_PCIE_DATA_WIDTH / 8) /
+                       DtSdiFrameCodedSize(&Layout) * DtSdiFrameRawSize(&Layout, 16)));
     (void)SubValue;
     FINISH(Fix);
 }
@@ -813,8 +869,9 @@ DT_TEST(DetectsTheIoStandard)
 
 DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AttachRefusals), DT_RUN(AttachCleansUpAfterFailures),
-             DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
-             DT_RUN(ReadsAcrossTheEndOfTheRing), DT_RUN(RecoversFromFaults),
-             DT_RUN(FullRingSetsOverflow), DT_RUN(ReadFrameChecks),
-             DT_RUN(ReadFrameTimesOut), DT_RUN(DetachCancelsARead), DT_RUN(ReceiveModes),
-             DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))
+             DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(OwnHandle),
+             DT_RUN(ReadsFramesBitForBit), DT_RUN(ReadsAcrossTheEndOfTheRing),
+             DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),
+             DT_RUN(ReadFrameChecks), DT_RUN(ReadFrameTimesOut),
+             DT_RUN(DetachCancelsARead), DT_RUN(ReceiveModes), DT_RUN(IoConfiguration),
+             DT_RUN(DetectsTheIoStandard))

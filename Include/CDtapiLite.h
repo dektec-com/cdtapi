@@ -368,7 +368,9 @@ CDTAPILITE_API unsigned int DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, i
 CDTAPILITE_API unsigned int DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel,
                                                      int* FifoLoad);
 
-// DTAPI's FIFO size for SDI input, 48 MB. The largest frame a channel reads is smaller.
+// The largest load GetFifoLoad can report: the complete frames the channel's ring holds
+// when full, as raw frames in the current receive mode. At least two frames. On a 4K
+// port, where the channel does not receive, DTAPI's FIFO size of 48 MB.
 CDTAPILITE_API unsigned int DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel,
                                                         int* MaxFifoSize);
 

@@ -50,10 +50,12 @@
 // SdiRxImpl_Bb2's FIFO_SIZE_MAX.
 #define DT_FIFO_SIZE_MAX (48 * 1024 * 1024)
 
-// MxProcessMemless's bounds on the ring, and the frames it asks room for.
+// MxProcessMemless's bounds on the ring, the frames it asks room for, and the fewest
+// frames a ring must hold (MIN_DMASIZE_NUMFRAMES).
 #define DT_RING_MIN (8 * 1024 * 1024)
 #define DT_RING_MAX (256 * 1024 * 1024)
 #define DT_RING_FRAMES 5
+#define DT_RING_MIN_FRAMES 2
 
 // MxChannelMemlessRx's format event settings: events per frame, and the delay in
 // microseconds from the start of a frame to the first.
@@ -138,6 +140,17 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
     while (Size < Wanted && Size < DT_RING_MAX)
         Size *= 2;
     return (int)Size;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FramesInRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The complete frames the ring holds at the largest load the driver allows. Each frame
+// in the ring carries its header and the padding of every section to the alignment, and
+// the driver keeps one data word free, so the rest of the ring never holds a frame.
+//
+static size_t FramesInRing(const DtInpChannel* Chan)
+{
+    return (size_t)Chan->MaxLoad / DtSdiFrameCodedSize(&Chan->Layout);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -260,8 +273,7 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
         if (Chan->LineBuf == NULL)
             Result = DTAPI_E_OUT_OF_MEM;
     }
-    if (Result == DTAPI_OK &&
-        (size_t)Chan->RingSize < 2 * DtSdiFrameCodedSize(&Chan->Layout))
+    if (Result == DTAPI_OK && FramesInRing(Chan) < DT_RING_MIN_FRAMES)
         Result = DTAPI_E_DEV_DRIVER;
     if (Result != DTAPI_OK)
     {
@@ -854,7 +866,14 @@ unsigned int DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel, int* MaxFifoS
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    *MaxFifoSize = DT_FIFO_SIZE_MAX;
+    // The load GetFifoLoad reports for a full ring. A channel without a ring, on a 4K
+    // port, gives DTAPI's size.
+    if (InpChannel->Ring == NULL)
+        *MaxFifoSize = DT_FIFO_SIZE_MAX;
+    else
+        *MaxFifoSize =
+            (int)(FramesInRing(InpChannel) *
+                  DtSdiFrameRawSize(&InpChannel->Layout, InpChannel->SymbolBits));
     OsMutexUnlock(InpChannel->Lock);
     return DTAPI_OK;
 }
