@@ -12,6 +12,12 @@
 5. **Every source file starts with a header** describing what the file contains.
 6. **An opening brace goes on its own line** (Allman), for functions, `if`, `for`,
    `while`, `switch` and struct definitions.
+7. **A value whose width matters has a fixed-width type** from `<stdint.h>` — `uint8_t`,
+   `int32_t`, `uint32_t`, `int64_t` and the like — also in `CDtapiLite.h`. Counters,
+   indices and port numbers stay `int`; sizes stay `size_t`, text `char`. `long` and
+   `unsigned long` appear only where an operating-system interface defines them, such
+   as `timespec.tv_nsec`. The result code keeps CDTAPI.h's `unsigned int`, and the
+   vendored driver ABI keeps its own types.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,
@@ -39,6 +45,7 @@ copy-pasted header naming the wrong file otherwise survives for years.
 | 4 | `clang-format` and `Scripts/check_style.sh` |
 | 5 | `Scripts/check_style.sh` |
 | 6 | `clang-format` |
+| 7 | Review |
 | Everything else | `clang-tidy`, warnings-as-errors |
 
 Run them locally:
