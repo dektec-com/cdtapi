@@ -59,6 +59,7 @@ set(CDTAPILITE_SOURCES
     Source/OAL/Sim/SimChSdiRx.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
+    Source/OAL/Sim/SimSdiTx.c
     Source/Video/DtFrameProps.c
     Source/Video/DtSdiFrame.c
     Source/Video/DtSmpte352.c

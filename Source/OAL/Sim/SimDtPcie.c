@@ -25,6 +25,7 @@
 #include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
 #include "SimDta2178.h"             // What the emulated card is.
+#include "SimSdiTx.h"               // The transmit blocks.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -737,6 +738,27 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
     return OS_IOCTL_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A command for a transmit block of the port at PortIndex. The blocks are enabled while
+// the port is an output with an SDI I/O standard.
+//
+static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int Type,
+                    const char* Role, int Cmd, const void* In, size_t InSize, void* Out,
+                    size_t* OutSize, uint32_t* DrvStatus)
+{
+    const SimConfig* Config = g_Sim.Config[PortIndex];
+    bool Enabled = Config[DTAPI_IOCONFIG_IODIR].Value == DTAPI_IOCONFIG_OUTPUT &&
+                   Config[DTAPI_IOCONFIG_IOSTD].Value != DTAPI_IOCONFIG_ASI;
+    uint32_t Access = SimDtPcieCheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
+    uint32_t Status = SimSdiTxCmd(Dev, PortIndex, FunctionCode, Type, Role, Cmd, Access,
+                                  Enabled, In, InSize, Out, OutSize, &Dev->SleepMs);
+
+    if (Status != DT_STATUS_OK)
+        return SimFail(Dev, Status, DrvStatus);
+    return OS_IOCTL_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExclAccessCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // EXCL_ACCESS_CMD for the part at PartIndex, with the rules of DtBc_ExclAccess* and
@@ -810,6 +832,7 @@ static void SimClose(void* State)
 
     Lock();
     SimChSdiRxCloseHandle(State);
+    SimSdiTxCloseHandle(State);
     for (i = 0; i < SIM_MAX_PARTS; i++)
     {
         if (g_Sim.ExclOwners[i] == State)
@@ -838,12 +861,13 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
 {
     const DtIoctlInputDataHdr* Hdr = (const DtIoctlInputDataHdr*)In;
     int Cmd = Hdr->m_Cmd;
+    const char* Role = NULL;
     int PortIndex, Type;
 
     if (Hdr->m_Uuid != DT_UUID_CORE)
     {
         if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 ||
-            !SimDta2178FindFunction(Hdr->m_Uuid, &PortIndex, &Type))
+            !SimDta2178FindFunction(Hdr->m_Uuid, &PortIndex, &Type, &Role))
         {
             return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
         }
@@ -855,6 +879,9 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
             return ExclAccessCmd(Dev, (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1, Cmd,
                                  DrvStatus);
         }
+        if (SimSdiTxTakes(FunctionCode))
+            return SdiTxCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Role, Cmd,
+                            In, InSize, Out, OutSize, DrvStatus);
         if ((Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0 && Type == DT_FUNC_TYPE_SDIRX &&
             FunctionCode == DT_FUNC_CODE_SDIRX_CMD)
         {
@@ -991,6 +1018,7 @@ void SimDtPcieReset(void)
     }
 
     SimChSdiRxReset();
+    SimSdiTxReset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;

@@ -324,7 +324,7 @@ bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type)
+bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
 {
     int Flat = (Uuid & DT_UUID_INDEX_MASK) - 1;
     int a;
@@ -343,6 +343,7 @@ bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type)
                 return false;
             *PortIndex = Port;
             *Type = Api->Parts[Index].Type;
+            *Role = Api->Parts[Index].Role;
             return true;
         }
         Flat -= Count;
