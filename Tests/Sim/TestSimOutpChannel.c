@@ -1324,7 +1324,8 @@ DT_TEST(DetachCancelsAWrite)
     FINISH(Fix);
 }
 
-// Detaching when everything is sent, and the flags that cannot go together.
+// Detaching when everything is sent, and the flags that cannot go together. A black frame
+// follows the last frame written, as the card sends a frame only when data follows it.
 DT_TEST(DetachWaitsUntilSent)
 {
     Fixture Fix;
@@ -1345,8 +1346,75 @@ DT_TEST(DetachWaitsUntilSent)
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 2));
     SimTxState State;
     SimDtPcie_GetTxState(PORT - 1, &State);
-    DT_ASSERT_EQ(State.FramesSent, 3);
+    DT_ASSERT(State.FramesSent == 3 || State.FramesSent == 4);
     DT_ASSERT(SentFrameIs(2, DTAPI_VIDSTD_525I59_94, 2));
+    DT_ASSERT(State.FramesSent == 3 || SentFrameIsBlack(3, DTAPI_VIDSTD_525I59_94));
+    FINISH(Fix);
+}
+
+// With a full buffer, the black frame after the last frame waits for room.
+DT_TEST(DetachWaitsUntilSentFromAFullBuffer)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_1080I50, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    for (int i = 0; i < 18; i++)
+        DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 2));
+    SimTxState State;
+    SimDtPcie_GetTxState(PORT - 1, &State);
+    DT_ASSERT(State.FramesSent == 18 || State.FramesSent == 19);
+    DT_ASSERT(SentFrameIs(17, DTAPI_VIDSTD_1080I50, 17));
+    DT_ASSERT(State.FramesSent == 18 || SentFrameIsBlack(18, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_EQ(State.HeaderErrors, 0);
+    FINISH(Fix);
+}
+
+// With one frame written before sending, a second frame written at once follows the
+// first without a black frame between them.
+DT_TEST(TimeForTheSecondFrame)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_625I50, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    size_t Size;
+    uint8_t* Frames[3] = {NULL, NULL, NULL};
+    for (uint32_t n = 0; n < 3; n++)
+    {
+        Frames[n] = MakeFrame(DTAPI_VIDSTD_625I50, n, 10, &Size);
+        DT_ASSERT(Frames[n] != NULL);
+    }
+
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frames[0], (int)Size));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frames[1], (int)Size));
+    int Status;
+    int Latched;
+    DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frames[2], (int)Size));
+    for (int n = 0; n < 3; n++)
+        free(Frames[n]);
+    DT_ASSERT_EQ(Latched & DTAPI_TX_FIFO_UFL, 0);
+
+    DT_ASSERT(SentAndHeld(Fix.Channel, 3));
+    for (uint32_t n = 0; n < 3; n++)
+        DT_ASSERT(SentFrameIs((int)n, DTAPI_VIDSTD_625I50, n));
     FINISH(Fix);
 }
 
@@ -1377,7 +1445,8 @@ DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AcrossTheEndOfTheBuffer), DT_RUN(BlackFramesWhenWritingStops),
              DT_RUN(BlackFrameBeforeAPartlyWrittenFrame), DT_RUN(UnderflowFlags),
              DT_RUN(StaleReadOffset), DT_RUN(DetachCancelsAWrite),
-             DT_RUN(DetachWaitsUntilSent), DT_RUN(FreeWhileSending),
+             DT_RUN(DetachWaitsUntilSent), DT_RUN(DetachWaitsUntilSentFromAFullBuffer),
+             DT_RUN(TimeForTheSecondFrame), DT_RUN(FreeWhileSending),
              DT_RUN(WriteFrameChecks), DT_RUN(WriteFrameChecksTheSdStart),
              DT_RUN(WholeFrames525i), DT_RUN(WholeFrames720p24),
              DT_RUN(WholeFrames1080p50), DT_RUN(WriteFrameTimesOut),

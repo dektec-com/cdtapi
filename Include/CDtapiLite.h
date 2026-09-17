@@ -439,7 +439,8 @@ CDTAPILITE_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 // the card's DMA buffer for the port, without a software FIFO; the channel's frame IDs
 // count from 0 each time it leaves idle. While sending, a thread of the channel keeps the
 // signal: when the card holds less than a frame, it writes a black frame, and a frame a
-// write had only partly written follows it.
+// write had only partly written follows it. After the first frame of a run the thread
+// waits half of that frame before it does so.
 //
 // SD, HD and 3G standards are transmitted; 4K, ASI, 8-bit symbols and active-video-only
 // modes are not. A channel attaches exclusively and is configured for the port's I/O
@@ -479,8 +480,10 @@ CDTAPILITE_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel
 CDTAPILITE_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel has not sent is discarded;
-// with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this first waits until the card has
-// sent it, which ends when no more goes out for a second; both together give
+// with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this first writes a black frame after
+// the last frame, as the card sends a frame only when data follows it, and waits until
+// the card has sent what was written, which ends when no more goes out for a second; both
+// together give
 // DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write or WriteFrame waiting on
 // another thread returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned
 // after 100 ms, and the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED when

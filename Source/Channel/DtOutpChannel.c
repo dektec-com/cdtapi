@@ -71,6 +71,11 @@
 // DoStandbyToRunImpl reads the burst FIFO's load at most five times for 75 % full.
 #define DT_BURST_POLLS 5
 
+// The format event of the first frame of a run from which the thread may write a black
+// frame after it: the application has until then, half a frame, to write the second
+// frame. The last quarter of a frame goes out only when data follows it.
+#define DT_FIRST_BLACK_SEQ 2
+
 // The PHY's underflow flag is read every so many format events, as the Matrix does.
 #define DT_PHY_POLL_EVENTS 50
 
@@ -151,6 +156,7 @@ struct DtOutpChannelC
     OsEvent* Room; // Set after every format event, and to wake a write for a detach
     int Events;
     bool Started;  // A format event came since the channel held
+    bool Settled;  // Black frames may follow the first frame: see DT_FIRST_BLACK_SEQ
     int SendingId; // The frame ID of the last format event
 };
 
@@ -333,8 +339,10 @@ static DtapiResult InsertBlack(DtOutpChannel* Chan, size_t Load)
 //
 // While sending: waits for the formatter's format events, the only waiter for them,
 // takes their underflow flag and, now and then, the PHY's, and writes a black frame when
-// the frame going out is the last one written. Wakes a write waiting for room after each
-// event.
+// the frame going out is the last one written. After the first frame of a run it waits
+// with that until the frame's event DT_FIRST_BLACK_SEQ or a wait that times out, so that
+// an application that wrote only one frame before sending has time to write the next.
+// Wakes a write waiting for room after each event.
 //
 static void Keeper(void* Context)
 {
@@ -366,9 +374,13 @@ static void Keeper(void* Context)
         {
             Chan->Started = true;
             Chan->SendingId = Event.FrameId;
+            if (Event.FrameId != 0 || Event.SeqNumber >= DT_FIRST_BLACK_SEQ)
+                Chan->Settled = true;
             if (Event.Underflow)
                 Chan->FifoUfl = Chan->FifoUflLatched = true;
         }
+        else if (Chan->Started)
+            Chan->Settled = true;
         if (Result != DTAPI_OK && Result != DTAPI_E_TIMEOUT)
             Failed = true;
 
@@ -390,7 +402,7 @@ static void Keeper(void* Context)
 
         // The frame going out is the last: a black frame follows it.
         size_t Load;
-        if (Chan->Started && UnsentFrames(Chan) <= 1 && ReadLoad(Chan, &Load) == DTAPI_OK)
+        if (Chan->Settled && UnsentFrames(Chan) <= 1 && ReadLoad(Chan, &Load) == DTAPI_OK)
             InsertBlack(Chan, Load);
         OsEvent_Set(Chan->Room);
         OsMutex_Unlock(Chan->Lock);
@@ -502,6 +514,7 @@ static DtapiResult IdleToHold(DtOutpChannel* Chan)
     Chan->Committed = 0;
     Chan->NextFrameId = 0;
     Chan->Started = false;
+    Chan->Settled = false;
     Chan->SendingId = 0;
     ResetFrame(Chan);
     Chan->TxControl = DTAPI_TXCTRL_HOLD;
@@ -1278,16 +1291,28 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 
     // With the thread stopped, the detach is the one that waits for format events: until
     // the last frame written has gone out and a wait finds nothing more, or no event came
-    // for a second.
+    // for a second. The card sends a frame only when data follows it, so a black frame
+    // follows the last frame written, as soon as the buffer has room for it, and the part
+    // of a frame a write left is dropped.
     if ((DetachMode & DT_WAIT_UNTIL_SENT) != 0 && Chan->TxControl == DTAPI_TXCTRL_SEND)
     {
         uint64_t Since = OsTime_MonotonicMs();
         int WaitMs = Chan->QuarterMs < 500 ? 2 * Chan->QuarterMs : 1000;
+        bool BlackToCome = Chan->NextFrameId != 0;
 
         StopKeeper(Chan);
-        PadToWord(Chan);
+        ResetFrame(Chan);
         while (Chan->NextFrameId != 0)
         {
+            size_t Load;
+            if (BlackToCome && ReadLoad(Chan, &Load) == DTAPI_OK &&
+                Chan->MaxLoad - Load >= Chan->CodedSize)
+            {
+                InsertBlack(Chan, Load);
+                PadToWord(Chan);
+                BlackToCome = false;
+            }
+
             OsDrv* Drv = Chan->Device.Drv;
             int Txf = Chan->Txf;
             int Index = Chan->PortIndex;
@@ -1306,7 +1331,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
             }
             else if (Result != DTAPI_E_TIMEOUT)
                 break;
-            else if ((Chan->Started && UnsentFrames(Chan) <= 1) ||
+            else if ((Chan->Started && !BlackToCome && UnsentFrames(Chan) <= 1) ||
                      OsTime_MonotonicMs() - Since >= DT_SENT_STALL_MS)
             {
                 break;
