@@ -29,6 +29,38 @@
 #define DT_VIDLNK_4K_SMPTE2081 2 // One 6G link
 #define DT_VIDLNK_4K_SMPTE2082 3 // One 12G link
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// What CDtapiLite knows of each video standard, from the one list in
+// Tables/DtVidStdList.inc: the frame rate, how the frame is built, and how it is carried.
+//
+
+// How a frame is scanned.
+#define DT_SCAN_P 0   // Progressive
+#define DT_SCAN_I 1   // Interlaced
+#define DT_SCAN_PSF 2 // Progressive, as segmented frames
+
+typedef struct DtVidStdInfo
+{
+    int VidStd; // DTAPI_VIDSTD_ code
+    int FpsNum; // Frames per second as a reduced fraction
+    int FpsDen;
+    int NumLines;       // Lines of the frame
+    int Scan;           // DT_SCAN_ value
+    int LineNumSymHanc; // Symbols per line in HANC, EAV and SAV not included
+    bool IsLevelB;      // 3G level B, or 2160p made of level-B links
+    int IoStd;          // The DTAPI_IOCONFIG_ I/O standard that carries it
+    int OneLinkVidStd;  // For 2160p the 1080p standard of one link, else unknown
+} DtVidStdInfo;
+
+// The information of a video standard; NULL for a code that is no standard.
+const DtVidStdInfo* DtVidStdFind(int VidStd);
+
+// The standards in the order MxFramePropsSdi::Deduce tries them: DtVidStdAt(Index) for an
+// Index from 0 to DtVidStdCount() - 1, NULL outside that range.
+int DtVidStdCount(void);
+const DtVidStdInfo* DtVidStdAt(int Index);
+
 // True for the eleven 2160p standards, as HdSdiUtil::Is4k in DTAPI.
 bool DtVidStdIs4k(int VidStd);
 
