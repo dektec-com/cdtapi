@@ -24,7 +24,9 @@
 #include "OAL/OsThread.h"           // Pacing format events.
 #include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
+#include "SimDta2110.h"             // What the emulated DTA-2110 is.
 #include "SimDta2178.h"             // What the emulated card is.
+#include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -32,7 +34,8 @@
 typedef struct SimDevice
 {
     uint32_t LastError;
-    int SleepMs; // How long the command just handled waits after the lock is released
+    int SleepMs;    // How long the command just handled waits after the lock is released
+    bool IsDta2110; // The handle is to the DTA-2110 rather than to the DTA-2178
 } SimDevice;
 
 // Enough for every I/O configuration code.
@@ -78,6 +81,7 @@ static struct
 {
     bool Initialised;
     int Index;
+    int Dta2110Index; // -1 while there is no DTA-2110
     int FirmwareStatus;
     DtIoctlGetDriverVersionOutput DriverVersion;
     int OpenHandles;
@@ -90,6 +94,7 @@ static struct
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
     void* ExclOwners[SIM_MAX_PARTS]; // Per UUID index less one; NULL when nobody holds it
+    void* ExclOwners2110[SIM_MAX_PARTS]; // The same for the DTA-2110
 } g_Sim;
 
 // Serialises commands, so that a thread waiting for a format event and another issuing
@@ -359,6 +364,26 @@ static int GetDevInfo(SimDevice* Dev, int FunctionCode, size_t InSize, void* Out
     if (FunctionCode == DT_FUNC_CODE_GET_DEV_INFO2)
         Info->m_DevSpecific.m_Pcie2.m_PcieMaxSlotPower = SIM_PCIE_MAX_SLOT_POWER;
 
+    if (Dev->IsDta2110)
+    {
+        Info->m_TypeNumber = SIM_DTA2110_TYPE_NUMBER;
+        Info->m_Serial = SIM_DTA2110_SERIAL;
+        Info->m_HardwareRevision = SIM_DTA2110_HARDWARE_REVISION;
+        Info->m_FirmwareVersion = SIM_DTA2110_FIRMWARE_VERSION;
+        Info->m_FirmwareVariant = SIM_DTA2110_FIRMWARE_VARIANT;
+        Info->m_DeviceId = SIM_DTA2110_DEVICE_ID;
+        Info->m_SubVendorId = SIM_DTA2110_SUBSYSTEM_VENDOR_ID;
+        Info->m_SubSystemId = SIM_DTA2110_SUBSYSTEM_ID;
+        Info->m_FwBuildDate.m_Year = SIM_DTA2110_FW_BUILD_YEAR;
+        Info->m_FwBuildDate.m_Month = SIM_DTA2110_FW_BUILD_MONTH;
+        Info->m_FwBuildDate.m_Day = SIM_DTA2110_FW_BUILD_DAY;
+        Info->m_FwBuildDate.m_Hour = SIM_DTA2110_FW_BUILD_HOUR;
+        Info->m_FwBuildDate.m_Minute = SIM_DTA2110_FW_BUILD_MINUTE;
+        Info->m_DevSpecific.m_Pcie2.m_BusNumber = SIM_DTA2110_BUS_NUMBER;
+        Info->m_DevSpecific.m_Pcie2.m_PcieNumLanes = SIM_DTA2110_PCIE_NUM_LANES;
+        Info->m_DevSpecific.m_Pcie2.m_PcieMaxLanes = SIM_DTA2110_PCIE_MAX_LANES;
+    }
+
     *OutSize = sizeof(DtIoctlGetDevInfoOutput);
     return OS_IOCTL_OK;
 }
@@ -394,7 +419,9 @@ static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* O
             return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
         memcpy(Answer->m_Str, Override->Str, sizeof(Answer->m_Str));
     }
-    else if (SimDta2178_GetString(Request.m_Name, Request.m_PortIndex, &Str))
+    else if (Dev->IsDta2110
+                 ? SimDta2110_GetString(Request.m_Name, Request.m_PortIndex, &Str)
+                 : SimDta2178_GetString(Request.m_Name, Request.m_PortIndex, &Str))
     {
         size_t Length = strlen(Str);
         memcpy(Answer->m_Str, Str,
@@ -445,8 +472,13 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
         Type = strncmp(Request.m_Name, "CAP_", 4) == 0 ? PROPERTY_VALUE_TYPE_BOOL
                                                        : PROPERTY_VALUE_TYPE_INT;
     }
-    else if (!SimDta2178_GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
+    else if (Dev->IsDta2110 ? !SimDta2110_GetProperty(Request.m_Name, Request.m_PortIndex,
+                                                      &Type, &Value)
+                            : !SimDta2178_GetProperty(Request.m_Name, Request.m_PortIndex,
+                                                      &Type, &Value))
+    {
         return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
+    }
 
     DtIoctlPropCmdGetValueOutput* Answer = (DtIoctlPropCmdGetValueOutput*)Out;
     memset(Answer, 0, sizeof(*Answer));
@@ -610,7 +642,7 @@ static int IoConfigCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Only reading the time is modelled. The clock is the host's UTC time, which is what a
-// card synchronised to the host would read.
+// card synchronised to the host would read, or the time a test set.
 //
 static int TodCmd(SimDevice* Dev, int Cmd, size_t InSize, void* Out, size_t* OutSize,
                   uint32_t* DrvStatus)
@@ -623,13 +655,12 @@ static int TodCmd(SimDevice* Dev, int Cmd, size_t InSize, void* Out, size_t* Out
     if (Outcome != OS_IOCTL_OK)
         return Outcome;
 
-    struct timespec Now;
-    timespec_get(&Now, TIME_UTC);
+    uint64_t NowNs = SimNw_Now();
 
     DtIoctlTodCmdGetTimeOutput* Answer = (DtIoctlTodCmdGetTimeOutput*)Out;
     memset(Answer, 0, sizeof(*Answer));
-    Answer->m_Time.m_Seconds = (UInt32)Now.tv_sec;
-    Answer->m_Time.m_Nanoseconds = (UInt32)Now.tv_nsec;
+    Answer->m_Time.m_Seconds = (UInt32)(NowNs / 1000000000u);
+    Answer->m_Time.m_Nanoseconds = (UInt32)(NowNs % 1000000000u);
     Answer->m_AdjustmentCount = 0;
 
     *OutSize = sizeof(DtIoctlTodCmdGetTimeOutput);
@@ -755,7 +786,8 @@ static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvSt
 {
     if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
         return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
-    void** Owner = &g_Sim.ExclOwners[PartIndex];
+    void** Owner =
+        Dev->IsDta2110 ? &g_Sim.ExclOwners2110[PartIndex] : &g_Sim.ExclOwners[PartIndex];
 
     switch (Cmd)
     {
@@ -775,7 +807,9 @@ static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvSt
         return OS_IOCTL_OK;
     case DT_EXCLUSIVE_ACCESS_CMD_CHECK:
     {
-        uint32_t Status = SimDtPcie_CheckAccess(Dev, PartIndex);
+        uint32_t Status = *Owner == NULL  ? DT_STATUS_EXCL_ACCESS_REQD
+                          : *Owner == Dev ? DT_STATUS_OK
+                                          : DT_STATUS_IN_USE;
 
         if (Status != DT_STATUS_OK)
             return SimFail(Dev, Status, DrvStatus);
@@ -794,7 +828,7 @@ static void* SimOpen(int Index)
 {
     EnsureState();
 
-    if (Index != g_Sim.Index)
+    if (Index != g_Sim.Index && (g_Sim.Dta2110Index < 0 || Index != g_Sim.Dta2110Index))
         return NULL;
 
     SimDevice* Dev = (SimDevice*)DtAlloc_Malloc(sizeof(SimDevice));
@@ -803,6 +837,7 @@ static void* SimOpen(int Index)
 
     Dev->LastError = 0;
     Dev->SleepMs = 0;
+    Dev->IsDta2110 = Index != g_Sim.Index;
     g_Sim.OpenHandles++;
     return Dev;
 }
@@ -814,10 +849,13 @@ static void SimClose(void* State)
     Lock();
     SimChSdiRx_CloseHandle(State);
     SimSdiTx_CloseHandle(State);
+    SimNw_CloseHandle(State);
     for (int i = 0; i < SIM_MAX_PARTS; i++)
     {
         if (g_Sim.ExclOwners[i] == State)
             g_Sim.ExclOwners[i] = NULL;
+        if (g_Sim.ExclOwners2110[i] == State)
+            g_Sim.ExclOwners2110[i] = NULL;
     }
     g_Sim.OpenHandles--;
     Unlock();
@@ -832,10 +870,13 @@ static void SimClose(void* State)
 //
 // The header's UUID picks the target first, as in DtCore_Ioctl: 0 is the device itself,
 // which must be addressed with port index -1; a UUID flagged as a building block or
-// driver function is looked up by its index, whatever the port index says; anything
-// else, and a UUID the card does not have, has no I/O stub. A target refuses a command it
-// does not handle with DT_STATUS_NOT_SUPPORTED, before its sizes are looked at, as the
-// driver does.
+// driver function is looked up by its flags and index, whatever the port index and the
+// bits above the flags say; anything else, and a UUID the card does not have, has no I/O
+// stub. A target refuses a command it does not handle with DT_STATUS_NOT_SUPPORTED,
+// before its sizes are looked at, as the driver does.
+//
+// The DTA-2110 has the network function and exclusive access on its parts; its core
+// answers what the DTA-2178's does but the I/O configuration, which it refuses.
 //
 static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
                     void* Out, size_t* OutSize, uint32_t* DrvStatus)
@@ -848,11 +889,12 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
     {
         int PortIndex;
         int Type;
-        if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 ||
-            !SimDta2178_FindFunction(Hdr->m_Uuid, &PortIndex, &Type, &Role))
-        {
+        int Part = Hdr->m_Uuid & (DT_UUID_FLAG_MASK | DT_UUID_INDEX_MASK);
+        bool Found = Dev->IsDta2110
+                         ? SimDta2110_FindFunction(Part, &PortIndex, &Type, &Role)
+                         : SimDta2178_FindFunction(Part, &PortIndex, &Type, &Role);
+        if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 || !Found)
             return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
-        }
 
         if (FunctionCode == DT_FUNC_CODE_EXCL_ACCESS_CMD)
         {
@@ -860,6 +902,16 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
                 return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
             return ExclAccessCmd(Dev, (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1, Cmd,
                                  DrvStatus);
+        }
+        if (Dev->IsDta2110)
+        {
+            if (Type != DT_FUNC_TYPE_NW || !SimNw_Takes(FunctionCode))
+                return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
+            uint32_t Status =
+                SimNw_Cmd(Dev, Hdr->m_Uuid, FunctionCode, Cmd, In, InSize, Out, OutSize);
+            if (Status != DT_STATUS_OK)
+                return SimFail(Dev, Status, DrvStatus);
+            return OS_IOCTL_OK;
         }
         if (SimSdiTx_Takes(FunctionCode))
             return SdiTxCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Role, Cmd,
@@ -890,6 +942,8 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
     case DT_FUNC_CODE_PROPERTY_CMD:
         return PropertyCmd(Dev, Cmd, In, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_IOCONFIG_CMD:
+        if (Dev->IsDta2110)
+            return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
         return IoConfigCmd(Dev, Cmd, In, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_TOD_CMD:
         return TodCmd(Dev, Cmd, InSize, Out, OutSize, DrvStatus);
@@ -997,6 +1051,7 @@ void SimDtPcie_Reset(void)
 
     SimChSdiRx_Reset();
     SimSdiTx_Reset();
+    SimNw_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;
@@ -1004,6 +1059,7 @@ void SimDtPcie_Reset(void)
     g_Sim.LastFunctionCode = -1;
     g_Sim.LastInputSize = 0;
     memset(g_Sim.ExclOwners, 0, sizeof(g_Sim.ExclOwners));
+    memset(g_Sim.ExclOwners2110, 0, sizeof(g_Sim.ExclOwners2110));
 
     for (j = 0; j < SIM_MAX_OVERRIDES; j++)
         g_Sim.Overrides[j].Active = false;
@@ -1014,6 +1070,7 @@ void SimDtPcie_Reset(void)
         SimDtPcie_SetSdiSignal(j, NULL);
 
     g_Sim.Index = SIM_DEVICE_INDEX;
+    g_Sim.Dta2110Index = -1;
     g_Sim.FirmwareStatus = DT_FWSTATUS_UPTODATE;
     g_Sim.DriverVersion.m_Major = SIM_DRIVER_MAJOR;
     g_Sim.DriverVersion.m_Minor = SIM_DRIVER_MINOR;
@@ -1136,6 +1193,14 @@ void SimDtPcie_SetIndex(int Index)
 {
     EnsureState();
     g_Sim.Index = Index;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetDta2110Index -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcie_SetDta2110Index(int Index)
+{
+    EnsureState();
+    g_Sim.Dta2110Index = Index;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenHandles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

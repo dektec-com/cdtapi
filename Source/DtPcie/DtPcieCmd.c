@@ -127,6 +127,21 @@ DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t In
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_IssuePlain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid,
+                                 int PortIndex, void* Out, size_t OutSize)
+{
+    if (Drv == NULL)
+        return DTAPI_E_INVALID_ARG;
+
+    DtIoctlInputDataHdr In;
+    DtPcieCmd_InitHeader(&In, Cmd, Uuid, PortIndex);
+    if (Out != NULL)
+        memset(Out, 0, OutSize);
+    return DtPcieCmd_Issue(Drv, Code, &In, sizeof(In), Out, OutSize);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitPropertyInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Fills a property request. The filter fields ask for the device behind Drv as it is:

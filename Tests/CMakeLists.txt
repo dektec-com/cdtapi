@@ -65,6 +65,7 @@ cdtapilite_add_test(Buf Unit/TestBuf.c)
 cdtapilite_add_test(Device Unit/TestDevice.c)
 cdtapilite_add_test(DmaBuffer Unit/TestDmaBuffer.c)
 cdtapilite_add_test(DtPcieStatus Unit/TestDtPcieStatus.c)
+cdtapilite_add_test(EthIp Unit/TestEthIp.c)
 cdtapilite_add_test(FrameProps Unit/TestFrameProps.c)
 cdtapilite_add_test(IoConfig Unit/TestIoConfig.c)
 cdtapilite_add_test(IoctlOutcome Unit/TestIoctlOutcome.c)
@@ -117,10 +118,33 @@ endif()
 # every structure, so a layout change fails this build.
 cdtapilite_add_test(Abi Abi/AbiSizes.c)
 
+# The bytes of the packet header in a pipe's buffer are checked against the bit fields of
+# the SDK's EthPrtcls.h, which lives outside this repository and is not vendored: its
+# layout is the compiler's, so it is compiled here and nowhere in the library. Where the
+# header is not found, the test is registered as disabled.
+set(CDTAPILITE_ETHPRTCLS_HEADER
+    "${CMAKE_SOURCE_DIR}/../../Common/Source/EthPrtcls.h"
+    CACHE FILEPATH "The SDK's EthPrtcls.h to check the packet header against")
+if(EXISTS "${CDTAPILITE_ETHPRTCLS_HEADER}")
+    get_filename_component(EthPrtclsDir "${CDTAPILITE_ETHPRTCLS_HEADER}" DIRECTORY)
+    cdtapilite_add_test(EthIpLayout Compat/TestEthIpLayout.c)
+    target_include_directories(test_EthIpLayout PRIVATE "${EthPrtclsDir}")
+
+    # The SDK's header has 64-bit and nameless bit fields, which the warnings would refuse.
+    if(MSVC)
+        target_compile_options(test_EthIpLayout PRIVATE /wd4201 /wd4214)
+    else()
+        target_compile_options(test_EthIpLayout PRIVATE -Wno-pedantic -Wno-conversion)
+    endif()
+else()
+    add_test(NAME EthIpLayout COMMAND "${CMAKE_COMMAND}" -E echo "skipped")
+    set_tests_properties(EthIpLayout PROPERTIES DISABLED TRUE)
+endif()
+
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
-                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel)
+                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimNw)
     cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")

@@ -381,6 +381,7 @@ DT_TEST(DriverVersionPerProxy)
         {true, DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}, {1, 4, 0, 110}},
         {true, DT_FUNC_TYPE_CHSDIRX, {2, 0, 2, 328}, {2, 0, 2, 327}},
         {true, DT_FUNC_TYPE_ASIRX, {1, 0, 4, 48}, {1, 0, 4, 47}},
+        {true, DT_FUNC_TYPE_NW, {2, 0, 0, 1}, {2, 0, 0, 0}},
         {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}, {1, 5, 4, 142}},
         {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}, {1, 0, 5, 49}},
         {false, DT_BLOCK_TYPE_CDMAC, {1, 0, 4, 48}, {1, 0, 4, 47}},

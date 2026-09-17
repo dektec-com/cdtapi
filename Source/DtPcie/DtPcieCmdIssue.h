@@ -45,3 +45,9 @@ void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortI
 // short answer cannot be detected here.
 DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                             void* Out, size_t OutSize);
+
+// Issues a command that is only its header, for the part with this UUID in the port with
+// this index, answered with Out of OutSize bytes, which are cleared first, or with
+// nothing when Out is NULL. Gives DTAPI_E_INVALID_ARG for a Drv of NULL.
+DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid,
+                                 int PortIndex, void* Out, size_t OutSize);

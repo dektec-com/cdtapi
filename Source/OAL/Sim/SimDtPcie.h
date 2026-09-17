@@ -61,8 +61,9 @@
 #define SIM_DRIVER_MICRO 4
 #define SIM_DRIVER_BUILD 398
 
-// The emulator presents exactly one device, at index zero unless a test moves it. A scan
-// returns just that one, which replaces the hardware rather than adding to it.
+// The emulator presents this device, at index zero unless a test moves it, and a DTA-2110
+// only while a test adds one. A scan returns just those, which replace the hardware
+// rather than adding to it.
 #define SIM_DEVICE_INDEX 0
 
 // Ports 1 to 8 are SDI/ASI inputs and outputs, port 9 the genlock reference input, and
@@ -144,6 +145,12 @@ void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads);
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.
 void SimDtPcie_SetIndex(int Index);
+
+// Adds a DTA-2110, SimDta2110.h, at driver index Index, a different one from the
+// DTA-2178's; -1, as after a reset, takes it away again. Its handles address its own
+// parts and properties. The property overrides and failures, the firmware status, the
+// driver version and the faults apply to both devices.
+void SimDtPcie_SetDta2110Index(int Index);
 
 // The number of handles to the emulated device that are open, so that a test can check
 // that a layer above closes what it opens.

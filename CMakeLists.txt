@@ -53,7 +53,9 @@ set(CDTAPILITE_SOURCES
     Source/Device/DtAvInput.c
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
+    Source/DtPcie/DtEthIp.c
     Source/DtPcie/DtPcieCmd.c
+    Source/DtPcie/DtPcieCmdPipe.c
     Source/DtPcie/DtPcieCmdSdiTx.c
     Source/DtPcie/DtPcieStatus.c
     Source/DtPcie/DtIoConfig.c
@@ -61,8 +63,10 @@ set(CDTAPILITE_SOURCES
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
     Source/OAL/Sim/SimChSdiRx.c
+    Source/OAL/Sim/SimDta2110.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
+    Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
     Source/Video/DtFrameProps.c
     Source/Video/DtSdiFrame.c

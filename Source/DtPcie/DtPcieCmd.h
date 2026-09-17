@@ -443,3 +443,102 @@ DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortI
 // Delays the start of each frame by OffsetNs nanoseconds.
 DtapiResult DtPcieCmd_SdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
                                                     int OffsetNs);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Network port -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The NW driver function of an IP port: its Ethernet MAC through the EMAC commands, its
+// pipes through the NW commands, both to the function's UUID and port index. A pipe is
+// opened by type and named by the UUID the opening gives, which the PIPE commands, and
+// closing it, go to with the same port index.
+//
+// Pipe types are DT_PIPE_ values, capabilities DT_PIPE_CAP_ flags, operational modes
+// DT_PIPE_OPMODE_ values, and status and error flags DT_PIPE_STATUS_ and DT_PIPE_ERROR_
+// flags.
+//
+
+// Reads the port's current MAC address into Mac, which holds 6 bytes.
+DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, int Uuid, int PortIndex, uint8_t* Mac);
+
+// Reads the PHY speed, a DT_PHY_SPEED_ value; DT_PHY_SPEED_NO_LINK while the link is
+// down.
+DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, int Uuid, int PortIndex, int* Speed);
+
+// Opens a pipe of Type, or of Fallback when every pipe of Type is in use; -1 for no
+// fallback. *PipeUuid receives the pipe's UUID, 0 after a failure.
+DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, int Uuid, int PortIndex, int Type,
+                                 int Fallback, int* PipeUuid);
+
+// Closes a pipe this handle opened.
+DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, int PipeUuid, int PortIndex);
+
+// What a pipe is, as DT_PIPE_CMD_GET_PROPERTIES reports.
+typedef struct DtPipeProps
+{
+    uint32_t Caps;    // DT_PIPE_CAP_ flags
+    int PrefetchSize; // In pages; a buffer is a multiple of this many pages
+    int DataWidth;    // Bits; a packet is padded to this and a full buffer keeps one free
+    int Type;         // A DT_PIPE_ value
+} DtPipeProps;
+
+DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                   DtPipeProps* Props);
+
+// A pipe's state, as DT_PIPE_CMD_GET_STATUS reports.
+typedef struct DtPipeStatus
+{
+    int OpStatus;         // A DT_BLOCK_OPSTATUS_ value
+    uint32_t StatusFlags; // DT_PIPE_STATUS_ flags
+    uint32_t ErrorFlags;  // DT_PIPE_ERROR_ flags
+} DtPipeStatus;
+
+DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                    DtPipeStatus* Status);
+
+// Gives the pipe Buf, which the process allocated and keeps until the pipe lets go of it.
+// The buffer travels as for DtPcieCmd_CdmacAllocateBuffer, and
+// DtPcieCmd_PipeSetSharedBufferAs chooses the convention the same way. An empty buffer
+// and one larger than an int can count give DTAPI_E_INVALID_ARG.
+DtapiResult DtPcieCmd_PipeSetSharedBuffer(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                          const OsDmaBuffer* Buf);
+DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                            const OsDmaBuffer* Buf, bool BufferIsOutput);
+
+// Lets go of the shared buffer.
+DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, int PipeUuid, int PortIndex);
+
+// Empties the pipe and clears an invalid time.
+DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, int PipeUuid, int PortIndex);
+
+// Sets a DT_PIPE_OPMODE_ value; any other gives DTAPI_E_INVALID_ARG without a command.
+DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, int PipeUuid, int PortIndex, int OpMode);
+
+// The offsets of a receive pipe: how far the process has read, and how far the pipe has
+// written.
+DtapiResult DtPcieCmd_PipeSetRxReadOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                          uint32_t Offset);
+DtapiResult DtPcieCmd_PipeGetRxWriteOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                           uint32_t* Offset);
+
+// The offsets of a transmit pipe: how far the process has written, and how far the pipe
+// has read.
+DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                           uint32_t Offset);
+DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                          uint32_t* Offset);
+
+// Which packets a receive pipe takes. The addresses are in network byte order, IPv4 in
+// their first 4 bytes; the ports are numbers. Flags are DT_PIPE_IPFLT_FLAG_ values: the
+// filter is on with DT_PIPE_IPFLT_FLAG_EN_FILT, and each address, port and VLAN counts
+// only with its own flag.
+typedef struct DtIpFilter
+{
+    uint8_t DstIp[16];
+    uint16_t DstPort[3];
+    uint8_t SrcIp[16];
+    uint16_t SrcPort[3];
+    int VlanId[2];
+    uint32_t Flags;
+} DtIpFilter;
+
+DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, int PipeUuid, int PortIndex,
+                                      const DtIpFilter* Filter);

@@ -189,6 +189,7 @@ static const struct
 } g_MinDriverVersions[] = {
     {true, DT_FUNC_TYPE_ASIRX, {1, 0, 4, 48}},
     {true, DT_FUNC_TYPE_CHSDIRX, {2, 0, 2, 328}},
+    {true, DT_FUNC_TYPE_NW, {2, 0, 0, 1}},
     {true, DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}},
     {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}},
     {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}},
