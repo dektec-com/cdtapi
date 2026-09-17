@@ -78,6 +78,8 @@ static struct
     bool MapAsLinux;
     int FailCmd;
     uint32_t FailStatus;
+    int SlowCmd;
+    int SlowMs;
 } g_Rx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureRx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -615,9 +617,11 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
     return DT_STATUS_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RunCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
+// One command of a channel; SimChSdiRxCmd without the slowing down.
+//
+static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
                        size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
 {
     SimRxChannel* Channel;
@@ -768,6 +772,18 @@ uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
+                       size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
+{
+    uint32_t Status = RunCmd(Handle, PortIndex, Cmd, In, InSize, Out, OutSize, SleepMs);
+
+    if (g_Rx.SlowCmd == Cmd)
+        *SleepMs += g_Rx.SlowMs;
+    return Status;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxMap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The Linux driver's segments: 256 MB per port, after one for the device.
@@ -833,6 +849,8 @@ void SimChSdiRxReset(void)
     g_Rx.MapAsLinux = false;
     g_Rx.FailCmd = -1;
     g_Rx.FailStatus = 0;
+    g_Rx.SlowCmd = -1;
+    g_Rx.SlowMs = 0;
     g_Rx.Initialised = true;
 }
 
@@ -904,6 +922,15 @@ void SimDtPcieFailRxCmd(int Cmd, uint32_t Status)
     EnsureRx();
     g_Rx.FailCmd = Cmd;
     g_Rx.FailStatus = Status;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSlowRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcieSlowRxCmd(int Cmd, int Ms)
+{
+    EnsureRx();
+    g_Rx.SlowCmd = Ms > 0 ? Cmd : -1;
+    g_Rx.SlowMs = Ms > 0 ? Ms : 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieGetRxState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

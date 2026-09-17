@@ -89,6 +89,20 @@ void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
 unsigned int DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
                                    const DtSdiFrameHeader* Header, int ExpectedId);
 
+// The bytes at the start of a coded line that hold its EAV and, in HD, its line number:
+// twelve symbols.
+#define DT_SDIFRAME_LINE_START_BYTES 15
+
+// Checks that a frame's lines start and end where they should, as HdSdiUtil::
+// CheckFrameSync does for a raw frame: in HD the first line has line number 1 and the
+// last the frame's number of lines, in both channels and after a valid EAV; in SD the
+// first line's EAV has the XYZ of line 1 and the last line's that of the last line, in
+// their upper eight bits. FirstLine and LastLine point to DT_SDIFRAME_LINE_START_BYTES
+// bytes at the start of the first and the last coded line. Returns DTAPI_OK or
+// DTAPI_E_OUT_OF_SYNC.
+unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
+                                  const uint8_t* FirstLine, const uint8_t* LastLine);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // What DTAPI's ReadFrame delivers in DTAPI_RXMODE_SDI_FULL: every line of the frame, EAV

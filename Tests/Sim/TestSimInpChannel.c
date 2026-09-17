@@ -651,6 +651,49 @@ DT_TEST(FullRingSetsOverflow)
     FINISH(Fix);
 }
 
+// A full ring cuts a frame short and the source goes on with later frames after it. That
+// frame is not delivered: the next frame read is a whole later one.
+DT_TEST(SkipsAFrameThatLostLines)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    int Flags = -1, Latched = -1, Size = BUFFER_SIZE;
+    uint32_t Number;
+    bool Whole = false;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(
+        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    SimDtPcieLimitRxRing(5 * DtSdiFrameCodedSize(&Layout) / 2);
+    if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
+                 DtFailures))
+        return;
+
+    // Frames 0 and 1 fit; frame 2 is cut short, and later frames lose everything.
+    SimDtPcieRunRxEvents(PORT - 1, 20);
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
+
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 2000));
+    for (Number = 2; Number < 40 && !Whole; Number++)
+    {
+        size_t Expected;
+        uint8_t* Frame = ExpectedFrame(DTAPI_VIDSTD_625I50, Number, 16, &Expected);
+
+        Whole = Frame != NULL && (size_t)Size == Expected &&
+                memcmp(Fix.Buffer, Frame, Expected) == 0;
+        if (Whole)
+            DT_ASSERT(Number > 2);
+        free(Frame);
+    }
+    DT_ASSERT(Whole);
+
+    DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
+    DT_ASSERT_EQ(Latched, DTAPI_RX_FIFO_OVF);
+    FINISH(Fix);
+}
+
 // The load counts the frames waiting before any has been read.
 DT_TEST(FifoLoadBeforeTheFirstRead)
 {
@@ -780,6 +823,72 @@ DT_TEST(DetachCancelsARead)
     OsSleepMs(60);
 
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 1));
+    OsThreadJoin(Thread);
+    DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
+    FINISH(Fix);
+}
+
+// A detach that gives up while a read waits leaves the channel attached and usable, and a
+// later detach, once the read can return, ends it.
+DT_TEST(DetachThatTimesOutLeavesTheChannelUsable)
+{
+    Fixture Fix;
+    Reader R;
+    OsThread* Thread;
+    int Size = BUFFER_SIZE;
+    int Tries;
+    unsigned int Result = DTAPI_E_TIMEOUT;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 400);
+
+    R.Channel = Fix.Channel;
+    R.Buffer = Fix.Buffer;
+    R.Result = DTAPI_OK;
+    Thread = OsThreadStart(ReadForever, &R);
+    DT_ASSERT(Thread != NULL);
+    OsSleepMs(60);
+
+    DT_ASSERT_EQ(DtInpChannel_Detach(Fix.Channel, 0), DTAPI_E_TIMEOUT);
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
+                 DTAPI_E_TIMEOUT);
+
+    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 0);
+    for (Tries = 0; Tries < 10 && Result == DTAPI_E_TIMEOUT; Tries++)
+        Result = DtInpChannel_Detach(Fix.Channel, 0);
+    DT_ASSERT_OK(Result);
+    OsThreadJoin(Thread);
+    DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
+    DT_ASSERT_EQ(DtInpChannel_Detach(Fix.Channel, 0), DTAPI_E_NOT_ATTACHED);
+    FINISH(Fix);
+}
+
+// Freeing a channel waits for a read on another thread, however long that read takes to
+// return.
+DT_TEST(FreeWaitsForARead)
+{
+    Fixture Fix;
+    Reader R;
+    OsThread* Thread;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 300);
+
+    R.Channel = Fix.Channel;
+    R.Buffer = Fix.Buffer;
+    R.Result = DTAPI_OK;
+    Thread = OsThreadStart(ReadForever, &R);
+    DT_ASSERT(Thread != NULL);
+    OsSleepMs(60);
+
+    DtInpChannel_Free(Fix.Channel);
+    Fix.Channel = NULL;
     OsThreadJoin(Thread);
     DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
     FINISH(Fix);
@@ -989,7 +1098,9 @@ DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(FourKPortReadsNothing),
              DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
              DT_RUN(ReadsAcrossTheEndOfTheRing), DT_RUN(RecoversFromFaults),
-             DT_RUN(FullRingSetsOverflow), DT_RUN(FifoLoadBeforeTheFirstRead),
-             DT_RUN(ReadFrameChecks), DT_RUN(ReadFrameTimesOut),
-             DT_RUN(DetachCancelsARead), DT_RUN(ReadAfterAModeChangeChecksTheBuffer),
-             DT_RUN(ReceiveModes), DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))
+             DT_RUN(FullRingSetsOverflow), DT_RUN(SkipsAFrameThatLostLines),
+             DT_RUN(FifoLoadBeforeTheFirstRead), DT_RUN(ReadFrameChecks),
+             DT_RUN(ReadFrameTimesOut), DT_RUN(DetachCancelsARead),
+             DT_RUN(DetachThatTimesOutLeavesTheChannelUsable), DT_RUN(FreeWaitsForARead),
+             DT_RUN(ReadAfterAModeChangeChecksTheBuffer), DT_RUN(ReceiveModes),
+             DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))

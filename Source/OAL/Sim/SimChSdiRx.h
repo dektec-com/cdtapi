@@ -122,6 +122,10 @@ void SimDtPcieMapRxRingAsLinux(bool AsLinux);
 // it. One command can be refused at a time.
 void SimDtPcieFailRxCmd(int Cmd, uint32_t Status);
 
+// Makes CHSDIRX command Cmd return Ms milliseconds later, after the emulator's lock is
+// released, as a busy system can delay a call; Ms 0 ends it. One command at a time.
+void SimDtPcieSlowRxCmd(int Cmd, int Ms);
+
 // What the channel of the port at PortIndex holds: whether it is configured, the ring's
 // size, the number of users, and the frame number its source starts next.
 typedef struct SimRxState

@@ -326,7 +326,9 @@ typedef struct DtInpChannelC DtInpChannel;
 // Allocates a detached input channel. Returns NULL when memory runs out.
 CDTAPILITE_API DtInpChannel* DtInpChannel_Alloc(void);
 
-// Detaches the channel, discarding what it has received, and frees it. NULL is allowed.
+// Detaches the channel, discarding what it has received, and frees it. A ReadFrame
+// waiting on another thread returns DTAPI_E_CANCELLED first; this waits for that as long
+// as it takes. NULL is allowed.
 CDTAPILITE_API void DtInpChannel_Free(DtInpChannel* InpChannel);
 
 // Frees *InpChannel as DtInpChannel_Free does and sets *InpChannel to NULL.
@@ -354,7 +356,8 @@ CDTAPILITE_API unsigned int DtInpChannel_ClearFlags(DtInpChannel* InpChannel,
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel holds is discarded first; both
 // modes stop receiving. A ReadFrame waiting on another thread returns DTAPI_E_CANCELLED;
-// DTAPI_E_TIMEOUT when it has not returned after 100 ms, and the channel stays attached.
+// DTAPI_E_TIMEOUT when it has not returned after 100 ms, and the channel then stays
+// attached and usable. DTAPI_E_NOT_ATTACHED when another thread detached it meanwhile.
 CDTAPILITE_API unsigned int DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode);
 
 // Detects the I/O standard of the signal on the port: the value and sub-value that

@@ -303,3 +303,63 @@ void DtSdiFrameConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
         break;
     }
 }
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame sync +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// HdSdiUtil::GetLineNumber: the line number of an HD line, from its chrominance and
+// luminance words; -1 without a valid EAV or when the two differ.
+//
+static int LineNumber(const uint8_t* Line)
+{
+    int Chroma, Luma;
+
+    if ((ReadSymbol(Line, 0) & 0x3FC) != 0x3FC ||
+        (ReadSymbol(Line, 1) & 0x3FC) != 0x3FC || ReadSymbol(Line, 2) != 0 ||
+        ReadSymbol(Line, 3) != 0 || ReadSymbol(Line, 4) != 0 || ReadSymbol(Line, 5) != 0)
+    {
+        return -1;
+    }
+
+    Chroma = (int)((ReadSymbol(Line, 8) >> 2) & 0x7F) |
+             (int)((ReadSymbol(Line, 10) >> 2) & 0xF) << 7;
+    Luma = (int)((ReadSymbol(Line, 9) >> 2) & 0x7F) |
+           (int)((ReadSymbol(Line, 11) >> 2) & 0xF) << 7;
+    return Chroma == Luma ? Chroma : -1;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MatchesSdEav -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// True when the four symbols of an SD line's EAV equal Eav in their upper eight bits.
+//
+static bool MatchesSdEav(const uint8_t* Line, const unsigned Eav[4])
+{
+    size_t i;
+
+    for (i = 0; i < 4; i++)
+    {
+        if ((ReadSymbol(Line, i) & 0x3FC) != Eav[i])
+            return false;
+    }
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCheckLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
+                                  const uint8_t* FirstLine, const uint8_t* LastLine)
+{
+    // The EAV of the first line, in the first field's vertical blanking, and of the last,
+    // in the second field's.
+    static const unsigned SdEavFirstLine[4] = {0x3FC, 0x000, 0x000, 0x2D8};
+    static const unsigned SdEavLastLine[4] = {0x3FC, 0x000, 0x000, 0x3C4};
+    bool InSync;
+
+    if (Layout->NumLines <= 625)
+        InSync = MatchesSdEav(FirstLine, SdEavFirstLine) &&
+                 MatchesSdEav(LastLine, SdEavLastLine);
+    else
+        InSync = LineNumber(FirstLine) == 1 && LineNumber(LastLine) == Layout->NumLines;
+    return InSync ? DTAPI_OK : DTAPI_E_OUT_OF_SYNC;
+}

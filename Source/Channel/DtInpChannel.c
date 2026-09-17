@@ -75,8 +75,8 @@ struct DtInpChannelC
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;
-    bool Detaching; // A detach waits for readers to leave
-    int Readers;    // ReadFrame calls between their start and their return
+    int Detachers; // Detaches waiting for readers to leave
+    int Readers;   // ReadFrame calls between their start and their return
 
     DtDevice Device; // The channel's own handle to the device
     int Port;        // From 1
@@ -412,7 +412,10 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
     }
 
     // Out of sync, a header is searched for; a header that is not the one expected puts
-    // the channel out of sync, and the search starts again from that header.
+    // the channel out of sync, and the search starts again from that header. A frame
+    // whose first or last line is not where it should be lost lines when the ring was
+    // full, and holds the start of a later frame: it is not delivered, and the search
+    // starts again after its header.
     for (;;)
     {
         if (!Chan->InSync)
@@ -427,7 +430,23 @@ static unsigned int TakeFrame(DtInpChannel* Chan, uint8_t* Buffer, bool* Taken)
         Peek(Chan, 0, Bytes, sizeof(Bytes));
         DtSdiFrameDecodeHeader(Bytes, &Header);
         if (DtSdiFrameCheckHeader(Layout, &Header, Chan->ExpectedId) == DTAPI_OK)
-            break;
+        {
+            uint8_t First[DT_SDIFRAME_LINE_START_BYTES];
+            uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
+
+            Peek(Chan, (size_t)Layout->HeaderBytes, First, sizeof(First));
+            Peek(Chan,
+                 (size_t)Layout->HeaderBytes +
+                     (size_t)(Layout->NumLines - 1) * (size_t)Layout->Stride,
+                 Last, sizeof(Last));
+            if (DtSdiFrameCheckLines(Layout, First, Last) == DTAPI_OK)
+                break;
+
+            Result = Advance(Chan, (size_t)Layout->Alignment);
+            if (Result != DTAPI_OK)
+                return Result;
+            Available = Load(Chan, WriteOffset);
+        }
         Chan->InSync = false;
     }
 
@@ -526,6 +545,55 @@ static unsigned int LockAttached(DtInpChannel* Chan)
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Asks reads on other threads to return, waits for them up to Tries pauses of 10 ms, or
+// without a limit for -1, then stops and releases the receive channel and the device.
+//
+// A detach that gives up with DTAPI_E_TIMEOUT withdraws its request, so the channel stays
+// attached and usable. The count of waiting detaches keeps a detach that gives up from
+// withdrawing the request of another that still waits, and a detach that finds the
+// channel detached by another while it waited returns DTAPI_E_NOT_ATTACHED.
+//
+static unsigned int Detach(DtInpChannel* Chan, int DetachMode, int Tries)
+{
+    int Try;
+
+    if (LockAttached(Chan) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    Chan->Detachers++;
+    for (Try = 0; Chan->Attached && Chan->Readers > 0; Try++)
+    {
+        if (Try == Tries)
+        {
+            Chan->Detachers--;
+            OsMutexUnlock(Chan->Lock);
+            return DTAPI_E_TIMEOUT;
+        }
+        OsMutexUnlock(Chan->Lock);
+        OsSleepMs(DT_DETACH_PAUSE_MS);
+        OsMutexLock(Chan->Lock);
+    }
+    Chan->Detachers--;
+
+    if (!Chan->Attached)
+    {
+        OsMutexUnlock(Chan->Lock);
+        return DTAPI_E_NOT_ATTACHED;
+    }
+
+    if ((DetachMode & DT_INSTANT_DETACH) != 0)
+        ResetFifo(Chan);
+    SetRxControl(Chan, DTAPI_RXCTRL_IDLE);
+
+    ReleaseChannel(Chan);
+    DtDeviceRelease(&Chan->Device);
+    Chan->Attached = false;
+    OsMutexUnlock(Chan->Lock);
+    return DTAPI_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -549,14 +617,16 @@ DtInpChannel* DtInpChannel_Alloc(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// As DTAPI's destructor: an instant detach whose result is ignored.
+// As DTAPI's destructor: an instant detach whose result is ignored. Unlike a detach, it
+// waits for reads on other threads to return for as long as they take, so that none of
+// them uses the channel after it is gone.
 //
 void DtInpChannel_Free(DtInpChannel* InpChannel)
 {
     if (InpChannel == NULL)
         return;
 
-    DtInpChannel_Detach(InpChannel, DT_INSTANT_DETACH);
+    Detach(InpChannel, DT_INSTANT_DETACH, -1);
     OsMutexDestroy(InpChannel->Lock);
     DtFree(InpChannel);
 }
@@ -720,7 +790,6 @@ unsigned int DtInpChannel_AttachToPort(DtInpChannel* InpChannel, DtDevice* Devic
     {
         Result = Attach(InpChannel, Device, Port);
         InpChannel->Attached = Result < DTAPI_E;
-        InpChannel->Detaching = false;
     }
     OsMutexUnlock(InpChannel->Lock);
     return Result;
@@ -733,36 +802,9 @@ unsigned int DtInpChannel_AttachToPort(DtInpChannel* InpChannel, DtDevice* Devic
 //
 unsigned int DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode)
 {
-    int Try;
-
     if (InpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
-    if (LockAttached(InpChannel) != DTAPI_OK)
-        return DTAPI_E_NOT_ATTACHED;
-
-    InpChannel->Detaching = true;
-    for (Try = 0; InpChannel->Readers > 0; Try++)
-    {
-        if (Try == DT_DETACH_TRIES)
-        {
-            OsMutexUnlock(InpChannel->Lock);
-            return DTAPI_E_TIMEOUT;
-        }
-        OsMutexUnlock(InpChannel->Lock);
-        OsSleepMs(DT_DETACH_PAUSE_MS);
-        OsMutexLock(InpChannel->Lock);
-    }
-
-    if ((DetachMode & DT_INSTANT_DETACH) != 0)
-        ResetFifo(InpChannel);
-    SetRxControl(InpChannel, DTAPI_RXCTRL_IDLE);
-
-    ReleaseChannel(InpChannel);
-    DtDeviceRelease(&InpChannel->Device);
-    InpChannel->Attached = false;
-    InpChannel->Detaching = false;
-    OsMutexUnlock(InpChannel->Lock);
-    return DTAPI_OK;
+    return Detach(InpChannel, DetachMode, DT_DETACH_TRIES);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -1083,7 +1125,7 @@ unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel, char* FrameBuffer,
         return DTAPI_E_INVALID_BUF;
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
-    if (InpChannel->Detaching)
+    if (InpChannel->Detachers > 0)
     {
         OsMutexUnlock(InpChannel->Lock);
         return DTAPI_E_NOT_ATTACHED;
@@ -1136,13 +1178,13 @@ unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel, char* FrameBuffer,
             Result = DtDrvChSdiRxWaitForFmtEvent(Drv, Uuid, PortIndex, Wait, &Event);
             OsMutexLock(InpChannel->Lock);
 
-            if (Result == DTAPI_OK && !Event.InSync && !InpChannel->Detaching)
+            if (Result == DTAPI_OK && !Event.InSync && InpChannel->Detachers == 0)
                 Result = DiscardAll(InpChannel);
             else if (Result == DTAPI_E_TIMEOUT)
                 Result = DTAPI_OK;
         }
 
-        if (InpChannel->Detaching)
+        if (InpChannel->Detachers > 0)
             Result = DTAPI_E_CANCELLED;
     }
     InpChannel->Readers--;

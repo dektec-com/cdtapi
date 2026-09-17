@@ -405,8 +405,86 @@ DT_TEST(ConvertsNothingForOtherSizes)
     DT_ASSERT_MEM(Raw, Zero, sizeof(Raw));
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame sync +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Packs twelve 10-bit symbols into the start of a coded line.
+static void PackLineStart(const unsigned Symbols[12], uint8_t* Bytes)
+{
+    size_t i, b;
+
+    memset(Bytes, 0, DT_SDIFRAME_LINE_START_BYTES);
+    for (i = 0; i < 12; i++)
+        for (b = 0; b < 10; b++)
+            if ((Symbols[i] >> b & 1) != 0)
+                SetBit(Bytes, i * 10 + b);
+}
+
+// The start of an HD line numbered Chroma and Luma in its two channels.
+static void HdLineStart(int Chroma, int Luma, uint8_t* Bytes)
+{
+    unsigned Symbols[12] = {0x3FF, 0x3FF, 0, 0, 0, 0, 0x274, 0x274, 0, 0, 0, 0};
+
+    Symbols[8] = (unsigned)((Chroma & 0x7F) << 2) | 0x200;
+    Symbols[9] = (unsigned)((Luma & 0x7F) << 2) | 0x200;
+    Symbols[10] = (unsigned)(((Chroma >> 7) & 0xF) << 2) | 0x200;
+    Symbols[11] = (unsigned)(((Luma >> 7) & 0xF) << 2) | 0x200;
+    PackLineStart(Symbols, Bytes);
+}
+
+// The start of an SD line with this XYZ word in its EAV.
+static void SdLineStart(unsigned Xyz, uint8_t* Bytes)
+{
+    unsigned Symbols[12] = {0x3FF, 0,     0,     0,     0x200, 0x200,
+                            0x200, 0x200, 0x200, 0x200, 0x200, 0x200};
+
+    Symbols[3] = Xyz;
+    PackLineStart(Symbols, Bytes);
+}
+
+// HD: the first line is numbered 1 and the last the number of lines, in both channels,
+// after a valid EAV; SD: the EAVs of the first and last line, in their upper eight bits.
+DT_TEST(ChecksFirstAndLastLine)
+{
+    DtSdiFrameLayout Layout;
+    uint8_t First[DT_SDIFRAME_LINE_START_BYTES];
+    uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
+    HdLineStart(1, 1, First);
+    HdLineStart(1125, 1125, Last);
+    DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, Last, First), DTAPI_E_OUT_OF_SYNC);
+    HdLineStart(1124, 1124, Last);
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, First, Last), DTAPI_E_OUT_OF_SYNC);
+    HdLineStart(1125, 1, Last);
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, First, Last), DTAPI_E_OUT_OF_SYNC);
+    HdLineStart(1125, 1125, Last);
+    Last[2] |= 0x10; // Bit 0 of the third EAV word
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, First, Last), DTAPI_E_OUT_OF_SYNC);
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P50, 32));
+    HdLineStart(750, 750, Last);
+    DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
+    SdLineStart(0x2D8, First);
+    SdLineStart(0x3C4, Last);
+    DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
+    SdLineStart(0x3C7, Last);
+    DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
+    SdLineStart(0x2D8, Last);
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, First, Last), DTAPI_E_OUT_OF_SYNC);
+    SdLineStart(0x3C4, First);
+    SdLineStart(0x3C4, Last);
+    DT_ASSERT_EQ(DtSdiFrameCheckLines(&Layout, First, Last), DTAPI_E_OUT_OF_SYNC);
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_525I59_94, 128));
+    SdLineStart(0x2D8, First);
+    DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
+}
+
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderBytes),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
              DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
-             DT_RUN(ConvertsNothingForOtherSizes))
+             DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine))
