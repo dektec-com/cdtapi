@@ -6,7 +6,10 @@
 //
 // Attaches an input channel to the port, receives --count frames in the receive mode's
 // symbol size, and prints one line per frame: its number, its size and a 64-bit FNV-1a
-// hash of its bytes. With --out each frame is also written to <out><number>.raw.
+// hash of its bytes. With --out each frame is also written to <out><number>.raw. With
+// --detect the channel first detects the I/O standard of the input:
+//
+//     9217800001:1  io standard HDSDI 1080I50
 //
 //     9217800001:1  frame 0  6187504 bytes  hash 3C0F2E6D89A1B437
 //     9217800001:1  no frame within 1000 ms
@@ -43,6 +46,7 @@ static const ExampleOption g_Options[] = {
     {"--rxmode", true, "8B, 10B or 16B symbols; 10B without it"},
     {"--timeout", true, "Milliseconds to wait for each frame; 1000 without it"},
     {"--out", true, "Write each frame to <out><number>.raw"},
+    {"--detect", false, "First detect the input's I/O standard through the channel"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -204,6 +208,23 @@ int main(int Argc, char** Argv)
         printf("%s  ", Port.DeviceName);
         Exit = ExampleFailed("DtInpChannel_AttachToPort", Result);
         goto Cleanup;
+    }
+
+    if (ExampleHasFlag(Argc, Argv, "--detect"))
+    {
+        int Value = -1, SubValue = -1;
+        const char* Name;
+
+        Result = DtInpChannel_DetectIoStd(Channel, &Value, &SubValue);
+        printf("%s  ", Port.DeviceName);
+        if (Result != DTAPI_OK)
+            ExampleFailed("DtInpChannel_DetectIoStd", Result);
+        else
+        {
+            Name = ExampleVidStdName(SubValue);
+            printf("io standard %s %s\n", ExampleIoStdName(Value),
+                   Name != NULL ? Name : "?");
+        }
     }
 
     Exit = Receive(Channel, &Port, RxMode, Count, TimeoutMs,

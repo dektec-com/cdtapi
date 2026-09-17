@@ -155,3 +155,5 @@ cdtapilite_example_test(ReceiveFramesOnOutput DtReceiveFrames
     "^9217800001:2  DtInpChannel_AttachToPort: DTAPI_E_NO_DT_INPUT" --port 2)
 cdtapilite_example_test(ReceiveFramesBadMode DtReceiveFrames
     "^Unknown receive mode: 12B" --rxmode 12B)
+cdtapilite_example_test(ReceiveFramesDetect DtReceiveFrames
+    "^9217800001:1  DtInpChannel_DetectIoStd: DTAPI_E_INVALID_VIDSTD" --detect --timeout 20)
