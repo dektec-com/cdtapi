@@ -114,6 +114,114 @@ DT_TEST(PartsOfTheReceiverFunction)
     FINISH(Drv, Live);
 }
 
+// The transmitter and the DMA of every SDI port have the parts a DTA-2178 listed for its
+// port 5, in that order.
+DT_TEST(PartsOfTheTransmitFunctions)
+{
+    static const struct
+    {
+        const char* Af;
+        const char* Name;
+        const char* Role;
+        bool IsDf;
+        int Type;
+    } Expected[] = {
+        {"AF_ASISDITX", "BC_ASITXG#1", "", false, DT_BLOCK_TYPE_ASITXG},
+        {"AF_ASISDITX", "BC_SDITXF#1", "", false, DT_BLOCK_TYPE_SDITXF},
+        {"AF_ASISDITX", "BC_SWITCH#6", "SDI_DEMUX_IN", false, DT_BLOCK_TYPE_SWITCH},
+        {"AF_ASISDITX", "BC_SDIDMX12G#1", "", false, DT_BLOCK_TYPE_SDIDMX12G},
+        {"AF_ASISDITX", "BC_SWITCH#7", "SDI_DEMUX_OUT", false, DT_BLOCK_TYPE_SWITCH},
+        {"AF_ASISDITX", "BC_SDITXP#1", "", false, DT_BLOCK_TYPE_SDITXP},
+        {"AF_ASISDITX", "DF_SDITXPHY#1", "", true, DT_FUNC_TYPE_SDITXPHY},
+        {"AF_DMA", "BC_CDMAC#1", "", false, DT_BLOCK_TYPE_CDMAC},
+        {"AF_DMA", "BC_BURSTFIFO#1", "", false, DT_BLOCK_TYPE_BURSTFIFO},
+        {"AF_DMA", "BC_CONSTSOURCE#1", "", false, DT_BLOCK_TYPE_CONSTSOURCE},
+        {"AF_DMA", "BC_CONSTSINK#1", "", false, DT_BLOCK_TYPE_CONSTSINK},
+    };
+    const size_t Count = sizeof(Expected) / sizeof(Expected[0]);
+    DtFuncInstance None;
+    long Live;
+    int Port;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+
+    if (Drv == NULL)
+        return;
+
+    for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
+    {
+        DtFuncInstance Tx, Dma;
+        size_t i;
+
+        DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_ASISDITX", "", &Tx));
+        DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_DMA", "", &Dma));
+        DT_ASSERT_EQ(DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts), Count);
+        for (i = 0; i < Count && i < DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts); i++)
+        {
+            bool InTx = strcmp(Expected[i].Af, "AF_ASISDITX") == 0;
+            size_t At = InTx ? i : i - DtVecCount(&Tx.Parts);
+            const DtFuncPart* Part = PartAt(InTx ? &Tx : &Dma, At);
+
+            DT_ASSERT_STR(Part->Name, Expected[i].Name);
+            DT_ASSERT_STR(Part->Role, Expected[i].Role);
+            DT_ASSERT_EQ(Part->IsDf, Expected[i].IsDf);
+            DT_ASSERT_EQ(Part->Type, Expected[i].Type);
+            DT_ASSERT_EQ(Part->Uuid & DT_UUID_FLAG_MASK,
+                         Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
+        }
+        DtFuncRelease(&Tx);
+        DtFuncRelease(&Dma);
+    }
+    DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_DMA", "", &None),
+                 DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDITX", "", &None),
+                 DTAPI_E_NOT_FOUND);
+
+    FINISH(Drv, Live);
+}
+
+// No two parts of the card share a UUID, across API functions and ports.
+DT_TEST(UuidsAreUnique)
+{
+    static const char* const Functions[] = {"AF_ASISDIRX", "AF_ASISDITX", "AF_DMA"};
+    int Uuids[SIM_SDI_PORT_COUNT * 32];
+    int Count = 0;
+    long Live;
+    int Port, j;
+    size_t f, i;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+
+    if (Drv == NULL)
+        return;
+
+    for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
+    {
+        for (f = 0; f < sizeof(Functions) / sizeof(Functions[0]); f++)
+        {
+            DtFuncInstance Func;
+
+            DT_ASSERT_OK(DtFuncFind(Drv, Port, Functions[f], "", &Func));
+            for (i = 0; i < DtVecCount(&Func.Parts) &&
+                        Count < (int)(sizeof(Uuids) / sizeof(Uuids[0]));
+                 i++)
+            {
+                int Uuid = PartAt(&Func, i)->Uuid;
+
+                for (j = 0; j < Count; j++)
+                {
+                    if (Uuids[j] == Uuid)
+                        DT_FAIL("%s of port %d repeats UUID 0x%x", PartAt(&Func, i)->Name,
+                                Port, Uuid);
+                }
+                Uuids[Count++] = Uuid;
+            }
+            DtFuncRelease(&Func);
+        }
+    }
+    DT_ASSERT_EQ(Count, SIM_SDI_PORT_COUNT * 19);
+
+    FINISH(Drv, Live);
+}
+
 // An API function, instance role or port without it is not found, and leaves the instance
 // empty; a name too long for a property is refused.
 DT_TEST(MissingFunctionIsNotFound)
@@ -126,7 +234,7 @@ DT_TEST(MissingFunctionIsNotFound)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDITX", "", &Func), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIMON", "", &Func), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
     DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIRX", "OTHER", &Func), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDIRX", "", &Func),
@@ -304,6 +412,7 @@ DT_TEST(DriverVersionPerProxy)
 }
 
 DT_TEST_MAIN("SimFunc", DT_RUN(PartsOfTheReceiverFunction),
+             DT_RUN(PartsOfTheTransmitFunctions), DT_RUN(UuidsAreUnique),
              DT_RUN(MissingFunctionIsNotFound), DT_RUN(InstanceIsChosenByRole),
              DT_RUN(ReadFailures), DT_RUN(OutOfMemory),
              DT_RUN(PartsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerProxy))
