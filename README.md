@@ -41,9 +41,9 @@ Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It re
 The build and every test suite are verified on Windows, with Visual Studio 2026 and the
 `windows-*` presets, and on Linux (Ubuntu, gcc 15) with the `linux-*` presets. The
 Linux driver backend has also talked to a DTA-2178: it reads the card's identity,
-properties, I/O configuration and SDI receiver status, and attaches its receive channels.
-Without a signal source the examples give the same output as the real CDTAPI there;
-receiving frames on a card is still to be confirmed.
+properties, I/O configuration and SDI receiver status, and receives and transmits SD, HD
+and 3G frames, which arrive through a loopback cable bit for bit, as the real CDTAPI's
+do.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and
@@ -62,7 +62,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
-| `Examples/` | Example programs that list devices, configure a port, detect a video standard and receive frames |
+| `Examples/` | Example programs that list devices, configure a port, detect a video standard, and receive and transmit frames |
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 

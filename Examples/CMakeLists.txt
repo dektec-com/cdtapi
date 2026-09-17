@@ -4,7 +4,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames)
+set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
+    DtTransmitFrames)
 
 # Programs that use what CDtapiLite adds to CDTAPI.h, and so build against CDtapiLite.h
 # only.
@@ -157,3 +158,24 @@ cdtapilite_example_test(ReceiveFramesBadMode DtReceiveFrames
     "^Unknown receive mode: 12B" --rxmode 12B)
 cdtapilite_example_test(ReceiveFramesDetect DtReceiveFrames
     "^9217800001:1  DtInpChannel_DetectIoStd: DTAPI_E_INVALID_VIDSTD" --detect --timeout 20)
+
+cdtapilite_example_test(TransmitFramesPattern DtTransmitFrames
+    "^9217800001:2  frame 0  7425000 bytes  hash [0-9A-F]+\n9217800001:2  frame 1  7425000 bytes  hash [0-9A-F]+\n9217800001:2  frame 2 "
+    --port 2 --vidstd 1080I50 --count 3)
+cdtapilite_example_test(TransmitFramesSd16Bits DtTransmitFrames
+    "^9217800001:2  frame 0  1801800 bytes  hash [0-9A-F]+\n9217800001:2  latched"
+    --port 2 --vidstd 525I59_94 --txmode 16B --flags)
+cdtapilite_example_test(TransmitFramesOnInput DtTransmitFrames
+    "^9217800001:1  DtOutpChannel_AttachToPort: DTAPI_E_NO_DT_OUTPUT"
+    --port 1 --vidstd 1080I50)
+cdtapilite_example_test(TransmitFrames8Bits DtTransmitFrames
+    "^9217800001:2  frame 0  5940000 bytes  hash [0-9A-F]+\n9217800001:2  DtOutpChannel_SetTxControl: DTAPI_E_CONFIG_RAW_SDI"
+    --port 2 --vidstd 1080I50 --txmode 8B)
+cdtapilite_example_test(TransmitFramesBadMode DtTransmitFrames
+    "^Unknown transmit mode: 12B" --txmode 12B)
+cdtapilite_example_test(TransmitFramesNothingToSend DtTransmitFrames
+    "^Give --in, or --vidstd for the test pattern")
+cdtapilite_example_test(TransmitFramesMissingFile DtTransmitFrames
+    "^Cannot read no-such-frame0.raw" --in no-such-frame)
+cdtapilite_example_test(TransmitFramesNoPattern DtTransmitFrames
+    "^No test pattern for video standard 2160P50" --vidstd 2160P50)
