@@ -5,7 +5,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Converts the rows of a 3840x2160 frame over and over for about a second per conversion
-// and prints megabytes of input per second. Not a test: it asserts nothing about time.
+// and prints, for the portable and the SSSE3 conversions, the milliseconds a frame takes,
+// where lower is faster, the megabytes of input converted per second, where higher is
+// faster, and how many times faster SSSE3 is. Not a test: it asserts nothing about time.
 //
 // Usage: BenchAvPixConv [seconds per conversion]
 
@@ -67,9 +69,16 @@ static void ConvertFrame(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src
     }
 }
 
-// Megabytes of input per second of one conversion.
-static double Measure(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
-                      uint8_t* Dst, int Seconds)
+// The speed of one conversion.
+typedef struct Speed
+{
+    double MsPerFrame;  // Lower is faster
+    double MbPerSecond; // Megabytes of input; higher is faster
+} Speed;
+
+// Measures one conversion for Seconds.
+static Speed Measure(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
+                     uint8_t* Dst, int Seconds)
 {
     size_t InputBytes =
         (size_t)HEIGHT * PGROUPS_PER_ROW * (Kind == UYVY8_TO_YUV422P ? 4u : 5u);
@@ -82,7 +91,11 @@ static double Measure(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
         Frames++;
         Elapsed = OsTime_MonotonicMs() - Start;
     }
-    return (double)Frames * (double)InputBytes / 1e6 / ((double)Elapsed / 1000.0);
+    Speed Result;
+    Result.MsPerFrame = (double)Elapsed / Frames;
+    Result.MbPerSecond =
+        (double)Frames * (double)InputBytes / 1e6 / ((double)Elapsed / 1000.0);
+    return Result;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -106,15 +119,24 @@ int main(int Argc, char** Argv)
     }
 
     const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
-    printf("%-24s %14s %14s\n", "MB/s of input, 2160p", "portable C",
-           Ssse3 != NULL ? "SSSE3" : "no SSSE3");
+    printf("One 3840x2160 frame, converted row by row%s\n\n",
+           Ssse3 != NULL ? "" : "; this processor or build has no SSSE3");
+    printf("%-26s %21s %21s %9s\n", "", "ms per frame", "MB of input per s", "SSSE3");
+    printf("%-26s %21s %21s %9s\n", "", "(lower is faster)", "(higher is faster)",
+           "speed-up");
+    printf("%-26s %10s %10s %10s %10s\n", "Conversion", "C", "SSSE3", "C", "SSSE3");
     for (int Kind = 0; Kind < NUM_WHICH; Kind++)
     {
-        double C = Measure(DtAvPixConv_C(), (Which)Kind, Src, Dst, Seconds);
-        printf("%-24s %14.0f", Names[Kind], C);
-        if (Ssse3 != NULL)
-            printf(" %14.0f", Measure(Ssse3, (Which)Kind, Src, Dst, Seconds));
-        printf("\n");
+        Speed C = Measure(DtAvPixConv_C(), (Which)Kind, Src, Dst, Seconds);
+        printf("%-26s %10.2f", Names[Kind], C.MsPerFrame);
+        if (Ssse3 == NULL)
+        {
+            printf(" %10s %10.0f %10s\n", "-", C.MbPerSecond, "-");
+            continue;
+        }
+        Speed S = Measure(Ssse3, (Which)Kind, Src, Dst, Seconds);
+        printf(" %10.2f %10.0f %10.0f %8.1fx\n", S.MsPerFrame, C.MbPerSecond,
+               S.MbPerSecond, S.MbPerSecond / C.MbPerSecond);
     }
     free(Src);
     free(Dst);
