@@ -756,14 +756,16 @@ DT_TEST(ModesOfTheDmaController)
     FINISH(Fix);
 }
 
-// The blocks refuse what changes them without exclusive access, the encoder excepted,
-// and refuse all but their properties on a port that is no output.
+// The blocks refuse what changes them without exclusive access, the encoder excepted.
+// On a port that is no output the transmitter's blocks refuse their commands, the
+// stream alignment included, while the DMA controller's go on and its buffer stays.
 DT_TEST(BlocksCheckAccessAndPort)
 {
     Fixture Fix;
     Parts P;
     DtCdmacProps Props;
     DtIoConfig Config;
+    OsDmaBuffer Buf;
     int Alignment;
 
     if (!Open(&Fix, DtFailures))
@@ -776,6 +778,8 @@ DT_TEST(BlocksCheckAccessAndPort)
     DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_OK(DtDrvCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT(OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT_OK(DtDrvCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
 
     memset(&Config, 0, sizeof(Config));
     Config.Port = PORT + 1;
@@ -785,12 +789,21 @@ DT_TEST(BlocksCheckAccessAndPort)
     Config.ParXtra[0] = Config.ParXtra[1] = -1;
     DT_ASSERT_OK(DtDrvSetIoConfig(Fix.Drv, &Config));
 
-    DT_ASSERT_EQ(DtDrvCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE),
-                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_OK(DtDrvCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
     DT_ASSERT_EQ(DtDrvSdiTxPSetOpMode(Fix.Drv, P.Txp, PORT, DT_BLOCK_OPMODE_IDLE),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT_OK(DtDrvCdmacGetProps(Fix.Drv, P.Cdmac, PORT, &Props));
-    DT_ASSERT_OK(DtDrvSdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Alignment));
+    DT_ASSERT_EQ(DtDrvSdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Alignment),
+                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtDrvCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+                 DTAPI_E_IN_USE);
+
+    Config.Value = Config.SubValue = DTAPI_IOCONFIG_OUTPUT;
+    DT_ASSERT_OK(DtDrvSetIoConfig(Fix.Drv, &Config));
+    DT_ASSERT_EQ(DtDrvCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_OK(DtDrvCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+    OsDmaBufferFree(&Buf);
 
     FINISH(Fix);
 }

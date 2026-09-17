@@ -150,17 +150,12 @@ static void StopPipeline(SimTxPort* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Disable -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The port is no SDI output: every block is idle and the buffer is let go.
+// The port is no SDI output: the blocks of the transmitter are idle. Those of the DMA
+// stay as they are.
 //
 static void Disable(SimTxPort* Port)
 {
-    StopPipeline(Port);
-    Port->Registered = false;
-    Port->Buffer = NULL;
-    Port->BufferSize = 0;
-    Port->BufferUser = NULL;
-    Port->WriteOffset = 0;
-    Port->BurstMode = DT_BLOCK_OPMODE_IDLE;
+    ClearFrame(Port);
     Port->TxfMode = DT_BLOCK_OPMODE_IDLE;
     Port->SwitchInMode = DT_BLOCK_OPMODE_IDLE;
     Port->SwitchOutMode = DT_BLOCK_OPMODE_IDLE;
@@ -522,7 +517,7 @@ static const SimTxCmdProps g_Cmds[] = {
      sizeof(DtIoctlBurstFifoCmdSetOpModeInput), 0, true, true},
 
     {DT_FUNC_CODE_SDITXF_CMD, DT_SDITXF_CMD_GET_STREAM_ALIGNMENT, HDR,
-     sizeof(DtIoctlSdiTxFCmdGetStreamAlignmentOutput), false, false},
+     sizeof(DtIoctlSdiTxFCmdGetStreamAlignmentOutput), false, true},
     {DT_FUNC_CODE_SDITXF_CMD, DT_SDITXF_CMD_SET_FMT_EVENT_SETTING,
      sizeof(DtIoctlSdiTxFCmdSetFmtEventSettingInput), 0, true, true},
     {DT_FUNC_CODE_SDITXF_CMD, DT_SDITXF_CMD_SET_OPERATIONAL_MODE,
@@ -1030,7 +1025,8 @@ uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
     if (g_Tx.FailFunctionCode == FunctionCode && g_Tx.FailCmd == Cmd &&
         g_Tx.FailStatus != 0)
         return g_Tx.FailStatus;
-    if (!Enabled)
+    if (!Enabled && FunctionCode != DT_FUNC_CODE_CDMAC_CMD &&
+        FunctionCode != DT_FUNC_CODE_BURSTFIFO_CMD)
     {
         Disable(Port);
         if (Props->MustBeEnabled)

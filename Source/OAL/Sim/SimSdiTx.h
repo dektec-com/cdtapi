@@ -22,8 +22,9 @@
 //
 //   commands    refused as the driver's I/O stubs do, in its order: a command the block
 //               does not have, the sizes, exclusive access for the commands that need
-//               it, and a block that is not enabled, which the blocks are while the port
-//               is an SDI output
+//               it, and a block that is not enabled; the blocks of the transmitter are
+//               enabled while the port is an SDI output, those of the DMA always, so a
+//               registered buffer outlasts a change of direction, as on the card
 //   buffer      CDMAC registers a buffer of the process for transmit, as on Windows from
 //               the output or as on Linux from the address in the input; it must start
 //               on a page, be a multiple of the prefetch size in pages, and be at most
