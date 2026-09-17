@@ -162,16 +162,25 @@ static int Transact(struct nlmsghdr* Request, LinNetHandler Handler, void* Conte
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddAttr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Appends an attribute to a request that has room for it.
+// Appends an attribute to the request of Capacity bytes at Request, whose message header
+// comes first. An attribute that does not fit is left out. The request is passed whole,
+// so that the compiler sees the room behind its header.
 //
-static void AddAttr(struct nlmsghdr* Msg, int Type, const void* Data, int Length)
+static void AddAttr(uint8_t* Request, size_t Capacity, int Type, const void* Data,
+                    int Length)
 {
-    struct rtattr* Attr = (struct rtattr*)((char*)Msg + NLMSG_ALIGN(Msg->nlmsg_len));
+    struct nlmsghdr* Msg = (struct nlmsghdr*)(void*)Request;
+    size_t Offset = NLMSG_ALIGN(Msg->nlmsg_len);
+    size_t AttrLength = RTA_LENGTH((unsigned)Length);
+    if (Offset + RTA_ALIGN(AttrLength) > Capacity)
+        return;
 
-    Attr->rta_type = (unsigned short)Type;
-    Attr->rta_len = (unsigned short)RTA_LENGTH((unsigned)Length);
-    memcpy(RTA_DATA(Attr), Data, (size_t)Length);
-    Msg->nlmsg_len = NLMSG_ALIGN(Msg->nlmsg_len) + RTA_ALIGN(Attr->rta_len);
+    struct rtattr Attr;
+    Attr.rta_type = (unsigned short)Type;
+    Attr.rta_len = (unsigned short)AttrLength;
+    memcpy(Request + Offset, &Attr, sizeof(Attr));
+    memcpy(Request + Offset + RTA_LENGTH(0), Data, (size_t)Length);
+    Msg->nlmsg_len = (uint32_t)(Offset + RTA_ALIGN(AttrLength));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Interfaces +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -482,9 +491,9 @@ static int GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
     Request.Info.rtm_family = IpV6 ? AF_INET6 : AF_INET;
     Request.Info.rtm_dst_len = (unsigned char)(Size * 8);
     Request.Info.rtm_src_len = (unsigned char)(Size * 8);
-    AddAttr(&Request.Hdr, RTA_DST, Dst, Size);
-    AddAttr(&Request.Hdr, RTA_SRC, Src, Size);
-    AddAttr(&Request.Hdr, RTA_OIF, &IfIndex, sizeof(IfIndex));
+    AddAttr((uint8_t*)&Request, sizeof(Request), RTA_DST, Dst, Size);
+    AddAttr((uint8_t*)&Request, sizeof(Request), RTA_SRC, Src, Size);
+    AddAttr((uint8_t*)&Request, sizeof(Request), RTA_OIF, &IfIndex, sizeof(IfIndex));
     int Outcome = Transact(&Request.Hdr, OnRoute, &Route);
     if (Outcome != OS_NET_OK)
         return Outcome;
