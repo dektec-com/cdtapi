@@ -94,9 +94,22 @@ set_target_properties(BenchAvPixConv PROPERTIES
     C_STANDARD_REQUIRED ON
     C_EXTENSIONS OFF
     FOLDER "Tests")
-target_include_directories(BenchAvPixConv PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+target_include_directories(BenchAvPixConv PRIVATE ${CMAKE_SOURCE_DIR}/Source
+    "${CMAKE_CURRENT_BINARY_DIR}/BenchBuild/$<CONFIG>")
 target_link_libraries(BenchAvPixConv PRIVATE cdtapilite)
 target_compile_options(BenchAvPixConv PRIVATE ${CDTAPILITE_WARN_FLAGS})
+
+# The configuration and the compiler flags the library was built with, which the benchmark
+# prints: the speed of the portable conversions depends on how far the compiler vectorises
+# them.
+set(BenchFlags "${CMAKE_C_FLAGS}")
+foreach(Config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER "${Config}" ConfigUpper)
+    string(APPEND BenchFlags "$<$<CONFIG:${Config}>: ${CMAKE_C_FLAGS_${ConfigUpper}}>")
+endforeach()
+string(REPLACE "\"" "\\\"" BenchFlags "${BenchFlags}")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/BenchBuild/$<CONFIG>/BenchBuild.h"
+    CONTENT "#define BENCH_CONFIG \"$<CONFIG>\"\n#define BENCH_FLAGS \"${BenchFlags}\"\n")
 
 # The names of result codes are checked against every result code the public header
 # defines. The list of codes is read from the header at configure time, so a code added

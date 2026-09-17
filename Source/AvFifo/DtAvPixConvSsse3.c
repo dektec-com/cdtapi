@@ -26,8 +26,8 @@
 // samples 0, 2, 4 and 6 share no byte, nor do 1, 3, 5 and 7, so two shuffles and an OR
 // assemble the ten bytes.
 //
-// A step loads 16 bytes and stores up to 16, so it runs while four pixel groups, 20
-// bytes, remain on both sides; the portable conversions do the rest.
+// A 10-bit step loads 16 bytes and stores up to 16, so it runs while four pixel groups,
+// 20 bytes, remain on both sides; the portable conversions do the rest.
 //
 
 // A shuffle index that gives zero.
@@ -107,23 +107,30 @@ static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Uyvy8ToYuv422p -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Eight pixel groups, 32 bytes, a step. Read as 16-bit lanes, each pixel group's bytes
+// are a chroma sample below a luma sample: a shift right by 8 leaves the lane's luma and
+// a mask its chroma, which saturating packs of two blocks, exact for values below 256,
+// turn into the 16 luma bytes and the 16 chroma bytes Cb, Cr, Cb, Cr. One shuffle puts
+// the eight Cb bytes below the eight Cr bytes.
+//
 static void Uyvy8ToYuv422p(const uint8_t* Src, size_t NumPgroups, uint8_t* Y, uint8_t* U,
                            uint8_t* V)
 {
-    for (; NumPgroups >= 4; NumPgroups -= 4, Src += 16, Y += 8, U += 4, V += 4)
+    const __m128i Low = _mm_set1_epi16(0x00FF);
+    const __m128i Split =
+        _mm_set_epi8(15, 13, 11, 9, 7, 5, 3, 1, 14, 12, 10, 8, 6, 4, 2, 0);
+    for (; NumPgroups >= 8; NumPgroups -= 8, Src += 32, Y += 16, U += 8, V += 8)
     {
-        __m128i Bytes = _mm_loadu_si128((const __m128i*)Src);
-        __m128i Luma = _mm_shuffle_epi8(
-            Bytes, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, 15, 13, 11, 9, 7, 5, 3, 1));
-        __m128i Blue = _mm_shuffle_epi8(
-            Bytes, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, 12, 8, 4, 0));
-        __m128i Red = _mm_shuffle_epi8(
-            Bytes, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, Z, 14, 10, 6, 2));
-        _mm_storel_epi64((__m128i*)Y, Luma);
-        int32_t Four = _mm_cvtsi128_si32(Blue);
-        memcpy(U, &Four, 4);
-        Four = _mm_cvtsi128_si32(Red);
-        memcpy(V, &Four, 4);
+        __m128i First = _mm_loadu_si128((const __m128i*)Src);
+        __m128i Second = _mm_loadu_si128((const __m128i*)(Src + 16));
+        __m128i Luma =
+            _mm_packus_epi16(_mm_srli_epi16(First, 8), _mm_srli_epi16(Second, 8));
+        __m128i Chroma =
+            _mm_packus_epi16(_mm_and_si128(First, Low), _mm_and_si128(Second, Low));
+        __m128i BlueRed = _mm_shuffle_epi8(Chroma, Split);
+        _mm_storeu_si128((__m128i*)Y, Luma);
+        _mm_storel_epi64((__m128i*)U, BlueRed);
+        _mm_storel_epi64((__m128i*)V, _mm_srli_si128(BlueRed, 8));
     }
     DtAvPixConv_C()->Uyvy8ToYuv422p(Src, NumPgroups, Y, U, V);
 }
