@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_ABI_TYPES_H
-#define CDTAPILITE_DT_ABI_TYPES_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -80,5 +79,3 @@ _Static_assert(sizeof(Int) == 4, "Int must be 4 bytes");
 _Static_assert(sizeof(UInt32) == 4, "UInt32 must be 4 bytes");
 _Static_assert(sizeof(UInt16) == 2, "UInt16 must be 2 bytes");
 _Static_assert(sizeof(UInt8) == 1, "UInt8 must be 1 byte");
-
-#endif // CDTAPILITE_DT_ABI_TYPES_H

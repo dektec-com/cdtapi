@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_PCIE_CMD_ISSUE_H
-#define CDTAPILITE_DT_PCIE_CMD_ISSUE_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -45,5 +44,3 @@ void DtPcieCmdInitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIn
 // short answer cannot be detected here.
 unsigned int DtPcieCmdIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                             void* Out, size_t OutSize);
-
-#endif // CDTAPILITE_DT_PCIE_CMD_ISSUE_H

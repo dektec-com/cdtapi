@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_SDI_FRAME_H
-#define CDTAPILITE_DT_SDI_FRAME_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -203,5 +202,3 @@ bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 // Writes the coded lines of a black frame of Layout's standard at Lines, Layout->NumLines
 // times Layout->Stride bytes, padding bits 0.
 void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);
-
-#endif // CDTAPILITE_DT_SDI_FRAME_H

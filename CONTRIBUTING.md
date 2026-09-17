@@ -18,6 +18,9 @@
    `unsigned long` appear only where an operating-system interface defines them, such
    as `timespec.tv_nsec`. The result code keeps CDTAPI.h's `unsigned int`, and the
    vendored driver ABI keeps its own types.
+8. **A header guards itself with `#pragma once`**, as the first line after the file
+   header, rather than with an `#ifndef` guard, as `LibDekTec_C` does. The vendored driver
+   ABI keeps its own guards.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,
@@ -46,6 +49,7 @@ copy-pasted header naming the wrong file otherwise survives for years.
 | 5 | `Scripts/check_style.sh` |
 | 6 | `clang-format` |
 | 7 | Review |
+| 8 | `Scripts/check_style.sh` |
 | Everything else | `clang-tidy`, warnings-as-errors |
 
 Run them locally:

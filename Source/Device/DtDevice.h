@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_DEVICE_H
-#define CDTAPILITE_DT_DEVICE_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -106,5 +105,3 @@ void DtDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 // PcieDevice::GetDescriptor do. Reads the I/O direction of each port that can be both an
 // input and an output.
 void DtDeviceDescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);
-
-#endif // CDTAPILITE_DT_DEVICE_H

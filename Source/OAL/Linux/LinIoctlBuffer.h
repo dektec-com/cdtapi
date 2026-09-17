@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_LIN_IOCTL_BUFFER_H
-#define CDTAPILITE_LIN_IOCTL_BUFFER_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -54,5 +53,3 @@ int LinIoctlPack(bool SizeHeader, const void* In, size_t InSize, size_t OutSize,
 // Copies the driver's answer, OutSize bytes from the start of Buf, to Out. Returns 0 on
 // success, -1 when Buf is too small or Out is NULL with a non-zero OutSize.
 int LinIoctlUnpack(const uint8_t* Buf, size_t BufSize, void* Out, size_t OutSize);
-
-#endif // CDTAPILITE_LIN_IOCTL_BUFFER_H

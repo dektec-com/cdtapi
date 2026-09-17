@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_SIM_CH_SDI_RX_H
-#define CDTAPILITE_SIM_CH_SDI_RX_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -138,5 +137,3 @@ typedef struct SimRxState
 } SimRxState;
 
 void SimDtPcieGetRxState(int PortIndex, SimRxState* State);
-
-#endif // CDTAPILITE_SIM_CH_SDI_RX_H

@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_OS_BACKEND_H
-#define CDTAPILITE_OS_BACKEND_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -48,5 +47,3 @@ bool OsSimIsRequested(void);
 
 // The real driver on this platform, or NULL in a build made without it.
 const OsBackend* OsPlatformBackend(void);
-
-#endif // CDTAPILITE_OS_BACKEND_H

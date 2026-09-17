@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_OS_THREAD_H
-#define CDTAPILITE_OS_THREAD_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -95,5 +94,3 @@ void OsProcessName(char* Buf, size_t Size);
 
 // The process's identifier.
 uint32_t OsProcessId(void);
-
-#endif // CDTAPILITE_OS_THREAD_H

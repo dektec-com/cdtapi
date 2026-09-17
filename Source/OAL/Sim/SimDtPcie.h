@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_SIM_DT_PCIE_H
-#define CDTAPILITE_SIM_DT_PCIE_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -175,5 +174,3 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size);
 // when nobody does, DT_STATUS_IN_USE when another handle does. Called with the
 // emulator's lock held.
 uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex);
-
-#endif // CDTAPILITE_SIM_DT_PCIE_H

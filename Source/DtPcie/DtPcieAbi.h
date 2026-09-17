@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_PCIE_ABI_H
-#define CDTAPILITE_DT_PCIE_ABI_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -73,5 +72,3 @@
 #if defined(__GNUC__)
     #pragma GCC diagnostic pop
 #endif
-
-#endif // CDTAPILITE_DT_PCIE_ABI_H

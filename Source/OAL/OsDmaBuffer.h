@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_OS_DMA_BUFFER_H
-#define CDTAPILITE_OS_DMA_BUFFER_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -90,5 +89,3 @@ int OsPlatformDontFork(uint8_t* Data, size_t Size);
 // Undoes OsPlatformDontFork before the memory goes back to the allocator, so that pages
 // the allocator hands out again are not left excluded from a child process.
 void OsPlatformDoFork(uint8_t* Data, size_t Size);
-
-#endif // CDTAPILITE_OS_DMA_BUFFER_H

@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_VEC_H
-#define CDTAPILITE_DT_VEC_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -69,5 +68,3 @@ size_t DtVecCount(const DtVec* Vec);
 // Typed access. Reads as an lvalue, so it can be assigned to as well as read. Out of
 // range is a null dereference rather than silent corruption.
 #define DT_VEC_AT(Vec, Type, Index) (*(Type*)DtVecAt((Vec), (Index)))
-
-#endif // CDTAPILITE_DT_VEC_H

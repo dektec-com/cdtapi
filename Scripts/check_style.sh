@@ -12,6 +12,7 @@
 #   Rule 4  No line longer than 90 characters. Checked here as well as by clang-format,
 #           because clang-format reflows code but leaves an over-long comment alone.
 #   Rule 5  Every source file starts with a header naming the file.
+#   Rule 8  Every header guards itself with #pragma once, right after the file header.
 #
 # Source/DtPcie/Abi is skipped: it holds files vendored verbatim from the SDK.
 
@@ -68,6 +69,21 @@ while IFS= read -r File; do
         *"$Base"*) ;;
         *) Fail "$File:1: header does not name '$Base'" ;;
     esac
+done < <(OwnFiles)
+
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 8: #pragma once -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+#
+# The first line of a header that is neither a comment nor blank must be #pragma once.
+
+echo "Rule 8: headers guarded by #pragma once"
+while IFS= read -r File; do
+    case "$File" in
+        *.h) ;;
+        *) continue ;;
+    esac
+    FirstCode="$(awk '!/^[[:space:]]*(\/\/.*)?$/ { print; exit }' "$File")"
+    [ "$FirstCode" = "#pragma once" ] \
+        || Fail "$File: the first line after the file header is not '#pragma once'"
 done < <(OwnFiles)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 2: no historical comments -.-.-.-.-.-.-.-.-.-.-.-.-.-.

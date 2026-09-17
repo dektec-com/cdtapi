@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_IO_CONFIG_H
-#define CDTAPILITE_DT_IO_CONFIG_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -59,5 +58,3 @@ unsigned int DtIoConfigGetName(int Code, char* Name, size_t Size);
 // required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
 // checks and their order are those of DTAPI's DtConfigDefs::IsValidConfig.
 unsigned int DtIoConfigIsValid(int Group, int Value, int SubValue);
-
-#endif // CDTAPILITE_DT_IO_CONFIG_H

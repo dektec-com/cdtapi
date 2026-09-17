@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_SIM_SDI_TX_H
-#define CDTAPILITE_SIM_SDI_TX_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -141,5 +140,3 @@ int SimDtPcieTxFrameCount(int PortIndex);
 bool SimDtPcieGetTxFrame(int PortIndex, int Index, SimTxFrame* Frame);
 
 #define SIM_TX_KEPT_FRAMES 4
-
-#endif // CDTAPILITE_SIM_SDI_TX_H

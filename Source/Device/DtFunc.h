@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_FUNC_H
-#define CDTAPILITE_DT_FUNC_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -83,5 +82,3 @@ unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 // types CDtapiLite uses.
 unsigned int DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
                                       int Type);
-
-#endif // CDTAPILITE_DT_FUNC_H

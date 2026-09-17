@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_SIM_DTA2178_H
-#define CDTAPILITE_SIM_DTA2178_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -43,5 +42,3 @@ int SimDta2178PartCount(void);
 // The power-on configuration of Group on the port at PortIndex, as I/O configuration
 // codes, -1 for none.
 void SimDta2178DefaultConfig(int PortIndex, int Group, int* Value, int* SubValue);
-
-#endif // CDTAPILITE_SIM_DTA2178_H

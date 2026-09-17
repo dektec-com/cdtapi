@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_BUF_H
-#define CDTAPILITE_DT_BUF_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -66,5 +65,3 @@ size_t DtBufSize(const DtBuf* Buf);
 // The current reference count. Intended for tests and diagnostics; in live code the
 // answer can be stale the moment it is returned. Zero when Buf is NULL.
 int DtBufRefCount(const DtBuf* Buf);
-
-#endif // CDTAPILITE_DT_BUF_H

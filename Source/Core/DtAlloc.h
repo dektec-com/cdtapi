@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_ALLOC_H
-#define CDTAPILITE_DT_ALLOC_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -58,5 +57,3 @@ int DtAllocLive(void);
 // allocation followed by writes beyond its end.
 int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
                    size_t* Out);
-
-#endif // CDTAPILITE_DT_ALLOC_H

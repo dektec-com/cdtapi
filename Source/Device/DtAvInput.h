@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_AV_INPUT_H
-#define CDTAPILITE_DT_AV_INPUT_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -56,5 +55,3 @@ void DtAvInputSetUnknown(DtDetVidStd* Info);
 // port's down-scaling configuration or the receiver's status, and with
 // DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111.
 unsigned int DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info);
-
-#endif // CDTAPILITE_DT_AV_INPUT_H

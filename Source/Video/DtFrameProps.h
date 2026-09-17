@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_FRAME_PROPS_H
-#define CDTAPILITE_DT_FRAME_PROPS_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -89,5 +88,3 @@ bool DtFramePropsIsPsF(const DtFrameProps* Props);
 void DtFramePropsDeduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
                         bool Is3gLevelB, uint32_t Vpid, int SdiRate);
-
-#endif // CDTAPILITE_DT_FRAME_PROPS_H

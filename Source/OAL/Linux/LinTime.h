@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_LIN_TIME_H
-#define CDTAPILITE_LIN_TIME_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -29,5 +28,3 @@
 // 0 <= *OutNsec < LIN_NSEC_PER_SEC. Nsec is expected to be normalised already. A
 // negative Ms is treated as zero.
 void LinTimeAddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec);
-
-#endif // CDTAPILITE_LIN_TIME_H

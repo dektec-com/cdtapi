@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_OS_ABSTRACTION_LAYER_H
-#define CDTAPILITE_OS_ABSTRACTION_LAYER_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -110,5 +109,3 @@ void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size);
 // status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
 // Linux and GetLastError on Windows. Zero when nothing has failed.
 uint32_t OsDrvLastError(const OsDrv* Drv);
-
-#endif // CDTAPILITE_OS_ABSTRACTION_LAYER_H

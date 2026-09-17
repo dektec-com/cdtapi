@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_PCIE_STATUS_H
-#define CDTAPILITE_DT_PCIE_STATUS_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,5 +24,3 @@ unsigned int DtPcieStatusToResult(uint32_t Status);
 // Translates what OsDrvIoCtl returned: its outcome, and the DtStatus that goes with
 // OS_IOCTL_DRIVER_STATUS.
 unsigned int DtPcieOutcomeToResult(int Outcome, uint32_t Status);
-
-#endif // CDTAPILITE_DT_PCIE_STATUS_H

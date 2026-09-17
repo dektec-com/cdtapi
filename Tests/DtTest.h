@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_TEST_H
-#define CDTAPILITE_DT_TEST_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -149,5 +148,3 @@ static void DtTestSilenceDialogs(void)
         printf("== %s: %s\n", SuiteName, TotalFailures == 0 ? "PASSED" : "FAILED");      \
         return TotalFailures == 0 ? 0 : 1;                                               \
     }
-
-#endif // CDTAPILITE_DT_TEST_H

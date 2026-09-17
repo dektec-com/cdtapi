@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_VID_STD_H
-#define CDTAPILITE_DT_VID_STD_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -94,5 +93,3 @@ void DtVidStdPropsDeduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
 // The number of cables a link standard uses: four for SMPTE 425 quad links, one for the
 // others, 0 for a value that is no link standard.
 int DtVidStdNumPhysicalLinks(int LinkStd);
-
-#endif // CDTAPILITE_DT_VID_STD_H

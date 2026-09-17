@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_EXAMPLE_COMMON_H
-#define CDTAPILITE_EXAMPLE_COMMON_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -92,5 +91,3 @@ const char* ExampleIoStdName(int Value);
 
 // Sleeps for about Ms milliseconds.
 void ExampleSleepMs(int Ms);
-
-#endif // CDTAPILITE_EXAMPLE_COMMON_H

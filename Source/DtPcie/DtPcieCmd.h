@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_PCIE_CMD_H
-#define CDTAPILITE_DT_PCIE_CMD_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -444,5 +443,3 @@ unsigned int DtPcieCmdSdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortI
 // Delays the start of each frame by OffsetNs nanoseconds.
 unsigned int DtPcieCmdSdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
                                                     int OffsetNs);
-
-#endif // CDTAPILITE_DT_PCIE_CMD_H

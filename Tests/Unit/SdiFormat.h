@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_TEST_SDI_FORMAT_H
-#define CDTAPILITE_TEST_SDI_FORMAT_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -143,5 +142,3 @@ static inline uint32_t SdiFormatVpid(const SdiFormat* Format)
     return (uint32_t)Format->Payload | (Byte2 << 8) |
            (Format->Lines > 625 ? 0x800000u : 0u);
 }
-
-#endif // CDTAPILITE_TEST_SDI_FORMAT_H

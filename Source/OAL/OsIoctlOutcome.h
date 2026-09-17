@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_OS_IOCTL_OUTCOME_H
-#define CDTAPILITE_OS_IOCTL_OUTCOME_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -37,5 +36,3 @@ int OsIoctlClassifyWindows(uint32_t Error, uint32_t* DrvStatus);
 // negated, and those values lie outside the range the C library turns into errno, so a
 // return of -1 is a failure of the call itself and anything else nonzero is a status.
 int OsIoctlClassifyLinux(int Rc, uint32_t* DrvStatus);
-
-#endif // CDTAPILITE_OS_IOCTL_OUTCOME_H

@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_H
-#define CDTAPILITE_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -417,5 +416,3 @@ CDTAPILITE_API unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel,
 #ifdef __cplusplus
 } // extern "C"
 #endif
-
-#endif // CDTAPILITE_H

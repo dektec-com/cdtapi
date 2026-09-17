@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_ATOMIC_H
-#define CDTAPILITE_DT_ATOMIC_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -88,5 +87,3 @@ static inline void DtAtomicStore(DtAtomicInt* Value, int32_t Desired)
 }
 
 #endif
-
-#endif // CDTAPILITE_DT_ATOMIC_H

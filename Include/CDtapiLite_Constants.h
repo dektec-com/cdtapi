@@ -8,8 +8,7 @@
 // its own, holding macros only, so that the compatibility test can compare it with
 // CDTAPI.h in one translation unit, which the two full headers cannot share.
 
-#ifndef CDTAPILITE_CONSTANTS_H
-#define CDTAPILITE_CONSTANTS_H
+#pragma once
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Result codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -605,5 +604,3 @@
 
 #define MAX_DEVICE_NAME_SIZE 256
 #define MAX_DEVICE_DESC_SIZE 256
-
-#endif // CDTAPILITE_CONSTANTS_H

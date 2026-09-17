@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_SMPTE352_H
-#define CDTAPILITE_DT_SMPTE352_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -48,5 +47,3 @@ bool DtSmpte352Is16x9(uint32_t Vpid);
 // The zero-based number of the link that carries this VPID, for the payloads that have
 // more than one link; 0 for all others.
 int DtSmpte352LinkNumber(uint32_t Vpid);
-
-#endif // CDTAPILITE_DT_SMPTE352_H

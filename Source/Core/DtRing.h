@@ -4,8 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-#ifndef CDTAPILITE_DT_RING_H
-#define CDTAPILITE_DT_RING_H
+#pragma once
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -94,5 +93,3 @@ size_t DtRingReadOffset(const DtRing* Ring);
 // Drops everything available, by moving the read offset to the write offset. That is
 // what a FIFO clear does.
 void DtRingClear(DtRing* Ring);
-
-#endif // CDTAPILITE_DT_RING_H
