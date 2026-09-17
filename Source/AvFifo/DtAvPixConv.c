@@ -7,6 +7,8 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <string.h>
+
 #if defined(CDTAPILITE_HAVE_SSSE3)
     #if defined(_MSC_VER)
         #include <intrin.h>
@@ -20,6 +22,46 @@
 #include "DtAvPixConv.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Portable C +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// The 10-bit conversions take whole words rather than single bytes: a step reads eight
+// bytes, which hold at least the pixel group it converts, and writes eight, of which the
+// next step overwrites what was too much. A step therefore runs while two pixel groups
+// remain, and the byte-by-byte conversion beside it does the last pixel group. Compilers
+// turn Swap64 into one instruction.
+//
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Swap64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static uint64_t Swap64(uint64_t Value)
+{
+    Value = (Value & UINT64_C(0x00FF00FF00FF00FF)) << 8 |
+            (Value >> 8 & UINT64_C(0x00FF00FF00FF00FF));
+    Value = (Value & UINT64_C(0x0000FFFF0000FFFF)) << 16 |
+            (Value >> 16 & UINT64_C(0x0000FFFF0000FFFF));
+    return Value << 32 | Value >> 32;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadLe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The eight bytes at Src as a word, first byte lowest; and the other way about.
+//
+static uint64_t LoadLe(const uint8_t* Src)
+{
+    uint64_t Value;
+    memcpy(&Value, Src, sizeof(Value));
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    Value = Swap64(Value);
+#endif
+    return Value;
+}
+
+static void StoreLe(uint8_t* Dst, uint64_t Value)
+{
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    Value = Swap64(Value);
+#endif
+    memcpy(Dst, &Value, sizeof(Value));
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadPgroup10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -31,15 +73,26 @@ static uint64_t ReadPgroup10(const uint8_t* Src)
            (uint64_t)Src[3] << 8 | Src[4];
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Samples10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The four samples of a pixel group in the other bit order: the first sample lowest
+// rather than highest, which is what UYVY 10 packs, and the same the other way about.
+//
+static uint64_t Samples10(uint64_t Bits)
+{
+    return (Bits >> 30 & 0x3FF) | (Bits >> 20 & 0x3FF) << 10 |
+           (Bits >> 10 & 0x3FF) << 20 | (Bits & 0x3FF) << 30;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pg10ToUyvy10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 static void Pg10ToUyvy10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
-    for (size_t i = 0; i < NumPgroups; i++, Src += 5, Dst += 5)
+    for (; NumPgroups >= 2; NumPgroups--, Src += 5, Dst += 5)
+        StoreLe(Dst, Samples10(Swap64(LoadLe(Src)) >> 24));
+    for (; NumPgroups > 0; NumPgroups--, Src += 5, Dst += 5)
     {
-        uint64_t Bits = ReadPgroup10(Src);
-        uint64_t Packed = (Bits >> 30 & 0x3FF) | (Bits >> 20 & 0x3FF) << 10 |
-                          (Bits >> 10 & 0x3FF) << 20 | (Bits & 0x3FF) << 30;
+        uint64_t Packed = Samples10(ReadPgroup10(Src));
         for (int k = 0; k < 5; k++)
             Dst[k] = (uint8_t)(Packed >> 8 * k);
     }
@@ -47,9 +100,19 @@ static void Pg10ToUyvy10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pg10ToUyvy8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The eight highest bits of each sample, which lie ten bits apart.
+//
 static void Pg10ToUyvy8(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
-    for (size_t i = 0; i < NumPgroups; i++, Src += 5, Dst += 4)
+    for (; NumPgroups >= 2; NumPgroups--, Src += 5, Dst += 4)
+    {
+        uint64_t Bits = Swap64(LoadLe(Src)) >> 24;
+        uint32_t Bytes = (uint32_t)(Bits >> 32 & 0xFF) | (uint32_t)(Bits >> 14 & 0xFF00) |
+                         (uint32_t)(Bits << 4 & 0xFF0000) |
+                         (uint32_t)(Bits << 22 & 0xFF000000);
+        memcpy(Dst, &Bytes, sizeof(Bytes));
+    }
+    for (; NumPgroups > 0; NumPgroups--, Src += 5, Dst += 4)
     {
         uint64_t Bits = ReadPgroup10(Src);
         Dst[0] = (uint8_t)(Bits >> 32);
@@ -63,19 +126,23 @@ static void Pg10ToUyvy8(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 //
 static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
-    for (size_t i = 0; i < NumPgroups; i++, Src += 5, Dst += 5)
+    for (; NumPgroups >= 2; NumPgroups--, Src += 5, Dst += 5)
+        StoreLe(Dst, Swap64(Samples10(LoadLe(Src)) << 24));
+    for (; NumPgroups > 0; NumPgroups--, Src += 5, Dst += 5)
     {
         uint64_t Packed = 0;
         for (int k = 0; k < 5; k++)
             Packed |= (uint64_t)Src[k] << 8 * k;
-        uint64_t Bits = (Packed & 0x3FF) << 30 | (Packed >> 10 & 0x3FF) << 20 |
-                        (Packed >> 20 & 0x3FF) << 10 | (Packed >> 30 & 0x3FF);
+        uint64_t Bits = Samples10(Packed);
         for (int k = 0; k < 5; k++)
             Dst[k] = (uint8_t)(Bits >> 8 * (4 - k));
     }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Uyvy8ToYuv422p -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Byte by byte, unlike the conversions above: this loop is simple enough for a compiler
+// to vectorise whole, and gathering its bytes into words by hand keeps GCC from doing so.
 //
 static void Uyvy8ToYuv422p(const uint8_t* Src, size_t NumPgroups, uint8_t* Y, uint8_t* U,
                            uint8_t* V)
