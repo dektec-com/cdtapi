@@ -31,12 +31,12 @@ static int64_t NowMs(void)
 // Pauses the calling thread, using an event that is never set.
 static void PauseMs(int Ms)
 {
-    OsEvent* Never = OsEventCreate();
+    OsEvent* Never = OsEvent_Create();
 
     if (Never != NULL)
     {
-        OsEventWait(Never, Ms);
-        OsEventDestroy(Never);
+        OsEvent_Wait(Never, Ms);
+        OsEvent_Destroy(Never);
     }
 }
 
@@ -50,10 +50,10 @@ static void SetFlag(void* Context)
 DT_TEST(ThreadRunsWithItsContextAndJoins)
 {
     int Flag = 0;
-    OsThread* Thread = OsThreadStart(SetFlag, &Flag);
+    OsThread* Thread = OsThread_Start(SetFlag, &Flag);
 
     DT_ASSERT(Thread != NULL);
-    OsThreadJoin(Thread);
+    OsThread_Join(Thread);
 
     // Join waits for the function to return, so the write is complete by now.
     DT_ASSERT_EQ(Flag, 42);
@@ -61,15 +61,15 @@ DT_TEST(ThreadRunsWithItsContextAndJoins)
 
 DT_TEST(StartRejectsMissingFunction)
 {
-    DT_ASSERT(OsThreadStart(NULL, NULL) == NULL);
-    OsThreadJoin(NULL);
+    DT_ASSERT(OsThread_Start(NULL, NULL) == NULL);
+    OsThread_Join(NULL);
 }
 
 DT_TEST(RaisingPriorityDoesNotFailHere)
 {
     // Allowed to be refused on Linux without privilege, but not to misbehave. On Windows
     // HIGHEST needs no privilege, so there it has to succeed.
-    int Result = OsThreadRaisePriority();
+    int Result = OsThread_RaisePriority();
 
 #if defined(_WIN32)
     DT_ASSERT_EQ(Result, 0);
@@ -82,58 +82,58 @@ DT_TEST(RaisingPriorityDoesNotFailHere)
 
 DT_TEST(UnsetEventTimesOut)
 {
-    OsEvent* Event = OsEventCreate();
+    OsEvent* Event = OsEvent_Create();
 
     DT_ASSERT(Event != NULL);
 
     int64_t Start = NowMs();
-    DT_ASSERT_EQ(OsEventWait(Event, 50), OS_WAIT_TIMEOUT);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 50), OS_WAIT_TIMEOUT);
 
     // It really waited. The lower bound allows for a coarse timer tick.
     DT_ASSERT(NowMs() - Start >= 30);
 
-    OsEventDestroy(Event);
+    OsEvent_Destroy(Event);
 }
 
 // A set that happens before anyone waits must be remembered, not lost. That is the
 // difference between an event and a bare condition variable.
 DT_TEST(SetBeforeWaitIsRemembered)
 {
-    OsEvent* Event = OsEventCreate();
+    OsEvent* Event = OsEvent_Create();
 
     DT_ASSERT(Event != NULL);
 
-    OsEventSet(Event);
-    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
+    OsEvent_Set(Event);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 0), OS_WAIT_SIGNALLED);
 
-    OsEventDestroy(Event);
+    OsEvent_Destroy(Event);
 }
 
 DT_TEST(EventResetsAfterOneWake)
 {
-    OsEvent* Event = OsEventCreate();
+    OsEvent* Event = OsEvent_Create();
 
     DT_ASSERT(Event != NULL);
 
-    OsEventSet(Event);
-    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
-    DT_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
+    OsEvent_Set(Event);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 0), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 20), OS_WAIT_TIMEOUT);
 
-    OsEventDestroy(Event);
+    OsEvent_Destroy(Event);
 }
 
 DT_TEST(SettingTwiceCountsOnce)
 {
-    OsEvent* Event = OsEventCreate();
+    OsEvent* Event = OsEvent_Create();
 
     DT_ASSERT(Event != NULL);
 
-    OsEventSet(Event);
-    OsEventSet(Event);
-    DT_ASSERT_EQ(OsEventWait(Event, 0), OS_WAIT_SIGNALLED);
-    DT_ASSERT_EQ(OsEventWait(Event, 20), OS_WAIT_TIMEOUT);
+    OsEvent_Set(Event);
+    OsEvent_Set(Event);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 0), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEvent_Wait(Event, 20), OS_WAIT_TIMEOUT);
 
-    OsEventDestroy(Event);
+    OsEvent_Destroy(Event);
 }
 
 typedef struct DelayedSet
@@ -147,34 +147,34 @@ static void SetAfterDelay(void* Context)
     DelayedSet* Job = (DelayedSet*)Context;
 
     PauseMs(Job->DelayMs);
-    OsEventSet(Job->Event);
+    OsEvent_Set(Job->Event);
 }
 
 DT_TEST(SetFromAnotherThreadWakesTheWaiter)
 {
     DelayedSet Job;
 
-    Job.Event = OsEventCreate();
+    Job.Event = OsEvent_Create();
     Job.DelayMs = 30;
     DT_ASSERT(Job.Event != NULL);
 
     int64_t Start = NowMs();
-    OsThread* Thread = OsThreadStart(SetAfterDelay, &Job);
+    OsThread* Thread = OsThread_Start(SetAfterDelay, &Job);
     DT_ASSERT(Thread != NULL);
 
     // Woken by the other thread, long before the five-second timeout.
-    DT_ASSERT_EQ(OsEventWait(Job.Event, 5000), OS_WAIT_SIGNALLED);
+    DT_ASSERT_EQ(OsEvent_Wait(Job.Event, 5000), OS_WAIT_SIGNALLED);
     DT_ASSERT(NowMs() - Start < 4000);
 
-    OsThreadJoin(Thread);
-    OsEventDestroy(Job.Event);
+    OsThread_Join(Thread);
+    OsEvent_Destroy(Job.Event);
 }
 
 DT_TEST(NullEventIsAccepted)
 {
-    DT_ASSERT_EQ(OsEventWait(NULL, 0), OS_WAIT_ERROR);
-    OsEventSet(NULL);
-    OsEventDestroy(NULL);
+    DT_ASSERT_EQ(OsEvent_Wait(NULL, 0), OS_WAIT_ERROR);
+    OsEvent_Set(NULL);
+    OsEvent_Destroy(NULL);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Kill pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -194,7 +194,7 @@ static void PollUntilKilled(void* Context)
 {
     Worker* Self = (Worker*)Context;
 
-    while (OsEventWait(Self->Kill, 10) == OS_WAIT_TIMEOUT)
+    while (OsEvent_Wait(Self->Kill, 10) == OS_WAIT_TIMEOUT)
         Self->Rounds++;
 }
 
@@ -202,24 +202,24 @@ DT_TEST(KillEventStopsAPollingThread)
 {
     Worker Self;
 
-    Self.Kill = OsEventCreate();
+    Self.Kill = OsEvent_Create();
     Self.Rounds = 0;
     DT_ASSERT(Self.Kill != NULL);
 
-    OsThread* Thread = OsThreadStart(PollUntilKilled, &Self);
+    OsThread* Thread = OsThread_Start(PollUntilKilled, &Self);
     DT_ASSERT(Thread != NULL);
 
     PauseMs(80);
 
     int64_t Start = NowMs();
-    OsEventSet(Self.Kill);
-    OsThreadJoin(Thread);
+    OsEvent_Set(Self.Kill);
+    OsThread_Join(Thread);
 
     // It ran for a while, and it stopped promptly once told to.
     DT_ASSERT(Self.Rounds > 0);
     DT_ASSERT(NowMs() - Start < 2000);
 
-    OsEventDestroy(Self.Kill);
+    OsEvent_Destroy(Self.Kill);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Mutex +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -240,9 +240,9 @@ static void IncrementManyTimes(void* Context)
 
     for (i = 0; i < INCREMENTS_PER_THREAD; i++)
     {
-        OsMutexLock(Shared->Lock);
+        OsMutex_Lock(Shared->Lock);
         Shared->Value++;
-        OsMutexUnlock(Shared->Lock);
+        OsMutex_Unlock(Shared->Lock);
     }
 }
 
@@ -252,7 +252,7 @@ DT_TEST(MutexLosesNoUpdates)
 {
     Counter Shared;
 
-    Shared.Lock = OsMutexCreate();
+    Shared.Lock = OsMutex_Create();
     Shared.Value = 0;
     DT_ASSERT(Shared.Lock != NULL);
 
@@ -260,25 +260,25 @@ DT_TEST(MutexLosesNoUpdates)
     int i;
     for (i = 0; i < INCREMENT_THREADS; i++)
     {
-        Threads[i] = OsThreadStart(IncrementManyTimes, &Shared);
+        Threads[i] = OsThread_Start(IncrementManyTimes, &Shared);
         DT_ASSERT(Threads[i] != NULL);
     }
 
     for (i = 0; i < INCREMENT_THREADS; i++)
-        OsThreadJoin(Threads[i]);
+        OsThread_Join(Threads[i]);
 
     DT_ASSERT_EQ(Shared.Value, INCREMENT_THREADS * INCREMENTS_PER_THREAD);
 
-    OsMutexDestroy(Shared.Lock);
+    OsMutex_Destroy(Shared.Lock);
 }
 
 DT_TEST(MutexDestroyAcceptsNull)
 {
-    OsMutex* Lock = OsMutexCreate();
+    OsMutex* Lock = OsMutex_Create();
 
     DT_ASSERT(Lock != NULL);
-    OsMutexDestroy(Lock);
-    OsMutexDestroy(NULL);
+    OsMutex_Destroy(Lock);
+    OsMutex_Destroy(NULL);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -288,10 +288,10 @@ DT_TEST(MutexDestroyAcceptsNull)
 // allows for one step.
 DT_TEST(SleepIsMeasuredByTheClock)
 {
-    uint64_t Start = OsMonotonicMs();
+    uint64_t Start = OsTime_MonotonicMs();
 
-    OsSleepMs(60);
-    uint64_t Elapsed = OsMonotonicMs() - Start;
+    OsTime_SleepMs(60);
+    uint64_t Elapsed = OsTime_MonotonicMs() - Start;
     if (Elapsed < 60 - 17 || Elapsed > 5000)
         DT_FAIL("a 60 ms sleep took %llu ms", (unsigned long long)Elapsed);
 }
@@ -299,14 +299,14 @@ DT_TEST(SleepIsMeasuredByTheClock)
 // No sleep for zero or a negative time, and the clock does not run backwards.
 DT_TEST(NoSleepForNothing)
 {
-    uint64_t Start = OsMonotonicMs();
+    uint64_t Start = OsTime_MonotonicMs();
     uint64_t Last = Start;
 
     for (int i = 0; i < 1000; i++)
     {
-        OsSleepMs(0);
-        OsSleepMs(-10);
-        uint64_t Now = OsMonotonicMs();
+        OsTime_SleepMs(0);
+        OsTime_SleepMs(-10);
+        uint64_t Now = OsTime_MonotonicMs();
         DT_ASSERT(Now >= Last);
         Last = Now;
     }

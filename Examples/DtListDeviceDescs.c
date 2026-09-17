@@ -81,27 +81,27 @@ int main(int Argc, char** Argv)
     int Count = 0;
     int Listed = 0;
 
-    if (!ExampleCheckArguments(Argc, Argv, "Describes every DekTec device.", g_Options,
-                               (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
-        !ExampleInt64(Argc, Argv, "--serial", &Serial))
+    if (!Example_CheckArguments(Argc, Argv, "Describes every DekTec device.", g_Options,
+                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
+        !Example_Int64(Argc, Argv, "--serial", &Serial))
     {
         return EXAMPLE_FAILED;
     }
 
     unsigned int Result = DtapiDeviceScan(0, &Count, NULL);
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
-        return ExampleFailed("DtapiDeviceScan", Result);
+        return Example_Failed("DtapiDeviceScan", Result);
 
     DtDeviceDesc* Descs =
         (DtDeviceDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtDeviceDesc));
     if (Descs == NULL)
-        return ExampleFailed("calloc", DTAPI_E_OUT_OF_MEM);
+        return Example_Failed("calloc", DTAPI_E_OUT_OF_MEM);
 
     Result = DtapiDeviceScan(Count, &Count, Descs);
     if (Result != DTAPI_OK)
     {
         free(Descs);
-        return ExampleFailed("DtapiDeviceScan", Result);
+        return Example_Failed("DtapiDeviceScan", Result);
     }
 
     for (int i = 0; i < Count; i++)

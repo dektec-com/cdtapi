@@ -15,19 +15,19 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DMA buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_PageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t OsPageSize(void)
+size_t OsDmaBuffer_PageSize(void)
 {
     static size_t Cached = 0;
 
     if (Cached == 0)
-        Cached = OsPlatformPageSize();
+        Cached = OsPlatform_PageSize();
 
     return Cached;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBufferAlloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Allocates one block large enough to contain a page-aligned region of the rounded size
 // wherever the allocator happens to place it, then carves that region out. This is the
@@ -36,9 +36,9 @@ size_t OsPageSize(void)
 //
 // It goes through the allocation seam, so a test can make it fail.
 //
-int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
+int OsDmaBuffer_Alloc(size_t Size, OsDmaBuffer* Buf)
 {
-    size_t Page = OsPageSize();
+    size_t Page = OsDmaBuffer_PageSize();
 
     if (Buf == NULL)
         return -1;
@@ -60,7 +60,7 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
     // most SIZE_MAX.
     size_t Total = Rounded + Page - 1;
 
-    uint8_t* Block = (uint8_t*)DtMalloc(Total);
+    uint8_t* Block = (uint8_t*)DtAlloc_Malloc(Total);
     if (Block == NULL)
         return -1;
 
@@ -71,9 +71,9 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
     // would keep writing into pages this process has stopped reading. So failure here
     // is fatal.
     // Only madvise on Linux can fail, so on Windows the tests do not reach this branch.
-    if (OsPlatformDontFork(Data, Rounded) != 0)
+    if (OsPlatform_DontFork(Data, Rounded) != 0)
     {
-        DtFree(Block);
+        DtAlloc_Free(Block);
         return -1;
     }
 
@@ -83,24 +83,24 @@ int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBufferFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsDmaBufferFree(OsDmaBuffer* Buf)
+void OsDmaBuffer_Free(OsDmaBuffer* Buf)
 {
     if (Buf == NULL || Buf->Block == NULL)
         return;
 
-    OsPlatformDoFork(Buf->Data, Buf->Size);
-    DtFree(Buf->Block);
+    OsPlatform_DoFork(Buf->Data, Buf->Size);
+    DtAlloc_Free(Buf->Block);
     memset(Buf, 0, sizeof(*Buf));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hand-off +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaDescribeHandOffAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_DescribeHandOffAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsDmaDescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf, void* Fixed,
-                            size_t FixedSize, OsDmaHandOff* HandOff)
+void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
+                                   void* Fixed, size_t FixedSize, OsDmaHandOff* HandOff)
 {
     if (HandOff == NULL)
         return;
@@ -126,14 +126,14 @@ void OsDmaDescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf, void* F
     HandOff->OutSize = FixedSize;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaDescribeHandOff -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_DescribeHandOff -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsDmaDescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
-                          OsDmaHandOff* HandOff)
+void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
+                                 OsDmaHandOff* HandOff)
 {
 #if defined(_WIN32) || defined(_WIN64)
-    OsDmaDescribeHandOffAs(true, Buf, Fixed, FixedSize, HandOff);
+    OsDmaBuffer_DescribeHandOffAs(true, Buf, Fixed, FixedSize, HandOff);
 #else
-    OsDmaDescribeHandOffAs(false, Buf, Fixed, FixedSize, HandOff);
+    OsDmaBuffer_DescribeHandOffAs(false, Buf, Fixed, FixedSize, HandOff);
 #endif
 }

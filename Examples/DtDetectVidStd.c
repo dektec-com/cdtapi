@@ -55,35 +55,35 @@ int main(int Argc, char** Argv)
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     int64_t Waited = 0;
 
-    if (!ExampleCheckArguments(Argc, Argv, "Detects the video standard on an SDI input.",
-                               g_Options,
-                               (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
-        !ExampleInt64(Argc, Argv, "--serial", &Serial) ||
-        !ExampleInt64(Argc, Argv, "--port", &PortNumber) ||
-        !ExampleInt64(Argc, Argv, "--timeout", &TimeoutMs))
+    if (!Example_CheckArguments(Argc, Argv, "Detects the video standard on an SDI input.",
+                                g_Options,
+                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
+        !Example_Int64(Argc, Argv, "--serial", &Serial) ||
+        !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
+        !Example_Int64(Argc, Argv, "--timeout", &TimeoutMs))
     {
         return EXAMPLE_FAILED;
     }
 
     DtHwFuncDesc Port;
-    unsigned int Result = ExampleFindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
+    unsigned int Result = Example_FindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
     if (Result == DTAPI_E_NOT_FOUND)
     {
         printf("No SDI input that suits\n");
         return EXAMPLE_NOTHING;
     }
     if (Result != DTAPI_OK)
-        return ExampleFailed("DtapiHwFuncScan", Result);
+        return Example_Failed("DtapiHwFuncScan", Result);
 
     DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL)
-        return ExampleFailed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
+        return Example_Failed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
 
     Result = DtDevice_AttachToSerial(Device, Port.SerialNumber);
-    if (!ExampleSucceeded(Result))
+    if (!Example_Succeeded(Result))
     {
         DtDevice_Free(Device);
-        return ExampleFailed("DtDevice_AttachToSerial", Result);
+        return Example_Failed("DtDevice_AttachToSerial", Result);
     }
 
     for (;;)
@@ -91,7 +91,7 @@ int main(int Argc, char** Argv)
         Result = DtDevice_DetectVidStd(Device, Port.Port, &VidStd);
         if (Result != DTAPI_OK || VidStd != DTAPI_VIDSTD_UNKNOWN || Waited >= TimeoutMs)
             break;
-        ExampleSleepMs(POLL_MS);
+        Example_SleepMs(POLL_MS);
         Waited += POLL_MS;
     }
 
@@ -101,13 +101,13 @@ int main(int Argc, char** Argv)
     if (Result != DTAPI_OK)
     {
         printf("%s  ", Port.DeviceName);
-        return ExampleFailed("DtDevice_DetectVidStd", Result);
+        return Example_Failed("DtDevice_DetectVidStd", Result);
     }
     if (VidStd == DTAPI_VIDSTD_UNKNOWN)
     {
         printf("%s  no video standard\n", Port.DeviceName);
         return EXAMPLE_NOTHING;
     }
-    printf("%s  %s\n", Port.DeviceName, ExampleVidStdName(VidStd));
+    printf("%s  %s\n", Port.DeviceName, Example_VidStdName(VidStd));
     return EXAMPLE_OK;
 }

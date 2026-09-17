@@ -25,33 +25,33 @@ static DtAtomicInt g_AllocCount = 0;
 static DtAtomicInt g_FailAfter = -1;
 static DtAtomicInt g_Live = 0;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_FailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtAllocFailAfter(int Count)
+void DtAlloc_FailAfter(int Count)
 {
-    DtAtomicStore(&g_FailAfter, Count < 0 ? -1 : Count);
+    DtAtomic_Store(&g_FailAfter, Count < 0 ? -1 : Count);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Count -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtAllocCount(void)
+int DtAlloc_Count(void)
 {
-    return DtAtomicLoad(&g_AllocCount);
+    return DtAtomic_Load(&g_AllocCount);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Live -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtAllocLive(void)
+int DtAlloc_Live(void)
 {
-    return DtAtomicLoad(&g_Live);
+    return DtAtomic_Load(&g_Live);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_ResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtAllocResetCount(void)
+void DtAlloc_ResetCount(void)
 {
-    DtAtomicStore(&g_AllocCount, 0);
-    DtAtomicStore(&g_FailAfter, -1);
+    DtAtomic_Store(&g_AllocCount, 0);
+    DtAtomic_Store(&g_FailAfter, -1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ShouldFail -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -62,60 +62,60 @@ void DtAllocResetCount(void)
 //
 static int ShouldFail(void)
 {
-    DtAtomicIncrement(&g_AllocCount);
+    DtAtomic_Increment(&g_AllocCount);
 
-    if (DtAtomicLoad(&g_FailAfter) < 0)
+    if (DtAtomic_Load(&g_FailAfter) < 0)
         return 0;
 
-    return DtAtomicDecrement(&g_FailAfter) == -1 ? 1 : 0;
+    return DtAtomic_Decrement(&g_FailAfter) == -1 ? 1 : 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Allocation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtMalloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Malloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void* DtMalloc(size_t Size)
+void* DtAlloc_Malloc(size_t Size)
 {
     if (ShouldFail())
         return NULL;
 
     void* Block = malloc(Size);
     if (Block != NULL)
-        DtAtomicIncrement(&g_Live);
+        DtAtomic_Increment(&g_Live);
     return Block;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRealloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Realloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Only reallocating NULL creates a block; growing an existing one does not add to the
 // live count, and a failure leaves the original block, and the count, as they were.
 //
-void* DtRealloc(void* Ptr, size_t Size)
+void* DtAlloc_Realloc(void* Ptr, size_t Size)
 {
     if (ShouldFail())
         return NULL;
 
     void* Block = realloc(Ptr, Size);
     if (Block != NULL && Ptr == NULL)
-        DtAtomicIncrement(&g_Live);
+        DtAtomic_Increment(&g_Live);
     return Block;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtFree(void* Ptr)
+void DtAlloc_Free(void* Ptr)
 {
     if (Ptr != NULL)
-        DtAtomicDecrement(&g_Live);
+        DtAtomic_Decrement(&g_Live);
     free(Ptr);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtGrowCapacity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_GrowCapacity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
-                   size_t* Out)
+int DtAlloc_GrowCapacity(size_t Current, size_t Needed, size_t ElemSize,
+                         size_t MinCapacity, size_t* Out)
 {
     if (Out == NULL || ElemSize == 0)
         return -1;

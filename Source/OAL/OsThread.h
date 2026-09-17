@@ -27,19 +27,19 @@ typedef struct OsThread OsThread;
 typedef void (*OsThreadFunc)(void* Context);
 
 // Starts Func(Context) on a new thread. Returns NULL when the thread cannot be created.
-OsThread* OsThreadStart(OsThreadFunc Func, void* Context);
+OsThread* OsThread_Start(OsThreadFunc Func, void* Context);
 
 // Waits for the thread to return, then releases it. Passing NULL does nothing.
 //
 // There is no way to stop a thread from outside. A thread that must be stoppable waits
 // on an event and returns when it is set; the caller sets that event and then joins.
-void OsThreadJoin(OsThread* Thread);
+void OsThread_Join(OsThread* Thread);
 
 // Raises the calling thread's scheduling priority. Returns 0 on success and -1 when the
 // platform refuses, which on Linux is the normal answer without the right privilege. A
 // refusal is not fatal: the thread still runs, only with less headroom against a busy
 // system.
-int OsThreadRaisePriority(void);
+int OsThread_RaisePriority(void);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Event -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -52,17 +52,17 @@ typedef struct OsEvent OsEvent;
 
 // Creates an auto-reset event, initially not set. A set event wakes one waiter and
 // resets as it does so. Returns NULL when out of resources.
-OsEvent* OsEventCreate(void);
+OsEvent* OsEvent_Create(void);
 
 // Destroys an event. No thread may still be waiting on it. Passing NULL does nothing.
-void OsEventDestroy(OsEvent* Event);
+void OsEvent_Destroy(OsEvent* Event);
 
 // Sets the event. Setting an event that is already set leaves it set once, not twice.
-void OsEventSet(OsEvent* Event);
+void OsEvent_Set(OsEvent* Event);
 
 // Waits until the event is set or TimeoutMs milliseconds have passed. A negative timeout
 // waits indefinitely. Returns OS_WAIT_SIGNALLED, OS_WAIT_TIMEOUT or OS_WAIT_ERROR.
-int OsEventWait(OsEvent* Event, int TimeoutMs);
+int OsEvent_Wait(OsEvent* Event, int TimeoutMs);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Mutex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -70,27 +70,27 @@ typedef struct OsMutex OsMutex;
 
 // Creates a mutex. Returns NULL when out of resources. Not recursive: a thread that
 // locks a mutex it already holds deadlocks.
-OsMutex* OsMutexCreate(void);
-void OsMutexDestroy(OsMutex* Mutex);
-void OsMutexLock(OsMutex* Mutex);
-void OsMutexUnlock(OsMutex* Mutex);
+OsMutex* OsMutex_Create(void);
+void OsMutex_Destroy(OsMutex* Mutex);
+void OsMutex_Lock(OsMutex* Mutex);
+void OsMutex_Unlock(OsMutex* Mutex);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Time -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 // Sleeps for at least Ms milliseconds, or returns at once for 0 or less. The system may
 // sleep longer, by up to a scheduler tick.
-void OsSleepMs(int Ms);
+void OsTime_SleepMs(int Ms);
 
 // Milliseconds on a clock that only moves forward, for measuring an interval. Where it
 // starts is unspecified.
-uint64_t OsMonotonicMs(void);
+uint64_t OsTime_MonotonicMs(void);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Process -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Writes the name the process runs under into Buf, which holds Size bytes, cut to fit:
 // the executable's file name on Windows, the name it was invoked by on Linux. Empty when
 // it cannot be read.
-void OsProcessName(char* Buf, size_t Size);
+void OsProcess_Name(char* Buf, size_t Size);
 
 // The process's identifier.
-uint32_t OsProcessId(void);
+uint32_t OsProcess_Id(void);

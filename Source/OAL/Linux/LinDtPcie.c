@@ -59,7 +59,7 @@ static void* LinOpen(int Index)
     if (Fd < 0)
         return NULL;
 
-    Dev = (LinDevice*)DtMalloc(sizeof(LinDevice));
+    Dev = (LinDevice*)DtAlloc_Malloc(sizeof(LinDevice));
     if (Dev == NULL)
     {
         close(Fd);
@@ -78,7 +78,7 @@ static void LinClose(void* State)
     LinDevice* Dev = (LinDevice*)State;
 
     close(Dev->Fd);
-    DtFree(Dev);
+    DtAlloc_Free(Dev);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTransfer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -90,7 +90,7 @@ static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const voi
                        size_t InSize, void* Out, size_t OutBytes, uint8_t* Buf,
                        size_t BufSize, uint32_t* DrvStatus)
 {
-    if (LinIoctlPack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
+    if (LinIoctlBuffer_Pack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
     {
         Dev->LastError = (uint32_t)EINVAL;
         return OS_IOCTL_COMMUNICATION;
@@ -99,31 +99,31 @@ static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const voi
     int Rc = ioctl(Dev->Fd, (unsigned long)Code, Buf);
     if (Rc != 0)
     {
-        int Result = OsIoctlClassifyLinux(Rc, DrvStatus);
+        int Result = OsIoctlOutcome_ClassifyLinux(Rc, DrvStatus);
         Dev->LastError =
             (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (uint32_t)errno;
         return Result;
     }
 
-    if (LinIoctlUnpack(Buf, BufSize, Out, OutBytes) != 0)
+    if (LinIoctlBuffer_Unpack(Buf, BufSize, Out, OutBytes) != 0)
     {
         Dev->LastError = (uint32_t)EINVAL;
         return OS_IOCTL_COMMUNICATION;
     }
 
     // The Linux driver does not report how much it wrote, so *OutSize is left as the
-    // caller set it. See the OsDrvIoCtl contract.
+    // caller set it. See the OsDrv_IoCtl contract.
     return OS_IOCTL_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // ioctl takes a single pointer, so input and output share one block laid out by
-// LinIoctlPack. A scratch block is always used, rather than the caller's input buffer,
-// so that the driver's answer never overwrites memory the caller passed as const.
+// LinIoctlBuffer_Pack. A scratch block is always used, rather than the caller's input
+// buffer, so that the driver's answer never overwrites memory the caller passed as const.
 //
 // A command the driver refuses comes back as its DtStatus, negated, in the return value
-// of ioctl rather than in errno. OsIoctlClassifyLinux separates the two.
+// of ioctl rather than in errno. OsIoctlOutcome_ClassifyLinux separates the two.
 //
 static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
                     size_t* OutSize, uint32_t* DrvStatus)
@@ -131,13 +131,13 @@ static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
     LinDevice* Dev = (LinDevice*)State;
     size_t OutBytes = (Out != NULL && OutSize != NULL) ? *OutSize : 0;
     bool SizeHeader = _IOC_TYPE(Code) == DT_IOCTL_MAGIC_SIZE;
-    size_t BufSize = LinIoctlBufferSize(SizeHeader, InSize, OutBytes);
+    size_t BufSize = LinIoctlBuffer_Size(SizeHeader, InSize, OutBytes);
 
     uint8_t Stack[LIN_STACK_BUFFER_BYTES];
     uint8_t* Buf = Stack;
     if (BufSize > sizeof(Stack))
     {
-        Buf = (uint8_t*)DtMalloc(BufSize);
+        Buf = (uint8_t*)DtAlloc_Malloc(BufSize);
         if (Buf == NULL)
         {
             Dev->LastError = (uint32_t)ENOMEM;
@@ -148,7 +148,7 @@ static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
     int Result = LinTransfer(Dev, Code, SizeHeader, In, InSize, Out, OutBytes, Buf,
                              BufSize, DrvStatus);
     if (Buf != Stack)
-        DtFree(Buf);
+        DtAlloc_Free(Buf);
     return Result;
 }
 
@@ -186,9 +186,9 @@ static void LinUnmapMemory(void* State, void* Address, size_t Size)
     munmap(Address, Size);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformBackend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_Backend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const OsBackend* OsPlatformBackend(void)
+const OsBackend* OsPlatform_Backend(void)
 {
     static const OsBackend Backend = {LinOpen,      LinClose,     LinIoCtl,
                                       LinLastError, LinMapMemory, LinUnmapMemory};

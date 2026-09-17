@@ -30,13 +30,13 @@
 // failure, in which case the calling case must return.
 static OsDrv* OpenSim(int* DtFailures)
 {
-    SimDtPcieReset();
-    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    SimDtPcie_Reset();
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return NULL;
     }
     return Drv;
@@ -84,8 +84,8 @@ static int RawGet(OsDrv* Drv, int PortIndex, const char* Group, RawGetOut* Out)
     In.m_IoCfgId.m_PortIndex = PortIndex;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", Group);
     memset(Out, 0, sizeof(*Out));
-    return OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), Out,
-                      &OutSize, NULL);
+    return OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), Out,
+                       &OutSize, NULL);
 }
 
 // A raw set request, with room for one configuration.
@@ -101,7 +101,7 @@ static bool LastSetIoConfig(DtIoctlIoConfig* Pars)
 {
     RawSetIn In;
     int FunctionCode;
-    size_t Size = SimDtPcieLastInput(&FunctionCode, &In, sizeof(In));
+    size_t Size = SimDtPcie_LastInput(&FunctionCode, &In, sizeof(In));
 
     if (FunctionCode != DT_FUNC_CODE_IOCONFIG_CMD || Size != sizeof(In) ||
         In.m_CmdHdr.m_Cmd != DT_IOCONFIG_CMD_SET_IOCONFIG || In.m_IoConfigCount != 1)
@@ -131,13 +131,13 @@ DT_TEST(PortCountsAreReported)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Value));
     DT_ASSERT_EQ(Value, SIM_PORT_COUNT);
     DT_ASSERT_OK(
-        DtPcieCmdGetPropertyInt(Drv, "MAIN_PORT_COUNT", DT_PROPERTY_DEVICE, &Value));
+        DtPcieCmd_GetPropertyInt(Drv, "MAIN_PORT_COUNT", DT_PROPERTY_DEVICE, &Value));
     DT_ASSERT_EQ(Value, SIM_PORT_COUNT);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A capability a port lacks is found, with the value false, as the driver answers.
@@ -149,31 +149,32 @@ DT_TEST(CapabilitiesArePerPort)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_3GSDI", 0, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_3GSDI", 0, &Value));
     DT_ASSERT(Value);
     DT_ASSERT_OK(
-        DtPcieCmdGetPropertyBool(Drv, "CAP_OUTPUT", SIM_SDI_PORT_COUNT - 1, &Value));
+        DtPcieCmd_GetPropertyBool(Drv, "CAP_OUTPUT", SIM_SDI_PORT_COUNT - 1, &Value));
     DT_ASSERT(Value);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_12GSDI", 0, &Value));
-    DT_ASSERT(!Value);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_GENREF", SIM_SDI_PORT_COUNT, &Value));
-    DT_ASSERT(Value);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_INPUT", SIM_SDI_PORT_COUNT, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_12GSDI", 0, &Value));
     DT_ASSERT(!Value);
     DT_ASSERT_OK(
-        DtPcieCmdGetPropertyBool(Drv, "CAP_VIRTUAL", SIM_PORT_COUNT - 1, &Value));
+        DtPcieCmd_GetPropertyBool(Drv, "CAP_GENREF", SIM_SDI_PORT_COUNT, &Value));
+    DT_ASSERT(Value);
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_INPUT", SIM_SDI_PORT_COUNT, &Value));
+    DT_ASSERT(!Value);
+    DT_ASSERT_OK(
+        DtPcieCmd_GetPropertyBool(Drv, "CAP_VIRTUAL", SIM_PORT_COUNT - 1, &Value));
     DT_ASSERT(Value);
     DT_ASSERT_OK(
-        DtPcieCmdGetPropertyBool(Drv, "CAP_VIRTUAL", SIM_SDI_PORT_COUNT, &Value));
+        DtPcieCmd_GetPropertyBool(Drv, "CAP_VIRTUAL", SIM_SDI_PORT_COUNT, &Value));
     DT_ASSERT(!Value);
 
     // Beyond the last port, and for the device itself, there are no capabilities.
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_SDI", SIM_PORT_COUNT, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_SDI", SIM_PORT_COUNT, &Value));
     DT_ASSERT(!Value);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_SDI", DT_PROPERTY_DEVICE, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_SDI", DT_PROPERTY_DEVICE, &Value));
     DT_ASSERT(!Value);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(UnknownPropertyIsNotFound)
@@ -185,14 +186,14 @@ DT_TEST(UnknownPropertyIsNotFound)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, "NO_SUCH", DT_PROPERTY_DEVICE, &Value),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, "NO_SUCH", DT_PROPERTY_DEVICE, &Value),
                  DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(Value, 0);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyBool(Drv, "PORT_COUNT", 0, &Flag),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyBool(Drv, "PORT_COUNT", 0, &Flag),
                  DTAPI_E_NOT_FOUND);
     DT_ASSERT(!Flag);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The driver's name field holds 50 bytes, terminator included.
@@ -207,14 +208,14 @@ DT_TEST(PropertyNameMustFit)
     memset(Name, 'A', sizeof(Name));
     Name[PROPERTY_NAME_MAX_SIZE] = '\0';
     int Value;
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, Name, DT_PROPERTY_DEVICE, &Value),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, Name, DT_PROPERTY_DEVICE, &Value),
                  DTAPI_E_BUF_TOO_SMALL);
 
     Name[PROPERTY_NAME_MAX_SIZE - 1] = '\0';
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, Name, DT_PROPERTY_DEVICE, &Value),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, Name, DT_PROPERTY_DEVICE, &Value),
                  DTAPI_E_NOT_FOUND);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(PropertyNullArgumentsAreRefused)
@@ -226,19 +227,19 @@ DT_TEST(PropertyNullArgumentsAreRefused)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(NULL, "PORT_COUNT", -1, &Value),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(NULL, "PORT_COUNT", -1, &Value),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(Value, 0);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, NULL, -1, &Value), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, "PORT_COUNT", -1, NULL),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, NULL, -1, &Value), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, "PORT_COUNT", -1, NULL),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyBool(NULL, "CAP_SDI", 0, &Flag),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyBool(NULL, "CAP_SDI", 0, &Flag),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT(!Flag);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyBool(Drv, NULL, 0, &Flag), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyBool(Drv, "CAP_SDI", 0, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyBool(Drv, NULL, 0, &Flag), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyBool(Drv, "CAP_SDI", 0, NULL), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver failures +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -259,19 +260,19 @@ DT_TEST(DriverStatusBecomesTheResult)
     if (Drv == NULL)
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_IN_USE);
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_EXCL_ACCESS_REQD);
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_TOD_CMD, DT_STATUS_BUSY);
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DRIVER_VERSION, DT_STATUS_VERSION_MISMATCH);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_IN_USE);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_EXCL_ACCESS_REQD);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_TOD_CMD, DT_STATUS_BUSY);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DRIVER_VERSION, DT_STATUS_VERSION_MISMATCH);
 
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, "PORT_COUNT", -1, &Value), DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_EXCL_ACCESS_REQD);
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(Drv, &Cfg), DTAPI_E_EXCL_ACCESS_REQD);
-    DT_ASSERT_EQ(DtPcieCmdGetTimeOfDay(Drv, &Seconds, &Nanoseconds), DTAPI_E_BUSY);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, "PORT_COUNT", -1, &Value), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_EXCL_ACCESS_REQD);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Drv, &Cfg), DTAPI_E_EXCL_ACCESS_REQD);
+    DT_ASSERT_EQ(DtPcieCmd_GetTimeOfDay(Drv, &Seconds, &Nanoseconds), DTAPI_E_BUSY);
     DtDriverVersion Version;
-    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, &Version), DTAPI_E_DRIVER_INCOMP);
+    DT_ASSERT_EQ(DtPcieCmd_GetDriverVersion(Drv, &Version), DTAPI_E_DRIVER_INCOMP);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(ShortAnswerIsDriverFailure)
@@ -282,18 +283,18 @@ DT_TEST(ShortAnswerIsDriverFailure)
     if (Drv == NULL)
         return;
 
-    SimDtPcieAnswerShort(DT_FUNC_CODE_PROPERTY_CMD);
-    SimDtPcieAnswerShort(DT_FUNC_CODE_IOCONFIG_CMD);
-    SimDtPcieAnswerShort(DT_FUNC_CODE_TOD_CMD);
+    SimDtPcie_AnswerShort(DT_FUNC_CODE_PROPERTY_CMD);
+    SimDtPcie_AnswerShort(DT_FUNC_CODE_IOCONFIG_CMD);
+    SimDtPcie_AnswerShort(DT_FUNC_CODE_TOD_CMD);
 
     bool Flag;
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyBool(Drv, "CAP_SDI", 0, &Flag), DTAPI_E_DEV_DRIVER);
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(Drv, &Cfg), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyBool(Drv, "CAP_SDI", 0, &Flag), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Drv, &Cfg), DTAPI_E_DEV_DRIVER);
     uint32_t Seconds;
     uint32_t Nanoseconds;
-    DT_ASSERT_EQ(DtPcieCmdGetTimeOfDay(Drv, &Seconds, &Nanoseconds), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieCmd_GetTimeOfDay(Drv, &Seconds, &Nanoseconds), DTAPI_E_DEV_DRIVER);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A driver without GET_DEV_INFO2 is asked the original command; only when both fail does
@@ -305,15 +306,15 @@ DT_TEST(DeviceInfoFallsBack)
     if (Drv == NULL)
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_NOT_SUPPORTED);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_NOT_SUPPORTED);
     DtDeviceInfo Info;
-    DT_ASSERT_OK(DtPcieCmdGetDeviceInfo(Drv, &Info));
+    DT_ASSERT_OK(DtPcieCmd_GetDeviceInfo(Drv, &Info));
     DT_ASSERT_EQ(Info.Serial, (int64_t)SIM_SERIAL);
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_TIMEOUT);
-    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, &Info), DTAPI_E_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_TIMEOUT);
+    DT_ASSERT_EQ(DtPcieCmd_GetDeviceInfo(Drv, &Info), DTAPI_E_TIMEOUT);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= I/O configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -326,24 +327,24 @@ DT_TEST(DefaultDirectionsAlternate)
         return;
 
     DtIoConfig Cfg = Config(1, DTAPI_IOCONFIG_IODIR, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Cfg));
     DT_ASSERT_EQ(Cfg.Value, DTAPI_IOCONFIG_INPUT);
     DT_ASSERT_EQ(Cfg.SubValue, DTAPI_IOCONFIG_INPUT);
     DT_ASSERT_EQ(Cfg.ParXtra[0], -1);
     DT_ASSERT_EQ(Cfg.ParXtra[1], -1);
 
     Cfg = Config(2, DTAPI_IOCONFIG_IODIR, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Cfg));
     DT_ASSERT_EQ(Cfg.Value, DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(Cfg.SubValue, DTAPI_IOCONFIG_OUTPUT);
 
     // A group the port has no setting for reads back as -1, the empty name.
     Cfg = Config(SIM_SDI_PORT_COUNT + 1, DTAPI_IOCONFIG_IODIR, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Cfg));
     DT_ASSERT_EQ(Cfg.Value, -1);
     DT_ASSERT_EQ(Cfg.SubValue, -1);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(ConfigurationRoundTrips)
@@ -356,30 +357,30 @@ DT_TEST(ConfigurationRoundTrips)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Set));
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Set));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.Value, DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(Get.SubValue, DTAPI_IOCONFIG_OUTPUT);
 
     Set = Config(1, DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE, -1);
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Set));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Set));
     Get = Config(1, DTAPI_IOCONFIG_GENLOCKED, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.Value, DTAPI_IOCONFIG_TRUE);
     DT_ASSERT_EQ(Get.SubValue, -1);
 
     // The state belongs to the card, not to the handle.
-    OsDrvClose(Drv);
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv_Close(Drv);
+    Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     Get = Config(1, DTAPI_IOCONFIG_IODIR, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.Value, DTAPI_IOCONFIG_OUTPUT);
 
-    SimDtPcieReset();
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    SimDtPcie_Reset();
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.Value, DTAPI_IOCONFIG_INPUT);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // DTAPI numbers the buddy port of a double-buffered output from 1, the driver from 0.
@@ -396,7 +397,7 @@ DT_TEST(BuddyPortIsConvertedBothWays)
 
     Set.ParXtra[0] = 4;
     Set.ParXtra[1] = 77;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Set));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Set));
 
     DT_ASSERT_EQ(RawGet(Drv, 1, "IODIR", &Raw), OS_IOCTL_OK);
     DT_ASSERT_STR(Raw.m_IoCfgValue.m_Value, "OUTPUT");
@@ -406,12 +407,12 @@ DT_TEST(BuddyPortIsConvertedBothWays)
     DT_ASSERT_EQ(Raw.m_IoCfgValue.m_ParXtra[2], -1);
     DT_ASSERT_EQ(Raw.m_IoCfgValue.m_ParXtra[3], -1);
 
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.SubValue, DTAPI_IOCONFIG_DBLBUF);
     DT_ASSERT_EQ(Get.ParXtra[0], 4);
     DT_ASSERT_EQ(Get.ParXtra[1], 77);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Only the I/O direction values that name a port have ParXtra[0] converted.
@@ -427,14 +428,14 @@ DT_TEST(OtherParametersAreNotConverted)
         return;
 
     Set.ParXtra[0] = 4;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Set));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Set));
     DT_ASSERT_EQ(RawGet(Drv, 0, "IOSTD", &Raw), OS_IOCTL_OK);
     DT_ASSERT_EQ(Raw.m_IoCfgValue.m_ParXtra[0], 4);
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Get));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Get));
     DT_ASSERT_EQ(Get.ParXtra[0], 4);
     DT_ASSERT_EQ(Get.SubValue, DTAPI_IOCONFIG_1080P50);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Every I/O direction whose ParXtra[0] names a port, as the driver receives it.
@@ -472,7 +473,7 @@ DT_TEST(DirectionsThatNamePortsAreConverted)
 
         Cfg.ParXtra[0] = 5;
         Cfg.ParXtra[1] = 6;
-        DtPcieCmdSetIoConfig(Drv, &Cfg);
+        DtPcieCmd_SetIoConfig(Drv, &Cfg);
 
         DT_ASSERT(LastSetIoConfig(&Sent));
         if (Sent.m_ParXtra[0] != Cases[i].Expected)
@@ -492,14 +493,14 @@ DT_TEST(DirectionsThatNamePortsAreConverted)
                                 DTAPI_IOCONFIG_MONITOR);
 
         Cfg.ParXtra[0] = 5;
-        DtPcieCmdSetIoConfig(Drv, &Cfg);
+        DtPcieCmd_SetIoConfig(Drv, &Cfg);
         DT_ASSERT(LastSetIoConfig(&Sent));
         DT_ASSERT_EQ(Sent.m_ParXtra[0], 5);
         DT_ASSERT_STR(Sent.m_Value, "MONITOR");
         DT_ASSERT_STR(Sent.m_SubValue, "MONITOR");
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // DTAPI skips the driver's exclusive-access check for the port its proxy addresses,
@@ -514,17 +515,17 @@ DT_TEST(ExclusiveAccessCheckIsSkippedOnlyForTheDevice)
     if (Drv == NULL)
         return;
 
-    DtPcieCmdSetIoConfig(Drv, &Cfg);
+    DtPcieCmd_SetIoConfig(Drv, &Cfg);
     DT_ASSERT(LastSetIoConfig(&Sent));
     DT_ASSERT_EQ(Sent.m_PortIndex, -1);
     DT_ASSERT_EQ(Sent.m_SkipExclAccessCheck, 1);
 
     Cfg.Port = 1;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
     DT_ASSERT(LastSetIoConfig(&Sent));
     DT_ASSERT_EQ(Sent.m_SkipExclAccessCheck, 0);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(UnsupportedConfigurationIsConfigError)
@@ -537,13 +538,13 @@ DT_TEST(UnsupportedConfigurationIsConfigError)
     // The genlock reference port has no direction, and an SDI port is no reference.
     DtIoConfig Cfg = Config(SIM_SDI_PORT_COUNT + 1, DTAPI_IOCONFIG_IODIR,
                             DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg = Config(1, DTAPI_IOCONFIG_GENREF, DTAPI_IOCONFIG_TRUE, -1);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg = Config(1, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(PortOutOfRangeIsRefused)
@@ -555,12 +556,12 @@ DT_TEST(PortOutOfRangeIsRefused)
 
     DtIoConfig Cfg = Config(SIM_PORT_COUNT + 1, DTAPI_IOCONFIG_IODIR,
                             DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
     Cfg.Port = 0;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A code without a name never reaches the driver.
@@ -571,17 +572,17 @@ DT_TEST(UnknownCodeIsRefused)
     if (Drv == NULL)
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_IN_USE);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_IN_USE);
 
     DtIoConfig Cfg = Config(1, 999, DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
     Cfg = Config(1, DTAPI_IOCONFIG_IODIR, 999, DTAPI_IOCONFIG_INPUT);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
     Cfg = Config(1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT, 999);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The ISI of a DVB-S2 loop-through is checked before the driver is asked, for both
@@ -597,25 +598,25 @@ DT_TEST(LoopThroughIsiIsChecked)
 
     Cfg.ParXtra[0] = 1;
     Cfg.ParXtra[1] = 256;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
     Cfg.ParXtra[1] = -1;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
     Cfg.Value = DTAPI_IOCONFIG_INTOUTPUT;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_INVALID_ISI);
 
     // In range, it reaches the driver, which knows the card cannot loop DVB-S2 through.
     Cfg.Value = DTAPI_IOCONFIG_OUTPUT;
     Cfg.ParXtra[1] = 255;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg.ParXtra[1] = 0;
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
 
     // Another sub-value carries no ISI.
     Cfg.SubValue = DTAPI_IOCONFIG_DBLBUF;
     Cfg.ParXtra[1] = 256;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(IoConfigNullArgumentsAreRefused)
@@ -626,12 +627,12 @@ DT_TEST(IoConfigNullArgumentsAreRefused)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(NULL, &Cfg), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetIoConfig(Drv, NULL), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(NULL, &Cfg), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSetIoConfig(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(NULL, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(NULL, &Cfg), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, NULL), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time of day +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -646,19 +647,19 @@ DT_TEST(TimeOfDayFollowsTheHostClock)
         return;
 
     time_t Before = time(NULL);
-    DT_ASSERT_OK(DtPcieCmdGetTimeOfDay(Drv, &Seconds, &Nanoseconds));
+    DT_ASSERT_OK(DtPcieCmd_GetTimeOfDay(Drv, &Seconds, &Nanoseconds));
     time_t After = time(NULL);
 
     DT_ASSERT(Nanoseconds < 1000000000U);
     DT_ASSERT((time_t)Seconds + 1 >= Before);
     DT_ASSERT((time_t)Seconds <= After + 1);
 
-    DT_ASSERT_EQ(DtPcieCmdGetTimeOfDay(NULL, &Seconds, &Nanoseconds),
+    DT_ASSERT_EQ(DtPcieCmd_GetTimeOfDay(NULL, &Seconds, &Nanoseconds),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetTimeOfDay(Drv, NULL, &Nanoseconds), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetTimeOfDay(Drv, &Seconds, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetTimeOfDay(Drv, NULL, &Nanoseconds), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetTimeOfDay(Drv, &Seconds, NULL), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Wire format +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -676,10 +677,10 @@ DT_TEST(PropertyRequestCarriesTheFilter)
         return;
 
     bool Value;
-    DT_ASSERT_OK(DtPcieCmdGetPropertyBool(Drv, "CAP_SDI", 3, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_SDI", 3, &Value));
     DtIoctlPropCmdGetValueInput In;
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &In, sizeof(In)), sizeof(In));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &In, sizeof(In)), sizeof(In));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_PROPERTY_CMD);
     CheckDeviceHeader(DtFailures, &In.m_CmdHdr, DT_PROP_CMD_GET_VALUE);
     DT_ASSERT_EQ(In.m_TypeNumber, -1);
@@ -700,7 +701,7 @@ DT_TEST(PropertyRequestCarriesTheFilter)
     memcpy(Name, "CAP_SDI", 7);
     DT_ASSERT_MEM(In.m_Name, Name, sizeof(Name));
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(IoConfigRequestsCarryOneConfiguration)
@@ -711,10 +712,10 @@ DT_TEST(IoConfigRequestsCarryOneConfiguration)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Cfg));
     RawGetIn Get;
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Get, sizeof(Get)), sizeof(Get));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Get, sizeof(Get)), sizeof(Get));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_IOCONFIG_CMD);
     CheckDeviceHeader(DtFailures, &Get.m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
     DT_ASSERT_EQ(Get.m_IoConfigCount, 1);
@@ -722,7 +723,7 @@ DT_TEST(IoConfigRequestsCarryOneConfiguration)
     DT_ASSERT_STR(Get.m_IoCfgId.m_Group, "IODIR");
 
     Cfg = Config(2, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT);
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
     DtIoctlIoConfig Sent;
     DT_ASSERT(LastSetIoConfig(&Sent));
     DT_ASSERT_EQ(Sent.m_PortIndex, 1);
@@ -732,11 +733,11 @@ DT_TEST(IoConfigRequestsCarryOneConfiguration)
     {
         RawSetIn Set;
 
-        SimDtPcieLastInput(&FunctionCode, &Set, sizeof(Set));
+        SimDtPcie_LastInput(&FunctionCode, &Set, sizeof(Set));
         CheckDeviceHeader(DtFailures, &Set.m_CmdHdr, DT_IOCONFIG_CMD_SET_IOCONFIG);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(SimpleRequestsAreAHeader)
@@ -748,26 +749,26 @@ DT_TEST(SimpleRequestsAreAHeader)
 
     uint32_t Seconds;
     uint32_t Nanoseconds;
-    DT_ASSERT_OK(DtPcieCmdGetTimeOfDay(Drv, &Seconds, &Nanoseconds));
+    DT_ASSERT_OK(DtPcieCmd_GetTimeOfDay(Drv, &Seconds, &Nanoseconds));
     DtIoctlInputDataHdr Hdr;
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_TOD_CMD);
     CheckDeviceHeader(DtFailures, &Hdr, DT_TOD_CMD_GET_TIME);
 
     DtDriverVersion Version;
-    DT_ASSERT_OK(DtPcieCmdGetDriverVersion(Drv, &Version));
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
+    DT_ASSERT_OK(DtPcieCmd_GetDriverVersion(Drv, &Version));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_GET_DRIVER_VERSION);
     CheckDeviceHeader(DtFailures, &Hdr, DT_IOCTL_CMD_NOP);
 
     DtDeviceInfo Info;
-    DT_ASSERT_OK(DtPcieCmdGetDeviceInfo(Drv, &Info));
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
+    DT_ASSERT_OK(DtPcieCmd_GetDeviceInfo(Drv, &Info));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_GET_DEV_INFO2);
     CheckDeviceHeader(DtFailures, &Hdr, DT_IOCTL_CMD_NOP);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Nothing is recorded before the first command, and what is recorded is cut off at the
@@ -781,19 +782,19 @@ DT_TEST(RecordingOfInputs)
         return;
 
     uint8_t Back[8];
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, Back, sizeof(Back)), 0);
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, Back, sizeof(Back)), 0);
     DT_ASSERT_EQ(FunctionCode, -1);
 
     uint8_t Big[SIM_MAX_RECORDED_INPUT + 8];
     memset(Big, 0x5A, sizeof(Big));
     uint32_t Status;
-    OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), Big, sizeof(Big), NULL, NULL,
-               &Status);
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, Back, sizeof(Back)), sizeof(Big));
+    OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), Big, sizeof(Big), NULL, NULL,
+                &Status);
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, Back, sizeof(Back)), sizeof(Big));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_DEBUG_CMD);
     DT_ASSERT_EQ(Back[7], 0x5A);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(PropertyRequestSizesAreChecked)
@@ -813,26 +814,26 @@ DT_TEST(PropertyRequestSizesAreChecked)
     snprintf(In.m_Name, sizeof(In.m_Name), "%s", "PORT_COUNT");
     In.m_PortIndex = -1;
 
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In,
-                            sizeof(In) - 1, &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In,
+                             sizeof(In) - 1, &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(Out) - 1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     // Unmodelled commands of a modelled IOCTL are unknown commands.
     OutSize = sizeof(Out);
     In.m_CmdHdr.m_Cmd = DT_PROP_CMD_GET_TABLE;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The configuration count is part of the size the request must have.
@@ -853,30 +854,30 @@ DT_TEST(IoConfigRequestSizesFollowTheCount)
     In.m_IoConfigCount = 2;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "IODIR");
 
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoConfigCount = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoConfigCount = 0;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_OK);
     DT_ASSERT_EQ(OutSize, sizeof(DtIoctlIoConfigCmdGetIoConfigOutput));
 
     In.m_CmdHdr.m_Cmd = 99;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 static void RawSetInit(RawSetIn* In, const char* Group, const char* Value,
@@ -898,8 +899,8 @@ static uint32_t RawSet(OsDrv* Drv, const RawSetIn* In, size_t InSize)
 {
     uint32_t Status = 0xDEAD;
 
-    if (OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, NULL, NULL,
-                   &Status) == OS_IOCTL_OK)
+    if (OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, NULL, NULL,
+                    &Status) == OS_IOCTL_OK)
     {
         return DT_STATUS_OK;
     }
@@ -944,11 +945,11 @@ DT_TEST(SetRequestsAreChecked)
 
     // A refused request leaves the configuration as the first, accepted, request made
     // it; the refused OUTPUT with sub-value INPUT in particular did not get through.
-    DT_ASSERT_OK(DtPcieCmdGetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_GetIoConfig(Drv, &Cfg));
     DT_ASSERT_EQ(Cfg.Value, DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(Cfg.SubValue, DTAPI_IOCONFIG_OUTPUT);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(GetRequestsAreChecked)
@@ -968,52 +969,52 @@ DT_TEST(GetRequestsAreChecked)
 
     RawGetOut Out;
     size_t OutSize = sizeof(Out);
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "IODIR");
     In.m_IoCfgId.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoCfgId.m_PortIndex = 0;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In,
-                            sizeof(DtIoctlIoConfigCmdGetIoConfigInput) - 1, &Out,
-                            &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In,
+                             sizeof(DtIoctlIoConfigCmdGetIoConfigInput) - 1, &Out,
+                             &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) - 1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Opening allocates twice: the emulator's handle state, then the abstraction's handle.
 // Either failing leaves nothing open.
 DT_TEST(OpenSurvivesAllocationFailure)
 {
-    SimDtPcieReset();
-    DtAllocResetCount();
-    DtAllocFailAfter(0);
-    DT_ASSERT(OsDrvOpen(SIM_DEVICE_INDEX) == NULL);
+    SimDtPcie_Reset();
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(0);
+    DT_ASSERT(OsDrv_Open(SIM_DEVICE_INDEX) == NULL);
 
-    DtAllocResetCount();
-    DtAllocFailAfter(1);
-    DT_ASSERT(OsDrvOpen(SIM_DEVICE_INDEX) == NULL);
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(1);
+    DT_ASSERT(OsDrv_Open(SIM_DEVICE_INDEX) == NULL);
 
-    DtAllocResetCount();
-    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    DtAlloc_ResetCount();
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     DT_ASSERT(Drv != NULL);
-    DT_ASSERT_EQ(DtAllocCount(), 2);
-    OsDrvClose(Drv);
+    DT_ASSERT_EQ(DtAlloc_Count(), 2);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(TodRequestSizesAreChecked)
@@ -1030,19 +1031,19 @@ DT_TEST(TodRequestSizesAreChecked)
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
     In.m_Cmd = DT_TOD_CMD_GET_TIME;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
-                            &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
+                             &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(Out);
     In.m_Cmd = DT_TOD_CMD_SET_TIME;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
-                            &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
+                             &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST_MAIN("SimCommands", DT_RUN(PortCountsAreReported), DT_RUN(CapabilitiesArePerPort),

@@ -75,7 +75,7 @@
 //
 // The emulated device keeps its state, such as its I/O configuration, for the whole
 // process and across handles, as a card does across opens. Tests that change it start
-// from SimDtPcieReset. None of this is thread-safe; the emulator's state is meant to be
+// from SimDtPcie_Reset. None of this is thread-safe; the emulator's state is meant to be
 // changed by one test at a time.
 //
 // A fault makes the emulated driver refuse or mangle commands of one function code, the
@@ -87,30 +87,30 @@
 
 // Restores the power-on state: the default I/O configuration, the identity above, and
 // no faults.
-void SimDtPcieReset(void);
+void SimDtPcie_Reset(void);
 
 // Makes the card report this firmware status, one of the DT_FWSTATUS_ values.
-void SimDtPcieSetFirmwareStatus(int Status);
+void SimDtPcie_SetFirmwareStatus(int Status);
 
 // Makes the driver report this version.
-void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro, int Build);
+void SimDtPcie_SetDriverVersion(int Major, int Minor, int Micro, int Build);
 
 // Replaces a property of the card: absent when Present is false, otherwise with Value.
 // Up to eight properties can be overridden together; overriding one again replaces the
 // earlier override.
-void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
-                               uint64_t Value);
+void SimDtPcie_OverrideProperty(const char* Name, int PortIndex, bool Present,
+                                uint64_t Value);
 
 // Replaces a string property of the card the same way, sharing the eight slots. An
 // override of one kind leaves the property of the other kind with that name as it is.
 // Value is ignored when Present is false, and is cut to what the driver can answer.
-void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
-                             const char* Value);
+void SimDtPcie_OverrideString(const char* Name, int PortIndex, bool Present,
+                              const char* Value);
 
 // Makes reading a string property, when IsString, or a value property fail with the
 // driver status Status, sharing the eight slots with the overrides above.
-void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
-                           uint32_t Status);
+void SimDtPcie_FailProperty(const char* Name, int PortIndex, bool IsString,
+                            uint32_t Status);
 
 // What the SDI receiver of a port reports, in the driver's terms: the fields of
 // DT_SDIRX_CMD_GET_SDI_STATUS2, with its flags as integers, 0 for false.
@@ -134,33 +134,33 @@ typedef struct SimSdiSignal
 // NULL, as after a reset, leaves it without a signal: nothing detected and the SDI rate
 // unknown. The receiver reports the signal only while the port is an input; on a port
 // configured for ASI it reports the carrier alone, as the driver does.
-void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal);
+void SimDtPcie_SetSdiSignal(int PortIndex, const SimSdiSignal* Signal);
 
 // Hides the signal of the SDI port at PortIndex from the next Reads status requests that
 // the receiver answers, as if it arrived only then. A reset, a new signal or a new delay
 // ends it.
-void SimDtPcieDelaySdiSignal(int PortIndex, int Reads);
+void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads);
 
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.
-void SimDtPcieSetIndex(int Index);
+void SimDtPcie_SetIndex(int Index);
 
 // The number of handles to the emulated device that are open, so that a test can check
 // that a layer above closes what it opens.
-int SimDtPcieOpenHandles(void);
+int SimDtPcie_OpenHandles(void);
 
 // Refuses every command with FunctionCode with the driver status Status.
-void SimDtPcieFailWithStatus(int FunctionCode, uint32_t Status);
+void SimDtPcie_FailWithStatus(int FunctionCode, uint32_t Status);
 
 // Answers every command with FunctionCode with one byte fewer than its output needs.
-void SimDtPcieAnswerShort(int FunctionCode);
+void SimDtPcie_AnswerShort(int FunctionCode);
 
 // Copies the input of the most recent command that reached the emulated driver, exactly
 // as it arrived and whether or not it was carried out, so that a test can check every
 // field a layer above sent. Copies at most Size bytes into Buf, stores the command's
 // function code in *FunctionCode, and returns the size of the input; 0 when no command
 // has arrived since the reset. Inputs are kept up to SIM_MAX_RECORDED_INPUT bytes.
-size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size);
+size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size);
 
 #define SIM_MAX_RECORDED_INPUT 1024
 
@@ -173,9 +173,9 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size);
 // DtBc_ExclAccessCheck answers: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD
 // when nobody does, DT_STATUS_IN_USE when another handle does. Called with the
 // emulator's lock held.
-uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex);
+uint32_t SimDtPcie_CheckAccess(void* Handle, int PartIndex);
 
 // Takes and releases the emulator's lock, for a test control that reads or changes state
 // a command on another thread may be using. Not recursive.
-void SimDtPcieLock(void);
-void SimDtPcieUnlock(void);
+void SimDtPcie_Lock(void);
+void SimDtPcie_Unlock(void);

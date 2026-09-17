@@ -26,26 +26,26 @@
 // than the tested one would defeat the point.
 //
 
-void* DtMalloc(size_t Size);
-void* DtRealloc(void* Ptr, size_t Size);
-void DtFree(void* Ptr);
+void* DtAlloc_Malloc(size_t Size);
+void* DtAlloc_Realloc(void* Ptr, size_t Size);
+void DtAlloc_Free(void* Ptr);
 
 // Makes the next allocation after Count more succeed-then-fail: 0 fails the very next
 // one, 1 lets one through and fails the one after it. A negative value disarms the
 // injection, which is the default.
-void DtAllocFailAfter(int Count);
+void DtAlloc_FailAfter(int Count);
 
-// How many allocations have been made since the last DtAllocResetCount. Lets a test
+// How many allocations have been made since the last DtAlloc_ResetCount. Lets a test
 // assert that the path it meant to exercise really did allocate.
-int DtAllocCount(void);
+int DtAlloc_Count(void);
 
 // Sets the count back to zero and disarms any pending injection.
-void DtAllocResetCount(void);
+void DtAlloc_ResetCount(void);
 
 // How many blocks allocated through the seam have not been freed. A test compares it
 // before and after an operation to find a leak, which matters on platforms where no leak
-// sanitizer runs. DtAllocResetCount does not change it.
-int DtAllocLive(void);
+// sanitizer runs. DtAlloc_ResetCount does not change it.
+int DtAlloc_Live(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -55,5 +55,5 @@ int DtAllocLive(void);
 // Returns 0 with *Out set, or -1 when Needed elements of ElemSize bytes each cannot be
 // represented in a size_t. Refusing is the point: a capacity that wraps produces a small
 // allocation followed by writes beyond its end.
-int DtGrowCapacity(size_t Current, size_t Needed, size_t ElemSize, size_t MinCapacity,
-                   size_t* Out);
+int DtAlloc_GrowCapacity(size_t Current, size_t Needed, size_t ElemSize,
+                         size_t MinCapacity, size_t* Out);

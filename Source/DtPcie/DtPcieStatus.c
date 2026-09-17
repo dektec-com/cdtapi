@@ -14,14 +14,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieStatusToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieStatus_ToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The DT_STATUS_ values are encoded differently on Windows and on Linux, so the cases are
 // written with the vendored names and never with numbers. Statuses DTAPI deliberately
 // reports as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
 // case of their own and fall to the default.
 //
-DtapiResult DtPcieStatusToResult(uint32_t Status)
+DtapiResult DtPcieStatus_ToResult(uint32_t Status)
 {
     switch (Status)
     {
@@ -88,16 +88,16 @@ DtapiResult DtPcieStatusToResult(uint32_t Status)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieOutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieStatus_OutcomeToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieOutcomeToResult(int Outcome, uint32_t Status)
+DtapiResult DtPcieStatus_OutcomeToResult(int Outcome, uint32_t Status)
 {
     switch (Outcome)
     {
     case OS_IOCTL_OK:
         return DTAPI_OK;
     case OS_IOCTL_DRIVER_STATUS:
-        return DtPcieStatusToResult(Status);
+        return DtPcieStatus_ToResult(Status);
     case OS_IOCTL_NO_RESOURCES:
         return DTAPI_E_OUT_OF_RESOURCES;
     default:

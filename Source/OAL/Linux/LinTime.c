@@ -9,9 +9,9 @@
 // CDtapiLite includes
 #include "LinTime.h" // Interface being implemented.
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTimeAddMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTime_AddMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void LinTimeAddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec)
+void LinTime_AddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec)
 {
     if (Ms < 0)
         Ms = 0;

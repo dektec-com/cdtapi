@@ -32,7 +32,7 @@
 //                a channel that does not run answers a wait with a time-out
 //
 // The source writes the SDI RX simple format of a video standard, as DtSdiFrame
-// describes it, with the symbols SimChSdiRxLine gives. It is in sync only when its
+// describes it, with the symbols SimChSdiRx_Line gives. It is in sync only when its
 // standard has the geometry the channel is configured for; otherwise nothing is written
 // and the events say so. A frame that does not fit in the ring is dropped from where it
 // stopped fitting, and the events of its remaining quarters are out of sync.
@@ -52,19 +52,19 @@
 // Returns the DtStatus the driver would, and fills Out and *OutSize for a command that
 // answers. *SleepMs receives how long the caller sleeps after releasing the emulator's
 // lock, to pace a wait without a source as a card paces its format events.
-uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
-                       size_t InSize, void* Out, size_t* OutSize, int* SleepMs);
+uint32_t SimChSdiRx_Cmd(void* Handle, int PortIndex, int Cmd, const void* In,
+                        size_t InSize, void* Out, size_t* OutSize, int* SleepMs);
 
 // Maps a ring for Handle as the Linux driver's mmap does: Offset names the port's
 // segment, and Size must be the ring's size. NULL when that is not a configured channel
 // the handle uses.
-void* SimChSdiRxMap(void* Handle, uint64_t Offset, size_t Size);
+void* SimChSdiRx_Map(void* Handle, uint64_t Offset, size_t Size);
 
 // Detaches Handle from every channel, as closing a file does in the driver.
-void SimChSdiRxCloseHandle(void* Handle);
+void SimChSdiRx_CloseHandle(void* Handle);
 
 // Frees every ring and restores the power-on state of every channel and control below.
-void SimChSdiRxReset(void);
+void SimChSdiRx_Reset(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame source +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -85,11 +85,11 @@ void SimChSdiRxReset(void);
 // symbol of the EAV to the last of the active part. Symbols holds the line's symbols.
 // Returns the number of symbols, or 0, writing nothing, for an unknown or 4K standard or
 // a line the frame does not have.
-int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols);
+int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols);
 
 // Makes the port at PortIndex receive VidStd from now on; DTAPI_VIDSTD_UNKNOWN takes the
 // source away, as after a reset. The frame numbers continue.
-void SimDtPcieSetRxSource(int PortIndex, int VidStd);
+void SimDtPcie_SetRxSource(int PortIndex, int VidStd);
 
 // The one-off faults of a port's source, each applied to the next frame it starts.
 typedef enum SimRxFault
@@ -101,29 +101,29 @@ typedef enum SimRxFault
 } SimRxFault;
 
 // Arms a fault for the next frame of the port at PortIndex.
-void SimDtPcieInjectRxFault(int PortIndex, SimRxFault Fault);
+void SimDtPcie_InjectRxFault(int PortIndex, SimRxFault Fault);
 
 // Lets the running channel of the port at PortIndex produce Events format events without
 // anyone waiting for them, as a card goes on while an application does not read.
-void SimDtPcieRunRxEvents(int PortIndex, int Events);
+void SimDtPcie_RunRxEvents(int PortIndex, int Events);
 
 // Makes the channel of every port allocate at most Size bytes, so that a test can wrap
 // the ring with few frames. 0 lifts the limit.
-void SimDtPcieLimitRxRing(size_t Size);
+void SimDtPcie_LimitRxRing(size_t Size);
 
 // Makes every channel report this stream alignment in bits.
-void SimDtPcieSetRxAlignment(int AlignmentBits);
+void SimDtPcie_SetRxAlignment(int AlignmentBits);
 
 // Makes the driver report a mapped ring as on Linux, when true, or as on Windows.
-void SimDtPcieMapRxRingAsLinux(bool AsLinux);
+void SimDtPcie_MapRxRingAsLinux(bool AsLinux);
 
 // Refuses CHSDIRX command Cmd, a DT_CHSDIRX_CMD_ value, with Status from now on; 0 ends
 // it. One command can be refused at a time.
-void SimDtPcieFailRxCmd(int Cmd, uint32_t Status);
+void SimDtPcie_FailRxCmd(int Cmd, uint32_t Status);
 
 // Makes CHSDIRX command Cmd return Ms milliseconds later, after the emulator's lock is
 // released, as a busy system can delay a call; Ms 0 ends it. One command at a time.
-void SimDtPcieSlowRxCmd(int Cmd, int Ms);
+void SimDtPcie_SlowRxCmd(int Cmd, int Ms);
 
 // What the channel of the port at PortIndex holds: whether it is configured, the ring's
 // size, the number of users, and the frame number its source starts next.
@@ -136,4 +136,4 @@ typedef struct SimRxState
     uint32_t WriteOffset;
 } SimRxState;
 
-void SimDtPcieGetRxState(int PortIndex, SimRxState* State);
+void SimDtPcie_GetRxState(int PortIndex, SimRxState* State);

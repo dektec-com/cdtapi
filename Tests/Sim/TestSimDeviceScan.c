@@ -27,16 +27,16 @@
 // having recorded a failure, when it is not.
 static bool StartSim(int* DtFailures)
 {
-    SimDtPcieReset();
-    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    SimDtPcie_Reset();
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return false;
     }
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
     return true;
 }
 
@@ -61,9 +61,9 @@ static bool ScanOne(DtDeviceDesc* Desc, int* DtFailures)
 // three of the emulator's eight overrides.
 static void SetDirectionCaps(int PortIndex, bool Input, bool Output, bool Ip)
 {
-    SimDtPcieOverrideProperty("CAP_INPUT", PortIndex, true, Input ? 1 : 0);
-    SimDtPcieOverrideProperty("CAP_OUTPUT", PortIndex, true, Output ? 1 : 0);
-    SimDtPcieOverrideProperty("CAP_IP", PortIndex, true, Ip ? 1 : 0);
+    SimDtPcie_OverrideProperty("CAP_INPUT", PortIndex, true, Input ? 1 : 0);
+    SimDtPcie_OverrideProperty("CAP_OUTPUT", PortIndex, true, Output ? 1 : 0);
+    SimDtPcie_OverrideProperty("CAP_IP", PortIndex, true, Ip ? 1 : 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Arguments +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -80,22 +80,22 @@ DT_TEST(RefusesBadArguments)
     DT_ASSERT_EQ(DtapiDeviceScan(-1, &Count, &Desc), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtapiDeviceScan(1, &Count, NULL), DTAPI_E_INVALID_BUF);
     DT_ASSERT_EQ(Count, 7);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
 
 // Asking with no array returns the count and says the array is too small.
 DT_TEST(CountsWithoutAnArray)
 {
     int Count = -1;
-    int Live = DtAllocLive();
+    int Live = DtAlloc_Live();
 
     if (!StartSim(DtFailures))
         return;
 
     DT_ASSERT_EQ(DtapiDeviceScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, 1);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
-    DT_ASSERT_EQ(DtAllocLive(), Live);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
 // A zero-sized array that is not NULL is also allowed, and left alone.
@@ -140,17 +140,17 @@ DT_TEST(NothingFoundIsNoError)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcieSetIndex(DT_MAX_DEVICES);
+    SimDtPcie_SetIndex(DT_MAX_DEVICES);
     DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
 
-    SimDtPcieReset();
-    SimDtPcieSetDriverVersion(1, 3, 0, 0);
+    SimDtPcie_Reset();
+    SimDtPcie_SetDriverVersion(1, 3, 0, 0);
     Count = -1;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
 
 // The device is found past the indices before it.
@@ -159,7 +159,7 @@ DT_TEST(FindsTheDeviceAtALaterIndex)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcieSetIndex(DT_MAX_DEVICES - 1);
+    SimDtPcie_SetIndex(DT_MAX_DEVICES - 1);
     DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
@@ -174,7 +174,7 @@ DT_TEST(DescribesTheCard)
 {
     static const unsigned char Zero[sizeof(((DtDeviceDesc*)0)->IpV6)] = {0};
     DtDeviceDesc Desc;
-    int Live = DtAllocLive();
+    int Live = DtAlloc_Live();
 
     if (!StartSim(DtFailures) || !ScanOne(&Desc, DtFailures))
         return;
@@ -213,8 +213,8 @@ DT_TEST(DescribesTheCard)
     DT_ASSERT_EQ(Desc.PcieMaxPayloadSize, SIM_PCIE_MAX_PAYLOAD_SIZE);
     DT_ASSERT_EQ(Desc.PcieMaxReadRequestSize, SIM_PCIE_MAX_READ_REQUEST_SIZE);
     DT_ASSERT_EQ(Desc.PcieMaxSlotPower, SIM_PCIE_MAX_SLOT_POWER);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
-    DT_ASSERT_EQ(DtAllocLive(), Live);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
 // A driver without GET_DEV_INFO2 describes the same device, without the slot power.
@@ -223,7 +223,7 @@ DT_TEST(OlderDeviceInfoHasNoSlotPower)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_NOT_SUPPORTED);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_NOT_SUPPORTED);
     DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
@@ -259,7 +259,7 @@ DT_TEST(ConvertsTheFirmwareStatus)
     DtDeviceDesc Desc;
     for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
-        SimDtPcieSetFirmwareStatus(Cases[i].Driver);
+        SimDtPcie_SetFirmwareStatus(Cases[i].Driver);
         if (!ScanOne(&Desc, DtFailures))
             return;
         DT_ASSERT_EQ(Desc.FirmwareStatus, Cases[i].Dtapi);
@@ -302,7 +302,7 @@ DT_TEST(CountsByCapabilitiesFirst)
     SetDirectionCaps(0, false, true, false);
     // Port 9 has no direction, but is an IP port. Its other capabilities stay as they
     // are, since the emulator holds eight overrides.
-    SimDtPcieOverrideProperty("CAP_IP", 8, true, 1);
+    SimDtPcie_OverrideProperty("CAP_IP", 8, true, 1);
 
     DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
@@ -319,7 +319,7 @@ DT_TEST(StopsCountingWhenADirectionFails)
 
     // Port 1 counts by its capabilities; port 2 is the first whose direction is read.
     SetDirectionCaps(0, true, false, false);
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_FAIL);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_FAIL);
 
     DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
@@ -327,7 +327,7 @@ DT_TEST(StopsCountingWhenADirectionFails)
     DT_ASSERT_EQ(Desc.NumDtInpChan, 1);
     DT_ASSERT_EQ(Desc.NumDtOutpChan, 0);
     DT_ASSERT_EQ(Desc.Serial, SIM_SERIAL);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
 
 // A device whose identity cannot be read is left out.
@@ -338,12 +338,12 @@ DT_TEST(LeavesOutADeviceThatCannotBeRead)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
     DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Types +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

@@ -32,16 +32,16 @@ typedef struct OsDmaBuffer
 } OsDmaBuffer;
 
 // The operating system's page size.
-size_t OsPageSize(void);
+size_t OsDmaBuffer_PageSize(void);
 
 // Allocates at least Size bytes, page-aligned and rounded up to whole pages, and protects
 // them against fork() where the platform needs it. The contents are zeroed. Returns 0 on
 // success and -1 on failure, leaving Buf empty.
-int OsDmaBufferAlloc(size_t Size, OsDmaBuffer* Buf);
+int OsDmaBuffer_Alloc(size_t Size, OsDmaBuffer* Buf);
 
 // Releases the buffer and leaves Buf empty. The driver must already have let go of it.
 // Passing NULL, or an empty buffer, does nothing.
-void OsDmaBufferFree(OsDmaBuffer* Buf);
+void OsDmaBuffer_Free(OsDmaBuffer* Buf);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hand-off +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -60,19 +60,19 @@ void OsDmaBufferFree(OsDmaBuffer* Buf);
 typedef struct OsDmaHandOff
 {
     uint64_t BufferAddr; // Value for the command's m_BufferAddr field
-    void* Out;           // Output buffer to pass to OsDrvIoCtl
+    void* Out;           // Output buffer to pass to OsDrv_IoCtl
     size_t OutSize;      // Its size
 } OsDmaHandOff;
 
 // Describes the hand-off for this platform's driver. Fixed is the command's own output
 // structure and FixedSize its size, used where the buffer does not travel as the output.
-void OsDmaDescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
-                          OsDmaHandOff* HandOff);
+void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
+                                 OsDmaHandOff* HandOff);
 
 // The same, with the convention chosen explicitly: true for Windows, false for Linux.
 // Exists so that both conventions are tested on every platform.
-void OsDmaDescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf, void* Fixed,
-                            size_t FixedSize, OsDmaHandOff* HandOff);
+void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
+                                   void* Fixed, size_t FixedSize, OsDmaHandOff* HandOff);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Platform part +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -80,12 +80,12 @@ void OsDmaDescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf, void* F
 //
 
 // Returns the page size reported by the operating system.
-size_t OsPlatformPageSize(void);
+size_t OsPlatform_PageSize(void);
 
 // Excludes [Data, Data + Size) from being copied into a child process. Returns 0 on
 // success and -1 on failure. A no-op that succeeds where the platform has no fork().
-int OsPlatformDontFork(uint8_t* Data, size_t Size);
+int OsPlatform_DontFork(uint8_t* Data, size_t Size);
 
-// Undoes OsPlatformDontFork before the memory goes back to the allocator, so that pages
+// Undoes OsPlatform_DontFork before the memory goes back to the allocator, so that pages
 // the allocator hands out again are not left excluded from a child process.
-void OsPlatformDoFork(uint8_t* Data, size_t Size);
+void OsPlatform_DoFork(uint8_t* Data, size_t Size);

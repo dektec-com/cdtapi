@@ -75,36 +75,36 @@ static const SdiFormat g_SdiFormats[] = {
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Receiver view +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Lines in the second field; 0 for a progressive frame.
-static inline int SdiFormatLinesF2(const SdiFormat* Format)
+static inline int SdiFormat_LinesF2(const SdiFormat* Format)
 {
     return Format->Lines - Format->LinesF1;
 }
 
 // Symbols of horizontal blanking per line, EAV and SAV included, luma and chroma.
-static inline int SdiFormatHancSymbols(const SdiFormat* Format)
+static inline int SdiFormat_HancSymbols(const SdiFormat* Format)
 {
     return 2 * (Format->Samples - Format->Active);
 }
 
 // Symbols of picture per line, luma and chroma.
-static inline int SdiFormatVancSymbols(const SdiFormat* Format)
+static inline int SdiFormat_VancSymbols(const SdiFormat* Format)
 {
     return 2 * Format->Active;
 }
 
-static inline double SdiFormatFps(const SdiFormat* Format)
+static inline double SdiFormat_Fps(const SdiFormat* Format)
 {
     return (double)Format->FpsNum / Format->FpsDen;
 }
 
 // Whether the format is carried as 3G level B, on one link or on four.
-static inline bool SdiFormatIsLevelB(const SdiFormat* Format)
+static inline bool SdiFormat_IsLevelB(const SdiFormat* Format)
 {
     return Format->Payload == 0x8A || Format->Payload == 0x98;
 }
 
 // The SMPTE ST 352 picture rate code, byte 2 bits 3..0, of the format's frame rate.
-static inline uint32_t SdiFormatRateCode(const SdiFormat* Format)
+static inline uint32_t SdiFormat_RateCode(const SdiFormat* Format)
 {
     switch (Format->FpsNum)
     {
@@ -130,9 +130,9 @@ static inline uint32_t SdiFormatRateCode(const SdiFormat* Format)
 // The VPID a transmitter puts on the format: the payload identifier; the picture rate
 // with bit 7 set for a progressive transport and bit 6 for a progressive picture; and for
 // HD a 16:9 aspect ratio, byte 3 bit 7.
-static inline uint32_t SdiFormatVpid(const SdiFormat* Format)
+static inline uint32_t SdiFormat_Vpid(const SdiFormat* Format)
 {
-    uint32_t Byte2 = SdiFormatRateCode(Format);
+    uint32_t Byte2 = SdiFormat_RateCode(Format);
 
     if (Format->Scan == SDI_SCAN_P)
         Byte2 |= 0x80;

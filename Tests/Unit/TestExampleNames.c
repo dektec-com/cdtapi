@@ -44,7 +44,7 @@ DT_TEST(EveryHeaderStandardHasItsName)
     for (i = 0; i < HEADER_COUNT; i++)
     {
         const char* Expected = g_HeaderVidStds[i].Macro + strlen("DTAPI_VIDSTD_");
-        const char* Name = ExampleVidStdName(g_HeaderVidStds[i].VidStd);
+        const char* Name = Example_VidStdName(g_HeaderVidStds[i].VidStd);
         char Lower[32];
         int Back = -12345;
         size_t j;
@@ -53,7 +53,7 @@ DT_TEST(EveryHeaderStandardHasItsName)
             DT_FAIL("%s is named \"%s\"", g_HeaderVidStds[i].Macro,
                     Name ? Name : "(null)");
 
-        DT_ASSERT(ExampleVidStdFromName(Expected, &Back));
+        DT_ASSERT(Example_VidStdFromName(Expected, &Back));
         DT_ASSERT_EQ(Back, g_HeaderVidStds[i].VidStd);
 
         for (j = 0; Expected[j] != '\0' && j + 1 < sizeof(Lower); j++)
@@ -61,7 +61,7 @@ DT_TEST(EveryHeaderStandardHasItsName)
                                                                        : Expected[j]);
         Lower[j] = '\0';
         Back = -12345;
-        DT_ASSERT(ExampleVidStdFromName(Lower, &Back));
+        DT_ASSERT(Example_VidStdFromName(Lower, &Back));
         DT_ASSERT_EQ(Back, g_HeaderVidStds[i].VidStd);
     }
 }
@@ -71,23 +71,23 @@ DT_TEST(NoStandardHasNoName)
 {
     int VidStd = 7;
 
-    DT_ASSERT(ExampleVidStdName(12345) == NULL);
-    DT_ASSERT(ExampleVidStdName(0) == NULL);
-    DT_ASSERT(!ExampleVidStdFromName("1080I5", &VidStd));
-    DT_ASSERT(!ExampleVidStdFromName("1080I500", &VidStd));
-    DT_ASSERT(!ExampleVidStdFromName("", &VidStd));
+    DT_ASSERT(Example_VidStdName(12345) == NULL);
+    DT_ASSERT(Example_VidStdName(0) == NULL);
+    DT_ASSERT(!Example_VidStdFromName("1080I5", &VidStd));
+    DT_ASSERT(!Example_VidStdFromName("1080I500", &VidStd));
+    DT_ASSERT(!Example_VidStdFromName("", &VidStd));
     DT_ASSERT_EQ(VidStd, 7);
 }
 
 // The I/O standards DtapiVidStd2IoStd gives have names.
 DT_TEST(IoStandardNames)
 {
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_SDI), "SDI");
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_HDSDI), "HDSDI");
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_3GSDI), "3GSDI");
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_6GSDI), "6GSDI");
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_12GSDI), "12GSDI");
-    DT_ASSERT_STR(ExampleIoStdName(DTAPI_IOCONFIG_ASI), "?");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_SDI), "SDI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_HDSDI), "HDSDI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_3GSDI), "3GSDI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_6GSDI), "6GSDI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_12GSDI), "12GSDI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_ASI), "?");
 }
 
 DT_TEST_MAIN("ExampleNames", DT_RUN(EveryHeaderStandardHasItsName),

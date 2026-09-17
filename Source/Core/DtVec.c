@@ -29,8 +29,8 @@ static int Grow(DtVec* Vec, size_t Needed)
 {
     size_t NewCapacity;
 
-    if (DtGrowCapacity(Vec->Capacity, Needed, Vec->ElemSize, DT_VEC_MIN_CAPACITY,
-                       &NewCapacity) != 0)
+    if (DtAlloc_GrowCapacity(Vec->Capacity, Needed, Vec->ElemSize, DT_VEC_MIN_CAPACITY,
+                             &NewCapacity) != 0)
     {
         return -1;
     }
@@ -38,7 +38,7 @@ static int Grow(DtVec* Vec, size_t Needed)
     if (NewCapacity == Vec->Capacity)
         return 0;
 
-    uint8_t* NewData = (uint8_t*)DtRealloc(Vec->Data, NewCapacity * Vec->ElemSize);
+    uint8_t* NewData = (uint8_t*)DtAlloc_Realloc(Vec->Data, NewCapacity * Vec->ElemSize);
     if (NewData == NULL)
         return -1;
 
@@ -49,9 +49,9 @@ static int Grow(DtVec* Vec, size_t Needed)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtVecInit(DtVec* Vec, size_t ElemSize)
+void DtVec_Init(DtVec* Vec, size_t ElemSize)
 {
     if (Vec == NULL)
         return;
@@ -62,14 +62,14 @@ void DtVecInit(DtVec* Vec, size_t ElemSize)
     Vec->ElemSize = ElemSize;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtVecFree(DtVec* Vec)
+void DtVec_Free(DtVec* Vec)
 {
     if (Vec == NULL)
         return;
 
-    DtFree(Vec->Data);
+    DtAlloc_Free(Vec->Data);
     Vec->Data = NULL;
     Vec->Count = 0;
     Vec->Capacity = 0;
@@ -77,9 +77,9 @@ void DtVecFree(DtVec* Vec)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Modifiers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecReserve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Reserve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtVecReserve(DtVec* Vec, size_t Capacity)
+int DtVec_Reserve(DtVec* Vec, size_t Capacity)
 {
     if (Vec == NULL || Vec->ElemSize == 0)
         return -1;
@@ -87,9 +87,9 @@ int DtVecReserve(DtVec* Vec, size_t Capacity)
     return Grow(Vec, Capacity);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecPush -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Push -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtVecPush(DtVec* Vec, const void* Elem)
+int DtVec_Push(DtVec* Vec, const void* Elem)
 {
     if (Vec == NULL || Elem == NULL || Vec->ElemSize == 0)
         return -1;
@@ -102,9 +102,9 @@ int DtVecPush(DtVec* Vec, const void* Elem)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecResize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Resize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtVecResize(DtVec* Vec, size_t Count)
+int DtVec_Resize(DtVec* Vec, size_t Count)
 {
     if (Vec == NULL || Vec->ElemSize == 0)
         return -1;
@@ -122,9 +122,9 @@ int DtVecResize(DtVec* Vec, size_t Count)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecClear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Clear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtVecClear(DtVec* Vec)
+void DtVec_Clear(DtVec* Vec)
 {
     if (Vec == NULL)
         return;
@@ -134,9 +134,9 @@ void DtVecClear(DtVec* Vec)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Accessors +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_At -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void* DtVecAt(const DtVec* Vec, size_t Index)
+void* DtVec_At(const DtVec* Vec, size_t Index)
 {
     if (Vec == NULL || Index >= Vec->Count)
         return NULL;
@@ -144,9 +144,9 @@ void* DtVecAt(const DtVec* Vec, size_t Index)
     return Vec->Data + Index * Vec->ElemSize;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVecCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVec_Count -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtVecCount(const DtVec* Vec)
+size_t DtVec_Count(const DtVec* Vec)
 {
     return Vec != NULL ? Vec->Count : 0;
 }

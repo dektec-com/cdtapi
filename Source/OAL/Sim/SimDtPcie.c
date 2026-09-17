@@ -101,10 +101,10 @@ static DtAtomicInt g_Lock;
 //
 static void Lock(void)
 {
-    while (DtAtomicIncrement(&g_Lock) != 1)
+    while (DtAtomic_Increment(&g_Lock) != 1)
     {
-        DtAtomicDecrement(&g_Lock);
-        OsSleepMs(1);
+        DtAtomic_Decrement(&g_Lock);
+        OsTime_SleepMs(1);
     }
 }
 
@@ -112,19 +112,19 @@ static void Lock(void)
 //
 static void Unlock(void)
 {
-    DtAtomicDecrement(&g_Lock);
+    DtAtomic_Decrement(&g_Lock);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieLock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Lock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieLock(void)
+void SimDtPcie_Lock(void)
 {
     Lock();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieUnlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieUnlock(void)
+void SimDtPcie_Unlock(void)
 {
     Unlock();
 }
@@ -134,7 +134,7 @@ void SimDtPcieUnlock(void)
 static void EnsureState(void)
 {
     if (!g_Sim.Initialised)
-        SimDtPcieReset();
+        SimDtPcie_Reset();
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -268,7 +268,7 @@ static bool CodeFromName(const char* Field, int* Code)
 
     memcpy(Name, Field, sizeof(Name));
     Name[sizeof(Name) - 1] = '\0';
-    return DtIoConfigGetCode(Name, Code) == DTAPI_OK;
+    return DtIoConfig_GetCode(Name, Code) == DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSupported -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -285,12 +285,12 @@ static bool IsSupported(int PortIndex, int Code)
 
     char CapName[4 + IOCONFIG_NAME_MAX_SIZE];
     memcpy(CapName, "CAP_", 4);
-    DtIoConfigGetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
+    DtIoConfig_GetName(Code, CapName + 4, IOCONFIG_NAME_MAX_SIZE);
     Override = FindOverride(CapName, PortIndex, false);
     if (Override != NULL)
         return Override->Status == 0 && Override->Present && Override->Value != 0;
     int Type;
-    return SimDta2178GetProperty(CapName, PortIndex, &Type, &Value) && Value != 0;
+    return SimDta2178_GetProperty(CapName, PortIndex, &Type, &Value) && Value != 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -394,7 +394,7 @@ static int PropertyGetStr(SimDevice* Dev, const void* In, size_t InSize, void* O
             return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
         memcpy(Answer->m_Str, Override->Str, sizeof(Answer->m_Str));
     }
-    else if (SimDta2178GetString(Request.m_Name, Request.m_PortIndex, &Str))
+    else if (SimDta2178_GetString(Request.m_Name, Request.m_PortIndex, &Str))
     {
         size_t Length = strlen(Str);
         memcpy(Answer->m_Str, Str,
@@ -445,7 +445,7 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
         Type = strncmp(Request.m_Name, "CAP_", 4) == 0 ? PROPERTY_VALUE_TYPE_BOOL
                                                        : PROPERTY_VALUE_TYPE_INT;
     }
-    else if (!SimDta2178GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
+    else if (!SimDta2178_GetProperty(Request.m_Name, Request.m_PortIndex, &Type, &Value))
         return SimFail(Dev, DT_STATUS_NOT_FOUND, DrvStatus);
 
     DtIoctlPropCmdGetValueOutput* Answer = (DtIoctlPropCmdGetValueOutput*)Out;
@@ -503,8 +503,9 @@ static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
 
         const SimConfig* Config = &g_Sim.Config[Id->m_PortIndex][Group];
         memset(Value, 0, sizeof(*Value));
-        DtIoConfigGetName(Config->Value, Value->m_Value, sizeof(Value->m_Value));
-        DtIoConfigGetName(Config->SubValue, Value->m_SubValue, sizeof(Value->m_SubValue));
+        DtIoConfig_GetName(Config->Value, Value->m_Value, sizeof(Value->m_Value));
+        DtIoConfig_GetName(Config->SubValue, Value->m_SubValue,
+                           sizeof(Value->m_SubValue));
         for (int j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
             Value->m_ParXtra[j] = Config->ParXtra[j];
     }
@@ -562,7 +563,7 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
         // A boolean I/O capability must itself be supported; any other group needs its
         // value and sub-value to be.
         bool Supported;
-        if (DtIoConfigIsValid(Group, Value, SubValue) != DTAPI_OK)
+        if (DtIoConfig_IsValid(Group, Value, SubValue) != DTAPI_OK)
             Supported = false;
         else if (Value == DTAPI_IOCONFIG_TRUE || Value == DTAPI_IOCONFIG_FALSE)
             Supported = IsSupported(Port, Group);
@@ -717,7 +718,7 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
     }
 
     uint32_t Status =
-        SimChSdiRxCmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, &Dev->SleepMs);
+        SimChSdiRx_Cmd(Dev, PortIndex, Cmd, In, InSize, Out, OutSize, &Dev->SleepMs);
     if (Status != DT_STATUS_OK)
         return SimFail(Dev, Status, DrvStatus);
     return OS_IOCTL_OK;
@@ -735,10 +736,10 @@ static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, i
     const SimConfig* Config = g_Sim.Config[PortIndex];
     bool Enabled = Config[DTAPI_IOCONFIG_IODIR].Value == DTAPI_IOCONFIG_OUTPUT &&
                    Config[DTAPI_IOCONFIG_IOSTD].Value != DTAPI_IOCONFIG_ASI;
-    uint32_t Access = SimDtPcieCheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
-    uint32_t Status = SimSdiTxCmd(Dev, PortIndex, FunctionCode, Type, Role, Cmd, Access,
-                                  Enabled, Config[DTAPI_IOCONFIG_IOSTD].SubValue, In,
-                                  InSize, Out, OutSize, &Dev->SleepMs);
+    uint32_t Access = SimDtPcie_CheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
+    uint32_t Status = SimSdiTx_Cmd(Dev, PortIndex, FunctionCode, Type, Role, Cmd, Access,
+                                   Enabled, Config[DTAPI_IOCONFIG_IOSTD].SubValue, In,
+                                   InSize, Out, OutSize, &Dev->SleepMs);
 
     if (Status != DT_STATUS_OK)
         return SimFail(Dev, Status, DrvStatus);
@@ -774,7 +775,7 @@ static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvSt
         return OS_IOCTL_OK;
     case DT_EXCLUSIVE_ACCESS_CMD_CHECK:
     {
-        uint32_t Status = SimDtPcieCheckAccess(Dev, PartIndex);
+        uint32_t Status = SimDtPcie_CheckAccess(Dev, PartIndex);
 
         if (Status != DT_STATUS_OK)
             return SimFail(Dev, Status, DrvStatus);
@@ -796,7 +797,7 @@ static void* SimOpen(int Index)
     if (Index != g_Sim.Index)
         return NULL;
 
-    SimDevice* Dev = (SimDevice*)DtMalloc(sizeof(SimDevice));
+    SimDevice* Dev = (SimDevice*)DtAlloc_Malloc(sizeof(SimDevice));
     if (Dev == NULL)
         return NULL;
 
@@ -811,8 +812,8 @@ static void* SimOpen(int Index)
 static void SimClose(void* State)
 {
     Lock();
-    SimChSdiRxCloseHandle(State);
-    SimSdiTxCloseHandle(State);
+    SimChSdiRx_CloseHandle(State);
+    SimSdiTx_CloseHandle(State);
     for (int i = 0; i < SIM_MAX_PARTS; i++)
     {
         if (g_Sim.ExclOwners[i] == State)
@@ -820,7 +821,7 @@ static void SimClose(void* State)
     }
     g_Sim.OpenHandles--;
     Unlock();
-    DtFree(State);
+    DtAlloc_Free(State);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Dispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -848,7 +849,7 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         int PortIndex;
         int Type;
         if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 ||
-            !SimDta2178FindFunction(Hdr->m_Uuid, &PortIndex, &Type, &Role))
+            !SimDta2178_FindFunction(Hdr->m_Uuid, &PortIndex, &Type, &Role))
         {
             return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
         }
@@ -860,7 +861,7 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
             return ExclAccessCmd(Dev, (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1, Cmd,
                                  DrvStatus);
         }
-        if (SimSdiTxTakes(FunctionCode))
+        if (SimSdiTx_Takes(FunctionCode))
             return SdiTxCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Role, Cmd,
                             In, InSize, Out, OutSize, DrvStatus);
         if ((Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0 && Type == DT_FUNC_TYPE_SDIRX &&
@@ -900,7 +901,7 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimIoCtlLocked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The driver refuses an input too short to hold the common header before it looks at
-// anything else (DtCore_Ioctl). OsDrvIoCtl has already refused a request without input.
+// anything else (DtCore_Ioctl). OsDrv_IoCtl has already refused a request without input.
 //
 static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
                           void* Out, size_t* OutSize, uint32_t* DrvStatus)
@@ -942,7 +943,7 @@ static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
     Unlock();
 
     if (Dev->SleepMs > 0)
-        OsSleepMs(Dev->SleepMs);
+        OsTime_SleepMs(Dev->SleepMs);
     return Outcome;
 }
 
@@ -951,7 +952,7 @@ static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
 static void* SimMapMemory(void* State, uint64_t Offset, size_t Size)
 {
     Lock();
-    void* Address = SimChSdiRxMap(State, Offset, Size);
+    void* Address = SimChSdiRx_Map(State, Offset, Size);
     Unlock();
     return Address;
 }
@@ -976,9 +977,9 @@ static uint32_t SimLastError(const void* State)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieReset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieReset(void)
+void SimDtPcie_Reset(void)
 {
     int j;
 
@@ -988,14 +989,14 @@ void SimDtPcieReset(void)
         {
             SimConfig* Config = &g_Sim.Config[Port][Group];
 
-            SimDta2178DefaultConfig(Port, Group, &Config->Value, &Config->SubValue);
+            SimDta2178_DefaultConfig(Port, Group, &Config->Value, &Config->SubValue);
             for (j = 0; j < DT_MAX_PARXTRA_COUNT; j++)
                 Config->ParXtra[j] = -1;
         }
     }
 
-    SimChSdiRxReset();
-    SimSdiTxReset();
+    SimChSdiRx_Reset();
+    SimSdiTx_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;
@@ -1010,7 +1011,7 @@ void SimDtPcieReset(void)
     // Initialised before the signals are cleared, which checks it.
     g_Sim.Initialised = true;
     for (j = 0; j < SIM_SDI_PORT_COUNT; j++)
-        SimDtPcieSetSdiSignal(j, NULL);
+        SimDtPcie_SetSdiSignal(j, NULL);
 
     g_Sim.Index = SIM_DEVICE_INDEX;
     g_Sim.FirmwareStatus = DT_FWSTATUS_UPTODATE;
@@ -1022,31 +1023,31 @@ void SimDtPcieReset(void)
     g_Sim.Initialised = true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieFailWithStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_FailWithStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieFailWithStatus(int FunctionCode, uint32_t Status)
+void SimDtPcie_FailWithStatus(int FunctionCode, uint32_t Status)
 {
     AddFault(FunctionCode, false, Status);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieAnswerShort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_AnswerShort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieAnswerShort(int FunctionCode)
+void SimDtPcie_AnswerShort(int FunctionCode)
 {
     AddFault(FunctionCode, true, DT_STATUS_OK);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetFirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetFirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieSetFirmwareStatus(int Status)
+void SimDtPcie_SetFirmwareStatus(int Status)
 {
     EnsureState();
     g_Sim.FirmwareStatus = Status;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro, int Build)
+void SimDtPcie_SetDriverVersion(int Major, int Minor, int Micro, int Build)
 {
     EnsureState();
     g_Sim.DriverVersion.m_Major = Major;
@@ -1055,19 +1056,19 @@ void SimDtPcieSetDriverVersion(int Major, int Minor, int Micro, int Build)
     g_Sim.DriverVersion.m_Build = Build;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieDelaySdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_DelaySdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieDelaySdiSignal(int PortIndex, int Reads)
+void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads)
 {
     EnsureState();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
         g_Sim.SignalDelays[PortIndex] = Reads;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOverrideProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OverrideProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
-                               uint64_t Value)
+void SimDtPcie_OverrideProperty(const char* Name, int PortIndex, bool Present,
+                                uint64_t Value)
 {
     SimOverride* Override = AddOverride(Name, PortIndex, false);
 
@@ -1077,13 +1078,13 @@ void SimDtPcieOverrideProperty(const char* Name, int PortIndex, bool Present,
     Override->Value = Value;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOverrideString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OverrideString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The driver's string field holds PROPERTY_STR_MAX_SIZE characters and need not be
 // terminated when full, so the override keeps up to that many.
 //
-void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
-                             const char* Value)
+void SimDtPcie_OverrideString(const char* Name, int PortIndex, bool Present,
+                              const char* Value)
 {
     SimOverride* Override = AddOverride(Name, PortIndex, true);
 
@@ -1099,10 +1100,10 @@ void SimDtPcieOverrideString(const char* Name, int PortIndex, bool Present,
     memcpy(Override->Str, Value, Length);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
-                           uint32_t Status)
+void SimDtPcie_FailProperty(const char* Name, int PortIndex, bool IsString,
+                            uint32_t Status)
 {
     SimOverride* Override = AddOverride(Name, PortIndex, IsString);
 
@@ -1110,9 +1111,9 @@ void SimDtPcieFailProperty(const char* Name, int PortIndex, bool IsString,
         Override->Status = Status;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
+void SimDtPcie_SetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
 {
     EnsureState();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
@@ -1129,24 +1130,24 @@ void SimDtPcieSetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
     Port->SdiRate = DT_DRV_SDIRATE_UNKNOWN;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieSetIndex(int Index)
+void SimDtPcie_SetIndex(int Index)
 {
     EnsureState();
     g_Sim.Index = Index;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieOpenHandles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenHandles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int SimDtPcieOpenHandles(void)
+int SimDtPcie_OpenHandles(void)
 {
     return g_Sim.OpenHandles;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieLastInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_LastInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
+size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size)
 {
     EnsureState();
     *FunctionCode = g_Sim.LastFunctionCode;
@@ -1156,9 +1157,9 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
     return g_Sim.LastInputSize;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieCheckAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_CheckAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex)
+uint32_t SimDtPcie_CheckAccess(void* Handle, int PartIndex)
 {
     if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
         return DT_STATUS_EXCL_ACCESS_REQD;
@@ -1170,18 +1171,18 @@ uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Selection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSimBackend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSim_Backend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const OsBackend* OsSimBackend(void)
+const OsBackend* OsSim_Backend(void)
 {
     static const OsBackend Backend = {SimOpen,      SimClose,     SimIoCtl,
                                       SimLastError, SimMapMemory, SimUnmapMemory};
     return &Backend;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSimIsRequested -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSim_IsRequested -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool OsSimIsRequested(void)
+bool OsSim_IsRequested(void)
 {
     static int Cached = -1;
 

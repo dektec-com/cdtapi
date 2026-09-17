@@ -68,28 +68,28 @@ int main(int Argc, char** Argv)
     int Count = 0;
     int Listed = 0;
 
-    if (!ExampleCheckArguments(Argc, Argv, "Lists every port of every DekTec device.",
-                               g_Options,
-                               (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
-        !ExampleInt64(Argc, Argv, "--serial", &Serial))
+    if (!Example_CheckArguments(Argc, Argv, "Lists every port of every DekTec device.",
+                                g_Options,
+                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
+        !Example_Int64(Argc, Argv, "--serial", &Serial))
     {
         return EXAMPLE_FAILED;
     }
 
     unsigned int Result = DtapiHwFuncScan(0, &Count, NULL);
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
-        return ExampleFailed("DtapiHwFuncScan", Result);
+        return Example_Failed("DtapiHwFuncScan", Result);
 
     DtHwFuncDesc* Ports =
         (DtHwFuncDesc*)calloc(Count > 0 ? (size_t)Count : 1, sizeof(DtHwFuncDesc));
     if (Ports == NULL)
-        return ExampleFailed("calloc", DTAPI_E_OUT_OF_MEM);
+        return Example_Failed("calloc", DTAPI_E_OUT_OF_MEM);
 
     Result = DtapiHwFuncScan(Count, &Count, Ports);
     if (Result != DTAPI_OK)
     {
         free(Ports);
-        return ExampleFailed("DtapiHwFuncScan", Result);
+        return Example_Failed("DtapiHwFuncScan", Result);
     }
 
     for (int i = 0; i < Count; i++)

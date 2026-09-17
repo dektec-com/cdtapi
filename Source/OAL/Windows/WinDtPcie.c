@@ -55,7 +55,7 @@ static HANDLE OpenListedInterface(HDEVINFO DevInfo, int Index)
     }
 
     PSP_DEVICE_INTERFACE_DETAIL_DATA_A Detail =
-        (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtMalloc(Size);
+        (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)DtAlloc_Malloc(Size);
     if (Detail == NULL)
         return INVALID_HANDLE_VALUE;
 
@@ -72,7 +72,7 @@ static HANDLE OpenListedInterface(HDEVINFO DevInfo, int Index)
                              FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
                              FILE_ATTRIBUTE_NORMAL, NULL);
     }
-    DtFree(Detail);
+    DtAlloc_Free(Detail);
     return Handle;
 }
 
@@ -106,7 +106,7 @@ static void* WinOpen(int Index)
     if (Handle == INVALID_HANDLE_VALUE)
         return NULL;
 
-    WinDevice* Dev = (WinDevice*)DtMalloc(sizeof(WinDevice));
+    WinDevice* Dev = (WinDevice*)DtAlloc_Malloc(sizeof(WinDevice));
     if (Dev == NULL)
     {
         CloseHandle(Handle);
@@ -125,7 +125,7 @@ static void WinClose(void* State)
     WinDevice* Dev = (WinDevice*)State;
 
     CloseHandle(Dev->Handle);
-    DtFree(Dev);
+    DtAlloc_Free(Dev);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -134,8 +134,8 @@ static void WinClose(void* State)
 // argument that the I/O manager locks for the duration of the call.
 //
 // A driver-specific failure comes back from GetLastError with the customer bit, bit 29,
-// set. OsIoctlClassifyWindows separates it from errors of Windows itself; translating it
-// into a DTAPI result is the DtPcie command layer's job, not this one's.
+// set. OsIoctlOutcome_ClassifyWindows separates it from errors of Windows itself;
+// translating it into a DTAPI result is the DtPcie command layer's job, not this one's.
 //
 static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
                     size_t* OutSize, uint32_t* DrvStatus)
@@ -148,7 +148,7 @@ static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
                          OutCapacity, &Returned, NULL))
     {
         Dev->LastError = (uint32_t)GetLastError();
-        return OsIoctlClassifyWindows(Dev->LastError, DrvStatus);
+        return OsIoctlOutcome_ClassifyWindows(Dev->LastError, DrvStatus);
     }
 
     if (OutSize != NULL)
@@ -164,9 +164,9 @@ static uint32_t WinLastError(const void* State)
     return ((const WinDevice*)State)->LastError;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformBackend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_Backend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const OsBackend* OsPlatformBackend(void)
+const OsBackend* OsPlatform_Backend(void)
 {
     static const OsBackend Backend = {WinOpen,      WinClose, WinIoCtl,
                                       WinLastError, NULL,     NULL};

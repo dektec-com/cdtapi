@@ -61,57 +61,57 @@
 #define SIM_TX_STREAM_ALIGNMENT 128
 
 // Whether the emulated blocks take commands with this DT_FUNC_CODE_.
-bool SimSdiTxTakes(int FunctionCode);
+bool SimSdiTx_Takes(int FunctionCode);
 
 // Handles a command from Handle for the block of type Type, with role Role, of the port
-// at PortIndex. Access is what SimDtPcieCheckAccess answers for Handle and the block,
+// at PortIndex. Access is what SimDtPcie_CheckAccess answers for Handle and the block,
 // Enabled whether the port is an SDI output, and VidStd the video standard of its I/O
 // standard, which paces the output. Returns the DtStatus the driver would, and fills Out
 // and *OutSize for a command that answers. *SleepMs receives how long the caller sleeps
 // after releasing the emulator's lock.
-uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
-                     const char* Role, int Cmd, uint32_t Access, bool Enabled, int VidStd,
-                     const void* In, size_t InSize, void* Out, size_t* OutSize,
-                     int* SleepMs);
+uint32_t SimSdiTx_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type,
+                      const char* Role, int Cmd, uint32_t Access, bool Enabled,
+                      int VidStd, const void* In, size_t InSize, void* Out,
+                      size_t* OutSize, int* SleepMs);
 
 // Stops the DMA controller of every port whose buffer Handle registered, and lets go of
 // the buffer, as closing a file does in the driver.
-void SimSdiTxCloseHandle(void* Handle);
+void SimSdiTx_CloseHandle(void* Handle);
 
 // Frees everything and restores the power-on state of every port and control below.
-void SimSdiTxReset(void);
+void SimSdiTx_Reset(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Makes CDMAC take a buffer as the Linux driver does, from the address in the input, when
 // true, or as the Windows driver does, as the output. After a reset it takes it as the
 // driver of the platform the emulator is built for.
-void SimDtPcieRegisterTxBufferAsLinux(bool AsLinux);
+void SimDtPcie_RegisterTxBufferAsLinux(bool AsLinux);
 
 // Makes every formatter report this stream alignment in bits.
-void SimDtPcieSetTxAlignment(int AlignmentBits);
+void SimDtPcie_SetTxAlignment(int AlignmentBits);
 
 // Lets the port at PortIndex send Events parts of frames without anyone waiting for their
 // events, as a card goes on while an application does not wait. Stops at an underflow.
 // Returns the number of events that came.
-int SimDtPcieRunTxEvents(int PortIndex, int Events);
+int SimDtPcie_RunTxEvents(int PortIndex, int Events);
 
 // Makes the next Events waits of the port at PortIndex underflow, whatever the pipeline
 // holds.
-void SimDtPcieStarveTx(int PortIndex, int Events);
+void SimDtPcie_StarveTx(int PortIndex, int Events);
 
 // Makes the output follow the clock when true, as after a reset, or go out as fast as
 // waits come when false.
-void SimDtPcieSetTxRealTime(bool RealTime);
+void SimDtPcie_SetTxRealTime(bool RealTime);
 
 // Makes the next Reads reads of the read offset of the port at PortIndex answer Offset,
 // as a DTA-2178 answered an offset of an earlier run right after its DMA controller was
 // set running.
-void SimDtPcieStaleTxReadOffset(int PortIndex, uint32_t Offset, int Reads);
+void SimDtPcie_StaleTxReadOffset(int PortIndex, uint32_t Offset, int Reads);
 
 // Refuses command Cmd with DT_FUNC_CODE_ FunctionCode, of every port, with Status from
 // now on; Status 0 ends it. One command can be refused at a time.
-void SimDtPcieFailTxCmd(int FunctionCode, int Cmd, uint32_t Status);
+void SimDtPcie_FailTxCmd(int FunctionCode, int Cmd, uint32_t Status);
 
 // What the blocks of a port hold.
 typedef struct SimTxState
@@ -134,7 +134,7 @@ typedef struct SimTxState
     int HeaderErrors; // Headers that did not check
 } SimTxState;
 
-void SimDtPcieGetTxState(int PortIndex, SimTxState* State);
+void SimDtPcie_GetTxState(int PortIndex, SimTxState* State);
 
 // A frame the sink received: its header's frame ID and geometry, and every line's
 // symbols, EAV first, NumLines times SymsHanc plus SymsVideo of them.
@@ -148,16 +148,16 @@ typedef struct SimTxFrame
 } SimTxFrame;
 
 // The number of frames kept for the port at PortIndex, at most SIM_TX_KEPT_FRAMES.
-int SimDtPcieTxFrameCount(int PortIndex);
+int SimDtPcie_TxFrameCount(int PortIndex);
 
 // The kept frame at Index, 0 for the oldest. Returns false when there is none.
-bool SimDtPcieGetTxFrame(int PortIndex, int Index, SimTxFrame* Frame);
+bool SimDtPcie_GetTxFrame(int PortIndex, int Index, SimTxFrame* Frame);
 
 // Copies the newest kept frame with frame ID FrameId: its header's fields into *Frame,
 // and its symbols into Symbols, which holds MaxSymbols, with Frame->Symbols pointing
 // there. Returns false, copying nothing, when no kept frame has the ID or its symbols do
-// not fit. Unlike SimDtPcieGetTxFrame, the copy stays valid while commands go on.
-bool SimDtPcieCopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
-                          size_t MaxSymbols, SimTxFrame* Frame);
+// not fit. Unlike SimDtPcie_GetTxFrame, the copy stays valid while commands go on.
+bool SimDtPcie_CopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
+                           size_t MaxSymbols, SimTxFrame* Frame);
 
 #define SIM_TX_KEPT_FRAMES 8

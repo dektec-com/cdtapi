@@ -15,9 +15,9 @@
 // CDtapiLite includes
 #include "OAL/OsDmaBuffer.h" // Platform part being implemented.
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformPageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_PageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t OsPlatformPageSize(void)
+size_t OsPlatform_PageSize(void)
 {
     SYSTEM_INFO Info;
 
@@ -25,20 +25,20 @@ size_t OsPlatformPageSize(void)
     return (size_t)Info.dwPageSize;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformDontFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_DontFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Windows has no fork(), so there is nothing to protect against.
 //
-int OsPlatformDontFork(uint8_t* Data, size_t Size)
+int OsPlatform_DontFork(uint8_t* Data, size_t Size)
 {
     (void)Data;
     (void)Size;
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformDoFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_DoFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsPlatformDoFork(uint8_t* Data, size_t Size)
+void OsPlatform_DoFork(uint8_t* Data, size_t Size)
 {
     (void)Data;
     (void)Size;

@@ -45,14 +45,14 @@ static void* ThreadEntry(void* Arg)
     return NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
+OsThread* OsThread_Start(OsThreadFunc Func, void* Context)
 {
     if (Func == NULL)
         return NULL;
 
-    OsThread* Thread = (OsThread*)DtMalloc(sizeof(OsThread));
+    OsThread* Thread = (OsThread*)DtAlloc_Malloc(sizeof(OsThread));
     if (Thread == NULL)
         return NULL;
 
@@ -61,30 +61,30 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
 
     if (pthread_create(&Thread->Handle, NULL, ThreadEntry, Thread) != 0)
     {
-        DtFree(Thread);
+        DtAlloc_Free(Thread);
         return NULL;
     }
 
     return Thread;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadJoin -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Join -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsThreadJoin(OsThread* Thread)
+void OsThread_Join(OsThread* Thread)
 {
     if (Thread == NULL)
         return;
 
     pthread_join(Thread->Handle, NULL);
-    DtFree(Thread);
+    DtAlloc_Free(Thread);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadRaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_RaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A modest real-time priority under SCHED_FIFO. Without CAP_SYS_NICE or a matching
 // rlimit the kernel refuses, which is reported rather than treated as an error.
 //
-int OsThreadRaisePriority(void)
+int OsThread_RaisePriority(void)
 {
     struct sched_param Param;
 
@@ -109,16 +109,16 @@ struct OsEvent
     int Signalled;
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventCreate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsEvent* OsEventCreate(void)
+OsEvent* OsEvent_Create(void)
 {
-    OsEvent* Event = (OsEvent*)DtMalloc(sizeof(OsEvent));
+    OsEvent* Event = (OsEvent*)DtAlloc_Malloc(sizeof(OsEvent));
     if (Event == NULL)
         return NULL;
     if (pthread_mutex_init(&Event->Mutex, NULL) != 0)
     {
-        DtFree(Event);
+        DtAlloc_Free(Event);
         return NULL;
     }
 
@@ -134,7 +134,7 @@ OsEvent* OsEventCreate(void)
     if (!Made)
     {
         pthread_mutex_destroy(&Event->Mutex);
-        DtFree(Event);
+        DtAlloc_Free(Event);
         return NULL;
     }
 
@@ -142,21 +142,21 @@ OsEvent* OsEventCreate(void)
     return Event;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventDestroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Destroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsEventDestroy(OsEvent* Event)
+void OsEvent_Destroy(OsEvent* Event)
 {
     if (Event == NULL)
         return;
 
     pthread_cond_destroy(&Event->Cond);
     pthread_mutex_destroy(&Event->Mutex);
-    DtFree(Event);
+    DtAlloc_Free(Event);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventSet -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Set -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsEventSet(OsEvent* Event)
+void OsEvent_Set(OsEvent* Event)
 {
     if (Event == NULL)
         return;
@@ -168,9 +168,9 @@ void OsEventSet(OsEvent* Event)
     pthread_mutex_unlock(&Event->Mutex);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventWait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Wait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsEventWait(OsEvent* Event, int TimeoutMs)
+int OsEvent_Wait(OsEvent* Event, int TimeoutMs)
 {
     int Result = OS_WAIT_SIGNALLED;
 
@@ -186,8 +186,8 @@ int OsEventWait(OsEvent* Event, int TimeoutMs)
 
         int64_t DeadlineSec;
         long DeadlineNsec;
-        LinTimeAddMs((int64_t)Now.tv_sec, Now.tv_nsec, TimeoutMs, &DeadlineSec,
-                     &DeadlineNsec);
+        LinTime_AddMs((int64_t)Now.tv_sec, Now.tv_nsec, TimeoutMs, &DeadlineSec,
+                      &DeadlineNsec);
         Deadline.tv_sec = (time_t)DeadlineSec;
         Deadline.tv_nsec = DeadlineNsec;
     }
@@ -227,56 +227,56 @@ struct OsMutex
     pthread_mutex_t Handle;
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexCreate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsMutex* OsMutexCreate(void)
+OsMutex* OsMutex_Create(void)
 {
-    OsMutex* Mutex = (OsMutex*)DtMalloc(sizeof(OsMutex));
+    OsMutex* Mutex = (OsMutex*)DtAlloc_Malloc(sizeof(OsMutex));
 
     if (Mutex == NULL)
         return NULL;
 
     if (pthread_mutex_init(&Mutex->Handle, NULL) != 0)
     {
-        DtFree(Mutex);
+        DtAlloc_Free(Mutex);
         return NULL;
     }
 
     return Mutex;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexDestroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Destroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsMutexDestroy(OsMutex* Mutex)
+void OsMutex_Destroy(OsMutex* Mutex)
 {
     if (Mutex == NULL)
         return;
 
     pthread_mutex_destroy(&Mutex->Handle);
-    DtFree(Mutex);
+    DtAlloc_Free(Mutex);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexLock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Lock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsMutexLock(OsMutex* Mutex)
+void OsMutex_Lock(OsMutex* Mutex)
 {
     pthread_mutex_lock(&Mutex->Handle);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexUnlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsMutexUnlock(OsMutex* Mutex)
+void OsMutex_Unlock(OsMutex* Mutex)
 {
     pthread_mutex_unlock(&Mutex->Handle);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsTime_SleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A signal cuts nanosleep short and leaves the rest in Remaining, which is slept again.
 //
-void OsSleepMs(int Ms)
+void OsTime_SleepMs(int Ms)
 {
     if (Ms <= 0)
         return;
@@ -288,9 +288,9 @@ void OsSleepMs(int Ms)
         ;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsTime_MonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint64_t OsMonotonicMs(void)
+uint64_t OsTime_MonotonicMs(void)
 {
     struct timespec Now;
 
@@ -299,11 +299,11 @@ uint64_t OsMonotonicMs(void)
     return (uint64_t)Now.tv_sec * 1000u + (uint64_t)Now.tv_nsec / 1000000u;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Name -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // program_invocation_name, as XpUtil's GetCurrentProcessName on Linux.
 //
-void OsProcessName(char* Buf, size_t Size)
+void OsProcess_Name(char* Buf, size_t Size)
 {
     if (Buf == NULL || Size == 0)
         return;
@@ -311,9 +311,9 @@ void OsProcessName(char* Buf, size_t Size)
              program_invocation_name != NULL ? program_invocation_name : "");
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Id -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint32_t OsProcessId(void)
+uint32_t OsProcess_Id(void)
 {
     return (uint32_t)getpid();
 }

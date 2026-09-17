@@ -77,12 +77,12 @@ typedef struct DtSdiFrameLayout
 // Fills Layout for a video standard and a stream alignment in bits, as
 // SdiRxSimpleProps::Init and SdiTxSimpleProps::Init. Returns false for an unknown
 // standard, a 4K standard, and an alignment that is not a positive number of whole bytes.
-bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits);
+bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits);
 
 // The bytes one coded frame takes: its header and its lines, for reception and for
 // transmission.
-size_t DtSdiFrameCodedSize(const DtSdiFrameLayout* Layout);
-size_t DtSdiFrameTxCodedSize(const DtSdiFrameLayout* Layout);
+size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout);
+size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
 // A receive header, decoded.
 typedef struct DtSdiFrameHeader
@@ -96,16 +96,16 @@ typedef struct DtSdiFrameHeader
 } DtSdiFrameHeader;
 
 // Decodes the DT_SDIFRAME_HEADER_BYTES bytes at Bytes.
-void DtSdiFrameDecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header);
+void DtSdiFrame_DecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header);
 
 // Encodes Header into DT_SDIFRAME_HEADER_BYTES bytes at Bytes. The reserved bits are 0.
-void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
+void DtSdiFrame_EncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
 
 // Checks a header as MxChannelMemlessRx::CheckFrameHeader does: DTAPI_E_OUT_OF_SYNC for
 // a wrong sync word; DTAPI_E_INVALID when ExpectedId is not -1 and the frame ID differs;
 // DTAPI_E_INVALID_FORMAT for a format the layout does not expect; otherwise DTAPI_OK.
-DtapiResult DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
-                                  const DtSdiFrameHeader* Header, int ExpectedId);
+DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
+                                   const DtSdiFrameHeader* Header, int ExpectedId);
 
 // A transmit header, decoded. Fields keep the widths the header gives them.
 typedef struct DtSdiFrameTxHeader
@@ -125,14 +125,14 @@ typedef struct DtSdiFrameTxHeader
 
 // Fills Header for a frame of Layout with frame ID FrameId, as
 // MxChannelMemlessTx::SetVidStd does: protocol version 0 and a valid SDI rate.
-void DtSdiFrameTxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
-                            DtSdiFrameTxHeader* Header);
+void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
+                             DtSdiFrameTxHeader* Header);
 
 // Decodes the DT_SDIFRAME_TX_HEADER_BYTES bytes at Bytes.
-void DtSdiFrameDecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header);
+void DtSdiFrame_DecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header);
 
 // Encodes Header into DT_SDIFRAME_TX_HEADER_BYTES bytes at Bytes, reserved bits 0.
-void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes);
+void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes);
 
 // The bytes at the start of a coded line that hold its EAV and, in HD, its line number:
 // twelve symbols.
@@ -145,8 +145,8 @@ void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes);
 // their upper eight bits. FirstLine and LastLine point to DT_SDIFRAME_LINE_START_BYTES
 // bytes at the start of the first and the last coded line. Returns DTAPI_OK or
 // DTAPI_E_OUT_OF_SYNC.
-DtapiResult DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout, const uint8_t* FirstLine,
-                                 const uint8_t* LastLine);
+DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
+                                  const uint8_t* FirstLine, const uint8_t* LastLine);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -166,19 +166,19 @@ DtapiResult DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout, const uint8_t* 
 
 // The bytes of a raw frame whose symbols take SymbolBits, 8, 10 or 16, padding included;
 // 0 for any other symbol size.
-size_t DtSdiFrameRawSize(const DtSdiFrameLayout* Layout, int SymbolBits);
+size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits);
 
 // The bits one line of a raw frame takes whose symbols take SymbolBits, 8, 10 or 16; 0
 // for any other symbol size. Line LineIndex, from 0, starts at LineIndex times that bit.
-size_t DtSdiFrameRawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits);
+size_t DtSdiFrame_RawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits);
 
 // Converts the coded line at CodedLine, the line with index LineIndex from 0, into its
 // place in the raw frame at Raw, whose symbols take SymbolBits, 8, 10 or 16. With 10 bits
 // a line can share a byte with the line before or after it, so the raw frame must be
 // cleared beforehand; the lines can then be converted in any order. Padding bits of the
 // coded line are not copied.
-void DtSdiFrameConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
-                           const uint8_t* CodedLine, int LineIndex, uint8_t* Raw);
+void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+                            const uint8_t* CodedLine, int LineIndex, uint8_t* Raw);
 
 // Codes one raw line into the coded line at CodedLine, Layout->Stride bytes, as
 // PxCnvTaskRaw::Run does: the HANC section and the video section, each padded with zero
@@ -187,8 +187,8 @@ void DtSdiFrameConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 // at RawLine, and no byte after the one holding its last bit is read. Returns false,
 // writing nothing, for another symbol size, for a Phase outside 0 to 7, and for a Phase
 // other than 0 with 16 bits.
-bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
-                        const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
+bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+                         const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -204,4 +204,4 @@ bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 
 // Writes the coded lines of a black frame of Layout's standard at Lines, Layout->NumLines
 // times Layout->Stride bytes, padding bits 0.
-void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);
+void DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);

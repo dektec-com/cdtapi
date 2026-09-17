@@ -17,7 +17,7 @@ DT_TEST(ZeroAddsNothing)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 250000000L, 0, &Sec, &Nsec);
+    LinTime_AddMs(100, 250000000L, 0, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 100);
     DT_ASSERT_EQ(Nsec, 250000000L);
 }
@@ -27,7 +27,7 @@ DT_TEST(MillisecondsWithoutCarry)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 100000000L, 10, &Sec, &Nsec);
+    LinTime_AddMs(100, 100000000L, 10, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 100);
     DT_ASSERT_EQ(Nsec, 110000000L);
 }
@@ -40,7 +40,7 @@ DT_TEST(NanosecondsCarryIntoSeconds)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 995000000L, 10, &Sec, &Nsec);
+    LinTime_AddMs(100, 995000000L, 10, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 101);
     DT_ASSERT_EQ(Nsec, 5000000L);
 }
@@ -50,7 +50,7 @@ DT_TEST(ExactlyOneBillionCarries)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 999000000L, 1, &Sec, &Nsec);
+    LinTime_AddMs(100, 999000000L, 1, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 101);
     DT_ASSERT_EQ(Nsec, 0);
 }
@@ -60,7 +60,7 @@ DT_TEST(WholeSecondsAreSplitOff)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 900000000L, 2500, &Sec, &Nsec);
+    LinTime_AddMs(100, 900000000L, 2500, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 103);
     DT_ASSERT_EQ(Nsec, 400000000L);
 }
@@ -72,7 +72,7 @@ DT_TEST(LargestTimeoutStaysNormalised)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(0, LIN_NSEC_PER_SEC - 1, 2147483647, &Sec, &Nsec);
+    LinTime_AddMs(0, LIN_NSEC_PER_SEC - 1, 2147483647, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 2147484);
     DT_ASSERT_EQ(Nsec, 646999999L);
     DT_ASSERT(Nsec >= 0 && Nsec < LIN_NSEC_PER_SEC);
@@ -83,7 +83,7 @@ DT_TEST(NegativeTimeoutCountsAsZero)
     int64_t Sec;
     long Nsec;
 
-    LinTimeAddMs(100, 5L, -50, &Sec, &Nsec);
+    LinTime_AddMs(100, 5L, -50, &Sec, &Nsec);
     DT_ASSERT_EQ(Sec, 100);
     DT_ASSERT_EQ(Nsec, 5L);
 }

@@ -40,10 +40,10 @@ typedef struct OsDrv OsDrv;
 //
 // When CDTAPILITE_SIM is set in the environment, the emulated device is opened instead
 // and no real hardware is touched.
-OsDrv* OsDrvOpen(int Index);
+OsDrv* OsDrv_Open(int Index);
 
 // Closes a device. Passing NULL does nothing.
-void OsDrvClose(OsDrv* Drv);
+void OsDrv_Close(OsDrv* Drv);
 
 // True when this handle is the emulated device rather than a card.
 //
@@ -51,7 +51,7 @@ void OsDrvClose(OsDrv* Drv);
 // emulator still accepts CDTAPILITE_SIM in the environment and then opens real hardware,
 // and a caller that decides "no card" from its own command line rather than from this
 // would go on to read a real device with the emulator's assumptions.
-bool OsDrvIsEmulated(const OsDrv* Drv);
+bool OsDrv_IsEmulated(const OsDrv* Drv);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Control -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -77,10 +77,10 @@ bool OsDrvIsEmulated(const OsDrv* Drv);
 // Returns one of the OS_IOCTL_ outcomes below. DrvStatus may be NULL; otherwise it
 // receives the driver's DtStatus when the outcome is OS_IOCTL_DRIVER_STATUS, and
 // DT_STATUS_OK, which is zero, for every other outcome.
-int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
-               size_t* OutSize, uint32_t* DrvStatus);
+int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
+                size_t* OutSize, uint32_t* DrvStatus);
 
-// Outcomes of OsDrvIoCtl.
+// Outcomes of OsDrv_IoCtl.
 //
 // A driver refuses a command with a DtStatus, and the two platforms deliver it in
 // different ways: on Windows as a GetLastError value with the customer bit (bit 29) set,
@@ -100,12 +100,12 @@ int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* O
 // writable and shared with the driver. Returns the address, or NULL when the mapping
 // fails or the platform maps no memory this way: the Windows driver maps memory itself,
 // during the command that asks for it.
-void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size);
+void* OsDrv_MapMemory(OsDrv* Drv, uint64_t Offset, size_t Size);
 
-// Releases a mapping OsDrvMapMemory made. Passing NULL does nothing.
-void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size);
+// Releases a mapping OsDrv_MapMemory made. Passing NULL does nothing.
+void OsDrv_UnmapMemory(OsDrv* Drv, void* Address, size_t Size);
 
 // The error the last failed call on this handle reported, for diagnostics: the driver
 // status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
 // Linux and GetLastError on Windows. Zero when nothing has failed.
-uint32_t OsDrvLastError(const OsDrv* Drv);
+uint32_t OsDrv_LastError(const OsDrv* Drv);

@@ -17,13 +17,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame rates +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdFps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_Fps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // MxVidStdPropsSdi::Fps.
 //
-void DtVidStdFps(int VidStd, int* Num, int* Den)
+void DtVidStd_Fps(int VidStd, int* Num, int* Den)
 {
-    const DtVidStdInfo* Info = DtVidStdFind(VidStd);
+    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
 
     *Num = Info != NULL ? Info->FpsNum : 0;
     *Den = Info != NULL ? Info->FpsDen : 1;
@@ -43,19 +43,19 @@ static void SetField(DtFieldProps* Field, int Start, int End, int VidStart, int 
     Field->SwitchingLine = Switching;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // MxFramePropsSdi::Init, for the default variant of each standard. The fields and the
 // widths follow from the number of lines and the scan; the line numbers are DTAPI's
 // (MxVideoProps.cpp:1252-1460). A 2160p standard has the geometry of one of its links.
 //
-bool DtFramePropsInit(DtFrameProps* Props, int VidStd)
+bool DtFrameProps_Init(DtFrameProps* Props, int VidStd)
 {
-    const DtVidStdInfo* Info = DtVidStdFind(VidStd);
+    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
 
     memset(Props, 0, sizeof(*Props));
     Props->VidStd = DTAPI_VIDSTD_UNKNOWN;
-    DtVidStdFps(VidStd, &Props->FpsNum, &Props->FpsDen);
+    DtVidStd_Fps(VidStd, &Props->FpsNum, &Props->FpsDen);
     if (Info == NULL)
         return false;
 
@@ -111,9 +111,9 @@ bool DtFramePropsInit(DtFrameProps* Props, int VidStd)
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsNumLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_NumLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtFramePropsNumLines(const DtFrameProps* Props)
+int DtFrameProps_NumLines(const DtFrameProps* Props)
 {
     int Lines = 0;
 
@@ -122,9 +122,9 @@ int DtFramePropsNumLines(const DtFrameProps* Props)
     return Lines;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsLineSymbolsHanc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_LineSymbolsHanc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtFramePropsLineSymbolsHanc(const DtFrameProps* Props)
+int DtFrameProps_LineSymbolsHanc(const DtFrameProps* Props)
 {
     return Props->LineNumSymEav + Props->LineNumSymHanc + Props->LineNumSymSav;
 }
@@ -138,72 +138,72 @@ static bool IsValid(const DtFrameProps* Props)
     return Props->VidStd != DTAPI_VIDSTD_UNKNOWN;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIsSd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_IsSd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Frames of up to 625 lines are SD, all others HD.
 //
-bool DtFramePropsIsSd(const DtFrameProps* Props)
+bool DtFrameProps_IsSd(const DtFrameProps* Props)
 {
-    return IsValid(Props) && DtFramePropsNumLines(Props) <= 625;
+    return IsValid(Props) && DtFrameProps_NumLines(Props) <= 625;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIsHd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_IsHd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtFramePropsIsHd(const DtFrameProps* Props)
+bool DtFrameProps_IsHd(const DtFrameProps* Props)
 {
-    return IsValid(Props) && !DtFramePropsIsSd(Props);
+    return IsValid(Props) && !DtFrameProps_IsSd(Props);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIs3g -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Is3g -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A 1125-line frame at 50 frames per second or more, other than 2160p.
 //
-bool DtFramePropsIs3g(const DtFrameProps* Props)
+bool DtFrameProps_Is3g(const DtFrameProps* Props)
 {
-    if (!IsValid(Props) || DtVidStdIs4k(Props->VidStd))
+    if (!IsValid(Props) || DtVidStd_Is4k(Props->VidStd))
         return false;
-    return DtFramePropsNumLines(Props) == 1125 &&
+    return DtFrameProps_NumLines(Props) == 1125 &&
            (double)Props->FpsNum / Props->FpsDen >= 50.0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIs3gLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Is3gLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtFramePropsIs3gLevelB(const DtFrameProps* Props)
+bool DtFrameProps_Is3gLevelB(const DtFrameProps* Props)
 {
-    const DtVidStdInfo* Info = DtVidStdFind(Props->VidStd);
+    const DtVidStdInfo* Info = DtVidStd_Find(Props->VidStd);
 
-    return DtFramePropsIs3g(Props) && Info != NULL && Info->IsLevelB;
+    return DtFrameProps_Is3g(Props) && Info != NULL && Info->IsLevelB;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIsInterlaced -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_IsInterlaced -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Two fields, which includes PsF.
 //
-bool DtFramePropsIsInterlaced(const DtFrameProps* Props)
+bool DtFrameProps_IsInterlaced(const DtFrameProps* Props)
 {
     return IsValid(Props) && Props->NumFields > 1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsIsPsF -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_IsPsF -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool DtFramePropsIsPsF(const DtFrameProps* Props)
+bool DtFrameProps_IsPsF(const DtFrameProps* Props)
 {
-    const DtVidStdInfo* Info = DtVidStdFind(Props->VidStd);
+    const DtVidStdInfo* Info = DtVidStd_Find(Props->VidStd);
 
-    return DtFramePropsIsInterlaced(Props) && Info != NULL && Info->Scan == DT_SCAN_PSF;
+    return DtFrameProps_IsInterlaced(Props) && Info != NULL && Info->Scan == DT_SCAN_PSF;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Deduction +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsMatchesGeometry -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_MatchesGeometry -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool DtFramePropsMatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
-                                 int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc)
+bool DtFrameProps_MatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
+                                  int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc)
 {
-    return DtFramePropsLineSymbolsHanc(Props) == LineNumSymHanc &&
+    return DtFrameProps_LineSymbolsHanc(Props) == LineNumSymHanc &&
            Props->LineNumSymVanc == LineNumSymVanc &&
            Props->Fields[0].EndLine - Props->Fields[0].StartLine + 1 == NumLinesF1 &&
-           DtFramePropsNumLines(Props) == NumLinesF1 + NumLinesF2;
+           DtFrameProps_NumLines(Props) == NumLinesF1 + NumLinesF2;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Matches -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -217,13 +217,13 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
     double Rate = (double)Props->FpsNum / Props->FpsDen;
     double Deviation = Fps > Rate ? Fps - Rate : Rate - Fps;
 
-    if (!DtFramePropsMatchesGeometry(Props, NumLinesF1, NumLinesF2, LineNumSymHanc,
-                                     LineNumSymVanc))
+    if (!DtFrameProps_MatchesGeometry(Props, NumLinesF1, NumLinesF2, LineNumSymHanc,
+                                      LineNumSymVanc))
         return false;
     if (Props->NumFields > 1 && NumLinesF2 == 0)
         return false;
 
-    if (DtFramePropsIs3g(Props) && DtFramePropsIs3gLevelB(Props) != Is3gLevelB)
+    if (DtFrameProps_Is3g(Props) && DtFrameProps_Is3gLevelB(Props) != Is3gLevelB)
         return false;
 
     // The frame rate may deviate by 500 ppm.
@@ -232,7 +232,7 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
 
     // Without a VPID, HD PsF is taken to be interlaced; only 23.98 and 24, which have no
     // interlaced counterpart, remain PsF.
-    if (DtFramePropsIsHd(Props) && DtFramePropsIsPsF(Props) && Vpid == 0 &&
+    if (DtFrameProps_IsHd(Props) && DtFrameProps_IsPsF(Props) && Vpid == 0 &&
         Props->VidStd != DTAPI_VIDSTD_1080PSF23_98 &&
         Props->VidStd != DTAPI_VIDSTD_1080PSF24)
     {
@@ -242,42 +242,42 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
     // With a VPID, its scan bits must fit the frame, and its payload identifier the 3G
     // level. PsF has two fields, so the interlaced test applies to it as well, and no
     // VPID passes both: the search never gives PsF when there is a VPID.
-    if (!DtFramePropsIsSd(Props) && Vpid != 0)
+    if (!DtFrameProps_IsSd(Props) && Vpid != 0)
     {
-        if (DtFramePropsIsPsF(Props) && (Vpid & 0x0000C000) != 0x00008000)
+        if (DtFrameProps_IsPsF(Props) && (Vpid & 0x0000C000) != 0x00008000)
             return false;
-        if (DtFramePropsIsInterlaced(Props) && (Vpid & 0x0000C000) != 0x00000000)
+        if (DtFrameProps_IsInterlaced(Props) && (Vpid & 0x0000C000) != 0x00000000)
             return false;
-        if (DtFramePropsIs3g(Props) && DtFramePropsIs3gLevelB(Props) &&
+        if (DtFrameProps_Is3g(Props) && DtFrameProps_Is3gLevelB(Props) &&
             (Vpid & 0xFF) != 0x8A)
             return false;
-        if (DtFramePropsIs3g(Props) && !DtFramePropsIs3gLevelB(Props) &&
+        if (DtFrameProps_Is3g(Props) && !DtFrameProps_Is3gLevelB(Props) &&
             (Vpid & 0xFF) == 0x8A)
             return false;
     }
 
     // At 6G and 12G only a 2160p standard will do.
     if ((SdiRate == DT_SDIRATE_6G || SdiRate == DT_SDIRATE_12G) &&
-        !DtVidStdIs4k(Props->VidStd))
+        !DtVidStd_Is4k(Props->VidStd))
     {
         return false;
     }
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFramePropsDeduce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Deduce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The standards are tried in the order of Tables/DtVidStdList.inc, which is DTAPI's.
 // When none matches, a VPID that decodes to a standard whose geometry matches still gives
 // one; then the properties are those of one link.
 //
-void DtFramePropsDeduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
-                        int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                        bool Is3gLevelB, uint32_t Vpid, int SdiRate)
+void DtFrameProps_Deduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
+                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
+                         bool Is3gLevelB, uint32_t Vpid, int SdiRate)
 {
-    for (int i = 0; i < DtVidStdCount(); i++)
+    for (int i = 0; i < DtVidStd_Count(); i++)
     {
-        DtFramePropsInit(Props, DtVidStdAt(i)->VidStd);
+        DtFrameProps_Init(Props, DtVidStd_At(i)->VidStd);
         if (Matches(Props, NumLinesF1, NumLinesF2, LineNumSymHanc, LineNumSymVanc, Fps,
                     Is3gLevelB, Vpid, SdiRate))
         {
@@ -289,10 +289,10 @@ void DtFramePropsDeduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
     {
         DtVidStdProps FromVpid;
 
-        DtVidStdPropsFromSmpte352(&FromVpid, Vpid);
+        DtVidStdProps_FromSmpte352(&FromVpid, Vpid);
         if (FromVpid.VidStd != DTAPI_VIDSTD_UNKNOWN &&
-            DtFramePropsMatchesGeometry(&FromVpid.Frame, NumLinesF1, NumLinesF2,
-                                        LineNumSymHanc, LineNumSymVanc))
+            DtFrameProps_MatchesGeometry(&FromVpid.Frame, NumLinesF1, NumLinesF2,
+                                         LineNumSymHanc, LineNumSymVanc))
         {
             *Props = FromVpid.Frame;
             return;

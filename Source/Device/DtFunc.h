@@ -56,29 +56,30 @@ typedef struct DtFuncInstance
 // is left out, as DTAPI makes no proxy of it. Returns DTAPI_E_OUT_OF_MEM when the parts
 // do not fit in memory.
 //
-// Instance is empty after a failure. Release it with DtFuncRelease after a success.
-DtapiResult DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
-                       DtFuncInstance* Instance);
+// Instance is empty after a failure. Release it with DtFunc_Release after a success.
+DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
+                        DtFuncInstance* Instance);
 
 // Frees the parts of an instance, which is then empty.
-void DtFuncRelease(DtFuncInstance* Instance);
+void DtFunc_Release(DtFuncInstance* Instance);
 
 // The part of the instance that is a driver function when IsDf, or a building block
 // otherwise, of Type and with Role; NULL when there is none. When parts are alike the
 // last is returned, because DTAPI's proxy collection keeps the last one it adds for a
 // type and role.
-const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
-                            const char* Role);
+const DtFuncPart* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
+                             const char* Role);
 
 // Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every part
 // of the instance, as DtAf::ExclAccess does. A part that does not support it is passed
 // over. The first other failure stops the command and is returned; when acquiring, the
 // parts acquired before it are released again. Releasing goes on past failures, and
 // returns the first.
-DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
+DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
 
 // Checks that the driver is new enough for a part's proxy, as DtAf::GetPal does before
 // using it (DtProxy.cpp, PROXY_MIN_DRV_VERSIONS): DTAPI_OK, DTAPI_E_DRIVER_INCOMP when it
 // is older, and DTAPI_E_INTERNAL for a type the table does not have. The table holds the
 // types CDtapiLite uses.
-DtapiResult DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type);
+DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
+                                      int Type);

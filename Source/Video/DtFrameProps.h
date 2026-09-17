@@ -55,36 +55,36 @@ typedef struct DtFrameProps
 // Fills Props for a video standard, as MxFramePropsSdi::Init. Returns false, with
 // Props->VidStd DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is no
 // standard.
-bool DtFramePropsInit(DtFrameProps* Props, int VidStd);
+bool DtFrameProps_Init(DtFrameProps* Props, int VidStd);
 
 // The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
-void DtVidStdFps(int VidStd, int* Num, int* Den);
+void DtVidStd_Fps(int VidStd, int* Num, int* Den);
 
 // Lines in the frame, over both fields.
-int DtFramePropsNumLines(const DtFrameProps* Props);
+int DtFrameProps_NumLines(const DtFrameProps* Props);
 
 // Symbols in the horizontal blanking of a line, EAV and SAV included, which is how the
 // SDI receiver counts them.
-int DtFramePropsLineSymbolsHanc(const DtFrameProps* Props);
+int DtFrameProps_LineSymbolsHanc(const DtFrameProps* Props);
 
 // Whether a frame has the geometry an SDI receiver reports: the lines of the first field
 // and of the frame, the symbols per line in HANC (EAV and SAV included) and in the active
 // part.
-bool DtFramePropsMatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
-                                 int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc);
+bool DtFrameProps_MatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
+                                  int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc);
 
 // The classifications MxFramePropsSdi makes. All are false for invalid properties.
-bool DtFramePropsIsSd(const DtFrameProps* Props);
-bool DtFramePropsIsHd(const DtFrameProps* Props);
-bool DtFramePropsIs3g(const DtFrameProps* Props);
-bool DtFramePropsIs3gLevelB(const DtFrameProps* Props);
-bool DtFramePropsIsInterlaced(const DtFrameProps* Props);
-bool DtFramePropsIsPsF(const DtFrameProps* Props);
+bool DtFrameProps_IsSd(const DtFrameProps* Props);
+bool DtFrameProps_IsHd(const DtFrameProps* Props);
+bool DtFrameProps_Is3g(const DtFrameProps* Props);
+bool DtFrameProps_Is3gLevelB(const DtFrameProps* Props);
+bool DtFrameProps_IsInterlaced(const DtFrameProps* Props);
+bool DtFrameProps_IsPsF(const DtFrameProps* Props);
 
 // Finds the video standard of a frame from what an SDI receiver reports, as
 // MxFramePropsSdi::Deduce: the lines of each field, the symbols per line in HANC (EAV and
 // SAV included) and in the active part, the frame rate, whether 3G is level B, the VPID
 // and the SDI rate. Props->VidStd is DTAPI_VIDSTD_UNKNOWN when no standard matches.
-void DtFramePropsDeduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
-                        int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                        bool Is3gLevelB, uint32_t Vpid, int SdiRate);
+void DtFrameProps_Deduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
+                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
+                         bool Is3gLevelB, uint32_t Vpid, int SdiRate);

@@ -67,22 +67,22 @@ int main(int Argc, char** Argv)
     int64_t Serial = 0;
     int64_t PortNumber = 0;
     int64_t LinkStd = -1;
-    bool Input = ExampleHasFlag(Argc, Argv, "--input");
-    bool Output = ExampleHasFlag(Argc, Argv, "--output");
-    const char* VidStdName = ExampleValue(Argc, Argv, "--vidstd");
+    bool Input = Example_HasFlag(Argc, Argv, "--input");
+    bool Output = Example_HasFlag(Argc, Argv, "--output");
+    const char* VidStdName = Example_Value(Argc, Argv, "--vidstd");
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     int Value = -1;
     int SubValue = -1;
     int Exit = EXAMPLE_OK;
 
-    if (!ExampleCheckArguments(Argc, Argv,
-                               "Makes an SDI port an input or output, and sets its I/O "
-                               "standard for a video standard.",
-                               g_Options,
-                               (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
-        !ExampleInt64(Argc, Argv, "--serial", &Serial) ||
-        !ExampleInt64(Argc, Argv, "--port", &PortNumber) ||
-        !ExampleInt64(Argc, Argv, "--linkstd", &LinkStd))
+    if (!Example_CheckArguments(Argc, Argv,
+                                "Makes an SDI port an input or output, and sets its I/O "
+                                "standard for a video standard.",
+                                g_Options,
+                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
+        !Example_Int64(Argc, Argv, "--serial", &Serial) ||
+        !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
+        !Example_Int64(Argc, Argv, "--linkstd", &LinkStd))
     {
         return EXAMPLE_FAILED;
     }
@@ -101,36 +101,36 @@ int main(int Argc, char** Argv)
     unsigned int Result;
     if (VidStdName != NULL)
     {
-        if (!ExampleVidStdFromName(VidStdName, &VidStd))
+        if (!Example_VidStdFromName(VidStdName, &VidStd))
         {
             printf("Unknown video standard: %s\n", VidStdName);
             return EXAMPLE_FAILED;
         }
         Result = DtapiVidStd2IoStd(VidStd, (int)LinkStd, &Value, &SubValue);
         if (Result != DTAPI_OK)
-            return ExampleFailed("DtapiVidStd2IoStd", Result);
+            return Example_Failed("DtapiVidStd2IoStd", Result);
     }
 
     DtHwFuncDesc Port;
-    Result = ExampleFindPort(Serial, (int)PortNumber,
-                             Input ? IsSdiInput : (Output ? IsSdiOutput : IsSdi), &Port);
+    Result = Example_FindPort(Serial, (int)PortNumber,
+                              Input ? IsSdiInput : (Output ? IsSdiOutput : IsSdi), &Port);
     if (Result == DTAPI_E_NOT_FOUND)
     {
         printf("No port that suits\n");
         return EXAMPLE_NOTHING;
     }
     if (Result != DTAPI_OK)
-        return ExampleFailed("DtapiHwFuncScan", Result);
+        return Example_Failed("DtapiHwFuncScan", Result);
 
     DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL)
-        return ExampleFailed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
+        return Example_Failed("DtDevice_Alloc", DTAPI_E_OUT_OF_MEM);
 
     Result = DtDevice_AttachToSerial(Device, Port.SerialNumber);
-    if (!ExampleSucceeded(Result))
+    if (!Example_Succeeded(Result))
     {
         DtDevice_Free(Device);
-        return ExampleFailed("DtDevice_AttachToSerial", Result);
+        return Example_Failed("DtDevice_AttachToSerial", Result);
     }
 
     if (Input || Output)
@@ -139,7 +139,7 @@ int main(int Argc, char** Argv)
                        : DtDevice_SetToOutput(Device, Port.Port);
         printf("%s  IODIR %s  %s\n", Port.DeviceName, Input ? "INPUT" : "OUTPUT",
                DtapiResult2Str(Result));
-        if (!ExampleSucceeded(Result))
+        if (!Example_Succeeded(Result))
             Exit = EXAMPLE_FAILED;
     }
 
@@ -147,9 +147,9 @@ int main(int Argc, char** Argv)
     {
         Result = DtDevice_SetIoConfig(Device, Port.Port, DTAPI_IOCONFIG_IOSTD, Value,
                                       SubValue);
-        printf("%s  IOSTD %s %s  %s\n", Port.DeviceName, ExampleIoStdName(Value),
-               ExampleVidStdName(SubValue), DtapiResult2Str(Result));
-        if (!ExampleSucceeded(Result))
+        printf("%s  IOSTD %s %s  %s\n", Port.DeviceName, Example_IoStdName(Value),
+               Example_VidStdName(SubValue), DtapiResult2Str(Result));
+        if (!Example_Succeeded(Result))
             Exit = EXAMPLE_FAILED;
     }
 

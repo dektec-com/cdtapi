@@ -15,14 +15,14 @@
 
 static int IsPageAligned(const uint8_t* Ptr)
 {
-    return ((uintptr_t)Ptr & ((uintptr_t)OsPageSize() - 1)) == 0;
+    return ((uintptr_t)Ptr & ((uintptr_t)OsDmaBuffer_PageSize() - 1)) == 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Allocation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST(PageSizeIsAPowerOfTwo)
 {
-    size_t Page = OsPageSize();
+    size_t Page = OsDmaBuffer_PageSize();
 
     DT_ASSERT(Page >= 4096);
     DT_ASSERT_EQ(Page & (Page - 1), 0);
@@ -32,22 +32,22 @@ DT_TEST(PageSizeIsAPowerOfTwo)
 // the size must cover whole pages.
 DT_TEST(BufferIsPageAlignedAndRounded)
 {
-    size_t Page = OsPageSize();
+    size_t Page = OsDmaBuffer_PageSize();
     OsDmaBuffer Buf;
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(1, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(1, &Buf));
     DT_ASSERT(IsPageAligned(Buf.Data));
     DT_ASSERT_EQ(Buf.Size, Page);
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(Page + 1, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(Page + 1, &Buf));
     DT_ASSERT(IsPageAligned(Buf.Data));
     DT_ASSERT_EQ(Buf.Size, 2 * Page);
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(3 * Page, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(3 * Page, &Buf));
     DT_ASSERT_EQ(Buf.Size, 3 * Page);
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 }
 
 // Every byte of the rounded size is inside the allocation. Under AddressSanitizer a
@@ -56,7 +56,7 @@ DT_TEST(WholeBufferIsZeroedAndWritable)
 {
     OsDmaBuffer Buf;
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(5 * OsPageSize() + 17, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(5 * OsDmaBuffer_PageSize() + 17, &Buf));
 
     for (size_t i = 0; i < Buf.Size; i++)
     {
@@ -67,7 +67,7 @@ DT_TEST(WholeBufferIsZeroedAndWritable)
     memset(Buf.Data, 0xA5, Buf.Size);
     DT_ASSERT_EQ(Buf.Data[Buf.Size - 1], 0xA5);
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 }
 
 // Several buffers alive at once land at different places and each stays aligned; the
@@ -79,59 +79,59 @@ DT_TEST(ManyBuffersAreEachAligned)
 
     for (i = 0; i < 16; i++)
     {
-        DT_ASSERT_OK(OsDmaBufferAlloc((size_t)(i + 1) * 1000, &Bufs[i]));
+        DT_ASSERT_OK(OsDmaBuffer_Alloc((size_t)(i + 1) * 1000, &Bufs[i]));
         DT_ASSERT(IsPageAligned(Bufs[i].Data));
     }
 
     for (i = 0; i < 16; i++)
-        OsDmaBufferFree(&Bufs[i]);
+        OsDmaBuffer_Free(&Bufs[i]);
 }
 
 DT_TEST(FreeEmptiesTheBufferAndCanRepeat)
 {
     OsDmaBuffer Buf;
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
-    OsDmaBufferFree(&Buf);
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(100, &Buf));
+    OsDmaBuffer_Free(&Buf);
 
     DT_ASSERT(Buf.Data == NULL);
     DT_ASSERT(Buf.Block == NULL);
     DT_ASSERT_EQ(Buf.Size, 0);
 
-    OsDmaBufferFree(&Buf);
-    OsDmaBufferFree(NULL);
+    OsDmaBuffer_Free(&Buf);
+    OsDmaBuffer_Free(NULL);
 }
 
 DT_TEST(AllocRejectsBadArguments)
 {
-    DT_ASSERT_EQ(OsDmaBufferAlloc(100, NULL), -1);
+    DT_ASSERT_EQ(OsDmaBuffer_Alloc(100, NULL), -1);
 
     OsDmaBuffer Buf;
-    DT_ASSERT_EQ(OsDmaBufferAlloc(0, &Buf), -1);
+    DT_ASSERT_EQ(OsDmaBuffer_Alloc(0, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
 
     // Rounding this up to a whole page would wrap around to a tiny size.
-    DT_ASSERT_EQ(OsDmaBufferAlloc((size_t)-1, &Buf), -1);
+    DT_ASSERT_EQ(OsDmaBuffer_Alloc((size_t)-1, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
 
     // The exact boundary: one byte more than the largest size whose rounding still fits.
     // It must be refused before any allocation is attempted.
-    DT_ASSERT_EQ(OsDmaBufferAlloc((size_t)-1 - OsPageSize() + 2, &Buf), -1);
+    DT_ASSERT_EQ(OsDmaBuffer_Alloc((size_t)-1 - OsDmaBuffer_PageSize() + 2, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
 }
 
 DT_TEST(AllocationFailureLeavesTheBufferEmpty)
 {
-    DtAllocResetCount();
-    DtAllocFailAfter(0);
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(0);
 
     OsDmaBuffer Buf;
-    DT_ASSERT_EQ(OsDmaBufferAlloc(100, &Buf), -1);
+    DT_ASSERT_EQ(OsDmaBuffer_Alloc(100, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
     DT_ASSERT(Buf.Block == NULL);
     DT_ASSERT_EQ(Buf.Size, 0);
 
-    DtAllocResetCount();
+    DtAlloc_ResetCount();
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hand-off +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -142,16 +142,16 @@ DT_TEST(HandOffAsTheOutputBuffer)
 {
     OsDmaBuffer Buf;
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(100, &Buf));
 
     OsDmaHandOff HandOff;
     uint8_t Fixed[4];
-    OsDmaDescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &HandOff);
+    OsDmaBuffer_DescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT_EQ(HandOff.BufferAddr, 0);
     DT_ASSERT(HandOff.Out == Buf.Data);
     DT_ASSERT_EQ(HandOff.OutSize, Buf.Size);
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 }
 
 // The Linux convention: the address travels in the input structure, and the output is
@@ -160,39 +160,39 @@ DT_TEST(HandOffAsAnAddress)
 {
     OsDmaBuffer Buf;
 
-    DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(100, &Buf));
 
     OsDmaHandOff HandOff;
     uint8_t Fixed[4];
-    OsDmaDescribeHandOffAs(false, &Buf, Fixed, sizeof(Fixed), &HandOff);
+    OsDmaBuffer_DescribeHandOffAs(false, &Buf, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT(HandOff.BufferAddr == (uint64_t)(uintptr_t)Buf.Data);
     DT_ASSERT(HandOff.Out == Fixed);
     DT_ASSERT_EQ(HandOff.OutSize, sizeof(Fixed));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 }
 
 // Whichever convention the host uses, the platform entry point must pick that one.
 DT_TEST(HandOffMatchesThisPlatform)
 {
     OsDmaBuffer Buf;
-    DT_ASSERT_OK(OsDmaBufferAlloc(100, &Buf));
+    DT_ASSERT_OK(OsDmaBuffer_Alloc(100, &Buf));
 
     uint8_t Fixed[4];
     OsDmaHandOff Actual;
-    OsDmaDescribeHandOff(&Buf, Fixed, sizeof(Fixed), &Actual);
+    OsDmaBuffer_DescribeHandOff(&Buf, Fixed, sizeof(Fixed), &Actual);
     OsDmaHandOff Expected;
 #if defined(_WIN32) || defined(_WIN64)
-    OsDmaDescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &Expected);
+    OsDmaBuffer_DescribeHandOffAs(true, &Buf, Fixed, sizeof(Fixed), &Expected);
 #else
-    OsDmaDescribeHandOffAs(false, &Buf, Fixed, sizeof(Fixed), &Expected);
+    OsDmaBuffer_DescribeHandOffAs(false, &Buf, Fixed, sizeof(Fixed), &Expected);
 #endif
 
     DT_ASSERT(Actual.BufferAddr == Expected.BufferAddr);
     DT_ASSERT(Actual.Out == Expected.Out);
     DT_ASSERT_EQ(Actual.OutSize, Expected.OutSize);
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
 }
 
 // An unallocated buffer describes nothing, rather than handing the driver a null address
@@ -204,15 +204,15 @@ DT_TEST(EmptyBufferDescribesNothing)
     memset(&Empty, 0, sizeof(Empty));
     OsDmaHandOff HandOff;
     uint8_t Fixed[4];
-    OsDmaDescribeHandOffAs(false, &Empty, Fixed, sizeof(Fixed), &HandOff);
+    OsDmaBuffer_DescribeHandOffAs(false, &Empty, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT_EQ(HandOff.BufferAddr, 0);
     DT_ASSERT(HandOff.Out == NULL);
     DT_ASSERT_EQ(HandOff.OutSize, 0);
 
-    OsDmaDescribeHandOffAs(true, NULL, Fixed, sizeof(Fixed), &HandOff);
+    OsDmaBuffer_DescribeHandOffAs(true, NULL, Fixed, sizeof(Fixed), &HandOff);
     DT_ASSERT(HandOff.Out == NULL);
 
-    OsDmaDescribeHandOffAs(true, &Empty, Fixed, sizeof(Fixed), NULL);
+    OsDmaBuffer_DescribeHandOffAs(true, &Empty, Fixed, sizeof(Fixed), NULL);
 }
 
 DT_TEST_MAIN("DmaBuffer", DT_RUN(PageSizeIsAPowerOfTwo),

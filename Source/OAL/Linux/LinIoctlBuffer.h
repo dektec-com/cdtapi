@@ -42,14 +42,14 @@
 #define LIN_IOCTL_SIZE_HEADER_BYTES (2 * sizeof(uint32_t))
 
 // The number of bytes the shared block needs.
-size_t LinIoctlBufferSize(bool SizeHeader, size_t InSize, size_t OutSize);
+size_t LinIoctlBuffer_Size(bool SizeHeader, size_t InSize, size_t OutSize);
 
 // Writes the optional size header and the input into Buf. Returns 0 on success, -1 when
 // Buf is too small, when In is NULL with a non-zero InSize, or when a size does not fit
 // the header's 32 bits.
-int LinIoctlPack(bool SizeHeader, const void* In, size_t InSize, size_t OutSize,
-                 uint8_t* Buf, size_t BufSize);
+int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t OutSize,
+                        uint8_t* Buf, size_t BufSize);
 
 // Copies the driver's answer, OutSize bytes from the start of Buf, to Out. Returns 0 on
 // success, -1 when Buf is too small or Out is NULL with a non-zero OutSize.
-int LinIoctlUnpack(const uint8_t* Buf, size_t BufSize, void* Out, size_t OutSize);
+int LinIoctlBuffer_Unpack(const uint8_t* Buf, size_t BufSize, void* Out, size_t OutSize);

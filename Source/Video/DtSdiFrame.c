@@ -30,16 +30,16 @@ static int PaddedBytes(int Symbols, int Alignment)
     return (Bits + AlignmentBits - 1) / AlignmentBits * Alignment;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameLayoutInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_LayoutInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits)
+bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits)
 {
     memset(Layout, 0, sizeof(*Layout));
     Layout->VidStd = DTAPI_VIDSTD_UNKNOWN;
 
     DtFrameProps Props;
-    if (AlignmentBits <= 0 || AlignmentBits % 8 != 0 || DtVidStdIs4k(VidStd) ||
-        !DtFramePropsInit(&Props, VidStd))
+    if (AlignmentBits <= 0 || AlignmentBits % 8 != 0 || DtVidStd_Is4k(VidStd) ||
+        !DtFrameProps_Init(&Props, VidStd))
     {
         return false;
     }
@@ -49,16 +49,16 @@ bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBit
                           Layout->Alignment * Layout->Alignment;
     Layout->TxHeaderBytes = (DT_SDIFRAME_TX_HEADER_BYTES + Layout->Alignment - 1) /
                             Layout->Alignment * Layout->Alignment;
-    Layout->NumLines = DtFramePropsNumLines(&Props);
-    Layout->LineSymsHanc = DtFramePropsLineSymbolsHanc(&Props);
+    Layout->NumLines = DtFrameProps_NumLines(&Props);
+    Layout->LineSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
     Layout->LineBytesHanc = PaddedBytes(Layout->LineSymsHanc, Layout->Alignment);
     Layout->LineSymsVideo = Props.LineNumSymVanc;
     Layout->LineBytesVideo = PaddedBytes(Layout->LineSymsVideo, Layout->Alignment);
     Layout->Stride = Layout->LineBytesHanc + Layout->LineBytesVideo;
     Layout->Format = DT_SDIFRAME_FORMAT_UNCOMPRESSED;
-    if (DtFramePropsIsSd(&Props))
+    if (DtFrameProps_IsSd(&Props))
         Layout->SdiRate = DT_SDIRATE_SD;
-    else if (DtFramePropsIs3g(&Props))
+    else if (DtFrameProps_Is3g(&Props))
         Layout->SdiRate = DT_SDIRATE_3G;
     else
         Layout->SdiRate = DT_SDIRATE_HD;
@@ -66,17 +66,17 @@ bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBit
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtSdiFrameCodedSize(const DtSdiFrameLayout* Layout)
+size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout)
 {
     return (size_t)Layout->HeaderBytes +
            (size_t)Layout->NumLines * (size_t)Layout->Stride;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameTxCodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_TxCodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtSdiFrameTxCodedSize(const DtSdiFrameLayout* Layout)
+size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout)
 {
     return (size_t)Layout->TxHeaderBytes +
            (size_t)Layout->NumLines * (size_t)Layout->Stride;
@@ -100,12 +100,12 @@ static void Write32(uint8_t* Bytes, uint32_t Value)
     Bytes[3] = (uint8_t)(Value >> 24);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameDecodeHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_DecodeHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The second word is declared in DTAPI as bit-fields, which the compilers DTAPI is built
 // with allocate from the least significant bit.
 //
-void DtSdiFrameDecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header)
+void DtSdiFrame_DecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header)
 {
     uint32_t Word = Read32(Bytes + 4);
 
@@ -117,9 +117,9 @@ void DtSdiFrameDecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header)
     Header->PtpNanoseconds = Read32(Bytes + 12);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameEncodeHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_EncodeHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes)
+void DtSdiFrame_EncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes)
 {
     uint32_t Word = ((uint32_t)Header->ProtocolVersion & 0xF) |
                     ((uint32_t)Header->Format & 0xF) << 4 |
@@ -131,10 +131,10 @@ void DtSdiFrameEncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes)
     Write32(Bytes + 12, Header->PtpNanoseconds);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCheckHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CheckHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
-                                  const DtSdiFrameHeader* Header, int ExpectedId)
+DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
+                                   const DtSdiFrameHeader* Header, int ExpectedId)
 {
     if (Header->SyncWord != DT_SDIFRAME_SYNC_WORD)
         return DTAPI_E_OUT_OF_SYNC;
@@ -145,13 +145,13 @@ DtapiResult DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameTxHeaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_TxHeaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The header's SDI rate takes the driver's DT_DRV_SDIRATE_ values, which DT_SDIRATE_
 // equals for SD, HD and 3G.
 //
-void DtSdiFrameTxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
-                            DtSdiFrameTxHeader* Header)
+void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
+                             DtSdiFrameTxHeader* Header)
 {
     Header->SyncWord = DT_SDIFRAME_SYNC_WORD;
     Header->ProtocolVersion = 0;
@@ -166,11 +166,11 @@ void DtSdiFrameTxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
     Header->NumSymsVideo = Layout->LineSymsVideo;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameDecodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_DecodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Bit-fields as in the receive header, allocated from the least significant bit.
 //
-void DtSdiFrameDecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header)
+void DtSdiFrame_DecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header)
 {
     uint32_t Word1 = Read32(Bytes + 4);
     uint32_t Word2 = Read32(Bytes + 8);
@@ -190,9 +190,9 @@ void DtSdiFrameDecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header)
     Header->NumSymsVideo = (int)(Word4 >> 16);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameEncodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_EncodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
+void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 {
     uint32_t Word1 = ((uint32_t)Header->ProtocolVersion & 0xF) |
                      ((uint32_t)Header->Format & 0xF) << 4 |
@@ -211,11 +211,11 @@ void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameRawSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_RawSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // HdSdiUtil::NumSymbols2DmaSize with an alignment of 64 bits.
 //
-size_t DtSdiFrameRawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
+size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
     size_t Symbols =
         (size_t)Layout->NumLines * (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
@@ -226,9 +226,9 @@ size_t DtSdiFrameRawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
     return (Symbols * (size_t)SymbolBits + 63) / 64 * 8;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameRawLineBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_RawLineBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtSdiFrameRawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits)
+size_t DtSdiFrame_RawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
     if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
         return 0;
@@ -359,12 +359,12 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The line starts at LineIndex times the bits of a line, as PxCnvTaskRaw::Run places it.
 //
-void DtSdiFrameConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
-                           const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
+void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+                            const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
 {
     size_t Hanc = (size_t)Layout->LineSymsHanc;
     size_t Video = (size_t)Layout->LineSymsVideo;
@@ -481,13 +481,13 @@ static void Pack16(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
         Out[Byte] = (uint8_t)Accu;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The video section starts where the HANC section ends, which in a line of 10-bit symbols
 // need not be a byte boundary either.
 //
-bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
-                        const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
+bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+                         const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
 {
     size_t Hanc = (size_t)Layout->LineSymsHanc;
     size_t Video = (size_t)Layout->LineSymsVideo;
@@ -552,10 +552,10 @@ static bool MatchesSdEav(const uint8_t* Line, const uint32_t Eav[4])
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCheckLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CheckLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout, const uint8_t* FirstLine,
-                                 const uint8_t* LastLine)
+DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
+                                  const uint8_t* FirstLine, const uint8_t* LastLine)
 {
     // The EAV of the first line, in the first field's vertical blanking, and of the last,
     // in the second field's.
@@ -661,16 +661,16 @@ static uint32_t WithParity(uint32_t Nine)
     return Nine | ((Nine >> 8) ^ 1) << 9;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameBlackLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_BlackLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
+void DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
 {
     const size_t Hanc = (size_t)Layout->LineSymsHanc;
     const size_t Video = (size_t)Layout->LineSymsVideo;
     uint32_t ActiveCrc[2] = {0, 0};
     DtFrameProps Props;
 
-    if (!DtFramePropsInit(&Props, Layout->VidStd))
+    if (!DtFrameProps_Init(&Props, Layout->VidStd))
         return;
 
     // Every line's active part is black, so each channel's CRC starts the same.

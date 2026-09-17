@@ -28,8 +28,8 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
     {
         if (snprintf(Key, sizeof(Key), "%s#%d", Name, N) >= (int)sizeof(Key))
             return DTAPI_E_BUF_TOO_SMALL;
-        DtapiResult Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, InstanceRole,
-                                                     sizeof(InstanceRole));
+        DtapiResult Result = DtPcieCmd_GetPropertyStr(Drv, Key, PortIndex, InstanceRole,
+                                                      sizeof(InstanceRole));
         if (Result != DTAPI_OK)
             return Result;
         if (strcmp(InstanceRole, Role) == 0)
@@ -48,15 +48,15 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
 //
 static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
 {
-    if (DtPcieCmdGetPropertyStr(Drv, Part->Name, PortIndex, Part->Role,
-                                sizeof(Part->Role)) != DTAPI_OK)
+    if (DtPcieCmd_GetPropertyStr(Drv, Part->Name, PortIndex, Part->Role,
+                                 sizeof(Part->Role)) != DTAPI_OK)
     {
         return false;
     }
 
     char Key[PROPERTY_NAME_MAX_SIZE];
     if (snprintf(Key, sizeof(Key), "%s_TYPE", Part->Name) >= (int)sizeof(Key) ||
-        DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
     {
         return false;
     }
@@ -69,22 +69,22 @@ static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
         return false;
 
     if (snprintf(Key, sizeof(Key), "%s_UUID", Part->Name) >= (int)sizeof(Key) ||
-        DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Part->Uuid) != DTAPI_OK)
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Uuid) != DTAPI_OK)
     {
         return false;
     }
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncFind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_Find -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
-                       DtFuncInstance* Instance)
+DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
+                        DtFuncInstance* Instance)
 {
     int Number = 0;
 
     Instance->PortIndex = PortIndex;
-    DtVecInit(&Instance->Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Instance->Parts, sizeof(DtFuncPart));
 
     DtapiResult Result = FindInstance(Drv, PortIndex, Name, Role, &Number);
     if (Result != DTAPI_OK)
@@ -99,38 +99,38 @@ DtapiResult DtFuncFind(OsDrv* Drv, int PortIndex, const char* Name, const char* 
         if (snprintf(Key, sizeof(Key), "%s#%d.%d", Name, Number, K) >= (int)sizeof(Key))
             Result = DTAPI_E_BUF_TOO_SMALL;
         else
-            Result = DtPcieCmdGetPropertyStr(Drv, Key, PortIndex, Part.Name,
-                                             sizeof(Part.Name));
+            Result = DtPcieCmd_GetPropertyStr(Drv, Key, PortIndex, Part.Name,
+                                              sizeof(Part.Name));
 
         if (Result == DTAPI_E_NOT_FOUND)
             return DTAPI_OK;
         if (Result != DTAPI_OK)
             break;
 
-        if (ReadPart(Drv, PortIndex, &Part) && DtVecPush(&Instance->Parts, &Part) != 0)
+        if (ReadPart(Drv, PortIndex, &Part) && DtVec_Push(&Instance->Parts, &Part) != 0)
         {
             Result = DTAPI_E_OUT_OF_MEM;
             break;
         }
     }
 
-    DtFuncRelease(Instance);
+    DtFunc_Release(Instance);
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncRelease -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtFuncRelease(DtFuncInstance* Instance)
+void DtFunc_Release(DtFuncInstance* Instance)
 {
-    DtVecFree(&Instance->Parts);
+    DtVec_Free(&Instance->Parts);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncGet -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_Get -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
-                            const char* Role)
+const DtFuncPart* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
+                             const char* Role)
 {
-    size_t i = DtVecCount(&Instance->Parts);
+    size_t i = DtVec_Count(&Instance->Parts);
 
     while (i-- > 0)
     {
@@ -144,11 +144,11 @@ const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exclusive access +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_ExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
+DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
 {
-    size_t Count = DtVecCount(&Instance->Parts);
+    size_t Count = DtVec_Count(&Instance->Parts);
     DtapiResult Result = DTAPI_OK;
     size_t i;
 
@@ -157,7 +157,7 @@ DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd
     {
         const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
         DtapiResult PartResult =
-            DtPcieCmdExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
+            DtPcieCmd_ExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
 
         if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
             Result = PartResult;
@@ -171,8 +171,8 @@ DtapiResult DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd
         {
             const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
 
-            DtPcieCmdExclAccess(Drv, Part->Uuid, Instance->PortIndex,
-                                DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+            DtPcieCmd_ExclAccess(Drv, Part->Uuid, Instance->PortIndex,
+                                 DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         }
     }
     return Result;
@@ -199,9 +199,9 @@ static const struct
     {false, DT_BLOCK_TYPE_SWITCH, {1, 0, 4, 48}},
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncCheckDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_CheckDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type)
+DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version, bool IsDf, int Type)
 {
     for (size_t i = 0; i < sizeof(g_MinDriverVersions) / sizeof(g_MinDriverVersions[0]);
          i++)
@@ -210,8 +210,8 @@ DtapiResult DtFuncCheckDriverVersion(const DtDriverVersion* Version, bool IsDf, 
 
         if (g_MinDriverVersions[i].IsDf != IsDf || g_MinDriverVersions[i].Type != Type)
             continue;
-        return DtPcieCmdVersionAtLeast(Version, Min->Major, Min->Minor, Min->Micro,
-                                       Min->Build)
+        return DtPcieCmd_VersionAtLeast(Version, Min->Major, Min->Minor, Min->Micro,
+                                        Min->Build)
                    ? DTAPI_OK
                    : DTAPI_E_DRIVER_INCOMP;
     }

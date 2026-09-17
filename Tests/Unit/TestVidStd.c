@@ -100,7 +100,7 @@ DT_TEST(EveryStandardMapsAsDtapiDoes)
         if (SubValue != E->VidStd)
             DT_FAIL("%s: sub-value %d, expected %d", E->Name, SubValue, E->VidStd);
 
-        DT_ASSERT_OK(DtIoConfigGetName(SubValue, Name, sizeof(Name)));
+        DT_ASSERT_OK(DtIoConfig_GetName(SubValue, Name, sizeof(Name)));
         if (strcmp(Name, E->Name) != 0)
             DT_FAIL("%s: sub-value %d is named \"%s\"", E->Name, SubValue, Name);
     }
@@ -114,13 +114,13 @@ DT_TEST(OnlyThe2160pStandardsAre4k)
 
     for (int VidStd = -10; VidStd < 1000; VidStd++)
     {
-        if (DtVidStdIs4k(VidStd))
+        if (DtVidStd_Is4k(VidStd))
             Count++;
     }
 
     DT_ASSERT_EQ(Count, 11);
-    DT_ASSERT(DtVidStdIs4k(DTAPI_VIDSTD_2160P60B));
-    DT_ASSERT(!DtVidStdIs4k(DTAPI_VIDSTD_1080P60B));
+    DT_ASSERT(DtVidStd_Is4k(DTAPI_VIDSTD_2160P60B));
+    DT_ASSERT(!DtVidStd_Is4k(DTAPI_VIDSTD_1080P60B));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Link standard +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -130,7 +130,7 @@ DT_TEST(NonUhdStandardRefusesALinkStandard)
 {
     for (int i = 0; i < EXPECTED_COUNT; i++)
     {
-        if (DtVidStdIs4k(g_Expected[i].VidStd))
+        if (DtVidStd_Is4k(g_Expected[i].VidStd))
             continue;
 
         int Link;
@@ -173,10 +173,10 @@ static const SdiFormat* OneLinkOf(const SdiFormat* Uhd)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
 
-        if (!DtVidStdIs4k(Format->VidStd) && Format->Lines == 1125 &&
+        if (!DtVidStd_Is4k(Format->VidStd) && Format->Lines == 1125 &&
             Format->Scan == SDI_SCAN_P && Format->FpsNum == Uhd->FpsNum &&
             Format->FpsDen == Uhd->FpsDen &&
-            SdiFormatIsLevelB(Format) == SdiFormatIsLevelB(Uhd))
+            SdiFormat_IsLevelB(Format) == SdiFormat_IsLevelB(Uhd))
         {
             return Format;
         }
@@ -193,12 +193,12 @@ DT_TEST(FourLinkUhdTakesTheStandardOfOneLink)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
 
-        if (!DtVidStdIs4k(Format->VidStd))
+        if (!DtVidStd_Is4k(Format->VidStd))
             continue;
         const SdiFormat* Link1 = OneLinkOf(Format);
         if (Link1 == NULL)
             DT_FAIL("%s: no format of one link", Format->Name);
-        bool High = SdiFormatFps(Format) >= 50.0;
+        bool High = SdiFormat_Fps(Format) >= 50.0;
 
         int Link;
         for (Link = DT_VIDLNK_4K_SMPTE425; Link <= DT_VIDLNK_4K_SMPTE2082; Link++)
@@ -230,27 +230,27 @@ DT_TEST(PropertiesHoldTheFrameOfOneLink)
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
 
-        if (!DtVidStdIs4k(Format->VidStd))
+        if (!DtVidStd_Is4k(Format->VidStd))
         {
-            SDI_ASSERT_EQ(Format, DtVidStdPropsInit(&Props, Format->VidStd, -1), true);
+            SDI_ASSERT_EQ(Format, DtVidStdProps_Init(&Props, Format->VidStd, -1), true);
             SDI_ASSERT_EQ(Format, Props.VidStd, Format->VidStd);
             SDI_ASSERT_EQ(Format, Props.LinkStd, DT_VIDLNK_NONE);
             SDI_ASSERT_EQ(Format, Props.Frame.VidStd, Format->VidStd);
             continue;
         }
 
-        SDI_ASSERT_EQ(Format, DtVidStdPropsInit(&Props, Format->VidStd, -1), false);
+        SDI_ASSERT_EQ(Format, DtVidStdProps_Init(&Props, Format->VidStd, -1), false);
         SDI_ASSERT_EQ(Format, Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
         SDI_ASSERT_EQ(Format, Props.Frame.VidStd, DTAPI_VIDSTD_UNKNOWN);
 
         int Link;
         for (Link = DT_VIDLNK_4K_SMPTE425; Link <= DT_VIDLNK_4K_SMPTE2082; Link++)
         {
-            SDI_ASSERT_EQ(Format, DtVidStdPropsInit(&Props, Format->VidStd, Link), true);
+            SDI_ASSERT_EQ(Format, DtVidStdProps_Init(&Props, Format->VidStd, Link), true);
             SDI_ASSERT_EQ(Format, Props.VidStd, Format->VidStd);
             SDI_ASSERT_EQ(Format, Props.LinkStd, Link);
             SDI_ASSERT_EQ(Format, Props.Frame.VidStd, OneLinkOf(Format)->VidStd);
-            SDI_ASSERT_EQ(Format, DtFramePropsNumLines(&Props.Frame), Format->Lines);
+            SDI_ASSERT_EQ(Format, DtFrameProps_NumLines(&Props.Frame), Format->Lines);
         }
     }
 }
@@ -261,27 +261,27 @@ DT_TEST(PropertiesRefuseUnknownStandards)
 {
     DtVidStdProps Props;
 
-    DT_ASSERT(!DtVidStdPropsInit(&Props, DTAPI_VIDSTD_UNKNOWN, -1));
+    DT_ASSERT(!DtVidStdProps_Init(&Props, DTAPI_VIDSTD_UNKNOWN, -1));
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
-    DT_ASSERT(!DtVidStdPropsInit(&Props, 12345, -1));
-    DT_ASSERT(!DtVidStdPropsInit(&Props, DTAPI_VIDSTD_2160P50, 4));
+    DT_ASSERT(!DtVidStdProps_Init(&Props, 12345, -1));
+    DT_ASSERT(!DtVidStdProps_Init(&Props, DTAPI_VIDSTD_2160P50, 4));
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_NONE);
-    DT_ASSERT(!DtVidStdPropsInit(&Props, DTAPI_VIDSTD_1080P50, -2));
+    DT_ASSERT(!DtVidStdProps_Init(&Props, DTAPI_VIDSTD_1080P50, -2));
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
 
-    DT_ASSERT(DtVidStdPropsInit(&Props, DTAPI_VIDSTD_1080P50, DT_VIDLNK_4K_SMPTE425));
+    DT_ASSERT(DtVidStdProps_Init(&Props, DTAPI_VIDSTD_1080P50, DT_VIDLNK_4K_SMPTE425));
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_4K_SMPTE425);
 }
 
 DT_TEST(PhysicalLinks)
 {
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(DT_VIDLNK_NONE), 1);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(DT_VIDLNK_4K_SMPTE425), 4);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(DT_VIDLNK_4K_SMPTE425B), 4);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(DT_VIDLNK_4K_SMPTE2081), 1);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(DT_VIDLNK_4K_SMPTE2082), 1);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(4), 0);
-    DT_ASSERT_EQ(DtVidStdNumPhysicalLinks(-2), 0);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(DT_VIDLNK_NONE), 1);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(DT_VIDLNK_4K_SMPTE425), 4);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(DT_VIDLNK_4K_SMPTE425B), 4);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(DT_VIDLNK_4K_SMPTE2081), 1);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(DT_VIDLNK_4K_SMPTE2082), 1);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(4), 0);
+    DT_ASSERT_EQ(DtVidStd_NumPhysicalLinks(-2), 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinkOfPayload -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -312,7 +312,7 @@ DT_TEST(VpidGivesEveryStandard)
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
 
-        DtVidStdPropsFromSmpte352(&Props, SdiFormatVpid(Format));
+        DtVidStdProps_FromSmpte352(&Props, SdiFormat_Vpid(Format));
         SDI_ASSERT_EQ(Format, Props.VidStd, Format->VidStd);
         SDI_ASSERT_EQ(Format, Props.LinkStd, LinkOfPayload(Format->Payload));
     }
@@ -323,12 +323,12 @@ DT_TEST(VpidOfFourLevelALinks)
 {
     DtVidStdProps Props;
 
-    DtVidStdPropsFromSmpte352(&Props, 0x0080C297);
+    DtVidStdProps_FromSmpte352(&Props, 0x0080C297);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P23_98);
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_4K_SMPTE425);
-    DtVidStdPropsFromSmpte352(&Props, 0x4080C797);
+    DtVidStdProps_FromSmpte352(&Props, 0x4080C797);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P30);
-    DtVidStdPropsFromSmpte352(&Props, 0xC080CB97);
+    DtVidStdProps_FromSmpte352(&Props, 0xC080CB97);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P60);
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_4K_SMPTE425);
 }
@@ -360,13 +360,13 @@ DT_TEST(VpidOutsideItsPayloadGivesNothing)
 
     for (size_t i = 0; i < sizeof(NoStandard) / sizeof(NoStandard[0]); i++)
     {
-        DtVidStdPropsFromSmpte352(&Props, NoStandard[i]);
+        DtVidStdProps_FromSmpte352(&Props, NoStandard[i]);
         if (Props.VidStd != DTAPI_VIDSTD_UNKNOWN || Props.LinkStd != DT_VIDLNK_NONE)
             DT_FAIL("VPID 0x%08X gave %d, link %d", (unsigned)NoStandard[i], Props.VidStd,
                     Props.LinkStd);
     }
 
-    DtVidStdPropsFromSmpte352(&Props, 0x0000C581);
+    DtVidStdProps_FromSmpte352(&Props, 0x0000C581);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_625I50);
 }
 
@@ -375,9 +375,9 @@ DT_TEST(VpidOutsideItsPayloadGivesNothing)
 static void DeduceFormat(DtVidStdProps* Props, const SdiFormat* Format, double Fps,
                          uint32_t Vpid)
 {
-    DtVidStdPropsDeduce(Props, Format->LinesF1, SdiFormatLinesF2(Format),
-                        SdiFormatHancSymbols(Format), SdiFormatVancSymbols(Format), Fps,
-                        SdiFormatIsLevelB(Format), Vpid, Format->SdiRate);
+    DtVidStdProps_Deduce(Props, Format->LinesF1, SdiFormat_LinesF2(Format),
+                         SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format),
+                         Fps, SdiFormat_IsLevelB(Format), Vpid, Format->SdiRate);
 }
 
 // With its VPID every standard is found exactly, with how it is carried.
@@ -388,7 +388,7 @@ DT_TEST(DeduceWithVpidFindsEveryStandard)
         const SdiFormat* Format = &g_SdiFormats[i];
         DtVidStdProps Props;
 
-        DeduceFormat(&Props, Format, SdiFormatFps(Format), SdiFormatVpid(Format));
+        DeduceFormat(&Props, Format, SdiFormat_Fps(Format), SdiFormat_Vpid(Format));
         SDI_ASSERT_EQ(Format, Props.VidStd, Format->VidStd);
         SDI_ASSERT_EQ(Format, Props.LinkStd, LinkOfPayload(Format->Payload));
     }
@@ -409,7 +409,7 @@ DT_TEST(DeduceWithoutVpidTakesTheRateForTheLink)
             Link = DT_VIDLNK_4K_SMPTE2082;
 
         DtVidStdProps Props;
-        DeduceFormat(&Props, Format, SdiFormatFps(Format), 0);
+        DeduceFormat(&Props, Format, SdiFormat_Fps(Format), 0);
         SDI_ASSERT_EQ(Format, Props.VidStd, Format->NoVpid);
         SDI_ASSERT_EQ(Format, Props.LinkStd, Link);
     }
@@ -428,10 +428,10 @@ DT_TEST(DeduceTrustsAVpidThatFitsTheCounters)
     DT_ASSERT_EQ(I50->VidStd, DTAPI_VIDSTD_1080I50);
 
     DtVidStdProps Props;
-    DeduceFormat(&Props, P25, 0.0, SdiFormatVpid(P25));
+    DeduceFormat(&Props, P25, 0.0, SdiFormat_Vpid(P25));
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_1080P25);
 
-    DeduceFormat(&Props, I50, 25.0, SdiFormatVpid(Sd));
+    DeduceFormat(&Props, I50, 25.0, SdiFormat_Vpid(Sd));
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_1080I50);
 }
 
@@ -443,16 +443,16 @@ DT_TEST(Deduce2160pNeedsARateWithALink)
 {
     DtFrameProps Frame;
 
-    DtFramePropsDeduce(&Frame, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
-                       DT_SDIRATE_3G);
+    DtFrameProps_Deduce(&Frame, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
+                        DT_SDIRATE_3G);
     DT_ASSERT_EQ(Frame.VidStd, DTAPI_VIDSTD_2160P50);
     DtVidStdProps Props;
-    DtVidStdPropsDeduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
-                        DT_SDIRATE_3G);
+    DtVidStdProps_Deduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0x0000C08A,
+                         DT_SDIRATE_3G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_NONE);
 
-    DtVidStdPropsDeduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0, DT_SDIRATE_6G);
+    DtVidStdProps_Deduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0, DT_SDIRATE_6G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P50);
     DT_ASSERT_EQ(Props.LinkStd, DT_VIDLNK_4K_SMPTE2081);
 }

@@ -11,20 +11,20 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Payload fields +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352PayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_PayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Byte 1, bits 7..0.
 //
-int DtSmpte352PayloadId(uint32_t Vpid)
+int DtSmpte352_PayloadId(uint32_t Vpid)
 {
     return (int)(Vpid & 0xFF);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352PictureRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_PictureRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Byte 2, bits 3..0.
 //
-void DtSmpte352PictureRate(uint32_t Vpid, int* Num, int* Den)
+void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den)
 {
     *Num = 0;
     *Den = 0;
@@ -76,40 +76,40 @@ void DtSmpte352PictureRate(uint32_t Vpid, int* Num, int* Den)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352IsInterlacedTransport -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_IsInterlacedTransport -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Byte 2, bit 7: 0 for an interlaced transport.
 //
-bool DtSmpte352IsInterlacedTransport(uint32_t Vpid)
+bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid)
 {
     return (Vpid & 0x8000) == 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352IsInterlacedStructure -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_IsInterlacedStructure -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Byte 2, bit 6: 0 for an interlaced picture.
 //
-bool DtSmpte352IsInterlacedStructure(uint32_t Vpid)
+bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid)
 {
     return (Vpid & 0x4000) == 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352Is16x9 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_Is16x9 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Byte 3, bit 7.
 //
-bool DtSmpte352Is16x9(uint32_t Vpid)
+bool DtSmpte352_Is16x9(uint32_t Vpid)
 {
     return ((Vpid >> 23) & 0x1) != 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352LinkNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_LinkNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Byte 4 holds the link, or for 3G level B the channel, of which two share a link.
 //
-int DtSmpte352LinkNumber(uint32_t Vpid)
+int DtSmpte352_LinkNumber(uint32_t Vpid)
 {
-    switch (DtSmpte352PayloadId(Vpid))
+    switch (DtSmpte352_PayloadId(Vpid))
     {
     case DT_S352_ID_S425_5_2160_A:
         return (int)((Vpid >> 30) & 0x3);

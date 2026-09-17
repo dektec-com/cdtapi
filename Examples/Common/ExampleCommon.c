@@ -60,10 +60,10 @@ static void PrintUsage(const char* Program, const char* Usage,
     printf("  --help\n      Show this text\n");
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleCheckArguments -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_CheckArguments -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool ExampleCheckArguments(int Argc, char** Argv, const char* Usage,
-                           const ExampleOption* Options, int NumOptions)
+bool Example_CheckArguments(int Argc, char** Argv, const char* Usage,
+                            const ExampleOption* Options, int NumOptions)
 {
     for (int i = 1; i < Argc; i++)
     {
@@ -92,9 +92,9 @@ bool ExampleCheckArguments(int Argc, char** Argv, const char* Usage,
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleHasFlag -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_HasFlag -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool ExampleHasFlag(int Argc, char** Argv, const char* Name)
+bool Example_HasFlag(int Argc, char** Argv, const char* Name)
 {
     for (int i = 1; i < Argc; i++)
     {
@@ -104,12 +104,12 @@ bool ExampleHasFlag(int Argc, char** Argv, const char* Name)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleValue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_Value -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The value is the argument after the option; ExampleCheckArguments has made sure there
+// The value is the argument after the option; Example_CheckArguments has made sure there
 // is one.
 //
-const char* ExampleValue(int Argc, char** Argv, const char* Name)
+const char* Example_Value(int Argc, char** Argv, const char* Name)
 {
     for (int i = 1; i + 1 < Argc; i++)
     {
@@ -119,11 +119,11 @@ const char* ExampleValue(int Argc, char** Argv, const char* Name)
     return NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleInt64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_Int64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value)
+bool Example_Int64(int Argc, char** Argv, const char* Name, int64_t* Value)
 {
-    const char* Text = ExampleValue(Argc, Argv, Name);
+    const char* Text = Example_Value(Argc, Argv, Name);
     char* End = NULL;
 
     if (Text == NULL)
@@ -142,12 +142,12 @@ bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Ports +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleFindPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_FindPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The scan is asked for the number of ports first and then for the ports themselves.
 //
-unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
-                             DtHwFuncDesc* Found)
+unsigned int Example_FindPort(int64_t Serial, int Port, ExampleSuits Suits,
+                              DtHwFuncDesc* Found)
 {
     int Count = 0;
     unsigned int Result = DtapiHwFuncScan(0, &Count, NULL);
@@ -182,19 +182,19 @@ unsigned int ExampleFindPort(int64_t Serial, int Port, ExampleSuits Suits,
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleFailed -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_Failed -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int ExampleFailed(const char* What, unsigned int Result)
+int Example_Failed(const char* What, unsigned int Result)
 {
     printf("%s: %s\n", What, DtapiResult2Str(Result));
     return EXAMPLE_FAILED;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleSucceeded -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_Succeeded -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The errors start at DTAPI_E; every result below it is a success.
 //
-bool ExampleSucceeded(unsigned int Result)
+bool Example_Succeeded(unsigned int Result)
 {
     return Result < DTAPI_E;
 }
@@ -222,9 +222,9 @@ static const struct
 
 #define VIDSTD_COUNT ((int)(sizeof(g_VidStds) / sizeof(g_VidStds[0])))
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleVidStdName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_VidStdName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const char* ExampleVidStdName(int VidStd)
+const char* Example_VidStdName(int VidStd)
 {
     int i;
 
@@ -236,9 +236,9 @@ const char* ExampleVidStdName(int VidStd)
     return NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleVidStdFromName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_VidStdFromName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool ExampleVidStdFromName(const char* Name, int* VidStd)
+bool Example_VidStdFromName(const char* Name, int* VidStd)
 {
     for (int i = 0; i < VIDSTD_COUNT; i++)
     {
@@ -259,9 +259,9 @@ bool ExampleVidStdFromName(const char* Name, int* VidStd)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleIoStdName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_IoStdName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const char* ExampleIoStdName(int Value)
+const char* Example_IoStdName(int Value)
 {
     switch (Value)
     {
@@ -282,9 +282,9 @@ const char* ExampleIoStdName(int Value)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleSleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_SleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void ExampleSleepMs(int Ms)
+void Example_SleepMs(int Ms)
 {
 #ifdef _WIN32
     Sleep((DWORD)Ms);

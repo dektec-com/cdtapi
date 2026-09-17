@@ -52,13 +52,13 @@ static OsDrv* OpenSim(int* DtFailures)
 {
     OsDrv* Drv;
 
-    SimDtPcieReset();
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    SimDtPcie_Reset();
+    Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return NULL;
     }
     return Drv;
@@ -71,7 +71,7 @@ static int UuidOf(OsDrv* Drv, const char* Name, int PortIndex)
 
     snprintf(Key, sizeof(Key), "%s_UUID", Name);
     int Uuid;
-    return DtPcieCmdGetPropertyInt(Drv, Key, PortIndex, &Uuid) == DTAPI_OK ? Uuid : -1;
+    return DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Uuid) == DTAPI_OK ? Uuid : -1;
 }
 
 // A raw SDI receiver request: a header for the function.
@@ -87,8 +87,8 @@ static int RawSdiRx(OsDrv* Drv, int Uuid, int PortIndex, int Cmd, size_t InSize,
     In.m_Cmd = Cmd;
     In.m_CmdEx = DT_IOCTL_CMD_NOP;
     DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
-    return OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_SDIRX_CMD), &In, InSize, &Out,
-                      &Returned, Status);
+    return OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_SDIRX_CMD), &In, InSize, &Out,
+                       &Returned, Status);
 }
 
 // A locked 1080i50 signal: 563 and 562 lines, 2640 samples per line of which 1920 active,
@@ -124,14 +124,14 @@ DT_TEST(StringPropertiesAreRead)
 
     char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "");
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1.6", 3, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1.6", 3, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "DF_SDIRX#1");
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "BC_SWITCH#3", 7, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "BC_SWITCH#3", 7, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "SDI_MUX_OUT");
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // What the typed command puts on the wire: the filter of a value request, with the string
@@ -144,10 +144,10 @@ DT_TEST(StringRequestCarriesTheFilter)
         return;
 
     char Str[DT_PROPERTY_STR_SIZE];
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 2, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 2, Str, sizeof(Str)));
     DtIoctlPropCmdGetStrInput In;
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &In, sizeof(In)), sizeof(In));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &In, sizeof(In)), sizeof(In));
     DT_ASSERT_EQ(sizeof(In), 104);
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_PROPERTY_CMD);
     DT_ASSERT_EQ(In.m_CmdHdr.m_Uuid, 0);
@@ -170,7 +170,7 @@ DT_TEST(StringRequestCarriesTheFilter)
     memcpy(Name, "AF_ASISDIRX#1", 13);
     DT_ASSERT_MEM(In.m_Name, Name, sizeof(Name));
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A string the port or the card does not have is not found, and leaves the buffer empty.
@@ -183,28 +183,28 @@ DT_TEST(MissingStringIsNotFound)
 
     char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#2", 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#2", 0, Str, sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
     DT_ASSERT_STR(Str, "");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", SIM_SDI_PORT_COUNT, Str,
-                                         sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", SIM_SDI_PORT_COUNT, Str,
+                                          sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", DT_PROPERTY_DEVICE, Str,
-                                         sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", DT_PROPERTY_DEVICE, Str,
+                                          sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
 
     // A value property is no string, and a string no value.
     DT_ASSERT_EQ(
-        DtPcieCmdGetPropertyStr(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, Str, sizeof(Str)),
+        DtPcieCmd_GetPropertyStr(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, Str, sizeof(Str)),
         DTAPI_E_NOT_FOUND);
     {
         int Value;
 
-        DT_ASSERT_EQ(DtPcieCmdGetPropertyInt(Drv, "DF_SDIRX#1", 0, &Value),
+        DT_ASSERT_EQ(DtPcieCmd_GetPropertyInt(Drv, "DF_SDIRX#1", 0, &Value),
                      DTAPI_E_NOT_FOUND);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The driver may fill its whole field without a terminator; such a string fits a buffer
@@ -219,25 +219,25 @@ DT_TEST(StringMustFitTheBuffer)
     char Filled[PROPERTY_STR_MAX_SIZE + 1];
     memset(Filled, 'L', PROPERTY_STR_MAX_SIZE);
     Filled[PROPERTY_STR_MAX_SIZE] = '\0';
-    SimDtPcieOverrideString("LONG", 0, true, Filled);
+    SimDtPcie_OverrideString("LONG", 0, true, Filled);
 
     char Str[DT_PROPERTY_STR_SIZE];
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "LONG", 0, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "LONG", 0, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, Filled);
 
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "LONG", 0, Str, sizeof(Str) - 1),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "LONG", 0, Str, sizeof(Str) - 1),
                  DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_STR(Str, "");
 
     // The empty string needs the terminator only, and a one-byte buffer is cleared too.
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, 1));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, 1));
     DT_ASSERT_STR(Str, "");
     Str[0] = 'x';
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "NONE", 0, Str, 1), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "NONE", 0, Str, 1), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(Str[0], '\0');
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(StringNameMustFit)
@@ -251,14 +251,14 @@ DT_TEST(StringNameMustFit)
     memset(Name, 'N', PROPERTY_NAME_MAX_SIZE);
     Name[PROPERTY_NAME_MAX_SIZE] = '\0';
     char Str[DT_PROPERTY_STR_SIZE];
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, Name, 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, Name, 0, Str, sizeof(Str)),
                  DTAPI_E_BUF_TOO_SMALL);
 
     // Refused before anything reaches the driver.
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, Str, 0), 0);
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, Str, 0), 0);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(StringNullArgumentsAreRefused)
@@ -270,19 +270,19 @@ DT_TEST(StringNullArgumentsAreRefused)
 
     char Str[DT_PROPERTY_STR_SIZE];
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(NULL, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(NULL, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_STR(Str, "");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, NULL, 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, NULL, 0, Str, sizeof(Str)),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, NULL, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 0, NULL, sizeof(Str)),
                  DTAPI_E_INVALID_ARG);
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, 0),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, 0),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_STR(Str, "x");
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(StringFailuresBecomeResults)
@@ -292,19 +292,19 @@ DT_TEST(StringFailuresBecomeResults)
     if (Drv == NULL)
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
     char Str[DT_PROPERTY_STR_SIZE];
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", 0, Str, sizeof(Str)),
                  DTAPI_E_TIMEOUT);
 
-    SimDtPcieReset();
-    SimDtPcieAnswerShort(DT_FUNC_CODE_PROPERTY_CMD);
+    SimDtPcie_Reset();
+    SimDtPcie_AnswerShort(DT_FUNC_CODE_PROPERTY_CMD);
     snprintf(Str, sizeof(Str), "x");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1.1", 0, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1.1", 0, Str, sizeof(Str)),
                  DTAPI_E_DEV_DRIVER);
     DT_ASSERT_STR(Str, "");
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A string override replaces the string only, and is found or hidden per port.
@@ -316,28 +316,28 @@ DT_TEST(StringOverridesAreSeparate)
     if (Drv == NULL)
         return;
 
-    SimDtPcieOverrideString("DF_SDIRX#1", 1, true, "ROLE");
-    SimDtPcieOverrideString("AF_ASISDIRX#1.6", 1, false, NULL);
+    SimDtPcie_OverrideString("DF_SDIRX#1", 1, true, "ROLE");
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.6", 1, false, NULL);
 
     char Str[DT_PROPERTY_STR_SIZE];
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "DF_SDIRX#1", 1, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "DF_SDIRX#1", 1, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "ROLE");
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "DF_SDIRX#1", 0, Str, sizeof(Str)));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "DF_SDIRX#1", 0, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "");
-    DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1.6", 1, Str, sizeof(Str)),
+    DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1.6", 1, Str, sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, "DF_SDIRX#1_TYPE", 1, &Value));
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, "DF_SDIRX#1_TYPE", 1, &Value));
     DT_ASSERT_EQ(Value, DT_FUNC_TYPE_SDIRX);
 
     // A value override with the same name as a string leaves the string alone, and the
     // other way round.
-    SimDtPcieOverrideProperty("AF_ASISDIRX#1.1", 2, true, 5);
-    DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1.1", 2, Str, sizeof(Str)));
+    SimDtPcie_OverrideProperty("AF_ASISDIRX#1.1", 2, true, 5);
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1.1", 2, Str, sizeof(Str)));
     DT_ASSERT_STR(Str, "BC_SWITCH#2");
-    SimDtPcieOverrideString("DF_SDIRX#1_UUID", 2, false, NULL);
+    SimDtPcie_OverrideString("DF_SDIRX#1_UUID", 2, false, NULL);
     DT_ASSERT(UuidOf(Drv, "DF_SDIRX#1", 2) > 0);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -360,7 +360,7 @@ DT_TEST(EverySdiPortHasTheReceiverFunction)
         char Str[DT_PROPERTY_STR_SIZE];
 
         DT_ASSERT_OK(
-            DtPcieCmdGetPropertyStr(Drv, "AF_ASISDIRX#1", Port, Str, sizeof(Str)));
+            DtPcieCmd_GetPropertyStr(Drv, "AF_ASISDIRX#1", Port, Str, sizeof(Str)));
         DT_ASSERT_STR(Str, "");
 
         int i;
@@ -371,13 +371,13 @@ DT_TEST(EverySdiPortHasTheReceiverFunction)
             int Type = -1;
 
             snprintf(Key, sizeof(Key), "AF_ASISDIRX#1.%d", i + 1);
-            DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, Key, Port, Str, sizeof(Str)));
+            DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, Key, Port, Str, sizeof(Str)));
             DT_ASSERT_STR(Str, F->Name);
-            DT_ASSERT_OK(DtPcieCmdGetPropertyStr(Drv, F->Name, Port, Str, sizeof(Str)));
+            DT_ASSERT_OK(DtPcieCmd_GetPropertyStr(Drv, F->Name, Port, Str, sizeof(Str)));
             DT_ASSERT_STR(Str, F->Role);
 
             snprintf(Key, sizeof(Key), "%s_TYPE", F->Name);
-            DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, Key, Port, &Type));
+            DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, Port, &Type));
             DT_ASSERT_EQ(Type, F->Type);
 
             int Uuid = UuidOf(Drv, F->Name, Port);
@@ -391,14 +391,14 @@ DT_TEST(EverySdiPortHasTheReceiverFunction)
         }
 
         snprintf(Key, sizeof(Key), "AF_ASISDIRX#1.%d", FUNCTION_COUNT + 1);
-        DT_ASSERT_EQ(DtPcieCmdGetPropertyStr(Drv, Key, Port, Str, sizeof(Str)),
+        DT_ASSERT_EQ(DtPcieCmd_GetPropertyStr(Drv, Key, Port, Str, sizeof(Str)),
                      DTAPI_E_NOT_FOUND);
     }
 
     for (Port = SIM_SDI_PORT_COUNT; Port < SIM_PORT_COUNT; Port++)
         DT_ASSERT_EQ(UuidOf(Drv, "DF_SDIRX#1", Port), -1);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Only the plain decimal numbers of the parts name a part.
@@ -418,12 +418,12 @@ DT_TEST(PartNumbersAreDecimal)
     char Str[DT_PROPERTY_STR_SIZE];
     for (size_t i = 0; i < sizeof(NoPart) / sizeof(NoPart[0]); i++)
     {
-        if (DtPcieCmdGetPropertyStr(Drv, NoPart[i], 0, Str, sizeof(Str)) !=
+        if (DtPcieCmd_GetPropertyStr(Drv, NoPart[i], 0, Str, sizeof(Str)) !=
             DTAPI_E_NOT_FOUND)
             DT_FAIL("\"%s\" was found", NoPart[i]);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Routing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -442,17 +442,17 @@ DT_TEST(DeviceCommandsNeedTheDevicePortIndex)
     DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = 0;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
-                            sizeof(In), &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+                             sizeof(In), &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
-                            sizeof(In), &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+                             sizeof(In), &Out, &OutSize, &Status),
                  OS_IOCTL_OK);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A UUID the card does not have, or one that flags neither a building block nor a driver
@@ -490,10 +490,11 @@ DT_TEST(UnknownUuidHasNoIoStub)
     {
         DtSdiRxStatus S;
 
-        DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, 12345, 0, &S), DTAPI_E_NOT_IMPLEMENTED);
+        DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, 12345, 0, &S),
+                     DTAPI_E_NOT_IMPLEMENTED);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The SDI receiver command is for the SDI receiver: the device, another driver function
@@ -535,13 +536,13 @@ DT_TEST(OnlyTheReceiverTakesItsCommand)
         In.m_Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
         In.m_PortIndex = 0;
         In.m_Cmd = DT_SDIRX_CMD_GET_SDI_STATUS2;
-        DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
-                                sizeof(In), &Out, &OutSize, &Status),
+        DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+                                 sizeof(In), &Out, &OutSize, &Status),
                      OS_IOCTL_DRIVER_STATUS);
         DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The UUID alone picks the function; the port index in the header does not.
@@ -553,14 +554,14 @@ DT_TEST(UuidAlonePicksTheFunction)
     if (Drv == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(2, &Signal);
+    SimDtPcie_SetSdiSignal(2, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 2), 4, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 2), 4, &S));
     DT_ASSERT(S.CarrierDetect);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 4), 2, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 4), 2, &S));
     DT_ASSERT(!S.CarrierDetect);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDI receiver +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -575,17 +576,17 @@ DT_TEST(StatusRequestIsAHeaderForTheFunction)
 
     int Uuid = UuidOf(Drv, "DF_SDIRX#1", 6);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 6, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 6, &S));
     DtIoctlInputDataHdr Hdr;
     int FunctionCode;
-    DT_ASSERT_EQ(SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
+    DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_SDIRX_CMD);
     DT_ASSERT_EQ(Hdr.m_Uuid, Uuid);
     DT_ASSERT_EQ(Hdr.m_PortIndex, 6);
     DT_ASSERT_EQ(Hdr.m_Cmd, DT_SDIRX_CMD_GET_SDI_STATUS2);
     DT_ASSERT_EQ(Hdr.m_CmdEx, DT_IOCTL_CMD_NOP);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // An input without a signal reports nothing, with the rate unknown.
@@ -598,7 +599,7 @@ DT_TEST(InputWithoutSignalReportsNothing)
 
     DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
@@ -612,7 +613,7 @@ DT_TEST(InputWithoutSignalReportsNothing)
     DT_ASSERT(S.FrameRate == 0.0);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // Every field of the signal comes through, the frame period as a rate.
@@ -624,9 +625,9 @@ DT_TEST(StatusFollowsTheSignal)
     if (Drv == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(0, &Signal);
+    SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
     DT_ASSERT(S.LineLock);
@@ -646,8 +647,8 @@ DT_TEST(StatusFollowsTheSignal)
     Signal.LineLock = 1;
     Signal.IsLevelB = 1;
     Signal.NumLinesF2 = 7;
-    SimDtPcieSetSdiSignal(0, &Signal);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    SimDtPcie_SetSdiSignal(0, &Signal);
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(S.LineLock);
@@ -660,15 +661,15 @@ DT_TEST(StatusFollowsTheSignal)
     memset(&Signal, 0, sizeof(Signal));
     Signal.Valid = 1;
     Signal.CarrierDetect = 1;
-    SimDtPcieSetSdiSignal(0, &Signal);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    SimDtPcie_SetSdiSignal(0, &Signal);
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
     DT_ASSERT(S.Valid);
     DT_ASSERT(!S.IsLevelB);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A flag is true for any non-zero value the driver writes.
@@ -686,16 +687,16 @@ DT_TEST(AnyNonZeroFlagIsTrue)
     Signal.LineLock = 0x100;
     Signal.Valid = 3;
     Signal.IsLevelB = 4;
-    SimDtPcieSetSdiSignal(0, &Signal);
+    SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
     DT_ASSERT(S.LineLock);
     DT_ASSERT(S.Valid);
     DT_ASSERT(S.IsLevelB);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The frame period in nanoseconds becomes frames per second; none or a negative one gives
@@ -722,13 +723,13 @@ DT_TEST(FramePeriodBecomesARate)
     for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         Signal.FramePeriod = Cases[i].Period;
-        SimDtPcieSetSdiSignal(0, &Signal);
-        DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+        SimDtPcie_SetSdiSignal(0, &Signal);
+        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
         if (S.FrameRate != Cases[i].Rate)
             DT_FAIL("period %d: rate %f", Cases[i].Period, S.FrameRate);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The driver's rates come through as they are, and anything else is unknown.
@@ -748,13 +749,13 @@ DT_TEST(RateOutsideTheDriverValuesIsUnknown)
             Rate >= DT_DRV_SDIRATE_SD && Rate <= DT_DRV_SDIRATE_12G ? Rate : -1;
 
         Signal.SdiRate = Rate;
-        SimDtPcieSetSdiSignal(0, &Signal);
-        DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+        SimDtPcie_SetSdiSignal(0, &Signal);
+        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
         if (S.SdiRate != Expected)
             DT_FAIL("driver rate %d gave %d", Rate, S.SdiRate);
     }
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The receiver of a port that is not an input is not enabled, as on a card, whose driver
@@ -767,10 +768,10 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
     if (Drv == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(1, &Signal);
+    SimDtPcie_SetSdiSignal(1, &Signal);
     DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
-    DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S),
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.NumLinesF1, 0);
@@ -783,11 +784,11 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
     Cfg.SubValue = DTAPI_IOCONFIG_INPUT;
     Cfg.ParXtra[0] = -1;
     Cfg.ParXtra[1] = -1;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S));
     DT_ASSERT_EQ(S.NumLinesF1, 563);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // In ASI mode only the carrier is reported.
@@ -806,11 +807,11 @@ DT_TEST(AsiReportsTheCarrierOnly)
     Cfg.SubValue = -1;
     Cfg.ParXtra[0] = -1;
     Cfg.ParXtra[1] = -1;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Drv, &Cfg));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
 
-    SimDtPcieSetSdiSignal(0, &Signal);
+    SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
@@ -821,7 +822,7 @@ DT_TEST(AsiReportsTheCarrierOnly)
     DT_ASSERT(S.FrameRate == 0.0);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The sizes are checked before whether the receiver is enabled, and a command the
@@ -858,7 +859,7 @@ DT_TEST(StatusRequestSizesAreChecked)
                           sizeof(DtIoctlSdiRxCmdGetSdiStatusOutput2), &Status),
                  OS_IOCTL_OK);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(StatusFailuresBecomeResults)
@@ -870,22 +871,22 @@ DT_TEST(StatusFailuresBecomeResults)
         return;
 
     int Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
-    SimDtPcieSetSdiSignal(0, &Signal);
+    SimDtPcie_SetSdiSignal(0, &Signal);
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
     DtSdiRxStatus S;
-    DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_TIMEOUT);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_TIMEOUT);
 
-    SimDtPcieReset();
-    SimDtPcieSetSdiSignal(0, &Signal);
-    SimDtPcieAnswerShort(DT_FUNC_CODE_SDIRX_CMD);
-    DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_DEV_DRIVER);
+    SimDtPcie_Reset();
+    SimDtPcie_SetSdiSignal(0, &Signal);
+    SimDtPcie_AnswerShort(DT_FUNC_CODE_SDIRX_CMD);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_DEV_DRIVER);
     DT_ASSERT(!S.CarrierDetect);
 
-    DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(NULL, Uuid, 0, &S), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSdiRxGetStatus(Drv, Uuid, 0, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(NULL, Uuid, 0, &S), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, NULL), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A reset takes the signals away; a port outside the SDI ports takes none.
@@ -897,28 +898,28 @@ DT_TEST(SignalsAreResetAndPerSdiPort)
     if (Drv == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(0, &Signal);
-    SimDtPcieReset();
+    SimDtPcie_SetSdiSignal(0, &Signal);
+    SimDtPcie_Reset();
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
     // Nothing lands on a port of the card.
-    SimDtPcieSetSdiSignal(-1, &Signal);
-    SimDtPcieSetSdiSignal(SIM_SDI_PORT_COUNT, &Signal);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    SimDtPcie_SetSdiSignal(-1, &Signal);
+    SimDtPcie_SetSdiSignal(SIM_SDI_PORT_COUNT, &Signal);
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 6), 6, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 6), 6, &S));
     DT_ASSERT(!S.CarrierDetect);
 
-    SimDtPcieSetSdiSignal(0, &Signal);
-    SimDtPcieSetSdiSignal(0, NULL);
-    DT_ASSERT_OK(DtPcieCmdSdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    SimDtPcie_SetSdiSignal(0, &Signal);
+    SimDtPcie_SetSdiSignal(0, NULL);
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -940,7 +941,7 @@ DT_TEST(VersionsCompareNumberByNumber)
     {
         const DtDriverVersion* V = &Cases[i].Version;
 
-        if (DtPcieCmdVersionAtLeast(V, 1, 4, 0, 111) != Cases[i].Supported)
+        if (DtPcieCmd_VersionAtLeast(V, 1, 4, 0, 111) != Cases[i].Supported)
             DT_FAIL("%d.%d.%d.%d", V->Major, V->Minor, V->Micro, V->Build);
     }
 }

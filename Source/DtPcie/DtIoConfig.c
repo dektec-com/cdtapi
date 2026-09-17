@@ -37,19 +37,19 @@ static const IoConfigEntry g_IoConfigs[] = {
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lookups +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_Count -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtIoConfigCount(void)
+int DtIoConfig_Count(void)
 {
     return IO_CONFIG_COUNT;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigGetCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_GetCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A linear search. There are about a hundred entries and configuration is set rarely, so
 // a hash or a sorted index would add code without making anything measurably faster.
 //
-DtapiResult DtIoConfigGetCode(const char* Name, int* Code)
+DtapiResult DtIoConfig_GetCode(const char* Name, int* Code)
 {
     if (Code == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -74,12 +74,12 @@ DtapiResult DtIoConfigGetCode(const char* Name, int* Code)
     return DTAPI_E_INVALID_ARG;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigGetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_GetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The table is in numeric order, so a code indexes it directly. The unit test that checks
 // every code appears exactly once is what makes that safe.
 //
-DtapiResult DtIoConfigGetName(int Code, char* Name, size_t Size)
+DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size)
 {
     if (Name == NULL || Size == 0)
         return DTAPI_E_INVALID_ARG;
@@ -151,9 +151,9 @@ static bool HasChildren(int Code)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfigIsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_IsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtIoConfigIsValid(int Group, int Value, int SubValue)
+DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue)
 {
     if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
         return DTAPI_E_INVALID_ARG;

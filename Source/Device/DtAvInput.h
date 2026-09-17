@@ -39,14 +39,14 @@ typedef struct DtAvInput
 // input, has no SDI receiver, HDMI or Matrix API capability, or lacks the Matrix API one.
 //
 // Then the port's ASI/SDI receiver API function with the empty role is found with
-// DtFuncFind, whose failures are returned, and in it the SDI receiver driver function
+// DtFunc_Find, whose failures are returned, and in it the SDI receiver driver function
 // with the empty role; DTAPI_E_NOT_FOUND when there is none, which DTAPI only finds out
 // when it detects.
-DtapiResult DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port);
+DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port);
 
 // Sets every field of *Info to unknown: the standards to DTAPI_VIDSTD_UNKNOWN, the link
 // standards and link number to -1, the VPIDs to 0 and the aspect ratio to DT_AR_UNKNOWN.
-void DtAvInputSetUnknown(DtDetVidStd* Info);
+void DtAvInput_SetUnknown(DtDetVidStd* Info);
 
 // Detects the video standard on an attached input, as DtAvInputStatus::DetectVidStd and
 // DtPalSDIRX::DetectVidStd do. Sets every field of *Info to unknown first; returns
@@ -54,4 +54,4 @@ void DtAvInputSetUnknown(DtDetVidStd* Info);
 // locked signal or one that matches no standard. Fails with the result of reading the
 // port's down-scaling configuration or the receiver's status, and with
 // DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111.
-DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info);
+DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info);

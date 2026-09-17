@@ -17,28 +17,28 @@
 // CDtapiLite includes
 #include "OAL/OsDmaBuffer.h" // Platform part being implemented.
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformPageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_PageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t OsPlatformPageSize(void)
+size_t OsPlatform_PageSize(void)
 {
     long Page = sysconf(_SC_PAGESIZE);
 
     return Page > 0 ? (size_t)Page : 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformDontFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_DontFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // DtProxy.cpp does the same after allocating each DMA buffer. The range is page-aligned
 // and covers whole pages, which madvise requires.
 //
-int OsPlatformDontFork(uint8_t* Data, size_t Size)
+int OsPlatform_DontFork(uint8_t* Data, size_t Size)
 {
     return madvise(Data, Size, MADV_DONTFORK) == 0 ? 0 : -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatformDoFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_DoFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsPlatformDoFork(uint8_t* Data, size_t Size)
+void OsPlatform_DoFork(uint8_t* Data, size_t Size)
 {
     madvise(Data, Size, MADV_DOFORK);
 }

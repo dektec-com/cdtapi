@@ -230,9 +230,9 @@ static bool HasCapability(const char* Name, int PortIndex)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Interface +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178GetProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_GetProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool SimDta2178GetProperty(const char* Name, int PortIndex, int* Type, uint64_t* Value)
+bool SimDta2178_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t* Value)
 {
     if (PortIndex == -1 &&
         (strcmp(Name, "PORT_COUNT") == 0 || strcmp(Name, "MAIN_PORT_COUNT") == 0))
@@ -272,12 +272,12 @@ bool SimDta2178GetProperty(const char* Name, int PortIndex, int* Type, uint64_t*
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178GetString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_GetString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // An API function's first instance, such as AF_ASISDIRX#1, gives its role,
 // AF_ASISDIRX#1.<n> the name of its n-th part, and the name of a part its role.
 //
-bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
+bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
 {
     if (!HasFunctions(PortIndex))
         return false;
@@ -319,9 +319,9 @@ bool SimDta2178GetString(const char* Name, int PortIndex, const char** Str)
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
+bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
 {
     int Flat = (Uuid & DT_UUID_INDEX_MASK) - 1;
 
@@ -347,9 +347,9 @@ bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type, const char** Ro
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178PartCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_PartCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int SimDta2178PartCount(void)
+int SimDta2178_PartCount(void)
 {
     int Count = 0;
 
@@ -358,9 +358,9 @@ int SimDta2178PartCount(void)
     return Count;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178DefaultConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_DefaultConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDta2178DefaultConfig(int PortIndex, int Group, int* Value, int* SubValue)
+void SimDta2178_DefaultConfig(int PortIndex, int Group, int* Value, int* SubValue)
 {
     bool Sdi = PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT;
     bool Input = PortIndex % 2 == 0;

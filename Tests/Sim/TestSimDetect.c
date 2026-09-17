@@ -36,17 +36,17 @@
 // allocations. Returns false, having recorded a failure, when it is not the emulator.
 static bool StartSim(int* DtFailures, int* Live)
 {
-    SimDtPcieReset();
-    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    SimDtPcie_Reset();
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return false;
     }
-    OsDrvClose(Drv);
-    *Live = DtAllocLive();
+    OsDrv_Close(Drv);
+    *Live = DtAlloc_Live();
     return true;
 }
 
@@ -71,8 +71,8 @@ static DtDevice* Attach(int* DtFailures)
     do                                                                                   \
     {                                                                                    \
         DtDevice_Free(Device);                                                           \
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
-        DT_ASSERT_EQ(DtAllocLive(), Live);                                               \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
     } while (0)
 
 // The signal an SDI receiver reports for a format: locked, with the line timing's
@@ -87,12 +87,12 @@ static SimSdiSignal SignalOf(const SdiFormat* Format, bool WithVpid)
     Signal.SdiLock = 1;
     Signal.LineLock = 1;
     Signal.Valid = 1;
-    Signal.NumSymsHanc = SdiFormatHancSymbols(Format);
-    Signal.NumSymsVidVanc = SdiFormatVancSymbols(Format);
+    Signal.NumSymsHanc = SdiFormat_HancSymbols(Format);
+    Signal.NumSymsVidVanc = SdiFormat_VancSymbols(Format);
     Signal.NumLinesF1 = Format->LinesF1;
-    Signal.NumLinesF2 = SdiFormatLinesF2(Format);
-    Signal.IsLevelB = SdiFormatIsLevelB(Format) ? 1 : 0;
-    Signal.PayloadId = WithVpid ? SdiFormatVpid(Format) : 0;
+    Signal.NumLinesF2 = SdiFormat_LinesF2(Format);
+    Signal.IsLevelB = SdiFormat_IsLevelB(Format) ? 1 : 0;
+    Signal.PayloadId = WithVpid ? SdiFormat_Vpid(Format) : 0;
     Signal.FramePeriod = (int)(1e9 * Format->FpsDen / Format->FpsNum + 0.5);
     Signal.SdiRate = Format->SdiRate;
     return Signal;
@@ -138,7 +138,7 @@ static int OneLinkOf(const SdiFormat* Uhd)
         if (F->Lines == 1125 && F->Scan == SDI_SCAN_P &&
             (F->Payload == 0x85 || F->Payload == 0x89 || F->Payload == 0x8A) &&
             F->FpsNum == Uhd->FpsNum && F->FpsDen == Uhd->FpsDen &&
-            SdiFormatIsLevelB(F) == SdiFormatIsLevelB(Uhd))
+            SdiFormat_IsLevelB(F) == SdiFormat_IsLevelB(Uhd))
         {
             return F->VidStd;
         }
@@ -221,13 +221,13 @@ DT_TEST(FirmwareStatusComesFirst)
     if (!StartSim(DtFailures, &Live))
         return;
 
-    SimDtPcieSetFirmwareStatus(DT_FWSTATUS_OBSOLETE);
+    SimDtPcie_SetFirmwareStatus(DT_FWSTATUS_OBSOLETE);
     DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_OK_OBSOLETE_FW);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, 99, &VidStd), DTAPI_E_OBSOLETE_FW);
     DtDevice_Free(Device);
 
-    SimDtPcieSetFirmwareStatus(DT_FWSTATUS_TAINTED);
+    SimDtPcie_SetFirmwareStatus(DT_FWSTATUS_TAINTED);
     Device = DtDevice_Alloc();
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_OK_TAINTED_FW);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, 99, &VidStd), DTAPI_E_TAINTED_FW);
@@ -248,9 +248,9 @@ DT_TEST(PortsAreAllPortsOfTheCard)
 
     // Port 9 made an input the Matrix API can use: past the capabilities, it has no
     // receiver function.
-    SimDtPcieOverrideProperty("MAIN_PORT_COUNT", -1, true, 8);
-    SimDtPcieOverrideProperty("CAP_INPUT", PORT_GENLOCK - 1, true, 1);
-    SimDtPcieOverrideProperty("CAP_MATRIX2", PORT_GENLOCK - 1, true, 1);
+    SimDtPcie_OverrideProperty("MAIN_PORT_COUNT", -1, true, 8);
+    SimDtPcie_OverrideProperty("CAP_INPUT", PORT_GENLOCK - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_MATRIX2", PORT_GENLOCK - 1, true, 1);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -276,9 +276,9 @@ static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
     if (!StartSim(DtFailures, &Live))
         return;
 
-    SimDtPcieOverrideProperty(Cap1, PORT_INPUT - 1, true, Has1 ? 1 : 0);
+    SimDtPcie_OverrideProperty(Cap1, PORT_INPUT - 1, true, Has1 ? 1 : 0);
     if (Cap2 != NULL)
-        SimDtPcieOverrideProperty(Cap2, PORT_INPUT - 1, true, Has2 ? 1 : 0);
+        SimDtPcie_OverrideProperty(Cap2, PORT_INPUT - 1, true, Has2 ? 1 : 0);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -289,7 +289,7 @@ static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
     // The last request is still one of attaching's capability reads.
     DtIoctlInputDataHdr Hdr;
     int FunctionCode;
-    SimDtPcieLastInput(&FunctionCode, &Hdr, sizeof(Hdr));
+    SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr));
     if (Expected != DTAPI_OK &&
         (FunctionCode != DT_FUNC_CODE_PROPERTY_CMD || Hdr.m_Cmd != DT_PROP_CMD_GET_VALUE))
     {
@@ -323,15 +323,15 @@ DT_TEST(InternalInputIsNoInputToTheScan)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideProperty("CAP_INPUT", PORT_INPUT - 1, true, 0);
-    SimDtPcieOverrideProperty("CAP_INTINPUT", PORT_INPUT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_INPUT", PORT_INPUT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_INTINPUT", PORT_INPUT - 1, true, 1);
 
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Found, Funcs));
     DT_ASSERT_EQ(Found, SIM_PORT_COUNT);
     DT_ASSERT(!Funcs[PORT_INPUT - 1].IsInput);
     DT_ASSERT(Funcs[PORT_INPUT - 1].IsOutput);
-    DT_ASSERT_EQ(DtAllocLive(), Live);
+    DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -344,7 +344,7 @@ static DtapiResult DetectWith(int* DtFailures, DtDevice** Device, int* VidStd)
     SimSdiSignal Signal = SignalOf(Format, true);
 
     *VidStd = 12345;
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     *Device = Attach(DtFailures);
     if (*Device == NULL)
         return DTAPI_E_INTERNAL;
@@ -358,10 +358,10 @@ DT_TEST(FirstInstanceWithTheEmptyRole)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("AF_ASISDIRX#1", 0, true, "OTHER");
-    SimDtPcieOverrideString("AF_ASISDIRX#1.6", 0, false, NULL);
-    SimDtPcieOverrideString("AF_ASISDIRX#2", 0, true, "");
-    SimDtPcieOverrideString("AF_ASISDIRX#2.1", 0, true, "DF_SDIRX#1");
+    SimDtPcie_OverrideString("AF_ASISDIRX#1", 0, true, "OTHER");
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.6", 0, false, NULL);
+    SimDtPcie_OverrideString("AF_ASISDIRX#2", 0, true, "");
+    SimDtPcie_OverrideString("AF_ASISDIRX#2.1", 0, true, "DF_SDIRX#1");
     DtDevice* Device;
     int VidStd;
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_OK);
@@ -370,14 +370,14 @@ DT_TEST(FirstInstanceWithTheEmptyRole)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("AF_ASISDIRX#1", 0, true, "OTHER");
+    SimDtPcie_OverrideString("AF_ASISDIRX#1", 0, true, "OTHER");
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(VidStd, 12345);
     FINISH(Device, Live);
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("AF_ASISDIRX#1", 0, false, NULL);
+    SimDtPcie_OverrideString("AF_ASISDIRX#1", 0, false, NULL);
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_E_NOT_FOUND);
     FINISH(Device, Live);
 }
@@ -392,7 +392,7 @@ DT_TEST(ReadFailureIsReturned)
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     DT_ASSERT_EQ(VidStd, 12345);
     FINISH(Device, Live);
@@ -400,21 +400,21 @@ DT_TEST(ReadFailureIsReturned)
     // Reading an instance's role, or a part's name, fails the search.
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
-    SimDtPcieFailProperty("AF_ASISDIRX#1", 0, true, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailProperty("AF_ASISDIRX#1", 0, true, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
-    SimDtPcieFailProperty("AF_ASISDIRX#1.7", 0, true, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailProperty("AF_ASISDIRX#1.7", 0, true, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
     // Reading a part's role or type only skips the part.
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
-    SimDtPcieFailProperty("BC_SWITCH#2", 0, true, DT_STATUS_TIMEOUT);
-    SimDtPcieFailProperty("DF_ASIRX#1_TYPE", 0, false, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailProperty("BC_SWITCH#2", 0, true, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailProperty("DF_ASIRX#1_TYPE", 0, false, DT_STATUS_TIMEOUT);
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
     FINISH(Device, Live);
 }
@@ -427,7 +427,7 @@ DT_TEST(PartsEndAtTheFirstMissingOne)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("AF_ASISDIRX#1.5", 0, false, NULL);
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.5", 0, false, NULL);
     DtDevice* Device;
     int VidStd;
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_E_NOT_FOUND);
@@ -436,9 +436,9 @@ DT_TEST(PartsEndAtTheFirstMissingOne)
     // A part that cannot be read is skipped, not fatal.
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("BC_SWITCH#2", 0, false, NULL);
-    SimDtPcieOverrideProperty("BC_ST425LR#1_TYPE", 0, false, 0);
-    SimDtPcieOverrideProperty("BC_SDIMUX12G#1_UUID", 0, false, 0);
+    SimDtPcie_OverrideString("BC_SWITCH#2", 0, false, NULL);
+    SimDtPcie_OverrideProperty("BC_ST425LR#1_TYPE", 0, false, 0);
+    SimDtPcie_OverrideProperty("BC_SDIMUX12G#1_UUID", 0, false, 0);
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_OK);
     DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_1080I59_94);
     FINISH(Device, Live);
@@ -471,10 +471,10 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
         if (!StartSim(DtFailures, &Live))
             return;
         if (Breaks[i].IsString)
-            SimDtPcieOverrideString(Breaks[i].Name, 0, Breaks[i].Present, Breaks[i].Str);
+            SimDtPcie_OverrideString(Breaks[i].Name, 0, Breaks[i].Present, Breaks[i].Str);
         else
-            SimDtPcieOverrideProperty(Breaks[i].Name, 0, Breaks[i].Present,
-                                      Breaks[i].Value);
+            SimDtPcie_OverrideProperty(Breaks[i].Name, 0, Breaks[i].Present,
+                                       Breaks[i].Value);
         if (DetectWith(DtFailures, &Device, &VidStd) != DTAPI_E_NOT_FOUND)
             DT_FAIL("%s changed: receiver still found", Breaks[i].Name);
         FINISH(Device, Live);
@@ -483,10 +483,10 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
     // The same receiver under a name without DF_.
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideString("AF_ASISDIRX#1.6", 0, true, "XF_SDIRX#1");
-    SimDtPcieOverrideString("XF_SDIRX#1", 0, true, "");
-    SimDtPcieOverrideProperty("XF_SDIRX#1_TYPE", 0, true, DT_FUNC_TYPE_SDIRX);
-    SimDtPcieOverrideProperty("XF_SDIRX#1_UUID", 0, true, DT_UUID_DF_FLAG | 6);
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.6", 0, true, "XF_SDIRX#1");
+    SimDtPcie_OverrideString("XF_SDIRX#1", 0, true, "");
+    SimDtPcie_OverrideProperty("XF_SDIRX#1_TYPE", 0, true, DT_FUNC_TYPE_SDIRX);
+    SimDtPcie_OverrideProperty("XF_SDIRX#1_UUID", 0, true, DT_UUID_DF_FLAG | 6);
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_E_NOT_FOUND);
     FINISH(Device, Live);
 }
@@ -497,10 +497,10 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
 static DtapiResult DetectWithSecondReceiver(int* DtFailures, const char* Position,
                                             DtDevice** Device, int* VidStd)
 {
-    SimDtPcieOverrideString(Position, 0, true, "DF_SDIRX#9");
-    SimDtPcieOverrideString("DF_SDIRX#9", 0, true, "");
-    SimDtPcieOverrideProperty("DF_SDIRX#9_TYPE", 0, true, DT_FUNC_TYPE_SDIRX);
-    SimDtPcieOverrideProperty("DF_SDIRX#9_UUID", 0, true, DT_UUID_DF_FLAG | 22);
+    SimDtPcie_OverrideString(Position, 0, true, "DF_SDIRX#9");
+    SimDtPcie_OverrideString("DF_SDIRX#9", 0, true, "");
+    SimDtPcie_OverrideProperty("DF_SDIRX#9_TYPE", 0, true, DT_FUNC_TYPE_SDIRX);
+    SimDtPcie_OverrideProperty("DF_SDIRX#9_UUID", 0, true, DT_UUID_DF_FLAG | 22);
     return DetectWith(DtFailures, Device, VidStd);
 }
 
@@ -535,7 +535,7 @@ static DtDetVidStd WaitFor(int* DtFailures, DtDevice* Device, const SdiFormat* F
 {
     SimSdiSignal Signal = SignalOf(Format, WithVpid);
 
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     DtDetVidStd Info;
     DtapiResult Result = DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 1000, &Info);
     if (Result != DTAPI_OK && Result != DTAPI_E_TIMEOUT)
@@ -552,7 +552,7 @@ DT_TEST(EveryStandardWithItsVpid)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -567,7 +567,7 @@ DT_TEST(EveryStandardWithItsVpid)
         SDI_ASSERT_EQ(Format, Info.LinkStd, Link);
         SDI_ASSERT_EQ(Format, Info.OriginalVidStd, Format->VidStd);
         SDI_ASSERT_EQ(Format, Info.OriginalLinkStd, Link);
-        SDI_ASSERT_EQ(Format, Info.Vpid, SdiFormatVpid(Format));
+        SDI_ASSERT_EQ(Format, Info.Vpid, SdiFormat_Vpid(Format));
         SDI_ASSERT_EQ(Format, Info.Vpid2, 0);
         SDI_ASSERT_EQ(Format, Info.LinkNr, 1);
         SDI_ASSERT_EQ(Format, Info.AspectRatio,
@@ -585,7 +585,7 @@ DT_TEST(EveryStandardWithoutVpid)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -654,7 +654,7 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     SimSdiSignal Signal = SignalOf(Format, false);
     Signal.SdiRate = DT_DRV_SDIRATE_3G;
     Signal.PayloadId = 0x4000C997;
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     DtDetVidStd Info;
     DT_ASSERT_OK(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 0, &Info));
     DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_2160P50);
@@ -683,7 +683,7 @@ DT_TEST(NoStandardIsUnknown)
 
     SimSdiSignal Signal = SignalOf(Format, true);
     Signal.SdiLock = 0;
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     DtDetVidStd Info;
     DT_ASSERT_EQ(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 0, &Info),
                  DTAPI_E_TIMEOUT);
@@ -691,14 +691,14 @@ DT_TEST(NoStandardIsUnknown)
 
     Signal = SignalOf(Format, true);
     Signal.Valid = 0;
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     VidStd = 12345;
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
     DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_UNKNOWN);
 
     Signal = SignalOf(Format, false);
     Signal.NumLinesF1 = 1124;
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     VidStd = 12345;
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
     DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_UNKNOWN);
@@ -717,7 +717,7 @@ DT_TEST(OutputPortIsInTheWrongMode)
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(PORT_OUTPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_OUTPUT - 1, &Signal);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_OUTPUT, &VidStd),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT_EQ(VidStd, 12345);
@@ -738,7 +738,7 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieSetDriverVersion(1, 4, 0, 110);
+    SimDtPcie_SetDriverVersion(1, 4, 0, 110);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -746,12 +746,12 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
                  DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(VidStd, 12345);
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     DtDevice_Free(Device);
 
-    SimDtPcieReset();
-    SimDtPcieSetDriverVersion(1, 4, 0, 111);
+    SimDtPcie_Reset();
+    SimDtPcie_SetDriverVersion(1, 4, 0, 111);
     if ((Device = Attach(DtFailures)) == NULL)
         return;
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
@@ -769,16 +769,16 @@ DT_TEST(DownScalingIsReadOnlyWhereItExists)
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcieOverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
     if ((Device = Attach(DtFailures)) == NULL)
         return;
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
     FINISH(Device, Live);
 }
@@ -796,23 +796,23 @@ DT_TEST(WaitRetriesUntilTheSignalAppears)
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
 
-    SimDtPcieSetSdiSignal(PORT_INPUT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
     // Three misses take three pauses of 5 ms, which a scheduler may stretch but not by
     // seconds.
-    SimDtPcieDelaySdiSignal(PORT_INPUT - 1, 3);
-    uint64_t Start = OsMonotonicMs();
+    SimDtPcie_DelaySdiSignal(PORT_INPUT - 1, 3);
+    uint64_t Start = OsTime_MonotonicMs();
     DtDetVidStd Info;
     DT_ASSERT_OK(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 5000, &Info));
-    DT_ASSERT(OsMonotonicMs() - Start < 1000);
+    DT_ASSERT(OsTime_MonotonicMs() - Start < 1000);
     DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_1080P60);
 
-    SimDtPcieDelaySdiSignal(PORT_INPUT - 1, 3);
+    SimDtPcie_DelaySdiSignal(PORT_INPUT - 1, 3);
     Info = DtDevice_WaitForSignal(Device, PORT_INPUT);
     DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_1080P60);
     DT_ASSERT_EQ(Info.LinkNr, 1);
 
     // One try hides the signal once, and leaves it for the next.
-    SimDtPcieDelaySdiSignal(PORT_INPUT - 1, 1);
+    SimDtPcie_DelaySdiSignal(PORT_INPUT - 1, 1);
     DT_ASSERT_EQ(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 0, &Info),
                  DTAPI_E_TIMEOUT);
     CheckUnknown(DtFailures, &Info);
@@ -820,7 +820,7 @@ DT_TEST(WaitRetriesUntilTheSignalAppears)
     DT_ASSERT_EQ(VidStd, DTAPI_VIDSTD_1080P60);
 
     // Failures are retried until the time is up.
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 30, &Info),
                  DTAPI_E_TIMEOUT);
     CheckUnknown(DtFailures, &Info);
@@ -837,19 +837,19 @@ DT_TEST(WaitEndsAtItsTimeLimit)
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
 
-    uint64_t Start = OsMonotonicMs();
+    uint64_t Start = OsTime_MonotonicMs();
     DtDetVidStd Info;
     DT_ASSERT_EQ(DtDevice_WaitForSignalTimeout(Device, PORT_INPUT, 80, &Info),
                  DTAPI_E_TIMEOUT);
-    uint64_t Elapsed = OsMonotonicMs() - Start;
+    uint64_t Elapsed = OsTime_MonotonicMs() - Start;
     if (Elapsed < 80 - 17 || Elapsed > 80 + 150)
         DT_FAIL("an 80 ms wait took %llu ms", (unsigned long long)Elapsed);
     CheckUnknown(DtFailures, &Info);
 
-    Start = OsMonotonicMs();
+    Start = OsTime_MonotonicMs();
     DT_ASSERT_EQ(DtDevice_WaitForSignalTimeout(Device, PORT_OUTPUT, 40, &Info),
                  DTAPI_E_TIMEOUT);
-    Elapsed = OsMonotonicMs() - Start;
+    Elapsed = OsTime_MonotonicMs() - Start;
     if (Elapsed < 40 - 17 || Elapsed > 40 + 150)
         DT_FAIL("a 40 ms wait on an output took %llu ms", (unsigned long long)Elapsed);
 

@@ -14,120 +14,120 @@
 
 DT_TEST(AllocationsAreCounted)
 {
-    DtAllocResetCount();
-    DT_ASSERT_EQ(DtAllocCount(), 0);
+    DtAlloc_ResetCount();
+    DT_ASSERT_EQ(DtAlloc_Count(), 0);
 
-    void* First = DtMalloc(16);
-    void* Second = DtMalloc(16);
+    void* First = DtAlloc_Malloc(16);
+    void* Second = DtAlloc_Malloc(16);
     DT_ASSERT(First != NULL);
     DT_ASSERT(Second != NULL);
-    DT_ASSERT_EQ(DtAllocCount(), 2);
+    DT_ASSERT_EQ(DtAlloc_Count(), 2);
 
-    DtFree(First);
-    DtFree(Second);
-    DtAllocResetCount();
+    DtAlloc_Free(First);
+    DtAlloc_Free(Second);
+    DtAlloc_ResetCount();
 }
 
 DT_TEST(InjectionFailsTheChosenAllocation)
 {
-    DtAllocResetCount();
-    DtAllocFailAfter(1);
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(1);
 
-    void* Ptr = DtMalloc(16);
+    void* Ptr = DtAlloc_Malloc(16);
     DT_ASSERT(Ptr != NULL);
-    DtFree(Ptr);
+    DtAlloc_Free(Ptr);
 
     // The second one is the armed one.
-    DT_ASSERT(DtMalloc(16) == NULL);
+    DT_ASSERT(DtAlloc_Malloc(16) == NULL);
 
     // One-shot: the injection disarms itself so that a recovery path can allocate.
-    Ptr = DtMalloc(16);
+    Ptr = DtAlloc_Malloc(16);
     DT_ASSERT(Ptr != NULL);
-    DtFree(Ptr);
+    DtAlloc_Free(Ptr);
 
-    DtAllocResetCount();
+    DtAlloc_ResetCount();
 }
 
 DT_TEST(ReallocGrowsThroughTheSeam)
 {
-    DtAllocResetCount();
-    unsigned char* Ptr = (unsigned char*)DtMalloc(4);
+    DtAlloc_ResetCount();
+    unsigned char* Ptr = (unsigned char*)DtAlloc_Malloc(4);
     DT_ASSERT(Ptr != NULL);
     Ptr[0] = 0x42;
 
-    Ptr = (unsigned char*)DtRealloc(Ptr, 64);
+    Ptr = (unsigned char*)DtAlloc_Realloc(Ptr, 64);
     DT_ASSERT(Ptr != NULL);
     DT_ASSERT_EQ(Ptr[0], 0x42);
-    DT_ASSERT_EQ(DtAllocCount(), 2);
+    DT_ASSERT_EQ(DtAlloc_Count(), 2);
 
-    DtFree(Ptr);
-    DtAllocResetCount();
+    DtAlloc_Free(Ptr);
+    DtAlloc_ResetCount();
 }
 
 DT_TEST(InjectionCoversRealloc)
 {
-    void* Ptr = DtMalloc(16);
+    void* Ptr = DtAlloc_Malloc(16);
 
     DT_ASSERT(Ptr != NULL);
 
-    DtAllocFailAfter(0);
-    DT_ASSERT(DtRealloc(Ptr, 64) == NULL);
+    DtAlloc_FailAfter(0);
+    DT_ASSERT(DtAlloc_Realloc(Ptr, 64) == NULL);
 
     // A failed realloc leaves the original block alive, so it still has to be freed.
-    DtFree(Ptr);
-    DtAllocResetCount();
+    DtAlloc_Free(Ptr);
+    DtAlloc_ResetCount();
 }
 
 DT_TEST(ResetDisarmsInjection)
 {
-    DtAllocFailAfter(0);
-    DtAllocResetCount();
+    DtAlloc_FailAfter(0);
+    DtAlloc_ResetCount();
 
-    void* Ptr = DtMalloc(16);
+    void* Ptr = DtAlloc_Malloc(16);
     DT_ASSERT(Ptr != NULL);
-    DtFree(Ptr);
-    DtAllocResetCount();
+    DtAlloc_Free(Ptr);
+    DtAlloc_ResetCount();
 }
 
 // Every block made through the seam counts until it is freed; growing a block does not
 // make another, and neither does a failed allocation or freeing NULL.
 DT_TEST(LiveBlocksAreCounted)
 {
-    int Before = DtAllocLive();
+    int Before = DtAlloc_Live();
 
-    void* Block = DtMalloc(16);
-    DT_ASSERT_EQ(DtAllocLive(), Before + 1);
+    void* Block = DtAlloc_Malloc(16);
+    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
 
-    void* Grown = DtRealloc(Block, 64);
+    void* Grown = DtAlloc_Realloc(Block, 64);
     DT_ASSERT(Grown != NULL);
-    DT_ASSERT_EQ(DtAllocLive(), Before + 1);
+    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
 
-    DtFree(Grown);
-    DT_ASSERT_EQ(DtAllocLive(), Before);
+    DtAlloc_Free(Grown);
+    DT_ASSERT_EQ(DtAlloc_Live(), Before);
 
-    Block = DtRealloc(NULL, 8);
-    DT_ASSERT_EQ(DtAllocLive(), Before + 1);
-    DtFree(Block);
+    Block = DtAlloc_Realloc(NULL, 8);
+    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
+    DtAlloc_Free(Block);
 
-    DtAllocResetCount();
-    DtAllocFailAfter(0);
-    DT_ASSERT(DtMalloc(8) == NULL);
-    DtAllocFailAfter(0);
-    DT_ASSERT(DtRealloc(NULL, 8) == NULL);
-    DtFree(NULL);
-    DT_ASSERT_EQ(DtAllocLive(), Before);
-    DtAllocResetCount();
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(0);
+    DT_ASSERT(DtAlloc_Malloc(8) == NULL);
+    DtAlloc_FailAfter(0);
+    DT_ASSERT(DtAlloc_Realloc(NULL, 8) == NULL);
+    DtAlloc_Free(NULL);
+    DT_ASSERT_EQ(DtAlloc_Live(), Before);
+    DtAlloc_ResetCount();
 }
 
 DT_TEST(FreeAcceptsNull)
 {
-    DtAllocResetCount();
-    int Before = DtAllocCount();
+    DtAlloc_ResetCount();
+    int Before = DtAlloc_Count();
 
-    DtFree(NULL);
+    DtAlloc_Free(NULL);
 
     // Freeing nothing must neither crash nor be counted as an allocation.
-    DT_ASSERT_EQ(DtAllocCount(), Before);
+    DT_ASSERT_EQ(DtAlloc_Count(), Before);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -136,7 +136,7 @@ DT_TEST(GrowthStartsAtTheMinimum)
 {
     size_t Out = 0;
 
-    DT_ASSERT_OK(DtGrowCapacity(0, 1, 4, 8, &Out));
+    DT_ASSERT_OK(DtAlloc_GrowCapacity(0, 1, 4, 8, &Out));
     DT_ASSERT_EQ(Out, 8);
 }
 
@@ -144,10 +144,10 @@ DT_TEST(GrowthDoubles)
 {
     size_t Out = 0;
 
-    DT_ASSERT_OK(DtGrowCapacity(8, 9, 4, 8, &Out));
+    DT_ASSERT_OK(DtAlloc_GrowCapacity(8, 9, 4, 8, &Out));
     DT_ASSERT_EQ(Out, 16);
 
-    DT_ASSERT_OK(DtGrowCapacity(8, 33, 4, 8, &Out));
+    DT_ASSERT_OK(DtAlloc_GrowCapacity(8, 33, 4, 8, &Out));
     DT_ASSERT_EQ(Out, 64);
 }
 
@@ -155,7 +155,7 @@ DT_TEST(GrowthLeavesEnoughRoomAlone)
 {
     size_t Out = 0;
 
-    DT_ASSERT_OK(DtGrowCapacity(64, 10, 4, 8, &Out));
+    DT_ASSERT_OK(DtAlloc_GrowCapacity(64, 10, 4, 8, &Out));
     DT_ASSERT_EQ(Out, 64);
 }
 
@@ -167,7 +167,7 @@ DT_TEST(DoublingStopsInsteadOfWrapping)
     size_t Huge = ((size_t)-1 / 2) + 1;
     size_t Out = 0;
 
-    DT_ASSERT_OK(DtGrowCapacity(Huge, Huge + 1, 1, 8, &Out));
+    DT_ASSERT_OK(DtAlloc_GrowCapacity(Huge, Huge + 1, 1, 8, &Out));
     DT_ASSERT_EQ(Out, Huge + 1);
 }
 
@@ -179,15 +179,15 @@ DT_TEST(ByteCountOverflowIsRefused)
     size_t TooMany = ((size_t)-1 / 8) + 1;
     size_t Out = 0;
 
-    DT_ASSERT_EQ(DtGrowCapacity(0, TooMany, 8, 8, &Out), -1);
+    DT_ASSERT_EQ(DtAlloc_GrowCapacity(0, TooMany, 8, 8, &Out), -1);
 }
 
 DT_TEST(GrowthRejectsBadArguments)
 {
     size_t Out = 0;
 
-    DT_ASSERT_EQ(DtGrowCapacity(0, 4, 4, 8, NULL), -1);
-    DT_ASSERT_EQ(DtGrowCapacity(0, 4, 0, 8, &Out), -1);
+    DT_ASSERT_EQ(DtAlloc_GrowCapacity(0, 4, 4, 8, NULL), -1);
+    DT_ASSERT_EQ(DtAlloc_GrowCapacity(0, 4, 0, 8, &Out), -1);
 }
 
 DT_TEST_MAIN("Alloc", DT_RUN(AllocationsAreCounted), DT_RUN(LiveBlocksAreCounted),

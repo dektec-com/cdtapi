@@ -31,19 +31,19 @@
 #define DT_S352_ID_S2082_2160 0xCE    // 2160 lines on 12G, SMPTE ST 2082-10
 
 // The payload identifier.
-int DtSmpte352PayloadId(uint32_t Vpid);
+int DtSmpte352_PayloadId(uint32_t Vpid);
 
 // The picture rate as a reduced fraction; 0/0 for a rate code DTAPI does not know.
-void DtSmpte352PictureRate(uint32_t Vpid, int* Num, int* Den);
+void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den);
 
 // Whether the transport is interlaced, and whether the picture structure is. Progressive
 // pictures in an interlaced transport are PsF.
-bool DtSmpte352IsInterlacedTransport(uint32_t Vpid);
-bool DtSmpte352IsInterlacedStructure(uint32_t Vpid);
+bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid);
+bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid);
 
 // Whether the picture aspect ratio is 16:9; otherwise it is 4:3.
-bool DtSmpte352Is16x9(uint32_t Vpid);
+bool DtSmpte352_Is16x9(uint32_t Vpid);
 
 // The zero-based number of the link that carries this VPID, for the payloads that have
 // more than one link; 0 for all others.
-int DtSmpte352LinkNumber(uint32_t Vpid);
+int DtSmpte352_LinkNumber(uint32_t Vpid);

@@ -36,17 +36,17 @@ static unsigned __stdcall ThreadEntry(void* Arg)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // _beginthreadex rather than CreateThread, so that the C runtime sets up its per-thread
 // state for the new thread.
 //
-OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
+OsThread* OsThread_Start(OsThreadFunc Func, void* Context)
 {
     if (Func == NULL)
         return NULL;
 
-    OsThread* Thread = (OsThread*)DtMalloc(sizeof(OsThread));
+    OsThread* Thread = (OsThread*)DtAlloc_Malloc(sizeof(OsThread));
     if (Thread == NULL)
         return NULL;
 
@@ -56,7 +56,7 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
     uintptr_t Handle = _beginthreadex(NULL, 0, ThreadEntry, Thread, 0, NULL);
     if (Handle == 0)
     {
-        DtFree(Thread);
+        DtAlloc_Free(Thread);
         return NULL;
     }
 
@@ -64,24 +64,24 @@ OsThread* OsThreadStart(OsThreadFunc Func, void* Context)
     return Thread;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadJoin -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Join -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsThreadJoin(OsThread* Thread)
+void OsThread_Join(OsThread* Thread)
 {
     if (Thread == NULL)
         return;
 
     WaitForSingleObject(Thread->Handle, INFINITE);
     CloseHandle(Thread->Handle);
-    DtFree(Thread);
+    DtAlloc_Free(Thread);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadRaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_RaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // THREAD_PRIORITY_HIGHEST. Time-critical is deliberately not used: a stuck time-critical
 // thread can starve the rest of the machine.
 //
-int OsThreadRaisePriority(void)
+int OsThread_RaisePriority(void)
 {
     return SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) ? 0 : -1;
 }
@@ -93,11 +93,11 @@ struct OsEvent
     HANDLE Handle;
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventCreate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsEvent* OsEventCreate(void)
+OsEvent* OsEvent_Create(void)
 {
-    OsEvent* Event = (OsEvent*)DtMalloc(sizeof(OsEvent));
+    OsEvent* Event = (OsEvent*)DtAlloc_Malloc(sizeof(OsEvent));
 
     if (Event == NULL)
         return NULL;
@@ -106,35 +106,35 @@ OsEvent* OsEventCreate(void)
     Event->Handle = CreateEventA(NULL, FALSE, FALSE, NULL);
     if (Event->Handle == NULL)
     {
-        DtFree(Event);
+        DtAlloc_Free(Event);
         return NULL;
     }
 
     return Event;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventDestroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Destroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsEventDestroy(OsEvent* Event)
+void OsEvent_Destroy(OsEvent* Event)
 {
     if (Event == NULL)
         return;
 
     CloseHandle(Event->Handle);
-    DtFree(Event);
+    DtAlloc_Free(Event);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventSet -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Set -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsEventSet(OsEvent* Event)
+void OsEvent_Set(OsEvent* Event)
 {
     if (Event != NULL)
         SetEvent(Event->Handle);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEventWait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Wait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsEventWait(OsEvent* Event, int TimeoutMs)
+int OsEvent_Wait(OsEvent* Event, int TimeoutMs)
 {
     DWORD Timeout = TimeoutMs < 0 ? INFINITE : (DWORD)TimeoutMs;
 
@@ -164,11 +164,11 @@ struct OsMutex
     SRWLOCK Lock;
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexCreate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsMutex* OsMutexCreate(void)
+OsMutex* OsMutex_Create(void)
 {
-    OsMutex* Mutex = (OsMutex*)DtMalloc(sizeof(OsMutex));
+    OsMutex* Mutex = (OsMutex*)DtAlloc_Malloc(sizeof(OsMutex));
 
     if (Mutex != NULL)
         InitializeSRWLock(&Mutex->Lock);
@@ -176,50 +176,50 @@ OsMutex* OsMutexCreate(void)
     return Mutex;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexDestroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Destroy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsMutexDestroy(OsMutex* Mutex)
+void OsMutex_Destroy(OsMutex* Mutex)
 {
-    DtFree(Mutex);
+    DtAlloc_Free(Mutex);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexLock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Lock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsMutexLock(OsMutex* Mutex)
+void OsMutex_Lock(OsMutex* Mutex)
 {
     AcquireSRWLockExclusive(&Mutex->Lock);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutexUnlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsMutexUnlock(OsMutex* Mutex)
+void OsMutex_Unlock(OsMutex* Mutex)
 {
     ReleaseSRWLockExclusive(&Mutex->Lock);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsSleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsTime_SleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void OsSleepMs(int Ms)
+void OsTime_SleepMs(int Ms)
 {
     if (Ms > 0)
         Sleep((DWORD)Ms);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsTime_MonotonicMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint64_t OsMonotonicMs(void)
+uint64_t OsTime_MonotonicMs(void)
 {
     return (uint64_t)GetTickCount64();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Name -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The file name of the executable, as GetModuleBaseName gives it to XpUtil's
 // GetCurrentProcessName on Windows.
 //
-void OsProcessName(char* Buf, size_t Size)
+void OsProcess_Name(char* Buf, size_t Size)
 {
     if (Buf == NULL || Size == 0)
         return;
@@ -242,9 +242,9 @@ void OsProcessName(char* Buf, size_t Size)
     Buf[i] = '\0';
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Id -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint32_t OsProcessId(void)
+uint32_t OsProcess_Id(void)
 {
     return (uint32_t)GetCurrentProcessId();
 }

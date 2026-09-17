@@ -27,4 +27,4 @@
 // Adds Ms milliseconds to the time (Sec, Nsec) and writes the normalised result, with
 // 0 <= *OutNsec < LIN_NSEC_PER_SEC. Nsec is expected to be normalised already. A
 // negative Ms is treated as zero.
-void LinTimeAddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec);
+void LinTime_AddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec);

@@ -87,7 +87,7 @@ static struct
 static void EnsureRx(void)
 {
     if (!g_Rx.Initialised)
-        SimChSdiRxReset();
+        SimChSdiRx_Reset();
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindUser -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -106,7 +106,7 @@ static SimRxUser* FindUser(SimRxChannel* Channel, void* Handle)
 //
 static void Unconfigure(SimRxChannel* Channel)
 {
-    DtFree(Channel->Ring);
+    DtAlloc_Free(Channel->Ring);
     Channel->Ring = NULL;
     Channel->RingSize = 0;
     Channel->MaxLoad = 0;
@@ -183,17 +183,17 @@ static uint32_t WithParity(uint32_t Nine)
     return Nine | ((Nine >> 8) ^ 1) << 9;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_Line -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
+int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
 {
     DtFrameProps Props;
 
-    if (DtVidStdIs4k(VidStd) || !DtFramePropsInit(&Props, VidStd))
+    if (DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
         return 0;
 
-    int NumLines = DtFramePropsNumLines(&Props);
-    int Blank = DtFramePropsLineSymbolsHanc(&Props);
+    int NumLines = DtFrameProps_NumLines(&Props);
+    int Blank = DtFrameProps_LineSymbolsHanc(&Props);
     int Total = Blank + Props.LineNumSymVanc;
     if (Line < 1 || Line > NumLines || Total > SIM_RX_MAX_LINE_SYMBOLS)
         return 0;
@@ -348,7 +348,7 @@ static void StartFrame(SimRxChannel* Channel)
 
     uint8_t Header[64];
     Channel->FrameInSync =
-        DtSdiFrameLayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
+        DtSdiFrame_LayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
         Layout->LineSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
         Layout->LineSymsVideo == Config->m_FrameProps.m_NumSymsVidVanc &&
@@ -378,7 +378,7 @@ static void StartFrame(SimRxChannel* Channel)
         Channel->Faults[SIM_RX_FAULT_FORMAT] = false;
 
         memset(Header, 0, sizeof(Header));
-        DtSdiFrameEncodeHeader(&Fields, Header);
+        DtSdiFrame_EncodeHeader(&Fields, Header);
         if (!RingWrite(Channel, Header, (size_t)Layout->HeaderBytes))
             Channel->Dropped = true;
     }
@@ -396,7 +396,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     if (!Channel->FrameInSync || Channel->Dropped || Channel->LinesWritten >= Upto)
         return;
 
-    uint8_t* Coded = (uint8_t*)DtMalloc((size_t)Layout->Stride);
+    uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)Layout->Stride);
     if (Coded == NULL)
     {
         Channel->Dropped = true;
@@ -408,7 +408,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     {
         int Line = Channel->LinesWritten + 1;
 
-        SimChSdiRxLine(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
+        SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
         PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->LineBytesHanc);
         PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
                     Coded + Layout->LineBytesHanc, Layout->LineBytesVideo);
@@ -419,7 +419,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         }
         Channel->LinesWritten++;
     }
-    DtFree(Coded);
+    DtAlloc_Free(Coded);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NextEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -550,7 +550,7 @@ static uint32_t Configure(SimRxChannel* Channel,
     }
 
     Unconfigure(Channel);
-    uint8_t* Ring = (uint8_t*)DtMalloc(Size);
+    uint8_t* Ring = (uint8_t*)DtAlloc_Malloc(Size);
     if (Ring == NULL)
         return DT_STATUS_OUT_OF_MEMORY;
     memset(Ring, 0, Size);
@@ -601,7 +601,7 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RunCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// One command of a channel; SimChSdiRxCmd without the slowing down.
+// One command of a channel; SimChSdiRx_Cmd without the slowing down.
 //
 static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
                        size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
@@ -751,10 +751,10 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
-                       size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
+uint32_t SimChSdiRx_Cmd(void* Handle, int PortIndex, int Cmd, const void* In,
+                        size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
 {
     uint32_t Status = RunCmd(Handle, PortIndex, Cmd, In, InSize, Out, OutSize, SleepMs);
 
@@ -763,11 +763,11 @@ uint32_t SimChSdiRxCmd(void* Handle, int PortIndex, int Cmd, const void* In,
     return Status;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxMap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_Map -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The Linux driver's segments: 256 MB per port, after one for the device.
 //
-void* SimChSdiRxMap(void* Handle, uint64_t Offset, size_t Size)
+void* SimChSdiRx_Map(void* Handle, uint64_t Offset, size_t Size)
 {
     const uint64_t Segment = 256ull * 1024 * 1024;
 
@@ -788,9 +788,9 @@ void* SimChSdiRxMap(void* Handle, uint64_t Offset, size_t Size)
     return Channel->Ring;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxCloseHandle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_CloseHandle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimChSdiRxCloseHandle(void* Handle)
+void SimChSdiRx_CloseHandle(void* Handle)
 {
     EnsureRx();
     for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
@@ -803,16 +803,16 @@ void SimChSdiRxCloseHandle(void* Handle)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRxReset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimChSdiRxReset(void)
+void SimChSdiRx_Reset(void)
 {
     for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
     {
         SimRxChannel* Channel = &g_Rx.Channels[Port];
 
         if (g_Rx.Initialised)
-            DtFree(Channel->Ring);
+            DtAlloc_Free(Channel->Ring);
         memset(Channel, 0, sizeof(*Channel));
         Channel->SourceVidStd = DTAPI_VIDSTD_UNKNOWN;
     }
@@ -828,18 +828,18 @@ void SimChSdiRxReset(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetRxSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieSetRxSource(int PortIndex, int VidStd)
+void SimDtPcie_SetRxSource(int PortIndex, int VidStd)
 {
     EnsureRx();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
         g_Rx.Channels[PortIndex].SourceVidStd = VidStd;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieRunRxEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_RunRxEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieRunRxEvents(int PortIndex, int Events)
+void SimDtPcie_RunRxEvents(int PortIndex, int Events)
 {
     EnsureRx();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
@@ -849,9 +849,9 @@ void SimDtPcieRunRxEvents(int PortIndex, int Events)
         NextEvent(&g_Rx.Channels[PortIndex], &Event);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieInjectRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_InjectRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieInjectRxFault(int PortIndex, SimRxFault Fault)
+void SimDtPcie_InjectRxFault(int PortIndex, SimRxFault Fault)
 {
     EnsureRx();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT && (int)Fault >= 0 &&
@@ -861,51 +861,51 @@ void SimDtPcieInjectRxFault(int PortIndex, SimRxFault Fault)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieLimitRxRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_LimitRxRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieLimitRxRing(size_t Size)
+void SimDtPcie_LimitRxRing(size_t Size)
 {
     EnsureRx();
     g_Rx.RingLimit = Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSetRxAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieSetRxAlignment(int AlignmentBits)
+void SimDtPcie_SetRxAlignment(int AlignmentBits)
 {
     EnsureRx();
     g_Rx.Alignment = AlignmentBits;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieMapRxRingAsLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_MapRxRingAsLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieMapRxRingAsLinux(bool AsLinux)
+void SimDtPcie_MapRxRingAsLinux(bool AsLinux)
 {
     EnsureRx();
     g_Rx.MapAsLinux = AsLinux;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieFailRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_FailRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieFailRxCmd(int Cmd, uint32_t Status)
+void SimDtPcie_FailRxCmd(int Cmd, uint32_t Status)
 {
     EnsureRx();
     g_Rx.FailCmd = Cmd;
     g_Rx.FailStatus = Status;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieSlowRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SlowRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimDtPcieSlowRxCmd(int Cmd, int Ms)
+void SimDtPcie_SlowRxCmd(int Cmd, int Ms)
 {
     EnsureRx();
     g_Rx.SlowCmd = Ms > 0 ? Cmd : -1;
     g_Rx.SlowMs = Ms > 0 ? Ms : 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieGetRxState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_GetRxState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcieGetRxState(int PortIndex, SimRxState* State)
+void SimDtPcie_GetRxState(int PortIndex, SimRxState* State)
 {
     EnsureRx();
     memset(State, 0, sizeof(*State));

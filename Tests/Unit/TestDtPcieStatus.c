@@ -80,7 +80,7 @@ DT_TEST(EveryStatusMapsAsDtapiDoes)
     for (i = 0; i < sizeof(MappedCases) / sizeof(MappedCases[0]); i++)
     {
         const StatusCase* Case = &MappedCases[i];
-        DtapiResult Result = DtPcieStatusToResult(Case->Status);
+        DtapiResult Result = DtPcieStatus_ToResult(Case->Status);
 
         if (Result != Case->Result)
             DT_FAIL("DT_STATUS_%s: expected 0x%X, got 0x%X", Case->Name, Case->Result,
@@ -101,16 +101,16 @@ DT_TEST(StatusEncodingMatchesThePlatform)
 
 DT_TEST(SuccessIsOk)
 {
-    DT_ASSERT_EQ(DtPcieStatusToResult((uint32_t)DT_STATUS_OK), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieStatus_ToResult((uint32_t)DT_STATUS_OK), DTAPI_OK);
 }
 
 // A value that is not a DtStatus at all, such as a raw operating system error, is still
 // reported as a driver failure rather than passed through as if it were a result.
 DT_TEST(UnknownStatusIsDriverFailure)
 {
-    DT_ASSERT_EQ(DtPcieStatusToResult(0x12345678U), DTAPI_E_DEV_DRIVER);
-    DT_ASSERT_EQ(DtPcieStatusToResult(0xFFFFFFFFU), DTAPI_E_DEV_DRIVER);
-    DT_ASSERT_EQ(DtPcieStatusToResult((uint32_t)DT_STATUS_ERROR(0xFFFF)),
+    DT_ASSERT_EQ(DtPcieStatus_ToResult(0x12345678U), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieStatus_ToResult(0xFFFFFFFFU), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieStatus_ToResult((uint32_t)DT_STATUS_ERROR(0xFFFF)),
                  DTAPI_E_DEV_DRIVER);
 }
 
@@ -118,33 +118,34 @@ DT_TEST(UnknownStatusIsDriverFailure)
 
 DT_TEST(OutcomeOkIsOk)
 {
-    DT_ASSERT_EQ(DtPcieOutcomeToResult(OS_IOCTL_OK, 0), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieStatus_OutcomeToResult(OS_IOCTL_OK, 0), DTAPI_OK);
 }
 
 DT_TEST(OutcomeDriverStatusUsesTheStatus)
 {
     DT_ASSERT_EQ(
-        DtPcieOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_IN_USE),
+        DtPcieStatus_OutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_IN_USE),
         DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(
-        DtPcieOutcomeToResult(OS_IOCTL_DRIVER_STATUS, (uint32_t)DT_STATUS_NOT_SUPPORTED),
-        DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPcieStatus_OutcomeToResult(OS_IOCTL_DRIVER_STATUS,
+                                              (uint32_t)DT_STATUS_NOT_SUPPORTED),
+                 DTAPI_E_NOT_SUPPORTED);
 }
 
 // Only a driver status is looked up. A status that comes with another outcome is ignored.
 DT_TEST(OutcomeOsFailuresIgnoreTheStatus)
 {
-    DT_ASSERT_EQ(DtPcieOutcomeToResult(OS_IOCTL_NO_RESOURCES, (uint32_t)DT_STATUS_IN_USE),
-                 DTAPI_E_OUT_OF_RESOURCES);
     DT_ASSERT_EQ(
-        DtPcieOutcomeToResult(OS_IOCTL_COMMUNICATION, (uint32_t)DT_STATUS_IN_USE),
+        DtPcieStatus_OutcomeToResult(OS_IOCTL_NO_RESOURCES, (uint32_t)DT_STATUS_IN_USE),
+        DTAPI_E_OUT_OF_RESOURCES);
+    DT_ASSERT_EQ(
+        DtPcieStatus_OutcomeToResult(OS_IOCTL_COMMUNICATION, (uint32_t)DT_STATUS_IN_USE),
         DTAPI_E_COMMUNICATION);
 }
 
 DT_TEST(UnknownOutcomeIsCommunication)
 {
-    DT_ASSERT_EQ(DtPcieOutcomeToResult(-99, 0), DTAPI_E_COMMUNICATION);
-    DT_ASSERT_EQ(DtPcieOutcomeToResult(1, 0), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtPcieStatus_OutcomeToResult(-99, 0), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtPcieStatus_OutcomeToResult(1, 0), DTAPI_E_COMMUNICATION);
 }
 
 DT_TEST_MAIN("DrvStatus", DT_RUN(EveryStatusMapsAsDtapiDoes),

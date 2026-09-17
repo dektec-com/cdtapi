@@ -50,21 +50,21 @@ static bool Start(Fixture* Fix, int* DtFailures)
 {
     OsDrv* Drv;
 
-    SimDtPcieReset();
-    Fix->Live = DtAllocLive();
+    SimDtPcie_Reset();
+    Fix->Live = DtAlloc_Live();
     Fix->Device = NULL;
     Fix->Channel = NULL;
     Fix->Buffer = NULL;
 
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return false;
     }
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 
     Fix->Device = DtDevice_Alloc();
     Fix->Channel = DtInpChannel_Alloc();
@@ -86,8 +86,8 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DtInpChannel_Free((Fix).Channel);                                                \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
-        DT_ASSERT_EQ(DtAllocLive(), (Fix).Live);                                         \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
     } while (0)
 
 // Sets the I/O standard of the port at Port to VidStd.
@@ -110,9 +110,9 @@ static uint8_t* ExpectedFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t
 
     *Size = 0;
     DtSdiFrameLayout Layout;
-    if (!DtSdiFrameLayoutInit(&Layout, VidStd, 32))
+    if (!DtSdiFrame_LayoutInit(&Layout, VidStd, 32))
         return NULL;
-    *Size = DtSdiFrameRawSize(&Layout, Bits);
+    *Size = DtSdiFrame_RawSize(&Layout, Bits);
     uint8_t* Frame = (uint8_t*)calloc(*Size, 1);
     if (Frame == NULL)
         return NULL;
@@ -120,7 +120,7 @@ static uint8_t* ExpectedFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t
     uint16_t Symbols[8250];
     for (int Line = 1; Line <= Layout.NumLines; Line++)
     {
-        int Count = SimChSdiRxLine(VidStd, FrameNumber, Line, Symbols);
+        int Count = SimChSdiRx_Line(VidStd, FrameNumber, Line, Symbols);
 
         for (int i = 0; i < Count; i++, Symbol++)
         {
@@ -176,7 +176,7 @@ static bool Receive(Fixture* Fix, int VidStd, int RxMode, int* DtFailures)
 {
     DtapiResult Result = SetStandard(Fix, PORT, VidStd);
 
-    SimDtPcieSetRxSource(PORT - 1, VidStd);
+    SimDtPcie_SetRxSource(PORT - 1, VidStd);
     if (Result == DTAPI_OK)
         Result = DtInpChannel_AttachToPort(Fix->Channel, Fix->Device, PORT);
     if (Result == DTAPI_OK)
@@ -288,7 +288,7 @@ DT_TEST(AttachChecks)
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_ATTACHED);
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Second, Fix.Device, PORT), DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 2);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 2);
 
     // Another port works alongside.
     DT_ASSERT_OK(DtDevice_SetToInput(Fix.Device, PORT_OUTPUT));
@@ -319,30 +319,30 @@ DT_TEST(AttachRefusals)
                  DTAPI_E_TAINTED_FW);
     Fix.Device->Info.FirmwareStatus = DT_FWSTATUS_UPTODATE;
 
-    SimDtPcieOverrideProperty("CAP_ASI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_ASI", PORT - 1, true, 0);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
 
-    SimDtPcieReset();
-    SimDtPcieOverrideProperty("CAP_MATRIX", PORT - 1, true, 1);
+    SimDtPcie_Reset();
+    SimDtPcie_OverrideProperty("CAP_MATRIX", PORT - 1, true, 1);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
 
-    SimDtPcieReset();
-    SimDtPcieSetDriverVersion(2, 0, 2, 327);
+    SimDtPcie_Reset();
+    SimDtPcie_SetDriverVersion(2, 0, 2, 327);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_DRIVER_INCOMP);
 
     // A 4K standard attaches, but does not receive.
-    SimDtPcieReset();
-    SimDtPcieOverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
-    SimDtPcieOverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    SimDtPcie_Reset();
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
@@ -357,14 +357,14 @@ DT_TEST(AttachRefusals)
     }
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
 
-    SimDtPcieReset();
+    SimDtPcie_Reset();
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
                                       DTAPI_IOCONFIG_ASI, -1));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 1);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
     FINISH(Fix);
 }
 
@@ -383,26 +383,26 @@ DT_TEST(AttachCleansUpAfterFailures)
     size_t i;
     for (i = 0; i < sizeof(Commands) / sizeof(Commands[0]); i++)
     {
-        SimDtPcieFailRxCmd(Commands[i], DT_STATUS_NOT_SUPPORTED);
+        SimDtPcie_FailRxCmd(Commands[i], DT_STATUS_NOT_SUPPORTED);
         DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                      DTAPI_E_NOT_SUPPORTED);
-        SimDtPcieGetRxState(PORT - 1, &State);
+        SimDtPcie_GetRxState(PORT - 1, &State);
         DT_ASSERT_EQ(State.NumUsers, 0);
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 1);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
     }
-    SimDtPcieFailRxCmd(-1, 0);
+    SimDtPcie_FailRxCmd(-1, 0);
 
     // An allocation failing on the way.
     for (i = 0; i < 40; i++)
     {
-        DtAllocFailAfter((int)i);
+        DtAlloc_FailAfter((int)i);
         DtapiResult Result = DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT);
-        DtAllocFailAfter(-1);
+        DtAlloc_FailAfter(-1);
         if (Result == DTAPI_OK)
             break;
-        SimDtPcieGetRxState(PORT - 1, &State);
+        SimDtPcie_GetRxState(PORT - 1, &State);
         DT_ASSERT_EQ(State.NumUsers, 0);
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 1);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
     }
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);
@@ -422,30 +422,30 @@ DT_TEST(RingHoldsTwoFramesAtLeast)
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
     DtSdiFrameLayout Layout;
     DT_ASSERT(
-        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
-    size_t Coded = DtSdiFrameCodedSize(&Layout);
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    size_t Coded = DtSdiFrame_CodedSize(&Layout);
 
     // Two frames of ring, but not of load.
-    SimDtPcieLimitRxRing(2 * Coded);
+    SimDtPcie_LimitRxRing(2 * Coded);
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_DEV_DRIVER);
     SimRxState State;
-    SimDtPcieGetRxState(PORT - 1, &State);
+    SimDtPcie_GetRxState(PORT - 1, &State);
     DT_ASSERT_EQ(State.NumUsers, 0);
 
-    SimDtPcieLimitRxRing((2 * Coded + Word + Unit - 1) / Unit * Unit);
+    SimDtPcie_LimitRxRing((2 * Coded + Word + Unit - 1) / Unit * Unit);
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
-    SimDtPcieGetRxState(PORT - 1, &State);
+    SimDtPcie_GetRxState(PORT - 1, &State);
     DT_ASSERT((State.RingSize - Word) / Coded == 2);
 
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
-    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrameRawSize(&Layout, 10));
+    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrame_RawSize(&Layout, 10));
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
-    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrameRawSize(&Layout, 16));
+    DT_ASSERT_EQ(Max, 2 * (int)DtSdiFrame_RawSize(&Layout, 16));
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);
 }
@@ -461,17 +461,17 @@ DT_TEST(FourKPortReadsNothing)
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
 
-    SimDtPcieOverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
-    SimDtPcieOverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
     DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
                                       DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
     int Size = 4;
-    uint64_t Before = OsMonotonicMs();
+    uint64_t Before = OsTime_MonotonicMs();
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 30),
                  DTAPI_E_TIMEOUT);
-    DT_ASSERT(OsMonotonicMs() - Before >= 30);
+    DT_ASSERT(OsTime_MonotonicMs() - Before >= 30);
     DT_ASSERT_EQ(Size, 0);
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);
@@ -511,7 +511,7 @@ DT_TEST(ReadsFramesBitForBit)
 
             if (!Start(&Fix, DtFailures))
                 return;
-            SimDtPcieLimitRxRing(40 * 1024 * 1024);
+            SimDtPcie_LimitRxRing(40 * 1024 * 1024);
             if (!Receive(&Fix, Standards[s], Modes[m], DtFailures))
                 return;
             for (uint32_t Frame = 0; Frame < 2; Frame++)
@@ -574,9 +574,9 @@ DT_TEST(ReadsAcrossTheEndOfTheRing)
 
             if (!Start(&Fix, DtFailures))
                 return;
-            SimDtPcieSetRxAlignment(Alignments[a]);
-            SimDtPcieMapRxRingAsLinux(r % 2 == 1);
-            SimDtPcieLimitRxRing(Rings[r]);
+            SimDtPcie_SetRxAlignment(Alignments[a]);
+            SimDtPcie_MapRxRingAsLinux(r % 2 == 1);
+            SimDtPcie_LimitRxRing(Rings[r]);
             if (!Receive(&Fix, DTAPI_VIDSTD_625I50,
                          DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B, DtFailures))
             {
@@ -613,12 +613,12 @@ DT_TEST(RecoversFromFaults)
 
         if (!Start(&Fix, DtFailures))
             return;
-        SimDtPcieLimitRxRing(8 * 1024 * 1024);
+        SimDtPcie_LimitRxRing(8 * 1024 * 1024);
         if (!Receive(&Fix, DTAPI_VIDSTD_625I50,
                      DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B, DtFailures))
             return;
         DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
-        SimDtPcieInjectRxFault(PORT - 1, Cases[i].Fault);
+        SimDtPcie_InjectRxFault(PORT - 1, Cases[i].Fault);
         DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next, 16, DtFailures));
         DT_ASSERT(
             ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, Cases[i].Next + 1, 16, DtFailures));
@@ -639,8 +639,8 @@ DT_TEST(FullRingSetsOverflow)
     if (!Start(&Fix, DtFailures))
         return;
     DtSdiFrameLayout Layout;
-    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
-    SimDtPcieLimitRxRing(5 * DtSdiFrameCodedSize(&Layout) / 2);
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
+    SimDtPcie_LimitRxRing(5 * DtSdiFrame_CodedSize(&Layout) / 2);
     if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
                  DtFailures))
         return;
@@ -651,9 +651,9 @@ DT_TEST(FullRingSetsOverflow)
     DT_ASSERT_EQ(Latched, 0);
 
     // Two whole frames wait.
-    SimDtPcieRunRxEvents(PORT - 1, 8);
+    SimDtPcie_RunRxEvents(PORT - 1, 8);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
-    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 16));
+    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrame_RawSize(&Layout, 16));
 
     // That fills the ring's load, so the load is the FIFO size: the rest of the ring,
     // less than a frame, never counts.
@@ -661,7 +661,7 @@ DT_TEST(FullRingSetsOverflow)
     DT_ASSERT_EQ(Load, Max);
 
     // Three more do not fit, and the load stays within the FIFO size.
-    SimDtPcieRunRxEvents(PORT - 1, 12);
+    SimDtPcie_RunRxEvents(PORT - 1, 12);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT(Load <= Max);
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
@@ -688,14 +688,14 @@ DT_TEST(SkipsAFrameThatLostLines)
         return;
     DtSdiFrameLayout Layout;
     DT_ASSERT(
-        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
-    SimDtPcieLimitRxRing(5 * DtSdiFrameCodedSize(&Layout) / 2);
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    SimDtPcie_LimitRxRing(5 * DtSdiFrame_CodedSize(&Layout) / 2);
     if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
                  DtFailures))
         return;
 
     // Frames 0 and 1 fit; frame 2 is cut short, and later frames lose everything.
-    SimDtPcieRunRxEvents(PORT - 1, 20);
+    SimDtPcie_RunRxEvents(PORT - 1, 20);
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
 
@@ -728,20 +728,20 @@ DT_TEST(FifoLoadBeforeTheFirstRead)
         return;
     DtSdiFrameLayout Layout;
     DT_ASSERT(
-        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
     if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B,
                  DtFailures))
         return;
 
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, 0);
-    SimDtPcieRunRxEvents(PORT - 1, 12);
+    SimDtPcie_RunRxEvents(PORT - 1, 12);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
-    DT_ASSERT_EQ(Load, 3 * (int)DtSdiFrameRawSize(&Layout, 10));
+    DT_ASSERT_EQ(Load, 3 * (int)DtSdiFrame_RawSize(&Layout, 10));
 
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 10, DtFailures));
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
-    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 10));
+    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrame_RawSize(&Layout, 10));
     FINISH(Fix);
 }
 
@@ -795,18 +795,18 @@ DT_TEST(ReadFrameTimesOut)
         return;
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
-    uint64_t Before = OsMonotonicMs();
+    uint64_t Before = OsTime_MonotonicMs();
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 40),
                  DTAPI_E_TIMEOUT);
-    DT_ASSERT(OsMonotonicMs() - Before >= 40);
+    DT_ASSERT(OsTime_MonotonicMs() - Before >= 40);
     DT_ASSERT_EQ(Size, 0);
 
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     Size = BUFFER_SIZE;
-    Before = OsMonotonicMs();
+    Before = OsTime_MonotonicMs();
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 40),
                  DTAPI_E_TIMEOUT);
-    DT_ASSERT(OsMonotonicMs() - Before >= 40);
+    DT_ASSERT(OsTime_MonotonicMs() - Before >= 40);
     FINISH(Fix);
 }
 
@@ -839,12 +839,12 @@ DT_TEST(DetachCancelsARead)
     R.Channel = Fix.Channel;
     R.Buffer = Fix.Buffer;
     R.Result = DTAPI_OK;
-    OsThread* Thread = OsThreadStart(ReadForever, &R);
+    OsThread* Thread = OsThread_Start(ReadForever, &R);
     DT_ASSERT(Thread != NULL);
-    OsSleepMs(60);
+    OsTime_SleepMs(60);
 
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 1));
-    OsThreadJoin(Thread);
+    OsThread_Join(Thread);
     DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
     FINISH(Fix);
 }
@@ -861,25 +861,25 @@ DT_TEST(DetachThatTimesOutLeavesTheChannelUsable)
         return;
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
-    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 400);
+    SimDtPcie_SlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 400);
 
     Reader R;
     R.Channel = Fix.Channel;
     R.Buffer = Fix.Buffer;
     R.Result = DTAPI_OK;
-    OsThread* Thread = OsThreadStart(ReadForever, &R);
+    OsThread* Thread = OsThread_Start(ReadForever, &R);
     DT_ASSERT(Thread != NULL);
-    OsSleepMs(60);
+    OsTime_SleepMs(60);
 
     DT_ASSERT_EQ(DtInpChannel_Detach(Fix.Channel, 0), DTAPI_E_TIMEOUT);
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
                  DTAPI_E_TIMEOUT);
 
-    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 0);
+    SimDtPcie_SlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 0);
     for (int Tries = 0; Tries < 10 && Result == DTAPI_E_TIMEOUT; Tries++)
         Result = DtInpChannel_Detach(Fix.Channel, 0);
     DT_ASSERT_OK(Result);
-    OsThreadJoin(Thread);
+    OsThread_Join(Thread);
     DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
     DT_ASSERT_EQ(DtInpChannel_Detach(Fix.Channel, 0), DTAPI_E_NOT_ATTACHED);
     FINISH(Fix);
@@ -895,19 +895,19 @@ DT_TEST(FreeWaitsForARead)
         return;
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
-    SimDtPcieSlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 300);
+    SimDtPcie_SlowRxCmd(DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, 300);
 
     Reader R;
     R.Channel = Fix.Channel;
     R.Buffer = Fix.Buffer;
     R.Result = DTAPI_OK;
-    OsThread* Thread = OsThreadStart(ReadForever, &R);
+    OsThread* Thread = OsThread_Start(ReadForever, &R);
     DT_ASSERT(Thread != NULL);
-    OsSleepMs(60);
+    OsTime_SleepMs(60);
 
     DtInpChannel_Free(Fix.Channel);
     Fix.Channel = NULL;
-    OsThreadJoin(Thread);
+    OsThread_Join(Thread);
     DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
     FINISH(Fix);
 }
@@ -938,8 +938,8 @@ DT_TEST(ReadAfterAModeChangeChecksTheBuffer)
         return;
     DtSdiFrameLayout Layout;
     DT_ASSERT(
-        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
-    size_t Raw10 = DtSdiFrameRawSize(&Layout, 10);
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    size_t Raw10 = DtSdiFrame_RawSize(&Layout, 10);
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
@@ -952,16 +952,16 @@ DT_TEST(ReadAfterAModeChangeChecksTheBuffer)
     R.Buffer = Fix.Buffer;
     R.Size = (int)Raw10;
     R.Result = DTAPI_OK;
-    OsThread* Thread = OsThreadStart(ReadSized, &R);
+    OsThread* Thread = OsThread_Start(ReadSized, &R);
     DT_ASSERT(Thread != NULL);
-    OsSleepMs(60);
+    OsTime_SleepMs(60);
 
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_IDLE));
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
-    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
+    SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
-    OsThreadJoin(Thread);
+    OsThread_Join(Thread);
 
     DT_ASSERT_EQ(R.Result, DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(R.Size, 0);
@@ -1006,7 +1006,7 @@ DT_TEST(ReceiveModes)
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_STAT));
 
     // The 8-bit mode is set, but receiving in it fails and leaves the channel idle.
-    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_1080I50);
+    SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_1080I50);
     DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
                  DTAPI_E_CONFIG_RAW_SDI);
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
@@ -1048,7 +1048,7 @@ DT_TEST(IoConfiguration)
     // A new standard reconfigures the channel.
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_625I50));
-    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
+    SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
@@ -1063,20 +1063,20 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_EQ(Value, 0);
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_720P50));
-    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_720P50);
+    SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_720P50);
     SimRxState State;
-    SimDtPcieGetRxState(PORT - 1, &State);
+    SimDtPcie_GetRxState(PORT - 1, &State);
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_720P50, State.NextFrame, 16, DtFailures));
 
     // The FIFO size follows the standard's ring.
     DtSdiFrameLayout Layout;
     DT_ASSERT(
-        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P50, SIM_RX_STREAM_ALIGNMENT));
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P50, SIM_RX_STREAM_ALIGNMENT));
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Value));
     DT_ASSERT_EQ(Value,
                  (int)((State.RingSize - SIM_RX_PCIE_DATA_WIDTH / 8) /
-                       DtSdiFrameCodedSize(&Layout) * DtSdiFrameRawSize(&Layout, 16)));
+                       DtSdiFrame_CodedSize(&Layout) * DtSdiFrame_RawSize(&Layout, 16)));
     (void)SubValue;
     FINISH(Fix);
 }
@@ -1104,7 +1104,7 @@ DT_TEST(DetectsTheIoStandard)
     Signal.NumLinesF1 = 750;
     Signal.FramePeriod = 20000000;
     Signal.SdiRate = DT_DRV_SDIRATE_HD;
-    SimDtPcieSetSdiSignal(PORT - 1, &Signal);
+    SimDtPcie_SetSdiSignal(PORT - 1, &Signal);
     DT_ASSERT_OK(DtInpChannel_DetectIoStd(Fix.Channel, &Value, &SubValue));
     DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_HDSDI);
     DT_ASSERT_EQ(SubValue, DTAPI_IOCONFIG_720P50);

@@ -53,15 +53,15 @@ typedef struct DtVidStdInfo
 } DtVidStdInfo;
 
 // The information of a video standard; NULL for a code that is no standard.
-const DtVidStdInfo* DtVidStdFind(int VidStd);
+const DtVidStdInfo* DtVidStd_Find(int VidStd);
 
-// The standards in the order MxFramePropsSdi::Deduce tries them: DtVidStdAt(Index) for an
-// Index from 0 to DtVidStdCount() - 1, NULL outside that range.
-int DtVidStdCount(void);
-const DtVidStdInfo* DtVidStdAt(int Index);
+// The standards in the order MxFramePropsSdi::Deduce tries them: DtVidStd_At(Index) for
+// an Index from 0 to DtVidStd_Count() - 1, NULL outside that range.
+int DtVidStd_Count(void);
+const DtVidStdInfo* DtVidStd_At(int Index);
 
 // True for the eleven 2160p standards, as HdSdiUtil::Is4k in DTAPI.
-bool DtVidStdIs4k(int VidStd);
+bool DtVidStd_Is4k(int VidStd);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standard properties +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -79,17 +79,17 @@ typedef struct DtVidStdProps
 // Fills Props for a video standard carried as LinkStd, as MxVidStdPropsSdi::Init. Returns
 // false, with Props->VidStd DTAPI_VIDSTD_UNKNOWN, for an unknown video or link standard
 // and for a 2160p standard without a link standard.
-bool DtVidStdPropsInit(DtVidStdProps* Props, int VidStd, int LinkStd);
+bool DtVidStdProps_Init(DtVidStdProps* Props, int VidStd, int LinkStd);
 
 // The standard a VPID describes, as MxVidStdPropsSdi::FromSmpte352.
-void DtVidStdPropsFromSmpte352(DtVidStdProps* Props, uint32_t Vpid);
+void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid);
 
 // Finds the standard of a signal from what an SDI receiver reports, as
-// MxVidStdPropsSdi::Deduce; the arguments are those of DtFramePropsDeduce.
-void DtVidStdPropsDeduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
-                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                         bool Is3gLevelB, uint32_t Vpid, int SdiRate);
+// MxVidStdPropsSdi::Deduce; the arguments are those of DtFrameProps_Deduce.
+void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
+                          int LineNumSymHanc, int LineNumSymVanc, double Fps,
+                          bool Is3gLevelB, uint32_t Vpid, int SdiRate);
 
 // The number of cables a link standard uses: four for SMPTE 425 quad links, one for the
 // others, 0 for a value that is no link standard.
-int DtVidStdNumPhysicalLinks(int LinkStd);
+int DtVidStd_NumPhysicalLinks(int LinkStd);

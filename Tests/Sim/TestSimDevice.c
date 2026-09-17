@@ -25,7 +25,7 @@
 // the calling case must return.
 static OsDrv* OpenSim(int* DtFailures)
 {
-    OsDrv* Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
 
     if (Drv == NULL)
     {
@@ -34,11 +34,11 @@ static OsDrv* OpenSim(int* DtFailures)
         return NULL;
     }
 
-    if (!OsDrvIsEmulated(Drv))
+    if (!OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: device 0 is real hardware; refusing to run against it\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return NULL;
     }
 
@@ -54,36 +54,36 @@ DT_TEST(EmulatedDeviceOpens)
     if (Drv == NULL)
         return;
 
-    DT_ASSERT(OsDrvIsEmulated(Drv));
-    DT_ASSERT_EQ(OsDrvLastError(Drv), 0);
-    OsDrvClose(Drv);
+    DT_ASSERT(OsDrv_IsEmulated(Drv));
+    DT_ASSERT_EQ(OsDrv_LastError(Drv), 0);
+    OsDrv_Close(Drv);
 }
 
 // The emulator replaces the hardware rather than adding to it: one device, at index 0.
 DT_TEST(OnlyIndexZeroExists)
 {
-    DT_ASSERT(OsDrvOpen(1) == NULL);
-    DT_ASSERT(OsDrvOpen(DT_MAX_DEVICES - 1) == NULL);
+    DT_ASSERT(OsDrv_Open(1) == NULL);
+    DT_ASSERT(OsDrv_Open(DT_MAX_DEVICES - 1) == NULL);
 }
 
 DT_TEST(OutOfRangeIndexIsRefused)
 {
-    DT_ASSERT(OsDrvOpen(-1) == NULL);
-    DT_ASSERT(OsDrvOpen(DT_MAX_DEVICES) == NULL);
+    DT_ASSERT(OsDrv_Open(-1) == NULL);
+    DT_ASSERT(OsDrv_Open(DT_MAX_DEVICES) == NULL);
 }
 
 DT_TEST(NullHandleIsAccepted)
 {
     uint32_t Status = 0xDEAD;
 
-    OsDrvClose(NULL);
-    DT_ASSERT(!OsDrvIsEmulated(NULL));
-    DT_ASSERT_EQ(OsDrvLastError(NULL), 0);
+    OsDrv_Close(NULL);
+    DT_ASSERT(!OsDrv_IsEmulated(NULL));
+    DT_ASSERT_EQ(OsDrv_LastError(NULL), 0);
     uint8_t In[16];
-    DT_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
-    DT_ASSERT_EQ(OsDrvIoCtl(NULL, 0, In, sizeof(In), NULL, NULL, NULL),
+    DT_ASSERT_EQ(OsDrv_IoCtl(NULL, 0, In, sizeof(In), NULL, NULL, NULL),
                  OS_IOCTL_COMMUNICATION);
 }
 
@@ -97,16 +97,16 @@ DT_TEST(RequestWithoutInputIsRefused)
         return;
 
     uint8_t In[16];
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
-                            sizeof(In), NULL, NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
+                             sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), In, 0, NULL,
-                            NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), In, 0, NULL,
+                             NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -119,13 +119,13 @@ DT_TEST(DriverVersionComesThrough)
         return;
 
     DtDriverVersion Version;
-    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, &Version), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieCmd_GetDriverVersion(Drv, &Version), DTAPI_OK);
     DT_ASSERT_EQ(Version.Major, SIM_DRIVER_MAJOR);
     DT_ASSERT_EQ(Version.Minor, SIM_DRIVER_MINOR);
     DT_ASSERT_EQ(Version.Micro, SIM_DRIVER_MICRO);
     DT_ASSERT_EQ(Version.Build, SIM_DRIVER_BUILD);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(DeviceInfoComesThrough)
@@ -136,7 +136,7 @@ DT_TEST(DeviceInfoComesThrough)
         return;
 
     DtDeviceInfo Info;
-    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, &Info), DTAPI_OK);
+    DT_ASSERT_EQ(DtPcieCmd_GetDeviceInfo(Drv, &Info), DTAPI_OK);
     DT_ASSERT_EQ(Info.TypeNumber, SIM_TYPE_NUMBER);
     DT_ASSERT_EQ(Info.Serial, (int64_t)SIM_SERIAL);
     DT_ASSERT_EQ(Info.HardwareRevision, SIM_HARDWARE_REVISION);
@@ -146,7 +146,7 @@ DT_TEST(DeviceInfoComesThrough)
     DT_ASSERT_EQ(Info.VendorId, SIM_VENDOR_ID);
     DT_ASSERT_EQ(Info.DeviceId, SIM_DEVICE_ID);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(CommandsRejectNullArguments)
@@ -157,13 +157,13 @@ DT_TEST(CommandsRejectNullArguments)
         return;
 
     DtDriverVersion Version;
-    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(NULL, &Version), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetDriverVersion(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetDriverVersion(NULL, &Version), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetDriverVersion(Drv, NULL), DTAPI_E_INVALID_ARG);
     DtDeviceInfo Info;
-    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(NULL, &Info), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdGetDeviceInfo(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetDeviceInfo(NULL, &Info), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GetDeviceInfo(Drv, NULL), DTAPI_E_INVALID_ARG);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Wire format +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -186,14 +186,14 @@ DT_TEST(OutputBufferTooSmallIsRefused)
     DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
-                            sizeof(In), Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+                             sizeof(In), Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
-    DT_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_INVALID_PARAMETER);
+    DT_ASSERT_EQ(OsDrv_LastError(Drv), DT_STATUS_INVALID_PARAMETER);
     DT_ASSERT_EQ(OutSize, sizeof(Out));
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(InputShorterThanHeaderIsRefused)
@@ -208,13 +208,13 @@ DT_TEST(InputShorterThanHeaderIsRefused)
 
     uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
-                            &Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
+                             &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
-    DT_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_INVALID_PARAMETER);
+    DT_ASSERT_EQ(OsDrv_LastError(Drv), DT_STATUS_INVALID_PARAMETER);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // The header is checked before the command is looked at, so a short input is an invalid
@@ -229,12 +229,12 @@ DT_TEST(ShortInputIsRefusedBeforeTheCommand)
 
     uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In), NULL,
-                            NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In), NULL,
+                             NULL, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST(DeviceInfoOutputTooSmallIsRefused)
@@ -250,12 +250,12 @@ DT_TEST(DeviceInfoOutputTooSmallIsRefused)
     DtIoctlGetDevInfoInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
-                            Out, &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
+                             Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 // A command the emulator does not model is refused, not answered with zeroes. Silently
@@ -275,18 +275,18 @@ DT_TEST(UnmodelledCommandIsRefused)
     DtIoctlInputDataHdr In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,
-                            &OutSize, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,
+                             &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
-    DT_ASSERT_EQ(OsDrvLastError(Drv), DT_STATUS_NOT_SUPPORTED);
+    DT_ASSERT_EQ(OsDrv_LastError(Drv), DT_STATUS_NOT_SUPPORTED);
 
-    DT_ASSERT_EQ(OsDrvIoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), NULL,
-                            NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In),
+                             NULL, NULL, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
 
-    OsDrvClose(Drv);
+    OsDrv_Close(Drv);
 }
 
 DT_TEST_MAIN("SimDevice", DT_RUN(EmulatedDeviceOpens), DT_RUN(OnlyIndexZeroExists),

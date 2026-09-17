@@ -30,7 +30,7 @@
 
 // Fills the header every command starts with, for the driver function or building block
 // with this UUID in the port with this index.
-void DtPcieCmdInitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex);
+void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex);
 
 // Issues a command whose answer has a fixed size, and turns the outcome into a result:
 // a refused command into the result its DtStatus stands for, and a failure to reach the
@@ -41,7 +41,7 @@ void DtPcieCmdInitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIn
 // failure: the fields it did not write would otherwise be read as zeroes and trusted.
 //
 // That check only has teeth on Windows and against the emulator. The Linux driver does
-// not report how much it wrote, so there OsDrvIoCtl leaves the size as it was and a
+// not report how much it wrote, so there OsDrv_IoCtl leaves the size as it was and a
 // short answer cannot be detected here.
-DtapiResult DtPcieCmdIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
-                           void* Out, size_t OutSize);
+DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
+                            void* Out, size_t OutSize);

@@ -22,9 +22,9 @@ struct OsDrv
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-OsDrv* OsDrvOpen(int Index)
+OsDrv* OsDrv_Open(int Index)
 {
     const OsBackend* Backend;
     bool Emulated;
@@ -36,8 +36,8 @@ OsDrv* OsDrvOpen(int Index)
 
     // The emulator is checked before real hardware is enumerated, so that an application
     // needs no change and no new call to use it.
-    Emulated = OsSimIsRequested();
-    Backend = Emulated ? OsSimBackend() : OsPlatformBackend();
+    Emulated = OsSim_IsRequested();
+    Backend = Emulated ? OsSim_Backend() : OsPlatform_Backend();
 
     // A build without the platform backend, asked for real hardware.
     if (Backend == NULL)
@@ -47,7 +47,7 @@ OsDrv* OsDrvOpen(int Index)
     if (State == NULL)
         return NULL;
 
-    Drv = (OsDrv*)DtMalloc(sizeof(OsDrv));
+    Drv = (OsDrv*)DtAlloc_Malloc(sizeof(OsDrv));
     if (Drv == NULL)
     {
         Backend->Close(State);
@@ -60,30 +60,30 @@ OsDrv* OsDrvOpen(int Index)
     return Drv;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvClose -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_Close -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsDrvClose(OsDrv* Drv)
+void OsDrv_Close(OsDrv* Drv)
 {
     if (Drv == NULL)
         return;
 
     Drv->Backend->Close(Drv->State);
-    DtFree(Drv);
+    DtAlloc_Free(Drv);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIsEmulated -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_IsEmulated -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool OsDrvIsEmulated(const OsDrv* Drv)
+bool OsDrv_IsEmulated(const OsDrv* Drv)
 {
     return Drv != NULL && Drv->IsEmulated;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_IoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
-               size_t* OutSize, uint32_t* DrvStatus)
+int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
+                size_t* OutSize, uint32_t* DrvStatus)
 {
     uint32_t Ignored;
 
@@ -102,9 +102,9 @@ int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* O
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_MapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size)
+void* OsDrv_MapMemory(OsDrv* Drv, uint64_t Offset, size_t Size)
 {
     if (Drv == NULL || Size == 0 || Drv->Backend->MapMemory == NULL)
         return NULL;
@@ -112,9 +112,9 @@ void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size)
     return Drv->Backend->MapMemory(Drv->State, Offset, Size);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvUnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_UnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size)
+void OsDrv_UnmapMemory(OsDrv* Drv, void* Address, size_t Size)
 {
     if (Drv == NULL || Address == NULL || Drv->Backend->UnmapMemory == NULL)
         return;
@@ -122,9 +122,9 @@ void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size)
     Drv->Backend->UnmapMemory(Drv->State, Address, Size);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_LastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint32_t OsDrvLastError(const OsDrv* Drv)
+uint32_t OsDrv_LastError(const OsDrv* Drv)
 {
     if (Drv == NULL)
         return 0;

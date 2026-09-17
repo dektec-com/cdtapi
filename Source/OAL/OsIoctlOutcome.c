@@ -14,9 +14,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsIoctlClassifyWindows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- OsIoctlOutcome_ClassifyWindows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsIoctlClassifyWindows(uint32_t Error, uint32_t* DrvStatus)
+int OsIoctlOutcome_ClassifyWindows(uint32_t Error, uint32_t* DrvStatus)
 {
     *DrvStatus = 0;
 
@@ -32,9 +32,9 @@ int OsIoctlClassifyWindows(uint32_t Error, uint32_t* DrvStatus)
     return OS_IOCTL_COMMUNICATION;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsIoctlClassifyLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- OsIoctlOutcome_ClassifyLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsIoctlClassifyLinux(int Rc, uint32_t* DrvStatus)
+int OsIoctlOutcome_ClassifyLinux(int Rc, uint32_t* DrvStatus)
 {
     *DrvStatus = 0;
 

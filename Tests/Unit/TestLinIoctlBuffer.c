@@ -18,8 +18,8 @@
 
 DT_TEST(SizeWithoutHeaderIsTheLargerSide)
 {
-    DT_ASSERT_EQ(LinIoctlBufferSize(false, 16, 4), 16);
-    DT_ASSERT_EQ(LinIoctlBufferSize(false, 4, 104), 104);
+    DT_ASSERT_EQ(LinIoctlBuffer_Size(false, 16, 4), 16);
+    DT_ASSERT_EQ(LinIoctlBuffer_Size(false, 4, 104), 104);
 }
 
 DT_TEST(HeaderCountsAgainstTheInputSide)
@@ -27,10 +27,10 @@ DT_TEST(HeaderCountsAgainstTheInputSide)
     DT_ASSERT_EQ(LIN_IOCTL_SIZE_HEADER_BYTES, 8);
 
     // Input 16 plus header 8 is 24, which beats an output of 16.
-    DT_ASSERT_EQ(LinIoctlBufferSize(true, 16, 16), 24);
+    DT_ASSERT_EQ(LinIoctlBuffer_Size(true, 16, 16), 24);
 
     // Output 104 still beats input 16 plus header 8.
-    DT_ASSERT_EQ(LinIoctlBufferSize(true, 16, 104), 104);
+    DT_ASSERT_EQ(LinIoctlBuffer_Size(true, 16, 104), 104);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Packing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -45,7 +45,7 @@ DT_TEST(HeaderPrecedesInput)
         In[i] = (uint8_t)(0xA0 + i);
 
     uint8_t Buf[32];
-    DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), 16, Buf, sizeof(Buf)));
+    DT_ASSERT_OK(LinIoctlBuffer_Pack(true, In, sizeof(In), 16, Buf, sizeof(Buf)));
 
     uint32_t Sizes[2];
     memcpy(Sizes, Buf, sizeof(Sizes));
@@ -59,7 +59,7 @@ DT_TEST(WithoutHeaderInputStartsAtZero)
     uint8_t In[4] = {1, 2, 3, 4};
     uint8_t Buf[8];
 
-    DT_ASSERT_OK(LinIoctlPack(false, In, sizeof(In), 8, Buf, sizeof(Buf)));
+    DT_ASSERT_OK(LinIoctlBuffer_Pack(false, In, sizeof(In), 8, Buf, sizeof(Buf)));
     DT_ASSERT_MEM(Buf, In, sizeof(In));
 }
 
@@ -71,7 +71,7 @@ DT_TEST(RestOfTheBufferIsCleared)
     uint8_t Buf[64];
 
     memset(Buf, 0xEE, sizeof(Buf));
-    DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), 64, Buf, sizeof(Buf)));
+    DT_ASSERT_OK(LinIoctlBuffer_Pack(true, In, sizeof(In), 64, Buf, sizeof(Buf)));
 
     for (size_t i = 8 + sizeof(In); i < sizeof(Buf); i++)
         DT_ASSERT_EQ(Buf[i], 0);
@@ -85,13 +85,13 @@ DT_TEST(PackRefusesBadArguments)
 
     // Too small for header plus input.
     uint8_t Small[8];
-    DT_ASSERT_EQ(LinIoctlPack(true, In, sizeof(In), 0, Small, sizeof(Small)), -1);
-    DT_ASSERT_EQ(LinIoctlPack(true, In, sizeof(In), 0, NULL, 32), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Pack(true, In, sizeof(In), 0, Small, sizeof(Small)), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Pack(true, In, sizeof(In), 0, NULL, 32), -1);
     uint8_t Buf[32];
-    DT_ASSERT_EQ(LinIoctlPack(true, NULL, 4, 0, Buf, sizeof(Buf)), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Pack(true, NULL, 4, 0, Buf, sizeof(Buf)), -1);
 
     // No input at all is allowed.
-    DT_ASSERT_OK(LinIoctlPack(false, NULL, 0, 4, Buf, sizeof(Buf)));
+    DT_ASSERT_OK(LinIoctlBuffer_Pack(false, NULL, 0, 4, Buf, sizeof(Buf)));
 }
 
 // The header holds 32-bit sizes. A larger size cannot be represented and must be refused
@@ -105,8 +105,8 @@ DT_TEST(SizeBeyondThirtyTwoBitsIsRefused)
         return;
 
     uint8_t Buf[16];
-    DT_ASSERT_EQ(LinIoctlPack(true, NULL, 0, (size_t)UINT32_MAX + 1, Buf, (size_t)-1),
-                 -1);
+    DT_ASSERT_EQ(
+        LinIoctlBuffer_Pack(true, NULL, 0, (size_t)UINT32_MAX + 1, Buf, (size_t)-1), -1);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Unpacking +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -120,13 +120,14 @@ DT_TEST(AnswerIsReadFromOffsetZero)
     memset(In, 0x11, sizeof(In));
     uint8_t Buf[24];
     uint8_t Out[16];
-    DT_ASSERT_OK(LinIoctlPack(true, In, sizeof(In), sizeof(Out), Buf, sizeof(Buf)));
+    DT_ASSERT_OK(
+        LinIoctlBuffer_Pack(true, In, sizeof(In), sizeof(Out), Buf, sizeof(Buf)));
 
     // What the driver does: overwrite the start of the block with its answer.
     for (size_t i = 0; i < sizeof(Out); i++)
         Buf[i] = (uint8_t)(0x50 + i);
 
-    DT_ASSERT_OK(LinIoctlUnpack(Buf, sizeof(Buf), Out, sizeof(Out)));
+    DT_ASSERT_OK(LinIoctlBuffer_Unpack(Buf, sizeof(Buf), Out, sizeof(Out)));
     DT_ASSERT_EQ(Out[0], 0x50);
     DT_ASSERT_EQ(Out[15], 0x5F);
 }
@@ -138,12 +139,12 @@ DT_TEST(UnpackRefusesBadArguments)
     memset(Buf, 0, sizeof(Buf));
 
     uint8_t Out[16];
-    DT_ASSERT_EQ(LinIoctlUnpack(Buf, sizeof(Buf), Out, sizeof(Out)), -1);
-    DT_ASSERT_EQ(LinIoctlUnpack(NULL, 8, Out, 4), -1);
-    DT_ASSERT_EQ(LinIoctlUnpack(Buf, sizeof(Buf), NULL, 4), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Unpack(Buf, sizeof(Buf), Out, sizeof(Out)), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Unpack(NULL, 8, Out, 4), -1);
+    DT_ASSERT_EQ(LinIoctlBuffer_Unpack(Buf, sizeof(Buf), NULL, 4), -1);
 
     // Nothing to copy is allowed.
-    DT_ASSERT_OK(LinIoctlUnpack(Buf, sizeof(Buf), NULL, 0));
+    DT_ASSERT_OK(LinIoctlBuffer_Unpack(Buf, sizeof(Buf), NULL, 0));
 }
 
 DT_TEST_MAIN("LinIoctlBuffer", DT_RUN(SizeWithoutHeaderIsTheLargerSide),

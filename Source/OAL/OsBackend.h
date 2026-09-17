@@ -21,7 +21,7 @@
 // A backend owns an opaque state pointer of its own. Open returns NULL when there is no
 // device at that index, which is not an error.
 //
-// IoCtl follows the OsDrvIoCtl contract, except that DrvStatus is never NULL.
+// IoCtl follows the OsDrv_IoCtl contract, except that DrvStatus is never NULL.
 //
 
 typedef struct OsBackend
@@ -32,18 +32,18 @@ typedef struct OsBackend
                  size_t* OutSize, uint32_t* DrvStatus);
     uint32_t (*LastError)(const void* State);
 
-    // NULL for a backend that maps no memory; see OsDrvMapMemory.
+    // NULL for a backend that maps no memory; see OsDrv_MapMemory.
     void* (*MapMemory)(void* State, uint64_t Offset, size_t Size);
     void (*UnmapMemory)(void* State, void* Address, size_t Size);
 } OsBackend;
 
 // The emulated device. Always present, so that a build can be tested anywhere.
-const OsBackend* OsSimBackend(void);
+const OsBackend* OsSim_Backend(void);
 
 // True when CDTAPILITE_SIM asks for the emulator. Read once and remembered, so that
 // changing the variable half way through a run cannot leave some handles emulated and
 // others real.
-bool OsSimIsRequested(void);
+bool OsSim_IsRequested(void);
 
 // The real driver on this platform, or NULL in a build made without it.
-const OsBackend* OsPlatformBackend(void);
+const OsBackend* OsPlatform_Backend(void);

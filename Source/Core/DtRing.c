@@ -15,9 +15,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingInit(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
+int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
 {
     // A reserve of zero would make a full ring indistinguishable from an empty one, and a
     // reserve of the whole buffer would leave a ring that can never hold anything.
@@ -34,9 +34,9 @@ int DtRingInit(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Offsets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSetWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_SetWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingSetWriteOffset(DtRing* Ring, size_t Offset)
+int DtRing_SetWriteOffset(DtRing* Ring, size_t Offset)
 {
     // The offset comes from the driver. A value outside the buffer means the two sides
     // disagree about the ring, and continuing would read arbitrary memory.
@@ -53,9 +53,9 @@ int DtRingSetWriteOffset(DtRing* Ring, size_t Offset)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingRestart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Restart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtRingRestart(DtRing* Ring, size_t Offset)
+int DtRing_Restart(DtRing* Ring, size_t Offset)
 {
     if (Ring == NULL || Ring->Base == NULL || Offset >= Ring->Size)
         return -1;
@@ -65,18 +65,18 @@ int DtRingRestart(DtRing* Ring, size_t Offset)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_ReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtRingReadOffset(const DtRing* Ring)
+size_t DtRing_ReadOffset(const DtRing* Ring)
 {
     return Ring != NULL ? Ring->ReadOffset : 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Capacity +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Load -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtRingLoad(const DtRing* Ring)
+size_t DtRing_Load(const DtRing* Ring)
 {
     if (Ring == NULL || Ring->Base == NULL)
         return 0;
@@ -84,26 +84,26 @@ size_t DtRingLoad(const DtRing* Ring)
     return (Ring->WriteOffset + Ring->Size - Ring->ReadOffset) % Ring->Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtRingFree(const DtRing* Ring)
+size_t DtRing_Free(const DtRing* Ring)
 {
     if (Ring == NULL || Ring->Base == NULL)
         return 0;
 
     // Equal to DTAPI's (Read + MaxLoad - Write) % Size whenever the load is within
     // MaxLoad, which SetWriteOffset guarantees; written this way it cannot wrap.
-    size_t Load = DtRingLoad(Ring);
+    size_t Load = DtRing_Load(Ring);
     return Load >= Ring->MaxLoad ? 0 : Ring->MaxLoad - Load;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reading +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingPeek -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Peek -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length)
+int DtRing_Peek(const DtRing* Ring, void* Dst, size_t Length)
 {
-    return DtRingPeekAt(Ring, 0, Dst, Length);
+    return DtRing_PeekAt(Ring, 0, Dst, Length);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAvailable -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -113,14 +113,14 @@ int DtRingPeek(const DtRing* Ring, void* Dst, size_t Length)
 //
 static bool IsAvailable(const DtRing* Ring, size_t Offset, size_t Length)
 {
-    size_t Load = DtRingLoad(Ring);
+    size_t Load = DtRing_Load(Ring);
 
     return Offset <= Load && Length <= Load - Offset;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingPeekAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_PeekAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
+int DtRing_PeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
 {
     if (Ring == NULL || Ring->Base == NULL || Dst == NULL)
         return -1;
@@ -146,9 +146,9 @@ int DtRingPeekAt(const DtRing* Ring, size_t Offset, void* Dst, size_t Length)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSpan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Span -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const uint8_t* DtRingSpan(const DtRing* Ring, size_t Offset, size_t Length)
+const uint8_t* DtRing_Span(const DtRing* Ring, size_t Offset, size_t Length)
 {
     if (Ring == NULL || Ring->Base == NULL || !IsAvailable(Ring, Offset, Length))
         return NULL;
@@ -157,33 +157,33 @@ const uint8_t* DtRingSpan(const DtRing* Ring, size_t Offset, size_t Length)
     return Length <= Ring->Size - Start ? Ring->Base + Start : NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingSkip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Skip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingSkip(DtRing* Ring, size_t Length)
+int DtRing_Skip(DtRing* Ring, size_t Length)
 {
     if (Ring == NULL || Ring->Base == NULL)
         return -1;
 
-    if (Length > DtRingLoad(Ring))
+    if (Length > DtRing_Load(Ring))
         return -1;
 
     Ring->ReadOffset = (Ring->ReadOffset + Length) % Ring->Size;
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingRead -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Read -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRingRead(DtRing* Ring, void* Dst, size_t Length)
+int DtRing_Read(DtRing* Ring, void* Dst, size_t Length)
 {
-    if (DtRingPeek(Ring, Dst, Length) != 0)
+    if (DtRing_Peek(Ring, Dst, Length) != 0)
         return -1;
 
-    return DtRingSkip(Ring, Length);
+    return DtRing_Skip(Ring, Length);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRingClear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Clear -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtRingClear(DtRing* Ring)
+void DtRing_Clear(DtRing* Ring)
 {
     if (Ring == NULL)
         return;

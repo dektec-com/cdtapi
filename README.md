@@ -71,9 +71,10 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 CDtapiLite is interface-compatible with the existing `CDTAPI` C wrapper for the
 `DtDevice`, `DtInpChannel` and `DtOutpChannel` surface, and installs a `CDTAPI.h`
 compatibility header. It also adds what CDTAPI.h leaves out and an application needs, such
-as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`. `DtInpChannel` receives SD, HD and 3G;
-`DtOutpChannel` is not there yet. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and
-the `ENABLE_AVFIFO` define have no equivalent yet.
+as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc` and `DtInpChannel_ReadFrame2` with each
+frame's time of arrival. `DtInpChannel` receives SD, HD and 3G, and `DtOutpChannel`
+transmits them. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and the
+`ENABLE_AVFIFO` define have no equivalent yet.
 
 ## Versions
 

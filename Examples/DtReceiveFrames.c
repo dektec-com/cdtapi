@@ -111,10 +111,10 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
     unsigned int Result = DtInpChannel_SetRxMode(Channel, RxMode);
 
     if (Result != DTAPI_OK)
-        return ExampleFailed("DtInpChannel_SetRxMode", Result);
+        return Example_Failed("DtInpChannel_SetRxMode", Result);
     Result = DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV);
     if (Result != DTAPI_OK)
-        return ExampleFailed("DtInpChannel_SetRxControl", Result);
+        return Example_Failed("DtInpChannel_SetRxControl", Result);
 
     for (int64_t i = 0; i < Count; i++)
     {
@@ -130,7 +130,7 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
         if (Result != DTAPI_OK)
         {
             printf("%s  ", Port->DeviceName);
-            return ExampleFailed("DtInpChannel_ReadFrame", Result);
+            return Example_Failed("DtInpChannel_ReadFrame", Result);
         }
 
         printf("%s  frame %lld  %d bytes  hash %016llX\n", Port->DeviceName, (long long)i,
@@ -154,16 +154,16 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
                             int64_t Count, int64_t TimeoutMs)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
-    if (!ExampleSucceeded(Result))
-        return ExampleFailed("DtDevice_AttachToSerial", Result);
+    if (!Example_Succeeded(Result))
+        return Example_Failed("DtDevice_AttachToSerial", Result);
     Result = DtInpChannel_AttachToPort(Channel, Device, Port->Port);
-    if (!ExampleSucceeded(Result))
+    if (!Example_Succeeded(Result))
     {
         printf("%s  ", Port->DeviceName);
-        return ExampleFailed("DtInpChannel_AttachToPort", Result);
+        return Example_Failed("DtInpChannel_AttachToPort", Result);
     }
 
-    if (ExampleHasFlag(Argc, Argv, "--detect"))
+    if (Example_HasFlag(Argc, Argv, "--detect"))
     {
         int Value = -1;
         int SubValue = -1;
@@ -171,17 +171,17 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
         Result = DtInpChannel_DetectIoStd(Channel, &Value, &SubValue);
         printf("%s  ", Port->DeviceName);
         if (Result != DTAPI_OK)
-            ExampleFailed("DtInpChannel_DetectIoStd", Result);
+            Example_Failed("DtInpChannel_DetectIoStd", Result);
         else
         {
-            const char* Name = ExampleVidStdName(SubValue);
-            printf("io standard %s %s\n", ExampleIoStdName(Value),
+            const char* Name = Example_VidStdName(SubValue);
+            printf("io standard %s %s\n", Example_IoStdName(Value),
                    Name != NULL ? Name : "?");
         }
     }
 
     int Exit = Receive(Channel, Port, RxMode, Count, TimeoutMs,
-                       ExampleValue(Argc, Argv, "--out"), Frame);
+                       Example_Value(Argc, Argv, "--out"), Frame);
     DtInpChannel_Detach(Channel, 1);
     return Exit;
 }
@@ -194,40 +194,40 @@ int main(int Argc, char** Argv)
     int64_t PortNumber = 0;
     int64_t Count = 1;
     int64_t TimeoutMs = 1000;
-    if (!ExampleCheckArguments(Argc, Argv, "Receives raw SDI frames from an SDI input.",
-                               g_Options,
-                               (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
-        !ExampleInt64(Argc, Argv, "--serial", &Serial) ||
-        !ExampleInt64(Argc, Argv, "--port", &PortNumber) ||
-        !ExampleInt64(Argc, Argv, "--count", &Count) ||
-        !ExampleInt64(Argc, Argv, "--timeout", &TimeoutMs))
+    if (!Example_CheckArguments(Argc, Argv, "Receives raw SDI frames from an SDI input.",
+                                g_Options,
+                                (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
+        !Example_Int64(Argc, Argv, "--serial", &Serial) ||
+        !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
+        !Example_Int64(Argc, Argv, "--count", &Count) ||
+        !Example_Int64(Argc, Argv, "--timeout", &TimeoutMs))
     {
         return EXAMPLE_FAILED;
     }
     int RxMode = 0;
-    if (!RxModeFrom(ExampleValue(Argc, Argv, "--rxmode"), &RxMode))
+    if (!RxModeFrom(Example_Value(Argc, Argv, "--rxmode"), &RxMode))
     {
         printf("Unknown receive mode: %s; 8B, 10B or 16B\n",
-               ExampleValue(Argc, Argv, "--rxmode"));
+               Example_Value(Argc, Argv, "--rxmode"));
         return EXAMPLE_FAILED;
     }
 
     DtHwFuncDesc Port;
-    unsigned int Result = ExampleFindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
+    unsigned int Result = Example_FindPort(Serial, (int)PortNumber, IsSdiInput, &Port);
     if (Result == DTAPI_E_NOT_FOUND)
     {
         printf("No SDI input that suits\n");
         return EXAMPLE_NOTHING;
     }
     if (Result != DTAPI_OK)
-        return ExampleFailed("DtapiHwFuncScan", Result);
+        return Example_Failed("DtapiHwFuncScan", Result);
 
     DtDevice* Device = DtDevice_Alloc();
     DtInpChannel* Channel = DtInpChannel_Alloc();
     char* Frame = (char*)malloc(FRAME_BUFFER_SIZE);
     int Exit;
     if (Device == NULL || Channel == NULL || Frame == NULL)
-        Exit = ExampleFailed("Allocating", DTAPI_E_OUT_OF_MEM);
+        Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
         Exit = AttachAndReceive(Device, Channel, Frame, &Port, Argc, Argv, RxMode, Count,
                                 TimeoutMs);

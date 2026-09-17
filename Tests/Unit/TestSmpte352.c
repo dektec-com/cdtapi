@@ -15,9 +15,9 @@
 // Byte 1 is the payload identifier, whatever the other bytes hold.
 DT_TEST(PayloadIdIsTheFirstByte)
 {
-    DT_ASSERT_EQ(DtSmpte352PayloadId(0x00000085), 0x85);
-    DT_ASSERT_EQ(DtSmpte352PayloadId(0xFFFFFFCE), 0xCE);
-    DT_ASSERT_EQ(DtSmpte352PayloadId(0xFFFFFF00), 0);
+    DT_ASSERT_EQ(DtSmpte352_PayloadId(0x00000085), 0x85);
+    DT_ASSERT_EQ(DtSmpte352_PayloadId(0xFFFFFFCE), 0xCE);
+    DT_ASSERT_EQ(DtSmpte352_PayloadId(0xFFFFFF00), 0);
 }
 
 // The picture rate codes of SMPTE ST 352 table 2 that DTAPI knows; the others, reserved
@@ -41,7 +41,7 @@ DT_TEST(PictureRateCodes)
         int Num = -1;
         int Den = -1;
 
-        DtSmpte352PictureRate(0xFFFFF0FF | (Rates[i].Code << 8), &Num, &Den);
+        DtSmpte352_PictureRate(0xFFFFF0FF | (Rates[i].Code << 8), &Num, &Den);
         if (Num != Rates[i].Num || Den != Rates[i].Den)
             DT_FAIL("code 0x%X: %d/%d", (unsigned)Rates[i].Code, Num, Den);
     }
@@ -50,24 +50,24 @@ DT_TEST(PictureRateCodes)
 // Byte 2 bit 7 is the transport and bit 6 the picture; a set bit means progressive.
 DT_TEST(ScanBits)
 {
-    DT_ASSERT(DtSmpte352IsInterlacedTransport(0x00000085));
-    DT_ASSERT(DtSmpte352IsInterlacedStructure(0x00000085));
+    DT_ASSERT(DtSmpte352_IsInterlacedTransport(0x00000085));
+    DT_ASSERT(DtSmpte352_IsInterlacedStructure(0x00000085));
 
-    DT_ASSERT(DtSmpte352IsInterlacedTransport(0x00004085));
-    DT_ASSERT(!DtSmpte352IsInterlacedStructure(0x00004085));
+    DT_ASSERT(DtSmpte352_IsInterlacedTransport(0x00004085));
+    DT_ASSERT(!DtSmpte352_IsInterlacedStructure(0x00004085));
 
-    DT_ASSERT(!DtSmpte352IsInterlacedTransport(0x0000C085));
-    DT_ASSERT(!DtSmpte352IsInterlacedStructure(0x0000C085));
+    DT_ASSERT(!DtSmpte352_IsInterlacedTransport(0x0000C085));
+    DT_ASSERT(!DtSmpte352_IsInterlacedStructure(0x0000C085));
 
-    DT_ASSERT(!DtSmpte352IsInterlacedTransport(0xFFFFBFFF));
-    DT_ASSERT(DtSmpte352IsInterlacedStructure(0xFFFFBFFF));
+    DT_ASSERT(!DtSmpte352_IsInterlacedTransport(0xFFFFBFFF));
+    DT_ASSERT(DtSmpte352_IsInterlacedStructure(0xFFFFBFFF));
 }
 
 // Byte 3 bit 7 is the aspect ratio, 1 for 16:9.
 DT_TEST(AspectRatioBit)
 {
-    DT_ASSERT(DtSmpte352Is16x9(0x00800000));
-    DT_ASSERT(!DtSmpte352Is16x9(0xFF7FFFFF));
+    DT_ASSERT(DtSmpte352_Is16x9(0x00800000));
+    DT_ASSERT(!DtSmpte352_Is16x9(0xFF7FFFFF));
 }
 
 // Byte 4 numbers the link: bits 7..6 on four level-A links, bits 7..5 on 6G and 12G; on
@@ -78,18 +78,18 @@ DT_TEST(LinkNumber)
     uint32_t Link;
 
     for (Link = 0; Link < 4; Link++)
-        DT_ASSERT_EQ(DtSmpte352LinkNumber(0x1F00CA97 | (Link << 30)), Link);
+        DT_ASSERT_EQ(DtSmpte352_LinkNumber(0x1F00CA97 | (Link << 30)), Link);
     for (Link = 0; Link < 8; Link++)
     {
-        DT_ASSERT_EQ(DtSmpte352LinkNumber(0x1F00CA98 | (Link << 29)), Link / 2);
-        DT_ASSERT_EQ(DtSmpte352LinkNumber(0x1F00C7C0 | (Link << 29)), Link);
-        DT_ASSERT_EQ(DtSmpte352LinkNumber(0x1F00CACE | (Link << 29)), Link);
+        DT_ASSERT_EQ(DtSmpte352_LinkNumber(0x1F00CA98 | (Link << 29)), Link / 2);
+        DT_ASSERT_EQ(DtSmpte352_LinkNumber(0x1F00C7C0 | (Link << 29)), Link);
+        DT_ASSERT_EQ(DtSmpte352_LinkNumber(0x1F00CACE | (Link << 29)), Link);
     }
 
-    DT_ASSERT_EQ(DtSmpte352LinkNumber(0xC000CA8A), 0);
-    DT_ASSERT_EQ(DtSmpte352LinkNumber(0xE000C589), 0);
-    DT_ASSERT_EQ(DtSmpte352LinkNumber(0xE0000585), 0);
-    DT_ASSERT_EQ(DtSmpte352LinkNumber(0xFFFFFF00), 0);
+    DT_ASSERT_EQ(DtSmpte352_LinkNumber(0xC000CA8A), 0);
+    DT_ASSERT_EQ(DtSmpte352_LinkNumber(0xE000C589), 0);
+    DT_ASSERT_EQ(DtSmpte352_LinkNumber(0xE0000585), 0);
+    DT_ASSERT_EQ(DtSmpte352_LinkNumber(0xFFFFFF00), 0);
 }
 
 DT_TEST_MAIN("Smpte352", DT_RUN(PayloadIdIsTheFirstByte), DT_RUN(PictureRateCodes),

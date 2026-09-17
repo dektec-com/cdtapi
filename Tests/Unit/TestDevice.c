@@ -25,7 +25,7 @@ static const char* Describe(int TypeNumber, int SubType, int Port)
 {
     static char Buf[MAX_DEVICE_DESC_SIZE];
 
-    if (DtDeviceDescribe(TypeNumber, SubType, Port, Buf, sizeof(Buf)) != DTAPI_OK)
+    if (DtDevice_Describe(TypeNumber, SubType, Port, Buf, sizeof(Buf)) != DTAPI_OK)
         return "(failed)";
     return Buf;
 }
@@ -57,12 +57,12 @@ DT_TEST(DescriptionMustFit)
 {
     char Buf[16];
 
-    DT_ASSERT_EQ(DtDeviceDescribe(2178, 0, 1, Buf, 15), DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, Buf, 15), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_STR(Buf, "");
-    DT_ASSERT_OK(DtDeviceDescribe(2178, 0, 1, Buf, 16));
+    DT_ASSERT_OK(DtDevice_Describe(2178, 0, 1, Buf, 16));
     DT_ASSERT_STR(Buf, "DTA-2178 port 1");
-    DT_ASSERT_EQ(DtDeviceDescribe(2178, 0, 1, NULL, 16), DTAPI_E_INVALID_BUF);
-    DT_ASSERT_EQ(DtDeviceDescribe(2178, 0, 1, Buf, 0), DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, NULL, 16), DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, Buf, 0), DTAPI_E_INVALID_BUF);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -75,7 +75,7 @@ static bool Supported(int Major, int Minor, int Micro, int Build)
     Version.Minor = Minor;
     Version.Micro = Micro;
     Version.Build = Build;
-    return DtPcieCmdVersionIsSupported(&Version);
+    return DtPcieCmd_VersionIsSupported(&Version);
 }
 
 // 1.3.1 is the oldest DtPcie driver DTAPI accepts; each part decides only when the parts
@@ -136,10 +136,10 @@ DT_TEST(DetachedDeviceIsNotAttached)
 
 DT_TEST(AllocSurvivesAllocationFailure)
 {
-    DtAllocResetCount();
-    DtAllocFailAfter(0);
+    DtAlloc_ResetCount();
+    DtAlloc_FailAfter(0);
     DT_ASSERT(DtDevice_Alloc() == NULL);
-    DtAllocResetCount();
+    DtAlloc_ResetCount();
 }
 
 // The argument checks of the scan come before any device is looked at.

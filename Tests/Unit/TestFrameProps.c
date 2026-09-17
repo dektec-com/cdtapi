@@ -27,19 +27,19 @@ DT_TEST(InitGivesTheLineTimingOfEveryStandard)
         DtFrameProps Props;
         int NumActive = 0;
 
-        if (!DtFramePropsInit(&Props, Format->VidStd))
+        if (!DtFrameProps_Init(&Props, Format->VidStd))
             DT_FAIL("%s: not initialised", Format->Name);
 
         SDI_ASSERT_EQ(Format, Props.VidStd, Format->VidStd);
         SDI_ASSERT_EQ(Format, Props.FpsNum, Format->FpsNum);
         SDI_ASSERT_EQ(Format, Props.FpsDen, Format->FpsDen);
         SDI_ASSERT_EQ(Format, Props.NumFields, Format->Scan == SDI_SCAN_P ? 1 : 2);
-        SDI_ASSERT_EQ(Format, DtFramePropsNumLines(&Props), Format->Lines);
+        SDI_ASSERT_EQ(Format, DtFrameProps_NumLines(&Props), Format->Lines);
         SDI_ASSERT_EQ(Format, Props.Fields[0].EndLine - Props.Fields[0].StartLine + 1,
                       Format->LinesF1);
-        SDI_ASSERT_EQ(Format, DtFramePropsLineSymbolsHanc(&Props),
-                      SdiFormatHancSymbols(Format));
-        SDI_ASSERT_EQ(Format, Props.LineNumSymVanc, SdiFormatVancSymbols(Format));
+        SDI_ASSERT_EQ(Format, DtFrameProps_LineSymbolsHanc(&Props),
+                      SdiFormat_HancSymbols(Format));
+        SDI_ASSERT_EQ(Format, Props.LineNumSymVanc, SdiFormat_VancSymbols(Format));
 
         // The fields are numbered from line 1 without a gap, and hold the active lines.
         const DtFieldProps* Last = &Props.Fields[Props.NumFields - 1];
@@ -66,15 +66,15 @@ DT_TEST(TimingReferenceSignalsHaveTheirSize)
 {
     DtFrameProps Props;
 
-    DT_ASSERT(DtFramePropsInit(&Props, DTAPI_VIDSTD_625I50));
+    DT_ASSERT(DtFrameProps_Init(&Props, DTAPI_VIDSTD_625I50));
     DT_ASSERT_EQ(Props.LineNumSymEav, 4);
     DT_ASSERT_EQ(Props.LineNumSymSav, 4);
 
-    DT_ASSERT(DtFramePropsInit(&Props, DTAPI_VIDSTD_720P50));
+    DT_ASSERT(DtFrameProps_Init(&Props, DTAPI_VIDSTD_720P50));
     DT_ASSERT_EQ(Props.LineNumSymEav, 16);
     DT_ASSERT_EQ(Props.LineNumSymSav, 8);
 
-    DT_ASSERT(DtFramePropsInit(&Props, DTAPI_VIDSTD_2160P60B));
+    DT_ASSERT(DtFrameProps_Init(&Props, DTAPI_VIDSTD_2160P60B));
     DT_ASSERT_EQ(Props.LineNumSymEav, 16);
     DT_ASSERT_EQ(Props.LineNumSymSav, 8);
 }
@@ -90,11 +90,11 @@ DT_TEST(InitRefusesWhatIsNoStandard)
     for (size_t i = 0; i < sizeof(NoStandards) / sizeof(NoStandards[0]); i++)
     {
         Props.VidStd = DTAPI_VIDSTD_1080I50;
-        DT_ASSERT(!DtFramePropsInit(&Props, NoStandards[i]));
+        DT_ASSERT(!DtFrameProps_Init(&Props, NoStandards[i]));
         DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
-        DT_ASSERT_EQ(DtFramePropsNumLines(&Props), 0);
+        DT_ASSERT_EQ(DtFrameProps_NumLines(&Props), 0);
 
-        DtVidStdFps(NoStandards[i], &Num, &Den);
+        DtVidStd_Fps(NoStandards[i], &Num, &Den);
         DT_ASSERT_EQ(Num, 0);
         DT_ASSERT_EQ(Den, 1);
     }
@@ -109,19 +109,19 @@ DT_TEST(ClassificationFollowsTheLineTiming)
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
-        bool Is3g = Format->Lines == 1125 && SdiFormatFps(Format) >= 50.0 &&
-                    !DtVidStdIs4k(Format->VidStd);
+        bool Is3g = Format->Lines == 1125 && SdiFormat_Fps(Format) >= 50.0 &&
+                    !DtVidStd_Is4k(Format->VidStd);
         DtFrameProps Props;
 
-        DtFramePropsInit(&Props, Format->VidStd);
-        SDI_ASSERT_EQ(Format, DtFramePropsIsSd(&Props), Format->Lines <= 625);
-        SDI_ASSERT_EQ(Format, DtFramePropsIsHd(&Props), Format->Lines > 625);
-        SDI_ASSERT_EQ(Format, DtFramePropsIs3g(&Props), Is3g);
-        SDI_ASSERT_EQ(Format, DtFramePropsIs3gLevelB(&Props),
-                      Is3g && SdiFormatIsLevelB(Format));
-        SDI_ASSERT_EQ(Format, DtFramePropsIsInterlaced(&Props),
+        DtFrameProps_Init(&Props, Format->VidStd);
+        SDI_ASSERT_EQ(Format, DtFrameProps_IsSd(&Props), Format->Lines <= 625);
+        SDI_ASSERT_EQ(Format, DtFrameProps_IsHd(&Props), Format->Lines > 625);
+        SDI_ASSERT_EQ(Format, DtFrameProps_Is3g(&Props), Is3g);
+        SDI_ASSERT_EQ(Format, DtFrameProps_Is3gLevelB(&Props),
+                      Is3g && SdiFormat_IsLevelB(Format));
+        SDI_ASSERT_EQ(Format, DtFrameProps_IsInterlaced(&Props),
                       Format->Scan != SDI_SCAN_P);
-        SDI_ASSERT_EQ(Format, DtFramePropsIsPsF(&Props), Format->Scan == SDI_SCAN_S);
+        SDI_ASSERT_EQ(Format, DtFrameProps_IsPsF(&Props), Format->Scan == SDI_SCAN_S);
     }
 }
 
@@ -129,13 +129,13 @@ DT_TEST(InvalidPropertiesHaveNoClass)
 {
     DtFrameProps Props;
 
-    DtFramePropsInit(&Props, DTAPI_VIDSTD_UNKNOWN);
-    DT_ASSERT(!DtFramePropsIsSd(&Props));
-    DT_ASSERT(!DtFramePropsIsHd(&Props));
-    DT_ASSERT(!DtFramePropsIs3g(&Props));
-    DT_ASSERT(!DtFramePropsIs3gLevelB(&Props));
-    DT_ASSERT(!DtFramePropsIsInterlaced(&Props));
-    DT_ASSERT(!DtFramePropsIsPsF(&Props));
+    DtFrameProps_Init(&Props, DTAPI_VIDSTD_UNKNOWN);
+    DT_ASSERT(!DtFrameProps_IsSd(&Props));
+    DT_ASSERT(!DtFrameProps_IsHd(&Props));
+    DT_ASSERT(!DtFrameProps_Is3g(&Props));
+    DT_ASSERT(!DtFrameProps_Is3gLevelB(&Props));
+    DT_ASSERT(!DtFrameProps_IsInterlaced(&Props));
+    DT_ASSERT(!DtFrameProps_IsPsF(&Props));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Deduction +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -149,9 +149,9 @@ static int DeduceFormat(const SdiFormat* Format, double Fps, uint32_t Vpid)
 {
     DtFrameProps Props;
 
-    DtFramePropsDeduce(&Props, Format->LinesF1, SdiFormatLinesF2(Format),
-                       SdiFormatHancSymbols(Format), SdiFormatVancSymbols(Format), Fps,
-                       SdiFormatIsLevelB(Format), Vpid, Format->SdiRate);
+    DtFrameProps_Deduce(&Props, Format->LinesF1, SdiFormat_LinesF2(Format),
+                        SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format), Fps,
+                        SdiFormat_IsLevelB(Format), Vpid, Format->SdiRate);
     return Props.VidStd;
 }
 
@@ -175,7 +175,7 @@ DT_TEST(CountersAloneGiveTheStandard)
     {
         const SdiFormat* Format = &g_SdiFormats[i];
 
-        SDI_ASSERT_EQ(Format, DeduceFormat(Format, SdiFormatFps(Format), 0),
+        SDI_ASSERT_EQ(Format, DeduceFormat(Format, SdiFormat_Fps(Format), 0),
                       Format->NoVpid);
     }
 }
@@ -186,11 +186,11 @@ DT_TEST(DeducedPropertiesAreComplete)
     DtFrameProps Deduced;
     const SdiFormat* Format = FormatNamed(DTAPI_VIDSTD_1080I59_94);
 
-    DtFramePropsDeduce(&Deduced, Format->LinesF1, SdiFormatLinesF2(Format),
-                       SdiFormatHancSymbols(Format), SdiFormatVancSymbols(Format),
-                       SdiFormatFps(Format), false, 0, DT_SDIRATE_HD);
+    DtFrameProps_Deduce(&Deduced, Format->LinesF1, SdiFormat_LinesF2(Format),
+                        SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format),
+                        SdiFormat_Fps(Format), false, 0, DT_SDIRATE_HD);
     DtFrameProps Expected;
-    DtFramePropsInit(&Expected, DTAPI_VIDSTD_1080I59_94);
+    DtFrameProps_Init(&Expected, DTAPI_VIDSTD_1080I59_94);
     DT_ASSERT_MEM(&Deduced, &Expected, sizeof(Expected));
 }
 
@@ -214,7 +214,7 @@ DT_TEST(VpidSeparatesStandardsWithTheSameCounters)
             Expected = DTAPI_VIDSTD_2160P60;
 
         SDI_ASSERT_EQ(Format,
-                      DeduceFormat(Format, SdiFormatFps(Format), SdiFormatVpid(Format)),
+                      DeduceFormat(Format, SdiFormat_Fps(Format), SdiFormat_Vpid(Format)),
                       Expected);
     }
 }
@@ -235,13 +235,13 @@ DT_TEST(UnknownCountersGiveNoStandard)
 {
     DtFrameProps Props;
 
-    DtFramePropsDeduce(&Props, 1125, 0, 560, 3840, 25.0, false, 0, DT_SDIRATE_HD);
+    DtFrameProps_Deduce(&Props, 1125, 0, 560, 3840, 25.0, false, 0, DT_SDIRATE_HD);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
-    DtFramePropsDeduce(&Props, 1124, 0, 560, 3840, 30.0, false, 0, DT_SDIRATE_HD);
+    DtFrameProps_Deduce(&Props, 1124, 0, 560, 3840, 30.0, false, 0, DT_SDIRATE_HD);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
-    DtFramePropsDeduce(&Props, 1125, 0, 560, 3842, 30.0, false, 0, DT_SDIRATE_HD);
+    DtFrameProps_Deduce(&Props, 1125, 0, 560, 3842, 30.0, false, 0, DT_SDIRATE_HD);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
-    DtFramePropsDeduce(&Props, 0, 0, 0, 0, 0.0, false, 0, DT_SDIRATE_UNKNOWN);
+    DtFrameProps_Deduce(&Props, 0, 0, 0, 0, 0.0, false, 0, DT_SDIRATE_UNKNOWN);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
 }
 
@@ -250,11 +250,11 @@ DT_TEST(RateAbove3gGives2160p)
 {
     DtFrameProps Props;
 
-    DtFramePropsDeduce(&Props, 1125, 0, 1440, 3840, 50.0, true, 0, DT_SDIRATE_12G);
+    DtFrameProps_Deduce(&Props, 1125, 0, 1440, 3840, 50.0, true, 0, DT_SDIRATE_12G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P50);
-    DtFramePropsDeduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0, DT_SDIRATE_6G);
+    DtFrameProps_Deduce(&Props, 1125, 0, 1440, 3840, 50.0, false, 0, DT_SDIRATE_6G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_2160P50);
-    DtFramePropsDeduce(&Props, 1125, 0, 560, 3840, 30.0, false, 0, DT_SDIRATE_3G);
+    DtFrameProps_Deduce(&Props, 1125, 0, 560, 3840, 30.0, false, 0, DT_SDIRATE_3G);
     DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_1080P30);
 }
 
@@ -265,13 +265,13 @@ DT_TEST(VpidDecidesWhenTheRateIsMissing)
     const SdiFormat* Interlaced = FormatNamed(DTAPI_VIDSTD_1080I50);
     const SdiFormat* Uhd = FormatNamed(DTAPI_VIDSTD_2160P30);
 
-    DT_ASSERT_EQ(DeduceFormat(Interlaced, 0.0, SdiFormatVpid(Interlaced)),
+    DT_ASSERT_EQ(DeduceFormat(Interlaced, 0.0, SdiFormat_Vpid(Interlaced)),
                  DTAPI_VIDSTD_1080I50);
-    DT_ASSERT_EQ(DeduceFormat(Uhd, 0.0, SdiFormatVpid(Uhd)), DTAPI_VIDSTD_1080P30);
+    DT_ASSERT_EQ(DeduceFormat(Uhd, 0.0, SdiFormat_Vpid(Uhd)), DTAPI_VIDSTD_1080P30);
 
     // A VPID of another geometry does not.
     DT_ASSERT_EQ(
-        DeduceFormat(Interlaced, 0.0, SdiFormatVpid(FormatNamed(DTAPI_VIDSTD_720P50))),
+        DeduceFormat(Interlaced, 0.0, SdiFormat_Vpid(FormatNamed(DTAPI_VIDSTD_720P50))),
         DTAPI_VIDSTD_UNKNOWN);
 }
 
@@ -287,7 +287,7 @@ DT_TEST(SearchNeverGivesPsfWithAVpid)
     DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00008085), DTAPI_VIDSTD_UNKNOWN);
     DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x0000C085), DTAPI_VIDSTD_UNKNOWN);
     DT_ASSERT_EQ(DeduceFormat(Format, 25.0, 0x00000085), DTAPI_VIDSTD_1080I50);
-    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, SdiFormatVpid(Format)),
+    DT_ASSERT_EQ(DeduceFormat(Format, 25.0, SdiFormat_Vpid(Format)),
                  DTAPI_VIDSTD_1080PSF25);
 }
 

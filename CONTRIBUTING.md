@@ -25,6 +25,10 @@
    one, one declaration per line; a loop counter in its `for`. Results are `DtapiResult`.
    No `goto`: a function that must clean up after failures hands the steps to a helper
    and cleans up after it.
+10. **A function that is not static is named `Class_Function`**: the type it works on,
+    or the component it belongs to, then an underscore, as `OsMutex_Lock`,
+    `DtRing_Skip`, `DtPcieCmd_CdmacSetOpMode`, `OsTime_SleepMs` and `SimDtPcie_Reset`,
+    and as the public API and `LibDekTec_C` have it. A static function has a plain name.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,
@@ -55,6 +59,7 @@ copy-pasted header naming the wrong file otherwise survives for years.
 | 7 | Review |
 | 8 | `Scripts/check_style.sh` |
 | 9 | Review |
+| 10 | Review |
 | Everything else | `clang-tidy`, warnings-as-errors |
 
 Run them locally:

@@ -44,21 +44,21 @@ typedef struct Fixture
 // DMA. Returns false, having recorded a failure, when that is not possible.
 static bool Open(Fixture* Fix, int* DtFailures)
 {
-    SimDtPcieReset();
-    SimDtPcieSetTxRealTime(false);
-    Fix->Live = DtAllocLive();
-    Fix->Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    DtVecInit(&Fix->Tx.Parts, sizeof(DtFuncPart));
-    DtVecInit(&Fix->Dma.Parts, sizeof(DtFuncPart));
-    if (Fix->Drv == NULL || !OsDrvIsEmulated(Fix->Drv) ||
-        DtFuncFind(Fix->Drv, PORT, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
-        DtFuncFind(Fix->Drv, PORT, "AF_DMA", "", &Fix->Dma) != DTAPI_OK)
+    SimDtPcie_Reset();
+    SimDtPcie_SetTxRealTime(false);
+    Fix->Live = DtAlloc_Live();
+    Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    DtVec_Init(&Fix->Tx.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Fix->Dma.Parts, sizeof(DtFuncPart));
+    if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
+        DtFunc_Find(Fix->Drv, PORT, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
+        DtFunc_Find(Fix->Drv, PORT, "AF_DMA", "", &Fix->Dma) != DTAPI_OK)
     {
         printf("    FAIL: no emulated transmitter; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        DtFuncRelease(&Fix->Tx);
-        DtFuncRelease(&Fix->Dma);
-        OsDrvClose(Fix->Drv);
+        DtFunc_Release(&Fix->Tx);
+        DtFunc_Release(&Fix->Dma);
+        OsDrv_Close(Fix->Drv);
         return false;
     }
     return true;
@@ -69,12 +69,12 @@ static bool Open(Fixture* Fix, int* DtFailures)
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
-        DtFuncRelease(&(Fix).Tx);                                                        \
-        DtFuncRelease(&(Fix).Dma);                                                       \
-        OsDrvClose((Fix).Drv);                                                           \
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
-        SimDtPcieReset();                                                                \
-        DT_ASSERT_EQ(DtAllocLive(), (Fix).Live);                                         \
+        DtFunc_Release(&(Fix).Tx);                                                       \
+        DtFunc_Release(&(Fix).Dma);                                                      \
+        OsDrv_Close((Fix).Drv);                                                          \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        SimDtPcie_Reset();                                                               \
+        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
     } while (0)
 
 // The UUID of the part of Instance at Index.
@@ -86,7 +86,7 @@ static int UuidAt(const DtFuncInstance* Instance, size_t Index)
 // The UUID of the part of Instance with IsDf, Type and Role; 0 when there is none.
 static int UuidOf(const DtFuncInstance* Instance, bool IsDf, int Type, const char* Role)
 {
-    const DtFuncPart* Part = DtFuncGet(Instance, IsDf, Type, Role);
+    const DtFuncPart* Part = DtFunc_Get(Instance, IsDf, Type, Role);
     return Part != NULL ? Part->Uuid : 0;
 }
 
@@ -118,7 +118,7 @@ static bool LastWas(int FunctionCode, int Uuid, int Cmd, size_t Size, void* Inpu
     DtIoctlInputDataHdr Hdr;
     int Code = -1;
     uint8_t In[SIM_MAX_RECORDED_INPUT];
-    size_t Got = SimDtPcieLastInput(&Code, In, sizeof(In));
+    size_t Got = SimDtPcie_LastInput(&Code, In, sizeof(In));
 
     memcpy(&Hdr, In, sizeof(Hdr));
     if (Input != NULL)
@@ -140,35 +140,35 @@ static bool Hold(Fixture* Fix, Parts* P, OsDmaBuffer* Buf, int* DtFailures)
 {
     *P = PartsOf(Fix);
     DtSdiFrameLayout Layout;
-    DtSdiFrameLayoutInit(&Layout, VIDSTD, SIM_TX_STREAM_ALIGNMENT);
-    if (OsDmaBufferAlloc(BUFFER_SIZE, Buf) != 0 ||
-        DtFuncExclAccess(Fix->Drv, &Fix->Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) !=
+    DtSdiFrame_LayoutInit(&Layout, VIDSTD, SIM_TX_STREAM_ALIGNMENT);
+    if (OsDmaBuffer_Alloc(BUFFER_SIZE, Buf) != 0 ||
+        DtFunc_ExclAccess(Fix->Drv, &Fix->Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) !=
             DTAPI_OK ||
-        DtFuncExclAccess(Fix->Drv, &Fix->Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) !=
+        DtFunc_ExclAccess(Fix->Drv, &Fix->Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) !=
             DTAPI_OK ||
-        DtPcieCmdCdmacAllocateBuffer(Fix->Drv, P->Cdmac, PORT, DT_CDMAC_DIR_TX, Buf) !=
+        DtPcieCmd_CdmacAllocateBuffer(Fix->Drv, P->Cdmac, PORT, DT_CDMAC_DIR_TX, Buf) !=
             DTAPI_OK ||
-        DtPcieCmdSdiTxFSetFmtEventSetting(Fix->Drv, P->Txf, PORT,
-                                          (Layout.NumLines + 3) / 4 + 1, 1) != DTAPI_OK ||
-        DtPcieCmdCdmacIssueChannelFlush(Fix->Drv, P->Cdmac, PORT) != DTAPI_OK ||
-        DtPcieCmdCdmacSetTxWriteOffset(Fix->Drv, P->Cdmac, PORT, 0) != DTAPI_OK ||
-        DtPcieCmdCdmacSetOpMode(Fix->Drv, P->Cdmac, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_SdiTxFSetFmtEventSetting(
+            Fix->Drv, P->Txf, PORT, (Layout.NumLines + 3) / 4 + 1, 1) != DTAPI_OK ||
+        DtPcieCmd_CdmacIssueChannelFlush(Fix->Drv, P->Cdmac, PORT) != DTAPI_OK ||
+        DtPcieCmd_CdmacSetTxWriteOffset(Fix->Drv, P->Cdmac, PORT, 0) != DTAPI_OK ||
+        DtPcieCmd_CdmacSetOpMode(Fix->Drv, P->Cdmac, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdBurstFifoSetOpMode(Fix->Drv, P->Burst, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_BurstFifoSetOpMode(Fix->Drv, P->Burst, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdSdiTxFSetOpMode(Fix->Drv, P->Txf, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_SdiTxFSetOpMode(Fix->Drv, P->Txf, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdSwitchSetPosition(Fix->Drv, P->SwitchIn, PORT, 0, 0) != DTAPI_OK ||
-        DtPcieCmdSwitchSetPosition(Fix->Drv, P->SwitchOut, PORT, 0, 0) != DTAPI_OK ||
-        DtPcieCmdSwitchSetOpMode(Fix->Drv, P->SwitchIn, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_SwitchSetPosition(Fix->Drv, P->SwitchIn, PORT, 0, 0) != DTAPI_OK ||
+        DtPcieCmd_SwitchSetPosition(Fix->Drv, P->SwitchOut, PORT, 0, 0) != DTAPI_OK ||
+        DtPcieCmd_SwitchSetOpMode(Fix->Drv, P->SwitchIn, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdSdiDmx12GSetOpMode(Fix->Drv, P->Dmx, PORT, DT_BLOCK_OPMODE_IDLE) !=
+        DtPcieCmd_SdiDmx12GSetOpMode(Fix->Drv, P->Dmx, PORT, DT_BLOCK_OPMODE_IDLE) !=
             DTAPI_OK ||
-        DtPcieCmdSwitchSetOpMode(Fix->Drv, P->SwitchOut, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_SwitchSetOpMode(Fix->Drv, P->SwitchOut, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdSdiTxPSetOpMode(Fix->Drv, P->Txp, PORT, DT_BLOCK_OPMODE_RUN) !=
+        DtPcieCmd_SdiTxPSetOpMode(Fix->Drv, P->Txp, PORT, DT_BLOCK_OPMODE_RUN) !=
             DTAPI_OK ||
-        DtPcieCmdSdiTxPhySetOpMode(Fix->Drv, P->Phy, PORT, DT_FUNC_OPMODE_STANDBY) !=
+        DtPcieCmd_SdiTxPhySetOpMode(Fix->Drv, P->Phy, PORT, DT_FUNC_OPMODE_STANDBY) !=
             DTAPI_OK)
     {
         printf("    FAIL: cannot bring the transmit blocks to hold\n");
@@ -214,7 +214,7 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
 {
     DtSdiFrameLayout L;
 
-    DtSdiFrameLayoutInit(&L, VIDSTD, SIM_TX_STREAM_ALIGNMENT);
+    DtSdiFrame_LayoutInit(&L, VIDSTD, SIM_TX_STREAM_ALIGNMENT);
     uint32_t Words[5];
     Words[0] = 0xFFEFFBFEu;
     Words[1] = 1u << 8 | (uint32_t)DT_DRV_SDIRATE_SD << 9;
@@ -232,7 +232,7 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
     uint8_t Line[4096];
     for (int n = 1; n <= L.NumLines; n++)
     {
-        SimChSdiRxLine(VIDSTD, FrameNumber, n, Symbols);
+        SimChSdiRx_Line(VIDSTD, FrameNumber, n, Symbols);
         Pack(Symbols, L.LineSymsHanc, Line, L.LineBytesHanc);
         Pack(Symbols + L.LineSymsHanc, L.LineSymsVideo, Line + L.LineBytesHanc,
              L.LineBytesVideo);
@@ -246,13 +246,13 @@ static bool Received(int Index, uint32_t FrameNumber, int FrameId)
 {
     SimTxFrame Frame;
 
-    if (!SimDtPcieGetTxFrame(PORT, Index, &Frame) || Frame.FrameId != FrameId)
+    if (!SimDtPcie_GetTxFrame(PORT, Index, &Frame) || Frame.FrameId != FrameId)
         return false;
     int Width = Frame.SymsHanc + Frame.SymsVideo;
     uint16_t Symbols[2000];
     for (int n = 1; n <= Frame.NumLines; n++)
     {
-        if (SimChSdiRxLine(VIDSTD, FrameNumber, n, Symbols) != Width ||
+        if (SimChSdiRx_Line(VIDSTD, FrameNumber, n, Symbols) != Width ||
             memcmp(Symbols, Frame.Symbols + (size_t)(n - 1) * (size_t)Width,
                    (size_t)Width * sizeof(uint16_t)) != 0)
         {
@@ -265,7 +265,7 @@ static bool Received(int Index, uint32_t FrameNumber, int FrameId)
 // Waits for an event without a time-out.
 static DtapiResult Wait(const Fixture* Fix, const Parts* P, DtSdiTxFEvent* Event)
 {
-    return DtPcieCmdSdiTxFWaitForFmtEvent(Fix->Drv, P->Txf, PORT, 0, Event);
+    return DtPcieCmd_SdiTxFWaitForFmtEvent(Fix->Drv, P->Txf, PORT, 0, Event);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exclusive access +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -278,39 +278,43 @@ DT_TEST(OneHandleHoldsAPart)
 
     if (!Open(&Fix, DtFailures))
         return;
-    OsDrv* Other = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
     int Uuid = UuidOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
     DT_ASSERT(Other != NULL && Uuid != 0);
 
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
                  DTAPI_E_EXCL_ACCESS_REQD);
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
     DT_ASSERT_OK(
-        DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
+    DT_ASSERT_OK(
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
 
     DT_ASSERT_OK(
-        DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(
-        DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
         DTAPI_E_IN_USE);
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK));
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE),
+    DT_ASSERT_OK(
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK));
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE),
                  DTAPI_E_IN_USE);
 
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
                  DTAPI_E_IN_USE);
 
     DT_ASSERT_OK(
-        DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
+    DT_ASSERT_OK(
+        DtPcieCmd_ExclAccess(Other, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     // Closing a handle lets go of what it holds.
-    OsDrvClose(Other);
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
+    OsDrv_Close(Other);
+    DT_ASSERT_OK(
+        DtPcieCmd_ExclAccess(Fix.Drv, Uuid, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
 
     FINISH(Fix);
 }
@@ -325,29 +329,29 @@ DT_TEST(EveryPartHasExclusiveAccess)
     if (!Open(&Fix, DtFailures))
         return;
 
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     size_t i;
-    for (i = 0; i < DtVecCount(&Fix.Tx.Parts); i++)
+    for (i = 0; i < DtVec_Count(&Fix.Tx.Parts); i++)
     {
-        DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, i), PORT,
-                                         DT_EXCLUSIVE_ACCESS_CMD_CHECK));
+        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, i), PORT,
+                                          DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     }
-    for (i = 0; i < DtVecCount(&Fix.Dma.Parts); i++)
+    for (i = 0; i < DtVec_Count(&Fix.Dma.Parts); i++)
     {
-        DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Dma, i), PORT,
-                                         DT_EXCLUSIVE_ACCESS_CMD_CHECK));
+        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Dma, i), PORT,
+                                          DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     }
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 0), PORT,
-                                     DT_EXCLUSIVE_ACCESS_CMD_CHECK),
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 0), PORT,
+                                      DT_EXCLUSIVE_ACCESS_CMD_CHECK),
                  DTAPI_E_EXCL_ACCESS_REQD);
 
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Fix.Drv, DT_UUID_BC_FLAG | 0xFFFF, PORT,
-                                     DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, DT_UUID_BC_FLAG | 0xFFFF, PORT,
+                                      DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_NOT_IMPLEMENTED);
-    DT_ASSERT_EQ(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 0), PORT, 99),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 0), PORT, 99),
                  DTAPI_E_NOT_SUPPORTED);
 
     FINISH(Fix);
@@ -361,33 +365,33 @@ DT_TEST(AcquiringAllRollsBack)
 
     if (!Open(&Fix, DtFailures))
         return;
-    OsDrv* Other = OsDrvOpen(SIM_DEVICE_INDEX);
-    DT_ASSERT(Other != NULL && DtVecCount(&Fix.Tx.Parts) == 7);
+    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
+    DT_ASSERT(Other != NULL && DtVec_Count(&Fix.Tx.Parts) == 7);
 
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Other, UuidAt(&Fix.Tx, 3), PORT,
-                                     DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_EQ(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, UuidAt(&Fix.Tx, 3), PORT,
+                                      DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
-    for (size_t i = 0; i < DtVecCount(&Fix.Tx.Parts); i++)
+    for (size_t i = 0; i < DtVec_Count(&Fix.Tx.Parts); i++)
     {
-        DtapiResult Probe = DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, i), PORT,
-                                                DT_EXCLUSIVE_ACCESS_CMD_PROBE);
+        DtapiResult Probe = DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, i), PORT,
+                                                 DT_EXCLUSIVE_ACCESS_CMD_PROBE);
 
         if (Probe != (i == 3 ? (DtapiResult)DTAPI_E_IN_USE : (DtapiResult)DTAPI_OK))
             DT_FAIL("part %zu: %s", i, DtapiResult2Str(Probe));
     }
 
     // Releasing all goes on past the part another handle holds, and reports it.
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 6), PORT,
-                                     DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_EQ(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 6), PORT,
+                                      DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_OK(DtPcieCmdExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 6), PORT,
-                                     DT_EXCLUSIVE_ACCESS_CMD_PROBE));
-    OsDrvClose(Other);
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, UuidAt(&Fix.Tx, 6), PORT,
+                                      DT_EXCLUSIVE_ACCESS_CMD_PROBE));
+    OsDrv_Close(Other);
 
-    SimDtPcieFailWithStatus(DT_FUNC_CODE_EXCL_ACCESS_CMD, DT_STATUS_NOT_SUPPORTED);
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_EXCL_ACCESS_CMD, DT_STATUS_NOT_SUPPORTED);
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     FINISH(Fix);
 }
@@ -404,13 +408,13 @@ DT_TEST(RequestsCarryTheirFields)
     Parts P = PartsOf(&Fix);
 
     DT_ASSERT_OK(
-        DtPcieCmdExclAccess(Fix.Drv, P.Cdmac, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+        DtPcieCmd_ExclAccess(Fix.Drv, P.Cdmac, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT(LastWas(DT_FUNC_CODE_EXCL_ACCESS_CMD, P.Cdmac,
                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE, sizeof(DtIoctlExclAccessCmdInput),
                       NULL));
 
     DtCdmacProps CdmacProps;
-    DT_ASSERT_OK(DtPcieCmdCdmacGetProps(Fix.Drv, P.Cdmac, PORT, &CdmacProps));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetProps(Fix.Drv, P.Cdmac, PORT, &CdmacProps));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_GET_PROPERTIES,
                       sizeof(DtIoctlInputDataHdr), NULL));
     DT_ASSERT_EQ(CdmacProps.Caps, DT_CDMAC_CAP_RX | DT_CDMAC_CAP_TX);
@@ -418,34 +422,35 @@ DT_TEST(RequestsCarryTheirFields)
     DT_ASSERT_EQ(CdmacProps.PcieDataWidth, SIM_TX_PCIE_DATA_WIDTH);
     DT_ASSERT_EQ(CdmacProps.ReorderBufSize, SIM_TX_REORDER_BUF_SIZE);
 
-    DT_ASSERT_OK(DtPcieCmdCdmacIssueChannelFlush(Fix.Drv, P.Cdmac, PORT));
+    DT_ASSERT_OK(DtPcieCmd_CdmacIssueChannelFlush(Fix.Drv, P.Cdmac, PORT));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_ISSUE_CHANNEL_FLUSH,
                       sizeof(DtIoctlInputDataHdr), NULL));
-    DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+    DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_FREE_BUFFER,
                       sizeof(DtIoctlInputDataHdr), NULL));
-    DT_ASSERT_OK(DtPcieCmdCdmacClearReorderBufMinMax(Fix.Drv, P.Cdmac, PORT));
+    DT_ASSERT_OK(DtPcieCmd_CdmacClearReorderBufMinMax(Fix.Drv, P.Cdmac, PORT));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac,
                       DT_CDMAC_CMD_CLEAR_REORDER_BUF_MIN_MAX, sizeof(DtIoctlInputDataHdr),
                       NULL));
     {
-        DT_ASSERT_EQ(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN),
-                     DTAPI_E_NOT_INITIALIZED);
+        DT_ASSERT_EQ(
+            DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN),
+            DTAPI_E_NOT_INITIALIZED);
         DtIoctlCDmaCCmdSetOpModeInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac,
                           DT_CDMAC_CMD_SET_OPERATIONAL_MODE, sizeof(In), &In));
         DT_ASSERT_EQ(In.m_OpMode, DT_BLOCK_OPMODE_RUN);
     }
     {
-        DT_ASSERT_OK(DtPcieCmdCdmacSetTestMode(Fix.Drv, P.Cdmac, PORT,
-                                               DT_CDMAC_TESTMODE_TEST_EXT));
+        DT_ASSERT_OK(DtPcieCmd_CdmacSetTestMode(Fix.Drv, P.Cdmac, PORT,
+                                                DT_CDMAC_TESTMODE_TEST_EXT));
         DtIoctlCDmaCCmdSetTestModeInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_SET_TEST_MODE,
                           sizeof(In), &In));
         DT_ASSERT_EQ(In.m_TestMode, DT_CDMAC_TESTMODE_TEST_EXT);
     }
     {
-        DT_ASSERT_EQ(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 0x12340),
+        DT_ASSERT_EQ(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 0x12340),
                      DTAPI_E_INVALID_ARG);
         DtIoctlCDmaCCmdSetTxWrOffsetInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac,
@@ -453,53 +458,53 @@ DT_TEST(RequestsCarryTheirFields)
         DT_ASSERT_EQ(In.m_TxWriteOffset, 0x12340);
     }
     uint32_t Offset;
-    DT_ASSERT_OK(DtPcieCmdCdmacGetTxReadOffset(Fix.Drv, P.Cdmac, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, P.Cdmac, PORT, &Offset));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_GET_TX_READ_OFFSET,
                       sizeof(DtIoctlInputDataHdr), NULL));
     int Value;
     int MinMax;
     DT_ASSERT_OK(
-        DtPcieCmdCdmacGetReorderBufStatus(Fix.Drv, P.Cdmac, PORT, &Value, &MinMax));
+        DtPcieCmd_CdmacGetReorderBufStatus(Fix.Drv, P.Cdmac, PORT, &Value, &MinMax));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac,
                       DT_CDMAC_CMD_GET_REORDER_BUF_STATUS, sizeof(DtIoctlInputDataHdr),
                       NULL));
 
     DtBurstFifoProps BurstProps;
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetProps(Fix.Drv, P.Burst, PORT, &BurstProps));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetProps(Fix.Drv, P.Burst, PORT, &BurstProps));
     DT_ASSERT(LastWas(DT_FUNC_CODE_BURSTFIFO_CMD, P.Burst,
                       DT_BURSTFIFO_CMD_GET_PROPERTIES, sizeof(DtIoctlInputDataHdr),
                       NULL));
     DT_ASSERT_EQ(BurstProps.FifoSize, SIM_TX_BURST_FIFO_SIZE);
     DT_ASSERT_EQ(BurstProps.DataWidth, SIM_TX_PCIE_DATA_WIDTH);
     DtBurstFifoStatus BurstStatus;
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetStatus(Fix.Drv, P.Burst, PORT, &BurstStatus));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetStatus(Fix.Drv, P.Burst, PORT, &BurstStatus));
     DT_ASSERT(LastWas(DT_FUNC_CODE_BURSTFIFO_CMD, P.Burst,
                       DT_BURSTFIFO_CMD_GET_FIFO_STATUS, sizeof(DtIoctlInputDataHdr),
                       NULL));
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &Offset));
     DT_ASSERT(LastWas(DT_FUNC_CODE_BURSTFIFO_CMD, P.Burst,
                       DT_BURSTFIFO_CMD_GET_OVFL_UFL_COUNT, sizeof(DtIoctlInputDataHdr),
                       NULL));
     {
-        DT_ASSERT_OK(DtPcieCmdBurstFifoClearMax(Fix.Drv, P.Burst, PORT, false, true));
+        DT_ASSERT_OK(DtPcieCmd_BurstFifoClearMax(Fix.Drv, P.Burst, PORT, false, true));
         DtIoctlBurstFifoCmdClearFifoMaxInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_BURSTFIFO_CMD, P.Burst,
                           DT_BURSTFIFO_CMD_CLEAR_FIFO_MAX, sizeof(In), &In));
         DT_ASSERT(In.m_ClearMaxFree == 0 && In.m_ClearMaxLoad == 1);
     }
     DT_ASSERT_EQ(
-        DtPcieCmdBurstFifoSetOpMode(Fix.Drv, P.Burst, PORT, DT_BLOCK_OPMODE_STANDBY),
+        DtPcieCmd_BurstFifoSetOpMode(Fix.Drv, P.Burst, PORT, DT_BLOCK_OPMODE_STANDBY),
         DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_BURSTFIFO_CMD, P.Burst,
                       DT_BURSTFIFO_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlBurstFifoCmdSetOpModeInput), NULL));
 
-    DT_ASSERT_OK(DtPcieCmdSdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Value));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Value));
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXF_CMD, P.Txf, DT_SDITXF_CMD_GET_STREAM_ALIGNMENT,
                       sizeof(DtIoctlInputDataHdr), NULL));
     DT_ASSERT_EQ(Value, SIM_TX_STREAM_ALIGNMENT);
     {
-        DT_ASSERT_EQ(DtPcieCmdSdiTxFSetFmtEventSetting(Fix.Drv, P.Txf, PORT, 283, 7),
+        DT_ASSERT_EQ(DtPcieCmd_SdiTxFSetFmtEventSetting(Fix.Drv, P.Txf, PORT, 283, 7),
                      DTAPI_E_EXCL_ACCESS_REQD);
         DtIoctlSdiTxFCmdSetFmtEventSettingInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXF_CMD, P.Txf,
@@ -508,20 +513,20 @@ DT_TEST(RequestsCarryTheirFields)
     }
     {
         DtSdiTxFEvent Event;
-        DT_ASSERT_EQ(DtPcieCmdSdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 40, &Event),
+        DT_ASSERT_EQ(DtPcieCmd_SdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 40, &Event),
                      DTAPI_E_EXCL_ACCESS_REQD);
         DtIoctlSdiTxFCmdWaitForFmtEventInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXF_CMD, P.Txf,
                           DT_SDITXF_CMD_WAIT_FOR_FMT_EVENT, sizeof(In), &In));
         DT_ASSERT_EQ(In.m_Timeout, 40);
     }
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_RUN),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_RUN),
                  DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXF_CMD, P.Txf, DT_SDITXF_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlSdiTxFCmdSetOpModeInput), NULL));
 
     {
-        DT_ASSERT_EQ(DtPcieCmdSwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 1),
+        DT_ASSERT_EQ(DtPcieCmd_SwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 1),
                      DTAPI_E_EXCL_ACCESS_REQD);
         DtIoctlSwitchCmdSetPositionInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_SWITCH_CMD, P.SwitchIn, DT_SWITCH_CMD_SET_POSITION,
@@ -529,51 +534,52 @@ DT_TEST(RequestsCarryTheirFields)
         DT_ASSERT(In.m_InputIndex == 0 && In.m_OutputIndex == 1);
     }
     DT_ASSERT_EQ(
-        DtPcieCmdSwitchSetOpMode(Fix.Drv, P.SwitchOut, PORT, DT_BLOCK_OPMODE_RUN),
+        DtPcieCmd_SwitchSetOpMode(Fix.Drv, P.SwitchOut, PORT, DT_BLOCK_OPMODE_RUN),
         DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_SWITCH_CMD, P.SwitchOut,
                       DT_SWITCH_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlSwitchCmdSetOpModeInput), NULL));
-    DT_ASSERT_EQ(DtPcieCmdSdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_IDLE),
+    DT_ASSERT_EQ(DtPcieCmd_SdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_IDLE),
                  DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDIDMX12G_CMD, P.Dmx,
                       DT_SDIDMX12G_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlSdiDmx12GCmdSetOpModeInput), NULL));
 
     // The encoder's commands need no exclusive access.
-    DT_ASSERT_OK(DtPcieCmdSdiTxPSetOpMode(Fix.Drv, P.Txp, PORT, DT_BLOCK_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPSetOpMode(Fix.Drv, P.Txp, PORT, DT_BLOCK_OPMODE_RUN));
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXP_CMD, P.Txp, DT_SDITXP_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlSdiTxPCmdSetOpModeInput), NULL));
     {
         DT_ASSERT_OK(
-            DtPcieCmdSdiTxPSetGenerationMode(Fix.Drv, P.Txp, PORT, true, false, true));
+            DtPcieCmd_SdiTxPSetGenerationMode(Fix.Drv, P.Txp, PORT, true, false, true));
         DtIoctlSdiTxPCmdSetGenModeInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXP_CMD, P.Txp,
                           DT_SDITXP_CMD_SET_GENERATION_MODE, sizeof(In), &In));
         DT_ASSERT(In.m_ClampEnable == 1 && In.m_AdpChecksumEnable == 0 &&
                   In.m_LineCrcEnable == 1);
         SimTxState State;
-        SimDtPcieGetTxState(PORT, &State);
+        SimDtPcie_GetTxState(PORT, &State);
         DT_ASSERT(State.Clamp && !State.AncChecksum && State.LineCrc);
     }
 
-    DT_ASSERT_EQ(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_STANDBY),
-                 DTAPI_E_EXCL_ACCESS_REQD);
+    DT_ASSERT_EQ(
+        DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_STANDBY),
+        DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXPHY_CMD, P.Phy,
                       DT_SDITXPHY_CMD_SET_OPERATIONAL_MODE,
                       sizeof(DtIoctlSdiTxPhyCmdSetOpModeInput), NULL));
     bool Flag;
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Flag));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Flag));
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXPHY_CMD, P.Phy,
                       DT_SDITXPHY_CMD_GET_UNDERFLOW_FLAG, sizeof(DtIoctlInputDataHdr),
                       NULL));
-    DT_ASSERT_EQ(DtPcieCmdSdiTxPhyClearUnderflowFlag(Fix.Drv, P.Phy, PORT),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxPhyClearUnderflowFlag(Fix.Drv, P.Phy, PORT),
                  DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXPHY_CMD, P.Phy,
                       DT_SDITXPHY_CMD_CLEAR_UNDERFLOW_FLAG, sizeof(DtIoctlInputDataHdr),
                       NULL));
     {
-        DT_ASSERT_OK(DtPcieCmdSdiTxPhySetStartOfFrameOffset(Fix.Drv, P.Phy, PORT, 1500));
+        DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Fix.Drv, P.Phy, PORT, 1500));
         DtIoctlSdiTxPhyCmdSetStartOfFrameOffsetInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_SDITXPHY_CMD, P.Phy,
                           DT_SDITXPHY_CMD_SET_START_OF_FRAME_OFFSET, sizeof(In), &In));
@@ -592,30 +598,31 @@ DT_TEST(InvalidArgumentsSendNothing)
         return;
     Parts P = PartsOf(&Fix);
     DT_ASSERT_OK(
-        DtPcieCmdExclAccess(Fix.Drv, P.Cdmac, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
+        DtPcieCmd_ExclAccess(Fix.Drv, P.Cdmac, PORT, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
 
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, 3), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, -1),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, 3),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetTestMode(Fix.Drv, P.Cdmac, PORT, 3),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, -1),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_CdmacSetTestMode(Fix.Drv, P.Cdmac, PORT, 3),
                  DTAPI_E_INVALID_ARG);
     OsDmaBuffer Buf;
     memset(&Buf, 0, sizeof(Buf));
     DT_ASSERT_EQ(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
         DTAPI_E_INVALID_ARG);
     DtSdiTxFEvent Event;
     Buf.Data = (uint8_t*)&Event;
     Buf.Size = 4096;
-    DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, 2, &Buf),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, 2, &Buf),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 0, NULL),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 0, NULL),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdCdmacGetProps(NULL, P.Cdmac, PORT, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_CdmacGetProps(NULL, P.Cdmac, PORT, NULL), DTAPI_E_INVALID_ARG);
 
     int Code;
     uint8_t In[64];
-    SimDtPcieLastInput(&Code, In, sizeof(In));
+    SimDtPcie_LastInput(&Code, In, sizeof(In));
     DT_ASSERT_EQ(Code, DT_FUNC_CODE_EXCL_ACCESS_CMD);
 
     FINISH(Fix);
@@ -632,39 +639,39 @@ DT_TEST(BufferIsRegisteredBothWays)
     if (!Open(&Fix, DtFailures))
         return;
     Parts P = PartsOf(&Fix);
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     OsDmaBuffer Buf;
-    DT_ASSERT(OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
 
     SimTxState State;
     for (int Round = 0; Round < 2; Round++)
     {
         bool AsLinux = Round == 1;
 
-        SimDtPcieRegisterTxBufferAsLinux(AsLinux);
-        DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
-                                                    DT_CDMAC_DIR_TX, &Buf, AsLinux),
+        SimDtPcie_RegisterTxBufferAsLinux(AsLinux);
+        DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
+                                                     DT_CDMAC_DIR_TX, &Buf, AsLinux),
                      DTAPI_E_INVALID_ARG);
-        DT_ASSERT_OK(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
-                                                    DT_CDMAC_DIR_TX, &Buf, !AsLinux));
+        DT_ASSERT_OK(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
+                                                     DT_CDMAC_DIR_TX, &Buf, !AsLinux));
         DtIoctlCDmaCCmdAllocateBufferInput In;
         DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_ALLOCATE_BUFFER,
                           sizeof(In), &In));
         DT_ASSERT_EQ(In.m_Direction, DT_CDMAC_DIR_TX);
         DT_ASSERT_EQ(In.m_BufferSize, BUFFER_SIZE);
         DT_ASSERT_EQ(In.m_BufferAddr, AsLinux ? (uint64_t)(uintptr_t)Buf.Data : 0);
-        SimDtPcieGetTxState(PORT, &State);
+        SimDtPcie_GetTxState(PORT, &State);
         DT_ASSERT(State.BufferRegistered && State.BufferSize == BUFFER_SIZE);
 
-        DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
-                                                    DT_CDMAC_DIR_TX, &Buf, !AsLinux),
+        DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT,
+                                                     DT_CDMAC_DIR_TX, &Buf, !AsLinux),
                      DTAPI_E_IN_USE);
-        DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
-        SimDtPcieGetTxState(PORT, &State);
+        DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+        SimDtPcie_GetTxState(PORT, &State);
         DT_ASSERT(!State.BufferRegistered);
     }
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -677,33 +684,33 @@ DT_TEST(BufferRules)
     if (!Open(&Fix, DtFailures))
         return;
     Parts P = PartsOf(&Fix);
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     OsDmaBuffer Buf;
-    DT_ASSERT(OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
-    SimDtPcieRegisterTxBufferAsLinux(true);
+    DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
+    SimDtPcie_RegisterTxBufferAsLinux(true);
 
     OsDmaBuffer Fake = Buf;
     Fake.Data = Buf.Data + 16;
-    DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
-                                                &Fake, false),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
+                                                 &Fake, false),
                  DTAPI_E_INVALID_ARG);
     Fake = Buf;
     Fake.Size = BUFFER_SIZE - 4096;
-    DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
-                                                &Fake, false),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
+                                                 &Fake, false),
                  DTAPI_E_INVALID_ARG);
     Fake.Size = 512u * 1024 * 1024;
-    DT_ASSERT_EQ(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
-                                                &Fake, false),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX,
+                                                 &Fake, false),
                  DTAPI_E_BUF_TOO_LARGE);
 
-    DT_ASSERT_OK(DtPcieCmdCdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_RX,
-                                                &Buf, false));
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 32),
+    DT_ASSERT_OK(DtPcieCmd_CdmacAllocateBufferAs(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_RX,
+                                                 &Buf, false));
+    DT_ASSERT_EQ(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 32),
                  DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+    DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -718,38 +725,39 @@ DT_TEST(ModesOfTheDmaController)
     if (!Open(&Fix, DtFailures))
         return;
     Parts P = PartsOf(&Fix);
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_STANDBY),
-                 DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_EQ(
+        DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_STANDBY),
+        DTAPI_E_NOT_INITIALIZED);
     OsDmaBuffer Buf;
-    DT_ASSERT(OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
     DT_ASSERT_OK(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
 
-    DT_ASSERT_OK(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN));
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN),
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN));
+    DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmdCdmacIssueChannelFlush(Fix.Drv, P.Cdmac, PORT),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacIssueChannelFlush(Fix.Drv, P.Cdmac, PORT),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT_EQ(
-        DtPcieCmdCdmacSetTestMode(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_TESTMODE_NORMAL),
+        DtPcieCmd_CdmacSetTestMode(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_TESTMODE_NORMAL),
         DTAPI_E_INVALID_MODE);
-    DT_ASSERT_EQ(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT), DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT), DTAPI_E_INVALID_MODE);
 
     DT_ASSERT_OK(
-        DtPcieCmdBurstFifoSetOpMode(Fix.Drv, P.Burst, PORT, DT_BLOCK_OPMODE_RUN));
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 4096));
+        DtPcieCmd_BurstFifoSetOpMode(Fix.Drv, P.Burst, PORT, DT_BLOCK_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, 4096));
     SimTxState State;
-    SimDtPcieGetTxState(PORT, &State);
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(State.ReadOffset == 4096 && State.PipelineLoad == 4096);
 
-    DT_ASSERT_OK(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
-    SimDtPcieGetTxState(PORT, &State);
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(State.ReadOffset == 0 && State.PipelineLoad == 0 &&
               State.CdmacMode == DT_BLOCK_OPMODE_IDLE);
-    DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+    DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -764,17 +772,17 @@ DT_TEST(BlocksCheckAccessAndPort)
         return;
     Parts P = PartsOf(&Fix);
 
-    DT_ASSERT_EQ(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE),
+    DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE),
                  DTAPI_E_EXCL_ACCESS_REQD);
     DT_ASSERT_OK(
-        DtPcieCmdSdiTxPSetGenerationMode(Fix.Drv, P.Txp, PORT, true, true, true));
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_OK(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
+        DtPcieCmd_SdiTxPSetGenerationMode(Fix.Drv, P.Txp, PORT, true, true, true));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
     OsDmaBuffer Buf;
-    DT_ASSERT(OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
     DT_ASSERT_OK(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
 
     DtIoConfig Config;
     memset(&Config, 0, sizeof(Config));
@@ -783,27 +791,27 @@ DT_TEST(BlocksCheckAccessAndPort)
     Config.Value = DTAPI_IOCONFIG_INPUT;
     Config.SubValue = DTAPI_IOCONFIG_INPUT;
     Config.ParXtra[0] = Config.ParXtra[1] = -1;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Fix.Drv, &Config));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Fix.Drv, &Config));
 
-    DT_ASSERT_OK(DtPcieCmdCdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
-    DT_ASSERT_EQ(DtPcieCmdSdiTxPSetOpMode(Fix.Drv, P.Txp, PORT, DT_BLOCK_OPMODE_IDLE),
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, PORT, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxPSetOpMode(Fix.Drv, P.Txp, PORT, DT_BLOCK_OPMODE_IDLE),
                  DTAPI_E_INVALID_MODE);
     DtCdmacProps Props;
-    DT_ASSERT_OK(DtPcieCmdCdmacGetProps(Fix.Drv, P.Cdmac, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetProps(Fix.Drv, P.Cdmac, PORT, &Props));
     int Alignment;
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Alignment),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFGetStreamAlignment(Fix.Drv, P.Txf, PORT, &Alignment),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT_EQ(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
         DTAPI_E_IN_USE);
 
     Config.Value = Config.SubValue = DTAPI_IOCONFIG_OUTPUT;
-    DT_ASSERT_OK(DtPcieCmdSetIoConfig(Fix.Drv, &Config));
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Fix.Drv, &Config));
     DT_ASSERT_EQ(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
         DTAPI_E_IN_USE);
-    DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
-    OsDmaBufferFree(&Buf);
+    DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+    OsDmaBuffer_Free(&Buf);
 
     FINISH(Fix);
 }
@@ -816,17 +824,17 @@ DT_TEST(WaitRules)
     if (!Open(&Fix, DtFailures))
         return;
     Parts P = PartsOf(&Fix);
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     DtSdiTxFEvent Event;
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 1001, &Event),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, 1001, &Event),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, -2, &Event),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFWaitForFmtEvent(Fix.Drv, P.Txf, PORT, -2, &Event),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_INVALID_MODE);
-    DT_ASSERT_EQ(DtPcieCmdSdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_STANDBY),
+    DT_ASSERT_EQ(DtPcieCmd_SdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_STANDBY),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtPcieCmdSdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxFSetOpMode(Fix.Drv, P.Txf, PORT, DT_BLOCK_OPMODE_RUN));
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
 
     FINISH(Fix);
@@ -848,23 +856,23 @@ DT_TEST(StandbyFillsThePipeline)
         return;
 
     PutFrame(&Buf, &Offset, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
-    DT_ASSERT_OK(DtPcieCmdCdmacGetTxReadOffset(Fix.Drv, P.Cdmac, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, P.Cdmac, PORT, &Read));
     DT_ASSERT_EQ(Read, SIM_TX_BURST_FIFO_SIZE + 16384);
     DtBurstFifoStatus Burst;
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetStatus(Fix.Drv, P.Burst, PORT, &Burst));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetStatus(Fix.Drv, P.Burst, PORT, &Burst));
     DT_ASSERT_EQ(Burst.CurLoad, SIM_TX_BURST_FIFO_SIZE);
 
     DtSdiTxFEvent Event;
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
     DT_ASSERT(!Underflow);
     SimTxState State;
-    SimDtPcieGetTxState(PORT, &State);
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(State.FramesSent == 0 &&
               State.PipelineLoad == SIM_TX_BURST_FIFO_SIZE + 16384);
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -885,8 +893,8 @@ DT_TEST(FramesReachTheSink)
     int f;
     for (f = 0; f < 3; f++)
         PutFrame(&Buf, &Offset, (uint32_t)(100 + f), f);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
 
     DtSdiTxFEvent Event;
     int e;
@@ -903,23 +911,23 @@ DT_TEST(FramesReachTheSink)
         DT_ASSERT_OK(Wait(&Fix, &P, &Event));
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
     SimTxState State;
-    SimDtPcieGetTxState(PORT, &State);
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(State.FramesSent == 2 && State.HeaderErrors == 0);
     DT_ASSERT_EQ((State.WriteOffset + BUFFER_SIZE - State.ReadOffset) % BUFFER_SIZE, 16);
 
     PutFrame(&Buf, &Offset, 103, 3);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
     DT_ASSERT_OK(Wait(&Fix, &P, &Event));
     DT_ASSERT(Event.FrameId == 2 && Event.SeqNumber == 3 && Event.Underflow);
 
-    DT_ASSERT_EQ(SimDtPcieTxFrameCount(PORT), 3);
+    DT_ASSERT_EQ(SimDtPcie_TxFrameCount(PORT), 3);
     for (f = 0; f < 3; f++)
     {
         if (!Received(f, (uint32_t)(100 + f), f))
             DT_FAIL("frame %d did not arrive as written", f);
     }
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -938,41 +946,41 @@ DT_TEST(UnderflowAndRecovery)
 
     if (!Open(&Fix, DtFailures) || !Hold(&Fix, &P, &Buf, DtFailures))
         return;
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
 
     // The first event enables the formatter's flag.
     PutFrame(&Buf, &Offset, 0, 0);
     PutFrame(&Buf, &Offset, 1, 1);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
     DtSdiTxFEvent Event;
     for (int e = 0; e < 4; e++)
         DT_ASSERT_OK(Wait(&Fix, &P, &Event));
 
-    SimDtPcieStarveTx(PORT, 1);
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &Count));
+    SimDtPcie_StarveTx(PORT, 1);
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &Count));
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
-    DT_ASSERT_OK(DtPcieCmdBurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &CountAfter));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetOvfUflCount(Fix.Drv, P.Burst, PORT, &CountAfter));
     DT_ASSERT(CountAfter != Count);
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
     DT_ASSERT(Underflow);
 
     DT_ASSERT_OK(Wait(&Fix, &P, &Event));
     DT_ASSERT(Event.FrameId == 1 && Event.SeqNumber == 0 && Event.Underflow);
     DT_ASSERT_OK(Wait(&Fix, &P, &Event));
     DT_ASSERT(!Event.Underflow);
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
     DT_ASSERT(Underflow);
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyClearUnderflowFlag(Fix.Drv, P.Phy, PORT));
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyClearUnderflowFlag(Fix.Drv, P.Phy, PORT));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
     DT_ASSERT(!Underflow);
 
-    SimDtPcieStarveTx(PORT, 1);
-    DT_ASSERT_EQ(SimDtPcieRunTxEvents(PORT, 5), 0);
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_IDLE));
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
+    SimDtPcie_StarveTx(PORT, 1);
+    DT_ASSERT_EQ(SimDtPcie_RunTxEvents(PORT, 5), 0);
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_IDLE));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhyGetUnderflowFlag(Fix.Drv, P.Phy, PORT, &Underflow));
     DT_ASSERT(!Underflow);
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -988,24 +996,25 @@ DT_TEST(SwitchesMustBypassTheDemux)
     if (!Open(&Fix, DtFailures) || !Hold(&Fix, &P, &Buf, DtFailures))
         return;
     PutFrame(&Buf, &Offset, 0, 0);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
 
-    DT_ASSERT_EQ(DtPcieCmdSwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 1, 0),
+    DT_ASSERT_EQ(DtPcieCmd_SwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 1, 0),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmdSwitchSetPosition(Fix.Drv, P.SwitchOut, PORT, 0, 1),
+    DT_ASSERT_EQ(DtPcieCmd_SwitchSetPosition(Fix.Drv, P.SwitchOut, PORT, 0, 1),
                  DTAPI_E_INVALID_ARG);
 
-    DT_ASSERT_OK(DtPcieCmdSwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 1));
+    DT_ASSERT_OK(DtPcieCmd_SwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 1));
     DtSdiTxFEvent Event;
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
-    DT_ASSERT_OK(DtPcieCmdSwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 0));
-    DT_ASSERT_OK(DtPcieCmdSdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_SwitchSetPosition(Fix.Drv, P.SwitchIn, PORT, 0, 0));
+    DT_ASSERT_OK(DtPcieCmd_SdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_RUN));
     DT_ASSERT_EQ(Wait(&Fix, &P, &Event), DTAPI_E_TIMEOUT);
-    DT_ASSERT_OK(DtPcieCmdSdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiDmx12GSetOpMode(Fix.Drv, P.Dmx, PORT, DT_BLOCK_OPMODE_IDLE));
     DT_ASSERT_OK(Wait(&Fix, &P, &Event));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -1024,16 +1033,16 @@ DT_TEST(BadHeadersAreSkipped)
     Put(&Buf, &Offset, Garbage, sizeof(Garbage));
     PutFrame(&Buf, &Offset, 7, 7);
     PutFrame(&Buf, &Offset, 8, 8);
-    DT_ASSERT_OK(DtPcieCmdCdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
-    DT_ASSERT_OK(DtPcieCmdSdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, P.Cdmac, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, PORT, DT_FUNC_OPMODE_RUN));
 
-    DT_ASSERT_EQ(SimDtPcieRunTxEvents(PORT, 4), 4);
+    DT_ASSERT_EQ(SimDtPcie_RunTxEvents(PORT, 4), 4);
     SimTxState State;
-    SimDtPcieGetTxState(PORT, &State);
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(State.FramesSent == 1 && State.HeaderErrors == 2);
     DT_ASSERT(Received(0, 7, 7));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 
@@ -1046,30 +1055,30 @@ DT_TEST(ClosingTheHandleStopsTheDma)
     if (!Open(&Fix, DtFailures))
         return;
     Parts P = PartsOf(&Fix);
-    OsDrv* Other = OsDrvOpen(SIM_DEVICE_INDEX);
+    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
     OsDmaBuffer Buf;
-    DT_ASSERT(Other != NULL && OsDmaBufferAlloc(BUFFER_SIZE, &Buf) == 0);
-    DT_ASSERT_OK(DtFuncExclAccess(Other, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT(Other != NULL && OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT_OK(DtFunc_ExclAccess(Other, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_OK(
-        DtPcieCmdCdmacAllocateBuffer(Other, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
-    DT_ASSERT_OK(DtPcieCmdCdmacSetOpMode(Other, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN));
-    OsDrvClose(Other);
+        DtPcieCmd_CdmacAllocateBuffer(Other, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Other, P.Cdmac, PORT, DT_BLOCK_OPMODE_RUN));
+    OsDrv_Close(Other);
     SimTxState State;
-    SimDtPcieGetTxState(PORT, &State);
+    SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(!State.BufferRegistered && State.CdmacMode == DT_BLOCK_OPMODE_IDLE);
 
-    DT_ASSERT_OK(DtFuncExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    SimDtPcieFailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER,
-                       DT_STATUS_OUT_OF_MEMORY);
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER,
+                        DT_STATUS_OUT_OF_MEMORY);
     DT_ASSERT_EQ(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf),
         DTAPI_E_OUT_OF_MEM);
-    SimDtPcieFailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
+    SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
     DT_ASSERT_OK(
-        DtPcieCmdCdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
-    DT_ASSERT_OK(DtPcieCmdCdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Drv, P.Cdmac, PORT, DT_CDMAC_DIR_TX, &Buf));
+    DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac, PORT));
 
-    OsDmaBufferFree(&Buf);
+    OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
 

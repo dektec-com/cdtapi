@@ -81,11 +81,11 @@ struct DtDeviceC
 // MatchSerial is false or the device's serial number is Serial. Returns DTAPI_OK,
 // DTAPI_E_NO_SUCH_DEVICE when there is no such device or it cannot be read,
 // DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM.
-DtapiResult DtDeviceAttachIndex(DtDevice* Device, int Index, bool MatchSerial,
-                                int64_t Serial);
+DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
+                                 int64_t Serial);
 
 // Releases what an attached Device holds and leaves it detached.
-void DtDeviceRelease(DtDevice* Device);
+void DtDevice_Release(DtDevice* Device);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -94,14 +94,14 @@ void DtDeviceRelease(DtDevice* Device);
 // port number, as "DTA-2178 port 1" or "DTA-2172A port 3". For a DTA-2178 with sub-type
 // 1, DTAPI writes the full name after the type number: "DTA-2178DTA-2178-ASI port 1".
 // Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf, when Size cannot hold it.
-DtapiResult DtDeviceDescribe(int TypeNumber, int SubType, int Port, char* Buf,
-                             size_t Size);
+DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
+                              size_t Size);
 
 // Fills Desc for a port of an attached Device, numbered from 1, as CDTAPI converts
 // DTAPI's hardware function descriptor.
-void DtDeviceHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
+void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
 // Fills Desc for an attached Device, as DTAPI's Device::GetDescriptor and
 // PcieDevice::GetDescriptor do. Reads the I/O direction of each port that can be both an
 // input and an output.
-void DtDeviceDescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);
+void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);

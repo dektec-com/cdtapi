@@ -19,9 +19,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInputAttach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInput_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
+DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
 {
     memset(Input, 0, sizeof(*Input));
 
@@ -50,10 +50,10 @@ DtapiResult DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
     // the empty role. DtPalSDIRX then takes the SDI receiver with the empty role from
     // them, which DTAPI only does when it detects.
     DtFuncInstance Func;
-    DtapiResult Result = DtFuncFind(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
+    DtapiResult Result = DtFunc_Find(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
     if (Result != DTAPI_OK)
         return Result;
-    const DtFuncPart* SdiRx = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncPart* SdiRx = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     if (SdiRx != NULL)
     {
         Input->Device = Device;
@@ -61,15 +61,15 @@ DtapiResult DtAvInputAttach(DtAvInput* Input, DtDevice* Device, int Port)
         Input->Caps = Caps;
         Input->SdiRxUuid = SdiRx->Uuid;
     }
-    DtFuncRelease(&Func);
+    DtFunc_Release(&Func);
     return SdiRx != NULL ? DTAPI_OK : DTAPI_E_NOT_FOUND;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Detect +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInputSetUnknown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInput_SetUnknown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtAvInputSetUnknown(DtDetVidStd* Info)
+void DtAvInput_SetUnknown(DtDetVidStd* Info)
 {
     memset(Info, 0, sizeof(*Info));
     Info->VidStd = DTAPI_VIDSTD_UNKNOWN;
@@ -82,18 +82,18 @@ void DtAvInputSetUnknown(DtDetVidStd* Info)
     Info->OriginalLinkStd = -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInputDetectVidStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInput_DetectVidStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Deduction gets no second VPID, so Vpid2 stays 0, and the link number and aspect ratio
 // come from the VPID when there is one. A 4K standard on one link, 6G or 12G, that the
 // port scales to 3G is reported as the 1080p standard that link carries.
 //
-DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
+DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
 {
     OsDrv* Drv = Input->Device->Drv;
     bool Scale = false;
 
-    DtAvInputSetUnknown(Info);
+    DtAvInput_SetUnknown(Info);
 
     DtapiResult Result;
     if ((Input->Caps & DT_CAP_SCALE_12GTO3G) != 0)
@@ -103,19 +103,19 @@ DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         memset(&Config, 0, sizeof(Config));
         Config.Port = Input->PortIndex + 1;
         Config.Group = DTAPI_IOCONFIG_IODOWNSCALE;
-        Result = DtPcieCmdGetIoConfig(Drv, &Config);
+        Result = DtPcieCmd_GetIoConfig(Drv, &Config);
         if (Result != DTAPI_OK)
             return Result;
         Scale = Config.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
     }
 
-    Result =
-        DtFuncCheckDriverVersion(&Input->Device->DriverVersion, true, DT_FUNC_TYPE_SDIRX);
+    Result = DtFunc_CheckDriverVersion(&Input->Device->DriverVersion, true,
+                                       DT_FUNC_TYPE_SDIRX);
     if (Result != DTAPI_OK)
         return Result;
 
     DtSdiRxStatus Status;
-    Result = DtPcieCmdSdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
+    Result = DtPcieCmd_SdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -123,9 +123,9 @@ DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         return DTAPI_OK;
 
     DtVidStdProps Props;
-    DtVidStdPropsDeduce(&Props, Status.NumLinesF1, Status.NumLinesF2, Status.NumSymsHanc,
-                        Status.NumSymsVidVanc, Status.FrameRate, Status.IsLevelB,
-                        Status.PayloadId, Status.SdiRate);
+    DtVidStdProps_Deduce(&Props, Status.NumLinesF1, Status.NumLinesF2, Status.NumSymsHanc,
+                         Status.NumSymsVidVanc, Status.FrameRate, Status.IsLevelB,
+                         Status.PayloadId, Status.SdiRate);
     if (Props.VidStd == DTAPI_VIDSTD_UNKNOWN)
         return DTAPI_OK;
 
@@ -137,12 +137,12 @@ DtapiResult DtAvInputDetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
 
     if (Info->Vpid != 0)
     {
-        Info->LinkNr = DtSmpte352LinkNumber(Info->Vpid) + 1;
-        Info->AspectRatio = DtSmpte352Is16x9(Info->Vpid) ? DT_AR_16_9 : DT_AR_4_3;
+        Info->LinkNr = DtSmpte352_LinkNumber(Info->Vpid) + 1;
+        Info->AspectRatio = DtSmpte352_Is16x9(Info->Vpid) ? DT_AR_16_9 : DT_AR_4_3;
     }
 
-    if (Scale && DtVidStdIs4k(Props.VidStd) &&
-        DtVidStdNumPhysicalLinks(Props.LinkStd) == 1)
+    if (Scale && DtVidStd_Is4k(Props.VidStd) &&
+        DtVidStd_NumPhysicalLinks(Props.LinkStd) == 1)
     {
         Info->VidStd = Props.Frame.VidStd;
         Info->LinkStd = -1;

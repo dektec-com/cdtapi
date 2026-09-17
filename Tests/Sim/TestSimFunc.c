@@ -48,15 +48,15 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
 {
     OsDrv* Drv;
 
-    SimDtPcieReset();
-    DtAllocResetCount();
-    *Live = DtAllocLive();
-    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    SimDtPcie_Reset();
+    DtAlloc_ResetCount();
+    *Live = DtAlloc_Live();
+    Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrvClose(Drv);
+        OsDrv_Close(Drv);
         return NULL;
     }
     return Drv;
@@ -66,9 +66,9 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
 #define FINISH(Drv, Live)                                                                \
     do                                                                                   \
     {                                                                                    \
-        OsDrvClose(Drv);                                                                 \
-        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
-        DT_ASSERT_EQ(DtAllocLive(), Live);                                               \
+        OsDrv_Close(Drv);                                                                \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
     } while (0)
 
 // The part at Index of an instance.
@@ -90,10 +90,10 @@ DT_TEST(PartsOfTheReceiverFunction)
         return;
 
     DtFuncInstance Func;
-    DT_ASSERT_OK(DtFuncFind(Drv, 5, "AF_ASISDIRX", "", &Func));
+    DT_ASSERT_OK(DtFunc_Find(Drv, 5, "AF_ASISDIRX", "", &Func));
     DT_ASSERT_EQ(Func.PortIndex, 5);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), PART_COUNT);
-    for (size_t i = 0; i < PART_COUNT && i < DtVecCount(&Func.Parts); i++)
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), PART_COUNT);
+    for (size_t i = 0; i < PART_COUNT && i < DtVec_Count(&Func.Parts); i++)
     {
         const DtFuncPart* Part = PartAt(&Func, i);
         int Uuid = 0;
@@ -104,11 +104,11 @@ DT_TEST(PartsOfTheReceiverFunction)
         DT_ASSERT_EQ(Part->Type, g_Parts[i].Type);
         char Key[PROPERTY_NAME_MAX_SIZE];
         snprintf(Key, sizeof(Key), "%s_UUID", g_Parts[i].Name);
-        DT_ASSERT_OK(DtPcieCmdGetPropertyInt(Drv, Key, 5, &Uuid));
+        DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, 5, &Uuid));
         DT_ASSERT_EQ(Part->Uuid, Uuid);
     }
-    DtFuncRelease(&Func);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
+    DtFunc_Release(&Func);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
 
     FINISH(Drv, Live);
 }
@@ -148,15 +148,15 @@ DT_TEST(PartsOfTheTransmitFunctions)
     {
         DtFuncInstance Tx;
 
-        DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_ASISDITX", "", &Tx));
+        DT_ASSERT_OK(DtFunc_Find(Drv, Port, "AF_ASISDITX", "", &Tx));
         DtFuncInstance Dma;
-        DT_ASSERT_OK(DtFuncFind(Drv, Port, "AF_DMA", "", &Dma));
-        DT_ASSERT_EQ(DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts), Count);
+        DT_ASSERT_OK(DtFunc_Find(Drv, Port, "AF_DMA", "", &Dma));
+        DT_ASSERT_EQ(DtVec_Count(&Tx.Parts) + DtVec_Count(&Dma.Parts), Count);
         for (size_t i = 0;
-             i < Count && i < DtVecCount(&Tx.Parts) + DtVecCount(&Dma.Parts); i++)
+             i < Count && i < DtVec_Count(&Tx.Parts) + DtVec_Count(&Dma.Parts); i++)
         {
             bool InTx = strcmp(Expected[i].Af, "AF_ASISDITX") == 0;
-            size_t At = InTx ? i : i - DtVecCount(&Tx.Parts);
+            size_t At = InTx ? i : i - DtVec_Count(&Tx.Parts);
             const DtFuncPart* Part = PartAt(InTx ? &Tx : &Dma, At);
 
             DT_ASSERT_STR(Part->Name, Expected[i].Name);
@@ -166,13 +166,13 @@ DT_TEST(PartsOfTheTransmitFunctions)
             DT_ASSERT_EQ(Part->Uuid & DT_UUID_FLAG_MASK,
                          Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
         }
-        DtFuncRelease(&Tx);
-        DtFuncRelease(&Dma);
+        DtFunc_Release(&Tx);
+        DtFunc_Release(&Dma);
     }
     DtFuncInstance None;
-    DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_DMA", "", &None),
+    DT_ASSERT_EQ(DtFunc_Find(Drv, SIM_SDI_PORT_COUNT, "AF_DMA", "", &None),
                  DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDITX", "", &None),
+    DT_ASSERT_EQ(DtFunc_Find(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDITX", "", &None),
                  DTAPI_E_NOT_FOUND);
 
     FINISH(Drv, Live);
@@ -200,8 +200,8 @@ DT_TEST(UuidsAreUnique)
         {
             DtFuncInstance Func;
 
-            DT_ASSERT_OK(DtFuncFind(Drv, Port, Functions[f], "", &Func));
-            for (i = 0; i < DtVecCount(&Func.Parts) &&
+            DT_ASSERT_OK(DtFunc_Find(Drv, Port, Functions[f], "", &Func));
+            for (i = 0; i < DtVec_Count(&Func.Parts) &&
                         Count < (int)(sizeof(Uuids) / sizeof(Uuids[0]));
                  i++)
             {
@@ -215,7 +215,7 @@ DT_TEST(UuidsAreUnique)
                 }
                 Uuids[Count++] = Uuid;
             }
-            DtFuncRelease(&Func);
+            DtFunc_Release(&Func);
         }
     }
     DT_ASSERT_EQ(Count, SIM_SDI_PORT_COUNT * 19);
@@ -234,17 +234,17 @@ DT_TEST(MissingFunctionIsNotFound)
         return;
 
     DtFuncInstance Func;
-    DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIMON", "", &Func), DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
-    DT_ASSERT_EQ(DtFuncFind(Drv, 5, "AF_ASISDIRX", "OTHER", &Func), DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtFuncFind(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDIRX", "", &Func),
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 5, "AF_ASISDIMON", "", &Func), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 5, "AF_ASISDIRX", "OTHER", &Func), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDIRX", "", &Func),
                  DTAPI_E_NOT_FOUND);
 
     char TooLong[PROPERTY_NAME_MAX_SIZE];
     memset(TooLong, 'A', sizeof(TooLong) - 1);
     TooLong[sizeof(TooLong) - 1] = '\0';
-    DT_ASSERT_EQ(DtFuncFind(Drv, 5, TooLong, "", &Func), DTAPI_E_BUF_TOO_SMALL);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 5, TooLong, "", &Func), DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
 
     FINISH(Drv, Live);
 }
@@ -258,21 +258,21 @@ DT_TEST(InstanceIsChosenByRole)
     if (Drv == NULL)
         return;
 
-    SimDtPcieOverrideString("AF_ASISDIRX#2", 1, true, "SECOND");
-    SimDtPcieOverrideString("AF_ASISDIRX#2.1", 1, true, "DF_ASIRX#1");
-    SimDtPcieOverrideString("AF_ASISDIRX#3", 1, true, "SECOND");
-    SimDtPcieOverrideString("AF_ASISDIRX#3.1", 1, true, "DF_SDIRX#1");
+    SimDtPcie_OverrideString("AF_ASISDIRX#2", 1, true, "SECOND");
+    SimDtPcie_OverrideString("AF_ASISDIRX#2.1", 1, true, "DF_ASIRX#1");
+    SimDtPcie_OverrideString("AF_ASISDIRX#3", 1, true, "SECOND");
+    SimDtPcie_OverrideString("AF_ASISDIRX#3.1", 1, true, "DF_SDIRX#1");
 
     DtFuncInstance Func;
-    DT_ASSERT_OK(DtFuncFind(Drv, 1, "AF_ASISDIRX", "SECOND", &Func));
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 1);
+    DT_ASSERT_OK(DtFunc_Find(Drv, 1, "AF_ASISDIRX", "SECOND", &Func));
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 1);
     DT_ASSERT_STR(PartAt(&Func, 0)->Name, "DF_ASIRX#1");
-    DtFuncRelease(&Func);
+    DtFunc_Release(&Func);
 
-    SimDtPcieOverrideString("AF_ASISDIRX#1.4", 1, false, NULL);
-    DT_ASSERT_OK(DtFuncFind(Drv, 1, "AF_ASISDIRX", "", &Func));
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 3);
-    DtFuncRelease(&Func);
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.4", 1, false, NULL);
+    DT_ASSERT_OK(DtFunc_Find(Drv, 1, "AF_ASISDIRX", "", &Func));
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 3);
+    DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
 }
@@ -287,26 +287,26 @@ DT_TEST(ReadFailures)
     if (Drv == NULL)
         return;
 
-    SimDtPcieFailProperty("AF_ASISDIRX#1", 2, true, DT_STATUS_TIMEOUT);
+    SimDtPcie_FailProperty("AF_ASISDIRX#1", 2, true, DT_STATUS_TIMEOUT);
     DtFuncInstance Func;
-    DT_ASSERT_EQ(DtFuncFind(Drv, 2, "AF_ASISDIRX", "", &Func), DTAPI_E_TIMEOUT);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 2, "AF_ASISDIRX", "", &Func), DTAPI_E_TIMEOUT);
 
-    SimDtPcieFailProperty("AF_ASISDIRX#1.8", 3, true, DT_STATUS_BUSY);
-    DT_ASSERT_EQ(DtFuncFind(Drv, 3, "AF_ASISDIRX", "", &Func), DTAPI_E_BUSY);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
+    SimDtPcie_FailProperty("AF_ASISDIRX#1.8", 3, true, DT_STATUS_BUSY);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 3, "AF_ASISDIRX", "", &Func), DTAPI_E_BUSY);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
 
-    SimDtPcieReset();
-    SimDtPcieFailProperty("BC_SWITCH#2", 4, true, DT_STATUS_TIMEOUT);
-    SimDtPcieOverrideProperty("BC_ST425LR#1_TYPE", 4, false, 0);
-    SimDtPcieOverrideProperty("BC_SDIMUX12G#1_UUID", 4, false, 0);
-    SimDtPcieOverrideString("AF_ASISDIRX#1.4", 4, true, "XX_SWITCH#3");
-    SimDtPcieOverrideString("XX_SWITCH#3", 4, true, "");
-    SimDtPcieOverrideProperty("XX_SWITCH#3_TYPE", 4, true, DT_BLOCK_TYPE_SWITCH);
-    SimDtPcieOverrideProperty("XX_SWITCH#3_UUID", 4, true, DT_UUID_BC_FLAG | 1);
-    DT_ASSERT_OK(DtFuncFind(Drv, 4, "AF_ASISDIRX", "", &Func));
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), PART_COUNT - 4);
+    SimDtPcie_Reset();
+    SimDtPcie_FailProperty("BC_SWITCH#2", 4, true, DT_STATUS_TIMEOUT);
+    SimDtPcie_OverrideProperty("BC_ST425LR#1_TYPE", 4, false, 0);
+    SimDtPcie_OverrideProperty("BC_SDIMUX12G#1_UUID", 4, false, 0);
+    SimDtPcie_OverrideString("AF_ASISDIRX#1.4", 4, true, "XX_SWITCH#3");
+    SimDtPcie_OverrideString("XX_SWITCH#3", 4, true, "");
+    SimDtPcie_OverrideProperty("XX_SWITCH#3_TYPE", 4, true, DT_BLOCK_TYPE_SWITCH);
+    SimDtPcie_OverrideProperty("XX_SWITCH#3_UUID", 4, true, DT_UUID_BC_FLAG | 1);
+    DT_ASSERT_OK(DtFunc_Find(Drv, 4, "AF_ASISDIRX", "", &Func));
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), PART_COUNT - 4);
     DT_ASSERT_STR(PartAt(&Func, 0)->Name, "BC_SDIRXF#1");
-    DtFuncRelease(&Func);
+    DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
 }
@@ -320,11 +320,11 @@ DT_TEST(OutOfMemory)
     if (Drv == NULL)
         return;
 
-    DtAllocFailAfter(0);
+    DtAlloc_FailAfter(0);
     DtFuncInstance Func;
-    DT_ASSERT_EQ(DtFuncFind(Drv, 0, "AF_ASISDIRX", "", &Func), DTAPI_E_OUT_OF_MEM);
-    DtAllocFailAfter(-1);
-    DT_ASSERT_EQ(DtVecCount(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func), DTAPI_E_OUT_OF_MEM);
+    DtAlloc_FailAfter(-1);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
 
     FINISH(Drv, Live);
 }
@@ -341,26 +341,26 @@ DT_TEST(PartsAreGotByKindTypeAndRole)
         return;
 
     DtFuncInstance Func;
-    DT_ASSERT_OK(DtFuncFind(Drv, 0, "AF_ASISDIRX", "", &Func));
+    DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
 
-    const DtFuncPart* Part = DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncPart* Part = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "DF_SDIRX#1") == 0);
-    Part = DtFuncGet(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
+    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#3") == 0);
-    Part = DtFuncGet(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#2") == 0);
 
-    DT_ASSERT(DtFuncGet(&Func, false, DT_BLOCK_TYPE_SWITCH, "") == NULL);
-    DT_ASSERT(DtFuncGet(&Func, true, DT_FUNC_TYPE_SDIRX, "OTHER") == NULL);
-    DT_ASSERT(DtFuncGet(&Func, false, DT_FUNC_TYPE_SDIRX, "") == NULL);
-    DT_ASSERT(DtFuncGet(&Func, true, DT_FUNC_TYPE_SDITXPHY, "") == NULL);
-    DtFuncRelease(&Func);
+    DT_ASSERT(DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "") == NULL);
+    DT_ASSERT(DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "OTHER") == NULL);
+    DT_ASSERT(DtFunc_Get(&Func, false, DT_FUNC_TYPE_SDIRX, "") == NULL);
+    DT_ASSERT(DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDITXPHY, "") == NULL);
+    DtFunc_Release(&Func);
 
-    SimDtPcieOverrideString("BC_SWITCH#3", 0, true, "SDI_MUX_IN");
-    DT_ASSERT_OK(DtFuncFind(Drv, 0, "AF_ASISDIRX", "", &Func));
-    Part = DtFuncGet(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    SimDtPcie_OverrideString("BC_SWITCH#3", 0, true, "SDI_MUX_IN");
+    DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
+    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
     DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#3") == 0);
-    DtFuncRelease(&Func);
+    DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
 }
@@ -395,18 +395,19 @@ DT_TEST(DriverVersionPerProxy)
     {
         bool IsDf = Cases[i].IsDf;
 
-        if (DtFuncCheckDriverVersion(&Cases[i].Enough, IsDf, Cases[i].Type) != DTAPI_OK ||
-            DtFuncCheckDriverVersion(&Newest, IsDf, Cases[i].Type) != DTAPI_OK ||
-            DtFuncCheckDriverVersion(&Cases[i].TooOld, IsDf, Cases[i].Type) !=
+        if (DtFunc_CheckDriverVersion(&Cases[i].Enough, IsDf, Cases[i].Type) !=
+                DTAPI_OK ||
+            DtFunc_CheckDriverVersion(&Newest, IsDf, Cases[i].Type) != DTAPI_OK ||
+            DtFunc_CheckDriverVersion(&Cases[i].TooOld, IsDf, Cases[i].Type) !=
                 DTAPI_E_DRIVER_INCOMP)
         {
             DT_FAIL("type %d", Cases[i].Type);
         }
     }
 
-    DT_ASSERT_EQ(DtFuncCheckDriverVersion(&Newest, false, DT_FUNC_TYPE_SDIRX),
+    DT_ASSERT_EQ(DtFunc_CheckDriverVersion(&Newest, false, DT_FUNC_TYPE_SDIRX),
                  DTAPI_E_INTERNAL);
-    DT_ASSERT_EQ(DtFuncCheckDriverVersion(&Newest, true, DT_FUNC_TYPE_GENLOCKCTRL),
+    DT_ASSERT_EQ(DtFunc_CheckDriverVersion(&Newest, true, DT_FUNC_TYPE_GENLOCKCTRL),
                  DTAPI_E_INTERNAL);
 }
 

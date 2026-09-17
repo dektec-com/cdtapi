@@ -35,53 +35,53 @@ typedef volatile int32_t DtAtomicInt;
 
 // Stores an initial value. Not atomic, and does not need to be: an object is initialised
 // before it becomes reachable from another thread.
-static inline void DtAtomicInit(DtAtomicInt* Value, int32_t Initial)
+static inline void DtAtomic_Init(DtAtomicInt* Value, int32_t Initial)
 {
     *Value = Initial;
 }
 
 #if defined(_MSC_VER)
 
-static inline int32_t DtAtomicIncrement(DtAtomicInt* Value)
+static inline int32_t DtAtomic_Increment(DtAtomicInt* Value)
 {
     return _InterlockedIncrement(Value);
 }
 
-static inline int32_t DtAtomicDecrement(DtAtomicInt* Value)
+static inline int32_t DtAtomic_Decrement(DtAtomicInt* Value)
 {
     return _InterlockedDecrement(Value);
 }
 
-static inline int32_t DtAtomicLoad(const DtAtomicInt* Value)
+static inline int32_t DtAtomic_Load(const DtAtomicInt* Value)
 {
     // A plain read of an aligned 32-bit value is atomic on every architecture MSVC
     // targets, and volatile keeps the compiler from caching it.
     return *Value;
 }
 
-static inline void DtAtomicStore(DtAtomicInt* Value, int32_t Desired)
+static inline void DtAtomic_Store(DtAtomicInt* Value, int32_t Desired)
 {
     _InterlockedExchange(Value, Desired);
 }
 
 #else
 
-static inline int32_t DtAtomicIncrement(DtAtomicInt* Value)
+static inline int32_t DtAtomic_Increment(DtAtomicInt* Value)
 {
     return __atomic_add_fetch(Value, 1, __ATOMIC_ACQ_REL);
 }
 
-static inline int32_t DtAtomicDecrement(DtAtomicInt* Value)
+static inline int32_t DtAtomic_Decrement(DtAtomicInt* Value)
 {
     return __atomic_sub_fetch(Value, 1, __ATOMIC_ACQ_REL);
 }
 
-static inline int32_t DtAtomicLoad(const DtAtomicInt* Value)
+static inline int32_t DtAtomic_Load(const DtAtomicInt* Value)
 {
     return __atomic_load_n(Value, __ATOMIC_ACQUIRE);
 }
 
-static inline void DtAtomicStore(DtAtomicInt* Value, int32_t Desired)
+static inline void DtAtomic_Store(DtAtomicInt* Value, int32_t Desired)
 {
     __sync_lock_test_and_set(Value, Desired);
 }

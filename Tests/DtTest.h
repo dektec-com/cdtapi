@@ -102,7 +102,7 @@ typedef struct DtTestCase
     void (*Func)(int* Failures);
 } DtTestCase;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTestSilenceDialogs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTest_SilenceDialogs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Sends failed CRT assertions and abort() to stderr instead of to a message box.
 //
@@ -111,7 +111,7 @@ typedef struct DtTestCase
 // started by CTest or by CI has nobody to dismiss it: the run hangs until it times out,
 // and the report says nothing about what actually went wrong.
 //
-static void DtTestSilenceDialogs(void)
+static void DtTest_SilenceDialogs(void)
 {
 #if defined(_MSC_VER)
     int Report;
@@ -136,7 +136,7 @@ static void DtTestSilenceDialogs(void)
         static const DtTestCase Cases[] = {__VA_ARGS__};                                 \
         const int NumCases = (int)(sizeof(Cases) / sizeof(Cases[0]));                    \
         int TotalFailures = 0;                                                           \
-        DtTestSilenceDialogs();                                                          \
+        DtTest_SilenceDialogs();                                                         \
         printf("== %s: %d case(s)\n", SuiteName, NumCases);                              \
         for (int i = 0; i < NumCases; i++)                                               \
         {                                                                                \

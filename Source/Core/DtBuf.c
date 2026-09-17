@@ -24,30 +24,30 @@ struct DtBuf
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseOwned -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The release callback used by DtBufAlloc. Having one rather than a flag keeps the
-// teardown path in DtBufUnref down to a single branch.
+// The release callback used by DtBuf_Alloc. Having one rather than a flag keeps the
+// teardown path in DtBuf_Unref down to a single branch.
 //
 static void ReleaseOwned(void* Opaque, uint8_t* Data, size_t Size)
 {
     (void)Opaque;
     (void)Size;
-    DtFree(Data);
+    DtAlloc_Free(Data);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Construction +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufWrap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Wrap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtBuf* DtBufWrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opaque)
+DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opaque)
 {
     if (Data == NULL || Size == 0)
         return NULL;
 
-    DtBuf* Buf = (DtBuf*)DtMalloc(sizeof(DtBuf));
+    DtBuf* Buf = (DtBuf*)DtAlloc_Malloc(sizeof(DtBuf));
     if (Buf == NULL)
         return NULL;
 
-    DtAtomicInit(&Buf->RefCount, 1);
+    DtAtomic_Init(&Buf->RefCount, 1);
     Buf->Data = Data;
     Buf->Size = Size;
     Buf->Release = Release;
@@ -56,21 +56,21 @@ DtBuf* DtBufWrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opa
     return Buf;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufAlloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtBuf* DtBufAlloc(size_t Size)
+DtBuf* DtBuf_Alloc(size_t Size)
 {
     if (Size == 0)
         return NULL;
 
-    uint8_t* Data = (uint8_t*)DtMalloc(Size);
+    uint8_t* Data = (uint8_t*)DtAlloc_Malloc(Size);
     if (Data == NULL)
         return NULL;
 
-    DtBuf* Buf = DtBufWrap(Data, Size, ReleaseOwned, NULL);
+    DtBuf* Buf = DtBuf_Wrap(Data, Size, ReleaseOwned, NULL);
     if (Buf == NULL)
     {
-        DtFree(Data);
+        DtAlloc_Free(Data);
         return NULL;
     }
 
@@ -79,20 +79,20 @@ DtBuf* DtBufAlloc(size_t Size)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Referencing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufRef -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Ref -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtBuf* DtBufRef(DtBuf* Buf)
+DtBuf* DtBuf_Ref(DtBuf* Buf)
 {
     if (Buf == NULL)
         return NULL;
 
-    DtAtomicIncrement(&Buf->RefCount);
+    DtAtomic_Increment(&Buf->RefCount);
     return Buf;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufUnref -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Unref -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtBufUnref(DtBuf** Buf)
+void DtBuf_Unref(DtBuf** Buf)
 {
     if (Buf == NULL || *Buf == NULL)
         return;
@@ -104,34 +104,34 @@ void DtBufUnref(DtBuf** Buf)
     // path, and the caller's pointer must not be left pointing at freed memory.
     *Buf = NULL;
 
-    if (DtAtomicDecrement(&Target->RefCount) != 0)
+    if (DtAtomic_Decrement(&Target->RefCount) != 0)
         return;
 
     if (Target->Release != NULL)
         Target->Release(Target->Opaque, Target->Data, Target->Size);
 
-    DtFree(Target);
+    DtAlloc_Free(Target);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Accessors +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Data -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-uint8_t* DtBufData(const DtBuf* Buf)
+uint8_t* DtBuf_Data(const DtBuf* Buf)
 {
     return Buf != NULL ? Buf->Data : NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Size -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtBufSize(const DtBuf* Buf)
+size_t DtBuf_Size(const DtBuf* Buf)
 {
     return Buf != NULL ? Buf->Size : 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufRefCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_RefCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtBufRefCount(const DtBuf* Buf)
+int DtBuf_RefCount(const DtBuf* Buf)
 {
-    return Buf != NULL ? DtAtomicLoad(&Buf->RefCount) : 0;
+    return Buf != NULL ? DtAtomic_Load(&Buf->RefCount) : 0;
 }
