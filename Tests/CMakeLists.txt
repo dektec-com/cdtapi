@@ -61,6 +61,10 @@ endfunction()
 
 cdtapilite_add_test(Alloc Unit/TestAlloc.c)
 cdtapilite_add_test(Api Unit/TestApi.c)
+cdtapilite_add_test(AvFrame Unit/TestAvFrame.c)
+cdtapilite_add_test(AvPacket Unit/TestAvPacket.c)
+cdtapilite_add_test(AvPixConv Unit/TestAvPixConv.c)
+cdtapilite_add_test(AvTime Unit/TestAvTime.c)
 cdtapilite_add_test(Buf Unit/TestBuf.c)
 cdtapilite_add_test(Device Unit/TestDevice.c)
 cdtapilite_add_test(DmaBuffer Unit/TestDmaBuffer.c)
@@ -76,9 +80,23 @@ cdtapilite_add_test(NetAddr Unit/TestNetAddr.c)
 cdtapilite_add_test(Ring Unit/TestRing.c)
 cdtapilite_add_test(SdiFrame Unit/TestSdiFrame.c)
 cdtapilite_add_test(Smpte352 Unit/TestSmpte352.c)
+cdtapilite_add_test(St2110Audio Unit/TestSt2110Audio.c)
+cdtapilite_add_test(St2110Video Unit/TestSt2110Video.c)
 cdtapilite_add_test(Thread Unit/TestThread.c)
 cdtapilite_add_test(Vec Unit/TestVec.c)
 cdtapilite_add_test(VidStd Unit/TestVidStd.c)
+
+# The throughput of the pixel conversions. A program to run by hand, not a test: timing
+# depends on the machine, so nothing about it can pass or fail.
+add_executable(BenchAvPixConv Bench/BenchAvPixConv.c)
+set_target_properties(BenchAvPixConv PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+    FOLDER "Tests")
+target_include_directories(BenchAvPixConv PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+target_link_libraries(BenchAvPixConv PRIVATE cdtapilite)
+target_compile_options(BenchAvPixConv PRIVATE ${CDTAPILITE_WARN_FLAGS})
 
 # The names of result codes are checked against every result code the public header
 # defines. The list of codes is read from the header at configure time, so a code added

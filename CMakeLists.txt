@@ -44,6 +44,13 @@ configure_file(
 set(CDTAPILITE_SOURCES
     Source/Api/DtApi.c
     Source/Api/DtResult.c
+    Source/AvFifo/DtAvFrame.c
+    Source/AvFifo/DtAvFrameProps.c
+    Source/AvFifo/DtAvPacket.c
+    Source/AvFifo/DtAvPixConv.c
+    Source/AvFifo/DtAvTime.c
+    Source/AvFifo/DtSt2110Audio.c
+    Source/AvFifo/DtSt2110Video.c
     Source/Channel/DtInpChannel.c
     Source/Channel/DtOutpChannel.c
     Source/Core/DtAlloc.c
@@ -81,6 +88,15 @@ set(CDTAPILITE_SOURCES
 list(APPEND CDTAPILITE_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)
+
+# The SSSE3 pixel conversions exist for x86 processors only. The library calls them when
+# CPUID reports SSSE3, so only their own file is compiled for it.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
+    list(APPEND CDTAPILITE_SOURCES Source/AvFifo/DtAvPixConvSsse3.c)
+    set(CDTAPILITE_HAVE_SSSE3 ON)
+else()
+    set(CDTAPILITE_HAVE_SSSE3 OFF)
+endif()
 
 # Threads, events, mutexes, DMA memory and the network belong to the operating system
 # rather than to a device, so they are built for the host platform whether or not the
@@ -162,6 +178,15 @@ target_include_directories(cdtapilite
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/Device
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/DtPcie)
 
+if(CDTAPILITE_HAVE_SSSE3)
+    target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_HAVE_SSSE3=1)
+    if(NOT MSVC)
+        set_source_files_properties(
+            "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo/DtAvPixConvSsse3.c"
+            PROPERTIES COMPILE_OPTIONS -mssse3)
+    endif()
+endif()
+
 if(CDTAPILITE_SIM_ONLY)
     target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_SIM_ONLY=1)
 elseif(WIN32)
@@ -221,6 +246,7 @@ install(TARGETS cdtapilite
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/CDtapiLite.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/CDtapiLite_Constants.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Include/CDtapiLite_AvFifo.h"
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/CDtapiLite_Version.h"
     DESTINATION Include)
 
