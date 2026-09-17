@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The frame format a receive channel writes, and DTAPI's raw SDI frame
+// CDtapiLite - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -48,6 +48,8 @@ bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBit
     Layout->Alignment = AlignmentBits / 8;
     Layout->HeaderBytes = (DT_SDIFRAME_HEADER_BYTES + Layout->Alignment - 1) /
                           Layout->Alignment * Layout->Alignment;
+    Layout->TxHeaderBytes = (DT_SDIFRAME_TX_HEADER_BYTES + Layout->Alignment - 1) /
+                            Layout->Alignment * Layout->Alignment;
     Layout->NumLines = DtFramePropsNumLines(&Props);
     Layout->LineSymsHanc = DtFramePropsLineSymbolsHanc(&Props);
     Layout->LineBytesHanc = PaddedBytes(Layout->LineSymsHanc, Layout->Alignment);
@@ -55,6 +57,12 @@ bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBit
     Layout->LineBytesVideo = PaddedBytes(Layout->LineSymsVideo, Layout->Alignment);
     Layout->Stride = Layout->LineBytesHanc + Layout->LineBytesVideo;
     Layout->Format = DT_SDIFRAME_FORMAT_UNCOMPRESSED;
+    if (DtFramePropsIsSd(&Props))
+        Layout->SdiRate = DT_SDIRATE_SD;
+    else if (DtFramePropsIs3g(&Props))
+        Layout->SdiRate = DT_SDIRATE_3G;
+    else
+        Layout->SdiRate = DT_SDIRATE_HD;
     Layout->VidStd = VidStd;
     return true;
 }
@@ -64,6 +72,14 @@ bool DtSdiFrameLayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBit
 size_t DtSdiFrameCodedSize(const DtSdiFrameLayout* Layout)
 {
     return (size_t)Layout->HeaderBytes +
+           (size_t)Layout->NumLines * (size_t)Layout->Stride;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameTxCodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+size_t DtSdiFrameTxCodedSize(const DtSdiFrameLayout* Layout)
+{
+    return (size_t)Layout->TxHeaderBytes +
            (size_t)Layout->NumLines * (size_t)Layout->Stride;
 }
 
@@ -130,6 +146,70 @@ unsigned int DtSdiFrameCheckHeader(const DtSdiFrameLayout* Layout,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameTxHeaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The header's SDI rate takes the driver's DT_DRV_SDIRATE_ values, which DT_SDIRATE_
+// equals for SD, HD and 3G.
+//
+void DtSdiFrameTxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
+                            DtSdiFrameTxHeader* Header)
+{
+    Header->SyncWord = DT_SDIFRAME_SYNC_WORD;
+    Header->ProtocolVersion = 0;
+    Header->Format = Layout->Format;
+    Header->SdiRateValid = true;
+    Header->SdiRate = Layout->SdiRate;
+    Header->FrameId = FrameId & 0xFFFF;
+    Header->NumLines = Layout->NumLines;
+    Header->NumWordsHanc = Layout->LineBytesHanc / Layout->Alignment;
+    Header->NumSymsHanc = Layout->LineSymsHanc;
+    Header->NumWordsVideo = Layout->LineBytesVideo / Layout->Alignment;
+    Header->NumSymsVideo = Layout->LineSymsVideo;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameDecodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Bit-fields as in the receive header, allocated from the least significant bit.
+//
+void DtSdiFrameDecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header)
+{
+    uint32_t Word1 = Read32(Bytes + 4);
+    uint32_t Word2 = Read32(Bytes + 8);
+    uint32_t Word3 = Read32(Bytes + 12);
+    uint32_t Word4 = Read32(Bytes + 16);
+
+    Header->SyncWord = Read32(Bytes);
+    Header->ProtocolVersion = (int)(Word1 & 0xF);
+    Header->Format = (int)((Word1 >> 4) & 0xF);
+    Header->SdiRateValid = ((Word1 >> 8) & 1) != 0;
+    Header->SdiRate = (int)((Word1 >> 9) & 0x7);
+    Header->FrameId = (int)(Word2 & 0xFFFF);
+    Header->NumLines = (int)(Word2 >> 16);
+    Header->NumWordsHanc = (int)(Word3 & 0xFFFF);
+    Header->NumSymsHanc = (int)(Word3 >> 16);
+    Header->NumWordsVideo = (int)(Word4 & 0xFFFF);
+    Header->NumSymsVideo = (int)(Word4 >> 16);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameEncodeTxHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiFrameEncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
+{
+    uint32_t Word1 = ((uint32_t)Header->ProtocolVersion & 0xF) |
+                     ((uint32_t)Header->Format & 0xF) << 4 |
+                     (Header->SdiRateValid ? 1u : 0u) << 8 |
+                     ((uint32_t)Header->SdiRate & 0x7) << 9;
+
+    Write32(Bytes, Header->SyncWord);
+    Write32(Bytes + 4, Word1);
+    Write32(Bytes + 8, ((uint32_t)Header->FrameId & 0xFFFF) |
+                           ((uint32_t)Header->NumLines & 0xFFFF) << 16);
+    Write32(Bytes + 12, ((uint32_t)Header->NumWordsHanc & 0xFFFF) |
+                            ((uint32_t)Header->NumSymsHanc & 0xFFFF) << 16);
+    Write32(Bytes + 16, ((uint32_t)Header->NumWordsVideo & 0xFFFF) |
+                            ((uint32_t)Header->NumSymsVideo & 0xFFFF) << 16);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameRawSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -145,6 +225,15 @@ size_t DtSdiFrameRawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
         return 0;
 
     return (Symbols * (size_t)SymbolBits + 63) / 64 * 8;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameRawLineBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+size_t DtSdiFrameRawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits)
+{
+    if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
+        return 0;
+    return (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) * (size_t)SymbolBits;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -304,9 +393,135 @@ void DtSdiFrameConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopyBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Copies Count bits, from bit Bit of In, to the start of the Bytes bytes at Out, and
+// clears the bits of Out after them. Whole bytes are copied when Bit is on a byte
+// boundary, as PxCnv::Split_Uyvy10 does; otherwise each byte of Out takes the upper bits
+// of one byte of In and the lower bits of the next. No byte of In after the one holding
+// the last bit is read.
+//
+static void CopyBits(const uint8_t* In, size_t Bit, size_t Count, uint8_t* Out,
+                     size_t Bytes)
+{
+    const uint8_t* Src = In + Bit / 8;
+    uint32_t Shift = (uint32_t)(Bit % 8);
+    size_t Whole = Count / 8;
+    uint32_t Rest = (uint32_t)(Count % 8);
+    size_t i;
+
+    if (Shift == 0)
+        memcpy(Out, Src, Whole);
+    else
+    {
+        for (i = 0; i < Whole; i++)
+        {
+            uint32_t Pair = (uint32_t)Src[i] | (uint32_t)Src[i + 1] << 8;
+
+            Out[i] = (uint8_t)(Pair >> Shift);
+        }
+    }
+    memset(Out + Whole, 0, Bytes - Whole);
+
+    if (Rest != 0)
+    {
+        uint32_t Value = (uint32_t)Src[Whole] >> Shift;
+
+        if (Shift + Rest > 8)
+            Value |= (uint32_t)Src[Whole + 1] << (8 - Shift);
+        Out[Whole] = (uint8_t)(Value & ((1u << Rest) - 1));
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Symbol16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The lower ten bits of the 16-bit symbol at Bytes.
+//
+static uint64_t Symbol16(const uint8_t* Bytes)
+{
+    return ((uint64_t)Bytes[0] | (uint64_t)Bytes[1] << 8) & 0x3FF;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Packs Count 16-bit symbols from In into the Bytes bytes at Out, and clears the bits of
+// Out after them. Four symbols make five bytes; the symbols left over go one by one.
+//
+static void Pack16(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
+{
+    size_t Groups = Count / 4;
+    size_t Byte = 5 * Groups;
+    uint64_t Accu = 0;
+    uint32_t Have = 0;
+    size_t i;
+
+    for (i = 0; i < Groups; i++)
+    {
+        const uint8_t* Syms = In + 8 * i;
+        uint8_t* Dst = Out + 5 * i;
+        uint64_t Word = Symbol16(Syms) | Symbol16(Syms + 2) << 10 |
+                        Symbol16(Syms + 4) << 20 | Symbol16(Syms + 6) << 30;
+
+        Dst[0] = (uint8_t)Word;
+        Dst[1] = (uint8_t)(Word >> 8);
+        Dst[2] = (uint8_t)(Word >> 16);
+        Dst[3] = (uint8_t)(Word >> 24);
+        Dst[4] = (uint8_t)(Word >> 32);
+    }
+    memset(Out + Byte, 0, Bytes - Byte);
+
+    for (i = 4 * Groups; i < Count; i++)
+    {
+        Accu |= Symbol16(In + 2 * i) << Have;
+        Have += 10;
+        while (Have >= 8)
+        {
+            Out[Byte++] = (uint8_t)Accu;
+            Accu >>= 8;
+            Have -= 8;
+        }
+    }
+    if (Have > 0)
+        Out[Byte] = (uint8_t)Accu;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameCodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The video section starts where the HANC section ends, which in a line of 10-bit symbols
+// need not be a byte boundary either.
+//
+bool DtSdiFrameCodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+                        const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
+{
+    size_t Hanc = (size_t)Layout->LineSymsHanc;
+    size_t Video = (size_t)Layout->LineSymsVideo;
+    uint8_t* VideoSection = CodedLine + Layout->LineBytesHanc;
+
+    if (Phase < 0 || Phase > 7)
+        return false;
+
+    switch (SymbolBits)
+    {
+    case 10:
+        CopyBits(RawLine, (size_t)Phase, Hanc * 10, CodedLine,
+                 (size_t)Layout->LineBytesHanc);
+        CopyBits(RawLine, (size_t)Phase + Hanc * 10, Video * 10, VideoSection,
+                 (size_t)Layout->LineBytesVideo);
+        return true;
+    case 16:
+        if (Phase != 0)
+            return false;
+        Pack16(RawLine, Hanc, CodedLine, (size_t)Layout->LineBytesHanc);
+        Pack16(RawLine + 2 * Hanc, Video, VideoSection, (size_t)Layout->LineBytesVideo);
+        return true;
+    default:
+        return false;
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame sync +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // HdSdiUtil::GetLineNumber: the line number of an HD line, from its chrominance and
 // luminance words; -1 without a valid EAV or when the two differ.
@@ -329,7 +544,7 @@ static int LineNumber(const uint8_t* Line)
     return Chroma == Luma ? Chroma : -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MatchesSdEav -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MatchesSdEav -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // True when the four symbols of an SD line's EAV equal Eav in their upper eight bits.
 //
@@ -362,4 +577,165 @@ unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
     else
         InSync = LineNumber(FirstLine) == 1 && LineNumber(LastLine) == Layout->NumLines;
     return InSync ? DTAPI_OK : DTAPI_E_OUT_OF_SYNC;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The chrominance and the luminance of black and of empty blanking.
+#define BLACK_C 0x200u
+#define BLACK_Y 0x040u
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Replaces symbol Index of a packed 10-bit section with Value.
+//
+static void SetSymbol(uint8_t* Section, size_t Index, uint32_t Value)
+{
+    size_t Bit = Index * 10;
+    size_t Byte = Bit / 8;
+    uint32_t Shift = (uint32_t)(Bit % 8);
+    uint32_t Bits = (Value & 0x3FF) << Shift;
+    uint32_t Mask = 0x3FFu << Shift;
+    uint32_t Count;
+
+    for (Count = 10 + Shift; Count > 0; Count = Count > 8 ? Count - 8 : 0)
+    {
+        Section[Byte] = (uint8_t)(((uint32_t)Section[Byte] & ~Mask) | Bits);
+        Byte++;
+        Bits >>= 8;
+        Mask >>= 8;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FillBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Fills a section of Symbols symbols and Bytes bytes with the chrominance and the
+// luminance of black in turn, chrominance first, and clears its padding.
+//
+static void FillBlack(uint8_t* Section, size_t Symbols, size_t Bytes)
+{
+    // 200 040 200 040, packed.
+    static const uint8_t Group[5] = {0x00, 0x02, 0x01, 0x20, 0x10};
+    size_t Groups = Symbols / 4;
+    size_t i;
+
+    memset(Section, 0, Bytes);
+    for (i = 0; i < Groups; i++)
+        memcpy(Section + 5 * i, Group, sizeof(Group));
+    for (i = 4 * Groups; i < Symbols; i++)
+        SetSymbol(Section, i, i % 2 == 0 ? BLACK_C : BLACK_Y);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant bit
+// first.
+//
+static uint32_t Crc18(uint32_t Crc, uint32_t Word)
+{
+    int Bit;
+
+    for (Bit = 0; Bit < 10; Bit++)
+    {
+        uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
+
+        Crc >>= 1;
+        if (Feedback != 0)
+            Crc ^= 0x23000;
+    }
+    return Crc;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The fourth word of a timing reference of line Line, from 1: the field, vertical
+// blanking and EAV or SAV bits, and the protection bits over those three.
+//
+static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
+{
+    uint32_t F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
+    const DtFieldProps* Field = &Props->Fields[F];
+    uint32_t V = Line < Field->VidStartLine || Line > Field->VidEndLine ? 1 : 0;
+    uint32_t H = Eav ? 1 : 0;
+
+    return 0x200 | F << 8 | V << 7 | H << 6 | (V ^ H) << 5 | (F ^ H) << 4 | (F ^ V) << 3 |
+           (F ^ V ^ H) << 2;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Nine bits with bit 9 the inverse of bit 8, as line numbers and CRC words carry them.
+//
+static uint32_t WithParity(uint32_t Nine)
+{
+    Nine &= 0x1FF;
+    return Nine | ((Nine >> 8) ^ 1) << 9;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrameBlackLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiFrameBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
+{
+    const size_t Hanc = (size_t)Layout->LineSymsHanc;
+    const size_t Video = (size_t)Layout->LineSymsVideo;
+    uint32_t ActiveCrc[2] = {0, 0};
+    DtFrameProps Props;
+    int Line;
+    size_t i;
+
+    if (!DtFramePropsInit(&Props, Layout->VidStd))
+        return;
+
+    // Every line's active part is black, so each channel's CRC starts the same.
+    for (i = 0; i < Video; i++)
+        ActiveCrc[i % 2] = Crc18(ActiveCrc[i % 2], i % 2 == 0 ? BLACK_C : BLACK_Y);
+
+    for (Line = 1; Line <= Layout->NumLines; Line++)
+    {
+        uint8_t* Coded = Lines + (size_t)(Line - 1) * (size_t)Layout->Stride;
+        const uint32_t Sync[3] = {0x3FF, 0x000, 0x000};
+        const uint32_t Eav = Xyz(&Props, Line, true);
+        const uint32_t Sav = Xyz(&Props, Line, false);
+        size_t Channel, j;
+
+        FillBlack(Coded, Hanc, (size_t)Layout->LineBytesHanc);
+        FillBlack(Coded + Layout->LineBytesHanc, Video, (size_t)Layout->LineBytesVideo);
+
+        if (Props.LineNumSymEav == 4)
+        {
+            for (j = 0; j < 3; j++)
+            {
+                SetSymbol(Coded, j, Sync[j]);
+                SetSymbol(Coded, Hanc - 4 + j, Sync[j]);
+            }
+            SetSymbol(Coded, 3, Eav);
+            SetSymbol(Coded, Hanc - 1, Sav);
+            continue;
+        }
+
+        // HD and 3G: each word once for each channel, chrominance first.
+        for (Channel = 0; Channel < 2; Channel++)
+        {
+            uint32_t Words[8] = {0x3FF,
+                                 0x000,
+                                 0x000,
+                                 Eav,
+                                 WithParity((uint32_t)Line << 2),
+                                 WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
+                                 0,
+                                 0};
+            uint32_t Crc = ActiveCrc[Channel];
+
+            for (j = 0; j < 6; j++)
+                Crc = Crc18(Crc, Words[j]);
+            Words[6] = WithParity(Crc);
+            Words[7] = WithParity(Crc >> 9);
+
+            for (j = 0; j < 8; j++)
+                SetSymbol(Coded, 2 * j + Channel, Words[j]);
+            for (j = 0; j < 3; j++)
+                SetSymbol(Coded, Hanc - 8 + 2 * j + Channel, Sync[j]);
+            SetSymbol(Coded, Hanc - 2 + Channel, Sav);
+        }
+    }
 }

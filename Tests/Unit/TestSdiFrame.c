@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSdiFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The receive channel's frame format and DTAPI's raw SDI frame
+// CDtapiLite - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -55,8 +55,9 @@ static void SetBit(uint8_t* Bytes, size_t Bit)
 }
 
 // Writes a coded line of Layout for line Line: each section packed bit by bit, and its
-// padding filled with ones, which must not reach a raw frame.
-static void CodeLine(const DtSdiFrameLayout* Layout, int Line, uint8_t* Coded)
+// padding filled with ones, which must not reach a raw frame, or with zeros.
+static void CodeLine(const DtSdiFrameLayout* Layout, int Line, bool PadOnes,
+                     uint8_t* Coded)
 {
     const int Syms[2] = {Layout->LineSymsHanc, Layout->LineSymsVideo};
     const int Bytes[2] = {Layout->LineBytesHanc, Layout->LineBytesVideo};
@@ -77,7 +78,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int Line, uint8_t* Coded)
                     SetBit(Section, i * 10 + b);
             }
         }
-        for (b = (size_t)Syms[s] * 10; b < (size_t)Bytes[s] * 8; b++)
+        for (b = (size_t)Syms[s] * 10; PadOnes && b < (size_t)Bytes[s] * 8; b++)
             SetBit(Section, b);
         Section += Bytes[s];
     }
@@ -128,7 +129,7 @@ static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits,
     {
         for (i = 0; i < NumLines; i++)
         {
-            CodeLine(Layout, Lines[i], Coded);
+            CodeLine(Layout, Lines[i], true, Coded);
             DtSdiFrameConvertLine(Layout, SymbolBits, Coded, Lines[i], Raw);
             ExpectLine(Layout, SymbolBits, Lines[i], Expected);
         }
@@ -483,8 +484,605 @@ DT_TEST(ChecksFirstAndLastLine)
     DT_ASSERT_OK(DtSdiFrameCheckLines(&Layout, First, Last));
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmit header +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The transmit header's padded size, and the SDI rate of every standard.
+DT_TEST(LayoutTransmit)
+{
+    DtSdiFrameLayout Layout;
+    int i;
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
+    DT_ASSERT_EQ(Layout.TxHeaderBytes, 32);
+    DT_ASSERT_EQ(Layout.SdiRate, DT_SDIRATE_HD);
+    DT_ASSERT_EQ(DtSdiFrameTxCodedSize(&Layout), 32 + 1125 * 6608);
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, 32));
+    DT_ASSERT_EQ(Layout.TxHeaderBytes, 20);
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_525I59_94, 24));
+    DT_ASSERT_EQ(Layout.TxHeaderBytes, 21);
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P50, 512));
+    DT_ASSERT_EQ(Layout.TxHeaderBytes, 64);
+
+    for (i = 0; i < STANDARD_COUNT; i++)
+    {
+        const int Std = g_Standards[i];
+        int Expected = DT_SDIRATE_HD;
+
+        if (Std == DTAPI_VIDSTD_525I59_94 || Std == DTAPI_VIDSTD_625I50)
+            Expected = DT_SDIRATE_SD;
+        else if (Std == DTAPI_VIDSTD_1080P50 || Std == DTAPI_VIDSTD_1080P50B ||
+                 Std == DTAPI_VIDSTD_1080P59_94 || Std == DTAPI_VIDSTD_1080P59_94B ||
+                 Std == DTAPI_VIDSTD_1080P60 || Std == DTAPI_VIDSTD_1080P60B)
+            Expected = DT_SDIRATE_3G;
+        DT_ASSERT(DtSdiFrameLayoutInit(&Layout, Std, 128));
+        DT_ASSERT_EQ(Layout.SdiRate, Expected);
+    }
+}
+
+// 1080i50 with the card's alignment, as the card took it on port 5.
+DT_TEST(TxHeaderBytes)
+{
+    static const uint8_t Expected[DT_SDIFRAME_TX_HEADER_BYTES] = {
+        0xFE, 0xFB, 0xEF, 0xFF, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12,
+        0x65, 0x04, 0x71, 0x00, 0xA0, 0x05, 0x2C, 0x01, 0x00, 0x0F,
+    };
+    DtSdiFrameLayout Layout;
+    DtSdiFrameTxHeader Header, Decoded;
+    uint8_t Bytes[DT_SDIFRAME_TX_HEADER_BYTES];
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
+    DtSdiFrameTxHeaderInit(&Layout, 0x1234, &Header);
+    memset(Bytes, 0xEE, sizeof(Bytes));
+    DtSdiFrameEncodeTxHeader(&Header, Bytes);
+    DT_ASSERT_MEM(Bytes, Expected, sizeof(Expected));
+
+    DtSdiFrameDecodeTxHeader(Expected, &Decoded);
+    DT_ASSERT_EQ(Decoded.SyncWord, DT_SDIFRAME_SYNC_WORD);
+    DT_ASSERT_EQ(Decoded.ProtocolVersion, 0);
+    DT_ASSERT_EQ(Decoded.Format, DT_SDIFRAME_FORMAT_UNCOMPRESSED);
+    DT_ASSERT(Decoded.SdiRateValid);
+    DT_ASSERT_EQ(Decoded.SdiRate, DT_SDIRATE_HD);
+    DT_ASSERT_EQ(Decoded.FrameId, 0x1234);
+    DT_ASSERT_EQ(Decoded.NumLines, 1125);
+    DT_ASSERT_EQ(Decoded.NumWordsHanc, 113);
+    DT_ASSERT_EQ(Decoded.NumSymsHanc, 1440);
+    DT_ASSERT_EQ(Decoded.NumWordsVideo, 300);
+    DT_ASSERT_EQ(Decoded.NumSymsVideo, 3840);
+
+    // 3G, and a frame ID that keeps its lower 16 bits.
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_1080P50B, 128));
+    DtSdiFrameTxHeaderInit(&Layout, 0x10002, &Header);
+    DT_ASSERT_EQ(Header.FrameId, 2);
+    DtSdiFrameEncodeTxHeader(&Header, Bytes);
+    DT_ASSERT_EQ(Bytes[4], 0x00);
+    DT_ASSERT_EQ(Bytes[5], 0x05);
+    DT_ASSERT_EQ(Bytes[8], 0x02);
+    DT_ASSERT_EQ(Bytes[9], 0x00);
+    DT_ASSERT_EQ(Bytes[12], 0x71);
+    DT_ASSERT_EQ(Bytes[16], 0x2C);
+}
+
+// The reserved bits are ignored, and the fields keep their widths.
+DT_TEST(TxHeaderFieldWidths)
+{
+    static const uint8_t Expected[DT_SDIFRAME_TX_HEADER_BYTES] = {
+        0x00, 0x00, 0x00, 0x00, 0x2F, 0x0E, 0x00, 0x00, 0x45, 0x23,
+        0x01, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x34, 0x12,
+    };
+    DtSdiFrameTxHeader Header;
+    uint8_t Bytes[DT_SDIFRAME_TX_HEADER_BYTES];
+
+    memset(Bytes, 0xFF, sizeof(Bytes));
+    DtSdiFrameDecodeTxHeader(Bytes, &Header);
+    DT_ASSERT_EQ(Header.SyncWord, 0xFFFFFFFFu);
+    DT_ASSERT_EQ(Header.ProtocolVersion, 15);
+    DT_ASSERT_EQ(Header.Format, 15);
+    DT_ASSERT(Header.SdiRateValid);
+    DT_ASSERT_EQ(Header.SdiRate, 7);
+    DT_ASSERT_EQ(Header.FrameId, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumLines, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumWordsHanc, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumSymsHanc, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumWordsVideo, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumSymsVideo, 0xFFFF);
+
+    Header.SyncWord = 0;
+    Header.Format = 0x12;
+    Header.SdiRateValid = false;
+    Header.SdiRate = 0xF;
+    Header.FrameId = 0x12345;
+    Header.NumLines = 0x10001;
+    Header.NumSymsHanc = 0x10000;
+    Header.NumWordsVideo = 0x10000;
+    Header.NumSymsVideo = 0x1234;
+    DtSdiFrameEncodeTxHeader(&Header, Bytes);
+    DT_ASSERT_MEM(Bytes, Expected, sizeof(Expected));
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coding lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+DT_TEST(RawLineBits)
+{
+    DtSdiFrameLayout Layout;
+    int i;
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
+    DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 8), 42240);
+    DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 10), 52800);
+    DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 16), 84480);
+    DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 12), 0);
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P24, 128));
+    DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 10), 82500);
+
+    // Only 720p23.98 and 720p24 have 10-bit lines that end half-way a byte.
+    for (i = 0; i < STANDARD_COUNT; i++)
+    {
+        const bool HalfByte = g_Standards[i] == DTAPI_VIDSTD_720P23_98 ||
+                              g_Standards[i] == DTAPI_VIDSTD_720P24;
+
+        DT_ASSERT(DtSdiFrameLayoutInit(&Layout, g_Standards[i], 128));
+        DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 10) % 8, HalfByte ? 4 : 0);
+        DT_ASSERT_EQ(DtSdiFrameRawLineBits(&Layout, 16) % 8, 0);
+    }
+}
+
+// Writes the Count low bits of Value at bit Bit of Bytes, setting and clearing.
+static void PutBits(uint8_t* Bytes, size_t Bit, uint32_t Value, int Count)
+{
+    int b;
+
+    for (b = 0; b < Count; b++)
+    {
+        size_t At = Bit + (size_t)b;
+        uint8_t Mask = (uint8_t)(1u << (At % 8));
+
+        if ((Value >> b & 1) != 0)
+            Bytes[At / 8] = (uint8_t)(Bytes[At / 8] | Mask);
+        else
+            Bytes[At / 8] = (uint8_t)(Bytes[At / 8] & ~Mask);
+    }
+}
+
+// Codes line Line of Layout in SymbolBits from a buffer that holds only the line's bytes,
+// with the line starting at bit Phase and every bit around it set, and with 16 bits the
+// six unused bits of every symbol set too. The coded line must equal the reference
+// packer's, and converted back into a raw frame it must give the line's raw frame.
+// Returns false, having reported it, when anything differs.
+static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
+                           int Phase, int* DtFailures)
+{
+    const int Syms[2] = {Layout->LineSymsHanc, Layout->LineSymsVideo};
+    const size_t LineBits = DtSdiFrameRawLineBits(Layout, SymbolBits);
+    const size_t LineBytes = ((size_t)Phase + LineBits + 7) / 8;
+    const size_t Size = DtSdiFrameRawSize(Layout, SymbolBits);
+    const size_t Stride = (size_t)Layout->Stride;
+    uint8_t* RawLine = (uint8_t*)malloc(LineBytes);
+    uint8_t* Coded = (uint8_t*)malloc(Stride);
+    uint8_t* Reference = (uint8_t*)malloc(Stride);
+    uint8_t* Raw = (uint8_t*)calloc(Size, 1);
+    uint8_t* Expected = (uint8_t*)calloc(Size, 1);
+    const char* Failure = "out of memory";
+
+    if (RawLine != NULL && Coded != NULL && Reference != NULL && Raw != NULL &&
+        Expected != NULL)
+    {
+        // The raw frame bytes the line touches, and one on either side.
+        const size_t First = (size_t)Line * LineBits / 8;
+        const size_t From = First > 0 ? First - 1 : 0;
+        const size_t To = ((size_t)Line + 1) * LineBits / 8 + 2;
+        const size_t Compared = (To < Size ? To : Size) - From;
+        size_t Index = 0, i;
+        int s;
+
+        memset(RawLine, 0xFF, LineBytes);
+        for (s = 0; s < 2; s++)
+        {
+            for (i = 0; i < (size_t)Syms[s]; i++, Index++)
+            {
+                uint32_t Value = Symbol(Line, s, i) | (SymbolBits == 16 ? 0xFC00u : 0u);
+
+                PutBits(RawLine, (size_t)Phase + Index * (size_t)SymbolBits, Value,
+                        SymbolBits);
+            }
+        }
+        CodeLine(Layout, Line, false, Reference);
+        ExpectLine(Layout, SymbolBits, Line, Expected);
+        memset(Coded, 0xEE, Stride);
+
+        if (!DtSdiFrameCodeLine(Layout, SymbolBits, RawLine, Phase, Coded))
+            Failure = "refused";
+        else if (memcmp(Coded, Reference, Stride) != 0)
+            Failure = "the coded line differs from the reference";
+        else
+        {
+            DtSdiFrameConvertLine(Layout, SymbolBits, Coded, Line, Raw);
+            Failure = memcmp(Raw + From, Expected + From, Compared) == 0
+                          ? NULL
+                          : "converted back, the raw line differs";
+        }
+    }
+    if (Failure != NULL)
+    {
+        printf("    FAIL: standard %d, %d bits, line %d, phase %d: %s\n", Layout->VidStd,
+               SymbolBits, Line, Phase, Failure);
+        (*DtFailures)++;
+    }
+    free(RawLine);
+    free(Coded);
+    free(Reference);
+    free(Raw);
+    free(Expected);
+    return Failure == NULL;
+}
+
+// The first two, a middle and the last line of every standard, in 10 and 16 bits, with
+// the card's alignment and with 32 bits, each at the bit it starts at in a frame.
+DT_TEST(CodesEveryStandard)
+{
+    static const int Alignments[] = {128, 32};
+    static const int Bits[] = {10, 16};
+    int HalfByteStarts = 0;
+    size_t a, b, l;
+    int i;
+
+    for (i = 0; i < STANDARD_COUNT; i++)
+    {
+        for (a = 0; a < sizeof(Alignments) / sizeof(Alignments[0]); a++)
+        {
+            DtSdiFrameLayout Layout;
+            int Lines[4];
+
+            DT_ASSERT(DtSdiFrameLayoutInit(&Layout, g_Standards[i], Alignments[a]));
+            Lines[0] = 0;
+            Lines[1] = 1;
+            Lines[2] = Layout.NumLines / 2;
+            Lines[3] = Layout.NumLines - 1;
+            for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
+            {
+                const size_t LineBits = DtSdiFrameRawLineBits(&Layout, Bits[b]);
+
+                for (l = 0; l < 4; l++)
+                {
+                    const int Phase = (int)((size_t)Lines[l] * LineBits % 8);
+
+                    HalfByteStarts += Phase == 4 ? 1 : 0;
+                    if (!CodeAndCompare(&Layout, Bits[b], Lines[l], Phase, DtFailures))
+                        return;
+                }
+            }
+        }
+    }
+    DT_ASSERT(HalfByteStarts > 0);
+}
+
+// 10-bit lines at every phase, with sections whose bits end anywhere in a byte, and
+// 16-bit sections that are no multiple of four symbols.
+DT_TEST(CodesAnyPhase)
+{
+    static const int Sizes[][2] = {{3, 5}, {1, 2}, {7, 9}, {4, 6}, {8, 8}};
+    DtSdiFrameLayout Layout;
+    size_t s;
+    int Phase;
+
+    for (s = 0; s < sizeof(Sizes) / sizeof(Sizes[0]); s++)
+    {
+        memset(&Layout, 0, sizeof(Layout));
+        Layout.VidStd = DTAPI_VIDSTD_625I50;
+        Layout.Alignment = 1;
+        Layout.NumLines = 6;
+        Layout.LineSymsHanc = Sizes[s][0];
+        Layout.LineBytesHanc = (Sizes[s][0] * 10 + 7) / 8;
+        Layout.LineSymsVideo = Sizes[s][1];
+        Layout.LineBytesVideo = (Sizes[s][1] * 10 + 7) / 8;
+        Layout.Stride = Layout.LineBytesHanc + Layout.LineBytesVideo;
+
+        for (Phase = 0; Phase < 8; Phase++)
+        {
+            if (!CodeAndCompare(&Layout, 10, 2, Phase, DtFailures))
+                return;
+        }
+        if (!CodeAndCompare(&Layout, 16, 5, 0, DtFailures))
+            return;
+    }
+
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_720P24, 128));
+    for (Phase = 0; Phase < 8; Phase++)
+    {
+        if (!CodeAndCompare(&Layout, 10, 1, Phase, DtFailures))
+            return;
+    }
+}
+
+// Other symbol sizes and phases write nothing.
+DT_TEST(CodeLineRefuses)
+{
+    static const uint8_t Untouched[16] = {
+        0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE,
+        0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE,
+    };
+    DtSdiFrameLayout Layout;
+    uint8_t Raw[32];
+    uint8_t Coded[16];
+
+    memset(&Layout, 0, sizeof(Layout));
+    Layout.VidStd = DTAPI_VIDSTD_625I50;
+    Layout.Alignment = 1;
+    Layout.NumLines = 1;
+    Layout.LineSymsHanc = 4;
+    Layout.LineBytesHanc = 5;
+    Layout.LineSymsVideo = 4;
+    Layout.LineBytesVideo = 5;
+    Layout.Stride = 10;
+    memset(Raw, 0x5A, sizeof(Raw));
+    memset(Coded, 0xEE, sizeof(Coded));
+
+    DT_ASSERT(!DtSdiFrameCodeLine(&Layout, 8, Raw, 0, Coded));
+    DT_ASSERT(!DtSdiFrameCodeLine(&Layout, 12, Raw, 0, Coded));
+    DT_ASSERT(!DtSdiFrameCodeLine(&Layout, 10, Raw, -1, Coded));
+    DT_ASSERT(!DtSdiFrameCodeLine(&Layout, 10, Raw, 8, Coded));
+    DT_ASSERT(!DtSdiFrameCodeLine(&Layout, 16, Raw, 4, Coded));
+    DT_ASSERT_MEM(Coded, Untouched, sizeof(Coded));
+
+    DT_ASSERT(DtSdiFrameCodeLine(&Layout, 10, Raw, 7, Coded));
+    DT_ASSERT(DtSdiFrameCodeLine(&Layout, 16, Raw, 0, Coded));
+    DT_ASSERT_MEM(Coded + 10, Untouched, 6);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Symbol Index of a packed 10-bit section, read bit by bit.
+static uint32_t GetSymbol(const uint8_t* Section, size_t Index)
+{
+    uint32_t Value = 0;
+    size_t b;
+
+    for (b = 0; b < 10; b++)
+    {
+        size_t Bit = Index * 10 + b;
+
+        Value |= (uint32_t)(Section[Bit / 8] >> (Bit % 8) & 1) << b;
+    }
+    return Value;
+}
+
+// Continues SMPTE 292's CRC-18 Crc over Count 10-bit words, each least significant bit
+// first, as the 18 stages of a shift register with feedback into x^0, x^4 and x^5.
+static uint32_t RefCrc18(uint32_t Crc, const uint32_t* Words, size_t Count)
+{
+    uint8_t Stage[18];
+    size_t w;
+    int b, i;
+
+    for (i = 0; i < 18; i++)
+        Stage[i] = (uint8_t)(Crc >> i & 1);
+    for (w = 0; w < Count; w++)
+    {
+        for (b = 0; b < 10; b++)
+        {
+            const uint8_t In = (uint8_t)((Words[w] >> b & 1) ^ Stage[0]);
+
+            for (i = 0; i < 17; i++)
+                Stage[i] = Stage[i + 1];
+            Stage[17] = In;
+            Stage[13] = (uint8_t)(Stage[13] ^ In);
+            Stage[12] = (uint8_t)(Stage[12] ^ In);
+        }
+    }
+    for (Crc = 0, i = 0; i < 18; i++)
+        Crc |= (uint32_t)Stage[i] << i;
+    return Crc;
+}
+
+// Nine bits of Value with bit 9 the inverse of bit 8.
+static uint32_t Protected(uint32_t Value)
+{
+    Value &= 0x1FF;
+    return (Value & 0x100) != 0 ? Value : Value | 0x200;
+}
+
+// The fourth word of a timing reference for line Line, from 1, of a frame of Props, from
+// SMPTE 125's table of the eight legal words by F, V and H.
+static uint32_t ExpectedXyz(const DtFrameProps* Props, int Line, bool Eav)
+{
+    static const uint32_t Legal[8] = {0x200, 0x274, 0x2AC, 0x2D8,
+                                      0x31C, 0x368, 0x3B0, 0x3C4};
+    const int F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
+    const DtFieldProps* Field = &Props->Fields[F];
+    const int V = Line < Field->VidStartLine || Line > Field->VidEndLine ? 1 : 0;
+
+    return Legal[F * 4 + V * 2 + (Eav ? 1 : 0)];
+}
+
+// Checks coded line Line, from 1, of a black frame: its timing references with, in HD,
+// the line numbers and CRCs, where ActiveCrc holds each channel's CRC over a black active
+// part; with Full also every other symbol and the padding. Returns what differs first, or
+// NULL.
+static const char* CheckBlackLine(const DtSdiFrameLayout* Layout,
+                                  const DtFrameProps* Props, const uint32_t ActiveCrc[2],
+                                  const uint8_t* Coded, int Line, bool Full)
+{
+    const uint8_t* Sections[2] = {Coded, Coded + Layout->LineBytesHanc};
+    const size_t Syms[2] = {(size_t)Layout->LineSymsHanc, (size_t)Layout->LineSymsVideo};
+    const size_t Bytes[2] = {(size_t)Layout->LineBytesHanc,
+                             (size_t)Layout->LineBytesVideo};
+    const bool Hd = Props->LineNumSymEav == 16;
+    const size_t Width = Hd ? 2 : 1;  // Symbols per word of a timing reference
+    const size_t Start = Hd ? 16 : 4; // Symbols of the EAV, line numbers and CRCs
+    const size_t Sav = Syms[0] - 4 * Width;
+    size_t s, i, c;
+
+    for (c = 0; c < Width; c++)
+    {
+        uint32_t Words[8] = {0x3FF, 0x000, 0x000, ExpectedXyz(Props, Line, true),
+                             0,     0,     0,     0};
+
+        if (Hd)
+        {
+            uint32_t Crc;
+
+            Words[4] = Protected((uint32_t)Line << 2);
+            Words[5] = Protected((uint32_t)Line >> 7 << 2);
+            Crc = RefCrc18(ActiveCrc[c], Words, 6);
+            Words[6] = Protected(Crc);
+            Words[7] = Protected(Crc >> 9);
+        }
+        for (i = 0; i < Start / Width; i++)
+        {
+            if (GetSymbol(Coded, i * Width + c) != Words[i])
+                return i < 4 ? "EAV" : i < 6 ? "line number" : "CRC";
+        }
+        Words[3] = ExpectedXyz(Props, Line, false);
+        for (i = 0; i < 4; i++)
+        {
+            if (GetSymbol(Coded, Sav + i * Width + c) != Words[i])
+                return "SAV";
+        }
+    }
+
+    for (s = 0; Full && s < 2; s++)
+    {
+        for (i = 0; i < Syms[s]; i++)
+        {
+            if (s == 0 && (i < Start || i >= Sav))
+                continue;
+            if (GetSymbol(Sections[s], i) != (i % 2 == 0 ? 0x200u : 0x040u))
+                return s == 0 ? "blanking" : "active part";
+        }
+        for (i = Syms[s] * 10; i < Bytes[s] * 8; i++)
+        {
+            if ((Sections[s][i / 8] >> (i % 8) & 1) != 0)
+                return "padding";
+        }
+    }
+    return NULL;
+}
+
+// Every line's timing references, and all of the first, the last and every 97th line,
+// in every standard with the card's alignment and with 24 bits.
+DT_TEST(BlackFramesEveryStandard)
+{
+    static const int Alignments[] = {128, 24};
+    size_t a;
+    int i;
+
+    for (i = 0; i < STANDARD_COUNT; i++)
+    {
+        for (a = 0; a < sizeof(Alignments) / sizeof(Alignments[0]); a++)
+        {
+            DtSdiFrameLayout Layout;
+            DtFrameProps Props;
+            uint32_t ActiveCrc[2] = {0, 0};
+            const uint32_t Black[2] = {0x200, 0x040};
+            uint8_t* Lines;
+            size_t Stride, v;
+            int Line;
+
+            DT_ASSERT(DtSdiFrameLayoutInit(&Layout, g_Standards[i], Alignments[a]));
+            DT_ASSERT(DtFramePropsInit(&Props, g_Standards[i]));
+            Stride = (size_t)Layout.Stride;
+            Lines = (uint8_t*)malloc((size_t)Layout.NumLines * Stride);
+            DT_ASSERT(Lines != NULL);
+            memset(Lines, 0xEE, (size_t)Layout.NumLines * Stride);
+            DtSdiFrameBlackLines(&Layout, Lines);
+
+            for (v = 0; v < (size_t)Layout.LineSymsVideo / 2; v++)
+            {
+                ActiveCrc[0] = RefCrc18(ActiveCrc[0], &Black[0], 1);
+                ActiveCrc[1] = RefCrc18(ActiveCrc[1], &Black[1], 1);
+            }
+            for (Line = 1; Line <= Layout.NumLines; Line++)
+            {
+                const bool Full = Line == 1 || Line == Layout.NumLines || Line % 97 == 0;
+                const char* Failure =
+                    CheckBlackLine(&Layout, &Props, ActiveCrc,
+                                   Lines + (size_t)(Line - 1) * Stride, Line, Full);
+
+                if (Failure != NULL)
+                {
+                    printf("    FAIL: standard %d, alignment %d, line %d: %s\n",
+                           g_Standards[i], Alignments[a], Line, Failure);
+                    (*DtFailures)++;
+                    free(Lines);
+                    return;
+                }
+            }
+            DT_ASSERT_OK(DtSdiFrameCheckLines(
+                &Layout, Lines, Lines + (size_t)(Layout.NumLines - 1) * Stride));
+
+            // CRCs worked out from the polynomial for the first line of 1080i50.
+            if (g_Standards[i] == DTAPI_VIDSTD_1080I50)
+            {
+                DT_ASSERT_EQ(GetSymbol(Lines, 12), 0x2F7);
+                DT_ASSERT_EQ(GetSymbol(Lines, 14), 0x1E8);
+                DT_ASSERT_EQ(GetSymbol(Lines, 13), 0x2BB);
+                DT_ASSERT_EQ(GetSymbol(Lines, 15), 0x23C);
+            }
+            free(Lines);
+        }
+    }
+}
+
+// A black frame converted into a raw frame and coded back gives the same lines, in 10
+// and 16 bits.
+DT_TEST(BlackFrameRoundTrip)
+{
+    static const int Bits[] = {10, 16};
+    size_t b;
+    int i;
+
+    for (i = 0; i < STANDARD_COUNT; i++)
+    {
+        DtSdiFrameLayout Layout;
+        size_t Stride;
+        uint8_t* Lines;
+        uint8_t* Coded;
+
+        DT_ASSERT(DtSdiFrameLayoutInit(&Layout, g_Standards[i], 128));
+        Stride = (size_t)Layout.Stride;
+        Lines = (uint8_t*)malloc((size_t)Layout.NumLines * Stride);
+        Coded = (uint8_t*)malloc(Stride);
+        DT_ASSERT(Lines != NULL && Coded != NULL);
+        DtSdiFrameBlackLines(&Layout, Lines);
+
+        for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
+        {
+            const size_t LineBits = DtSdiFrameRawLineBits(&Layout, Bits[b]);
+            uint8_t* Raw = (uint8_t*)calloc(DtSdiFrameRawSize(&Layout, Bits[b]), 1);
+            int Line, Differ = -1;
+
+            DT_ASSERT(Raw != NULL);
+            for (Line = 0; Line < Layout.NumLines; Line++)
+                DtSdiFrameConvertLine(&Layout, Bits[b], Lines + (size_t)Line * Stride,
+                                      Line, Raw);
+            for (Line = 0; Line < Layout.NumLines && Differ < 0; Line++)
+            {
+                const size_t Bit = (size_t)Line * LineBits;
+
+                DT_ASSERT(DtSdiFrameCodeLine(&Layout, Bits[b], Raw + Bit / 8,
+                                             (int)(Bit % 8), Coded));
+                if (memcmp(Coded, Lines + (size_t)Line * Stride, Stride) != 0)
+                    Differ = Line;
+            }
+            free(Raw);
+            if (Differ >= 0)
+            {
+                printf("    FAIL: standard %d, %d bits: line %d differs\n",
+                       g_Standards[i], Bits[b], Differ);
+                (*DtFailures)++;
+                break;
+            }
+        }
+        free(Coded);
+        free(Lines);
+    }
+}
+
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderBytes),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
              DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
-             DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine))
+             DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
+             DT_RUN(LayoutTransmit), DT_RUN(TxHeaderBytes), DT_RUN(TxHeaderFieldWidths),
+             DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
+             DT_RUN(CodeLineRefuses), DT_RUN(BlackFramesEveryStandard),
+             DT_RUN(BlackFrameRoundTrip))
