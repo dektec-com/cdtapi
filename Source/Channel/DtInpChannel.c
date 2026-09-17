@@ -637,8 +637,8 @@ DtInpChannel* DtInpChannel_Alloc(void)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // As DTAPI's destructor: an instant detach whose result is ignored. Unlike a detach, it
-// waits for reads on other threads to return for as long as they take, so that none of
-// them uses the channel after it is gone.
+// waits for a read on another thread to return for as long as it takes, so that it does
+// not use the channel after it is gone.
 //
 void DtInpChannel_Free(DtInpChannel* InpChannel)
 {
