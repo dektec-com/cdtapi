@@ -57,6 +57,9 @@ typedef struct SimFault
 // Overrides for this many properties can be active at once.
 #define SIM_MAX_OVERRIDES 8
 
+// Room for the exclusive access of every part the card has.
+#define SIM_MAX_PARTS 256
+
 typedef struct SimOverride
 {
     bool Active;
@@ -85,6 +88,7 @@ static struct
     int LastFunctionCode;
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
+    void* ExclOwners[SIM_MAX_PARTS]; // Per UUID index less one; NULL when nobody holds it
 } g_Sim;
 
 // Serialises commands, so that a thread waiting for a format event and another issuing
@@ -733,6 +737,48 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
     return OS_IOCTL_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExclAccessCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// EXCL_ACCESS_CMD for the part at PartIndex, with the rules of DtBc_ExclAccess* and
+// DtDf_ExclAccess*, the owner being the handle.
+//
+static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvStatus)
+{
+    void** Owner;
+
+    if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
+        return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
+    Owner = &g_Sim.ExclOwners[PartIndex];
+
+    switch (Cmd)
+    {
+    case DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE:
+        if (*Owner != NULL)
+            return SimFail(Dev, DT_STATUS_IN_USE, DrvStatus);
+        *Owner = Dev;
+        return OS_IOCTL_OK;
+    case DT_EXCLUSIVE_ACCESS_CMD_RELEASE:
+        if (*Owner != NULL && *Owner != Dev)
+            return SimFail(Dev, DT_STATUS_IN_USE, DrvStatus);
+        *Owner = NULL;
+        return OS_IOCTL_OK;
+    case DT_EXCLUSIVE_ACCESS_CMD_PROBE:
+        if (*Owner != NULL)
+            return SimFail(Dev, DT_STATUS_IN_USE, DrvStatus);
+        return OS_IOCTL_OK;
+    case DT_EXCLUSIVE_ACCESS_CMD_CHECK:
+    {
+        uint32_t Status = SimDtPcieCheckAccess(Dev, PartIndex);
+
+        if (Status != DT_STATUS_OK)
+            return SimFail(Dev, Status, DrvStatus);
+        return OS_IOCTL_OK;
+    }
+    default:
+        return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -760,8 +806,15 @@ static void* SimOpen(int Index)
 //
 static void SimClose(void* State)
 {
+    int i;
+
     Lock();
     SimChSdiRxCloseHandle(State);
+    for (i = 0; i < SIM_MAX_PARTS; i++)
+    {
+        if (g_Sim.ExclOwners[i] == State)
+            g_Sim.ExclOwners[i] = NULL;
+    }
     g_Sim.OpenHandles--;
     Unlock();
     DtFree(State);
@@ -795,6 +848,13 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
             return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
         }
 
+        if (FunctionCode == DT_FUNC_CODE_EXCL_ACCESS_CMD)
+        {
+            if (InSize < sizeof(DtIoctlExclAccessCmdInput))
+                return SimFail(Dev, DT_STATUS_INVALID_PARAMETER, DrvStatus);
+            return ExclAccessCmd(Dev, (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1, Cmd,
+                                 DrvStatus);
+        }
         if ((Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0 && Type == DT_FUNC_TYPE_SDIRX &&
             FunctionCode == DT_FUNC_CODE_SDIRX_CMD)
         {
@@ -937,6 +997,7 @@ void SimDtPcieReset(void)
 
     g_Sim.LastFunctionCode = -1;
     g_Sim.LastInputSize = 0;
+    memset(g_Sim.ExclOwners, 0, sizeof(g_Sim.ExclOwners));
 
     for (j = 0; j < SIM_MAX_OVERRIDES; j++)
         g_Sim.Overrides[j].Active = false;
@@ -1093,6 +1154,20 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size)
                                                          : sizeof(g_Sim.LastInput);
     memcpy(Buf, g_Sim.LastInput, Size < Kept ? Size : Kept);
     return g_Sim.LastInputSize;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieCheckAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex)
+{
+    void* Owner;
+
+    if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
+        return DT_STATUS_EXCL_ACCESS_REQD;
+    Owner = g_Sim.ExclOwners[PartIndex];
+    if (Owner == NULL)
+        return DT_STATUS_EXCL_ACCESS_REQD;
+    return Owner == Handle ? DT_STATUS_OK : DT_STATUS_IN_USE;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Selection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

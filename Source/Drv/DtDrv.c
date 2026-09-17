@@ -11,15 +11,11 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtDrv.h"       // Interface being implemented.
-#include "DtDrvAbi.h"    // Vendored driver structures and IOCTL codes.
-#include "DtDrvStatus.h" // Driver status to result.
-#include "DtIoConfig.h"  // I/O configuration codes to names and back.
-
-// The IOCTL codes come from CTL_CODE on Windows, which the SDK evaluates as int. The
-// device type DekTec uses puts the value above INT_MAX, so it is converted once, here,
-// rather than at every call.
-#define DT_IOCTL(Code) ((unsigned long)(Code))
+#include "DtDrv.h"        // Interface being implemented.
+#include "DtDrvAbi.h"     // Vendored driver structures and IOCTL codes.
+#include "DtDrvCommand.h" // Issuing commands.
+#include "DtDrvStatus.h"  // Driver status to result.
+#include "DtIoConfig.h"   // I/O configuration codes to names and back.
 
 // The DTAPI version a property request says it speaks for. The driver can hide or change
 // properties per DTAPI version, so CDtapiLite presents itself as the DTAPI whose
@@ -89,12 +85,9 @@ _Static_assert(sizeof(IoConfigSetIn) ==
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeaderFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvInitHeaderFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Fills the header every command starts with, for the driver function or building block
-// with this UUID in the port with this index.
-//
-static void InitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex)
+void DtDrvInitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex)
 {
     memset(Hdr, 0, sizeof(*Hdr));
     Hdr->m_Uuid = Uuid;
@@ -110,25 +103,13 @@ static void InitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortI
 //
 static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {
-    InitHeaderFor(Hdr, Cmd, 0, -1);
+    DtDrvInitHeaderFor(Hdr, Cmd, 0, -1);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Issue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvIssue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Issues a command whose answer has a fixed size, and turns the outcome into a result:
-// a refused command into the result its DtStatus stands for, and a failure to reach the
-// driver into DTAPI_E_COMMUNICATION or DTAPI_E_OUT_OF_RESOURCES. A command without an
-// answer passes Out NULL and OutSize 0.
-//
-// A driver that answers with fewer bytes than the structure holds is treated as a
-// failure: the fields it did not write would otherwise be read as zeroes and trusted.
-//
-// That check only has teeth on Windows and against the emulator. The Linux driver does
-// not report how much it wrote, so there OsDrvIoCtl leaves the size as it was and a
-// short answer cannot be detected here.
-//
-static unsigned int Issue(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize,
-                          void* Out, size_t OutSize)
+unsigned int DtDrvIssue(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize,
+                        void* Out, size_t OutSize)
 {
     size_t Returned = OutSize;
     uint32_t Status;
@@ -194,8 +175,8 @@ static unsigned int GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex
         return Result;
 
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -301,8 +282,8 @@ unsigned int DtDrvGetDriverVersion(OsDrv* Drv, DtDriverVersion* Version)
     InitHeader(&In, DT_IOCTL_CMD_NOP);
     memset(&Out, 0, sizeof(Out));
 
-    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In, sizeof(In), &Out,
-                   sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -356,14 +337,14 @@ unsigned int DtDrvGetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
     // GET_DEV_INFO2 first. A driver that predates it refuses the command, and then the
     // original is tried, which carries the same common fields and a PCIe part without the
     // slot power (DtPcieProxyCORE::CopyDeviceTypeSpecificInfo).
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In), &Out,
+                        sizeof(Out));
     HasSlotPower = DT_SUCCEEDED(Result);
     if (!DT_SUCCEEDED(Result))
     {
         memset(&Out, 0, sizeof(Out));
-        Result = Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO), &In, sizeof(In), &Out,
-                       sizeof(Out));
+        Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO), &In, sizeof(In), &Out,
+                            sizeof(Out));
         if (!DT_SUCCEEDED(Result))
             return Result;
     }
@@ -467,8 +448,8 @@ unsigned int DtDrvGetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex, ch
         return Result;
 
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -504,8 +485,8 @@ unsigned int DtDrvGetIoConfig(OsDrv* Drv, DtIoConfig* Config)
         return Result;
 
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -550,7 +531,7 @@ unsigned int DtDrvSetIoConfig(OsDrv* Drv, const DtIoConfig* Config)
     // before it gets here.
     In.m_IoCfgPars.m_SkipExclAccessCheck = (In.m_IoCfgPars.m_PortIndex == -1) ? 1 : 0;
 
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), NULL, 0);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvGetTimeOfDay -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -567,7 +548,8 @@ unsigned int DtDrvGetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseco
     InitHeader(&In, DT_TOD_CMD_GET_TIME);
     memset(&Out, 0, sizeof(Out));
 
-    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result =
+        DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -617,10 +599,11 @@ unsigned int DtDrvSdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
     if (Drv == NULL || Status == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_SDIRX_CMD_GET_SDI_STATUS2, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_SDIRX_CMD_GET_SDI_STATUS2, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
 
-    Result = Issue(Drv, DT_IOCTL(DT_IOCTL_SDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result =
+        DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_SDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -657,10 +640,10 @@ unsigned int DtDrvChSdiRxAttach(OsDrv* Drv, int Uuid, int PortIndex, bool Exclus
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    InitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_ATTACH, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_ATTACH, Uuid, PortIndex);
     In.m_ReqExclusiveAccess = Exclusive ? 1 : 0;
     memcpy(In.m_FriendlyName, FriendlyName, Length);
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvChSdiRxDetach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -672,8 +655,8 @@ unsigned int DtDrvChSdiRxDetach(OsDrv* Drv, int Uuid, int PortIndex)
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_DETACH, Uuid, PortIndex);
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_DETACH, Uuid, PortIndex);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvChSdiRxConfigure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -703,7 +686,7 @@ unsigned int DtDrvChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
     }
 
     memset(&In, 0, sizeof(In));
-    InitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_CONFIGURE, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_CONFIGURE, Uuid, PortIndex);
     In.m_NumPhysicalPorts = Config->NumPorts;
     for (i = 0; i < Config->NumPorts; i++)
         In.m_PhysicalPorts[i] = Config->PortIndices[i];
@@ -717,7 +700,7 @@ unsigned int DtDrvChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
     In.m_FrameProps.m_SdiRate = Config->SdiRate;
     In.m_FrameProps.m_AssumeInterlaced = Config->AssumeInterlaced ? 1 : 0;
     In.m_FrameProps.m_Scale12GTo3G = Config->Scale12GTo3G ? 1 : 0;
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvChSdiRxGetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -731,10 +714,10 @@ unsigned int DtDrvChSdiRxGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpM
     if (Drv == NULL || OpMode == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_GET_OPERATIONAL_MODE, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_GET_OPERATIONAL_MODE, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -752,9 +735,10 @@ unsigned int DtDrvChSdiRxSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMo
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    InitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_OPERATIONAL_MODE, Uuid,
+                       PortIndex);
     In.m_OpMode = OpMode;
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvChSdiRxWaitForFmtEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -770,11 +754,11 @@ unsigned int DtDrvChSdiRxWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    InitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, Uuid, PortIndex);
     In.m_Timeout = TimeoutMs;
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -796,10 +780,10 @@ unsigned int DtDrvChSdiRxGetWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
     if (Drv == NULL || Offset == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_GET_WRITE_OFFSET, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_GET_WRITE_OFFSET, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -818,9 +802,9 @@ unsigned int DtDrvChSdiRxSetReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     memset(&In, 0, sizeof(In));
-    InitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_READ_OFFSET, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_READ_OFFSET, Uuid, PortIndex);
     In.m_ReadOffset = Offset;
-    return Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
+    return DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvChSdiRxGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -837,10 +821,10 @@ unsigned int DtDrvChSdiRxGetProps(OsDrv* Drv, int Uuid, int PortIndex,
     if (Drv == NULL || Props == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_GET_PROPS, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_GET_PROPS, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -869,10 +853,10 @@ unsigned int DtDrvChSdiRxGetSdiStatus(OsDrv* Drv, int Uuid, int PortIndex,
     if (Drv == NULL || Status == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_GET_SDI_STATUS, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_GET_SDI_STATUS, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -914,10 +898,10 @@ unsigned int DtDrvChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex, uint8_t*
         return DTAPI_E_INVALID_ARG;
     }
 
-    InitHeaderFor(&In, DT_CHSDIRX_CMD_MAP_DMA_BUF_TO_USER, Uuid, PortIndex);
+    DtDrvInitHeaderFor(&In, DT_CHSDIRX_CMD_MAP_DMA_BUF_TO_USER, Uuid, PortIndex);
     memset(&Out, 0, sizeof(Out));
-    Result =
-        Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out, sizeof(Out));
+    Result = DtDrvIssue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), &Out,
+                        sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 

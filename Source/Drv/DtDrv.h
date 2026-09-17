@@ -17,6 +17,7 @@
 // CDtapiLite includes
 #include "CDtapiLite.h"             // DTAPI result codes.
 #include "OAL/OsAbstractionLayer.h" // Device handles and IOCTL transport.
+#include "OAL/OsDmaBuffer.h"        // Buffers registered for DMA.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Results +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -273,5 +274,170 @@ unsigned int DtDrvChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex, uint8_t*
 // Releases a mapping DtDrvChSdiRxMapDmaBuf made itself; one the driver made goes with
 // the detach.
 void DtDrvChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize, bool Mapped);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Exclusive access -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// One file handle at a time can hold a driver function or building block. The driver
+// checks the holder on the commands that change a part, and the handle lets go of what
+// it holds when it is closed.
+//
+
+// Issues EXCL_ACCESS_CMD Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for the part with this
+// UUID in the port with this index. Acquiring a part that is held, also by this handle,
+// gives DTAPI_E_IN_USE. Checking gives DTAPI_OK for a part this handle holds,
+// DTAPI_E_EXCL_ACCESS_REQD for one nobody holds, and DTAPI_E_IN_USE for one another
+// handle holds; probing gives DTAPI_E_IN_USE for a part anyone holds. Releasing a part
+// another handle holds gives DTAPI_E_IN_USE.
+unsigned int DtDrvExclAccess(OsDrv* Drv, int Uuid, int PortIndex, int Cmd);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI transmit blocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A port transmits without a channel driver function. The process drives the parts of
+// the port's AF_DMA and AF_ASISDITX API functions itself: the DMA controller CDMAC, which
+// reads a buffer the process allocates, the burst FIFO behind it, the formatter SDITXF,
+// the switches around the 12G demultiplexer SDIDMX12G, the protocol encoder SDITXP and
+// the driver function SDITXPHY. Every command goes to the part's UUID and port index.
+//
+// Operational modes are DT_BLOCK_OPMODE_ values, and DT_FUNC_OPMODE_ values for SDITXPHY;
+// any other value gives DTAPI_E_INVALID_ARG without a command, as DTAPI's proxies refuse
+// a mode they cannot convert.
+//
+
+// What a DMA controller is like, as DT_CDMAC_CMD_GET_PROPERTIES reports.
+typedef struct DtCdmacProps
+{
+    uint32_t Caps;      // DT_CDMAC_CAP_ flags
+    int PrefetchSize;   // In pages; a buffer is a multiple of this many pages
+    int PcieDataWidth;  // Bits per PCIe data word
+    int ReorderBufSize; // Bytes
+} DtCdmacProps;
+
+unsigned int DtDrvCdmacGetProps(OsDrv* Drv, int Uuid, int PortIndex, DtCdmacProps* Props);
+
+// Registers Buf, which the process allocated and keeps until the buffer is freed, for
+// Direction, DT_CDMAC_DIR_TX or DT_CDMAC_DIR_RX. The buffer travels as this platform's
+// driver takes it, as OsDmaDescribeHandOff describes; DtDrvCdmacAllocateBufferAs chooses
+// the convention, true for Windows's, so that both can be tested on every platform. A
+// direction the driver does not define, an empty buffer and one larger than an int can
+// count give DTAPI_E_INVALID_ARG.
+//
+// With the buffer as the output, as on Windows, the answer's size is not checked against
+// the buffer's: the driver reports the output it was given, which could not be confirmed
+// on a card.
+unsigned int DtDrvCdmacAllocateBuffer(OsDrv* Drv, int Uuid, int PortIndex, int Direction,
+                                      const OsDmaBuffer* Buf);
+unsigned int DtDrvCdmacAllocateBufferAs(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int Direction, const OsDmaBuffer* Buf,
+                                        bool BufferIsOutput);
+
+// Lets go of the registered buffer. The controller must be idle.
+unsigned int DtDrvCdmacFreeBuffer(OsDrv* Drv, int Uuid, int PortIndex);
+
+// Empties the controller's pipeline. The controller must be idle.
+unsigned int DtDrvCdmacIssueChannelFlush(OsDrv* Drv, int Uuid, int PortIndex);
+
+unsigned int DtDrvCdmacSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// Sets a DT_CDMAC_TESTMODE_ value. The controller must be idle.
+unsigned int DtDrvCdmacSetTestMode(OsDrv* Drv, int Uuid, int PortIndex, int TestMode);
+
+// Reads how far the card has read the buffer, as an offset from its start.
+unsigned int DtDrvCdmacGetTxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                       uint32_t* Offset);
+
+// Tells the card how far the buffer holds data for it.
+unsigned int DtDrvCdmacSetTxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                        uint32_t Offset);
+
+// Reads the reorder buffer's load and its minimum or maximum since the last clear.
+unsigned int DtDrvCdmacGetReorderBufStatus(OsDrv* Drv, int Uuid, int PortIndex, int* Load,
+                                           int* MinMaxLoad);
+
+unsigned int DtDrvCdmacClearReorderBufMinMax(OsDrv* Drv, int Uuid, int PortIndex);
+
+// What a burst FIFO is like, as DT_BURSTFIFO_CMD_GET_PROPERTIES reports.
+typedef struct DtBurstFifoProps
+{
+    uint32_t Caps; // DT_BURSTFIFO_CAP_ flags
+    int DataWidth; // Bits per data word
+    int FifoSize;  // Bytes
+} DtBurstFifoProps;
+
+// A burst FIFO's load and free space, now and at their maximum since the last clear.
+typedef struct DtBurstFifoStatus
+{
+    int CurFree;
+    int CurLoad;
+    int MaxFree;
+    int MaxLoad;
+} DtBurstFifoStatus;
+
+unsigned int DtDrvBurstFifoGetProps(OsDrv* Drv, int Uuid, int PortIndex,
+                                    DtBurstFifoProps* Props);
+unsigned int DtDrvBurstFifoGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                     DtBurstFifoStatus* Status);
+unsigned int DtDrvBurstFifoClearMax(OsDrv* Drv, int Uuid, int PortIndex, bool MaxFree,
+                                    bool MaxLoad);
+
+// Reads the count of overflows and underflows. It stands still while data flows.
+unsigned int DtDrvBurstFifoGetOvfUflCount(OsDrv* Drv, int Uuid, int PortIndex,
+                                          uint32_t* Count);
+
+unsigned int DtDrvBurstFifoSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// A transmit format event: the frame going out, how far, whether the formatter ran out of
+// data since the last wait, and the time the frame started when that was taken.
+typedef struct DtSdiTxFEvent
+{
+    int FrameId;   // The 16 least significant bits of the frame ID in the frame's header
+    int SeqNumber; // 0 for the first event of a frame
+    bool Underflow;
+    bool SofTimeValid;
+    uint32_t SofSeconds;
+    uint32_t SofNanoseconds;
+} DtSdiTxFEvent;
+
+// The formatter takes DT_BLOCK_OPMODE_IDLE and DT_BLOCK_OPMODE_RUN.
+unsigned int DtDrvSdiTxFSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// Asks for a format event every NumLinesPerEvent lines, and a start-of-frame time every
+// NumSofsBetweenTod frames.
+unsigned int DtDrvSdiTxFSetFmtEventSetting(OsDrv* Drv, int Uuid, int PortIndex,
+                                           int NumLinesPerEvent, int NumSofsBetweenTod);
+
+// Reads the bits every part of the buffer's format is padded to.
+unsigned int DtDrvSdiTxFGetStreamAlignment(OsDrv* Drv, int Uuid, int PortIndex,
+                                           int* AlignmentBits);
+
+// Waits up to TimeoutMs milliseconds, -1 to 1000, for the next format event. Gives
+// DTAPI_E_TIMEOUT when none comes, and DTAPI_E_INVALID_MODE at once while the formatter
+// is not running.
+unsigned int DtDrvSdiTxFWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int TimeoutMs, DtSdiTxFEvent* Event);
+
+// Connects input InputIndex to output OutputIndex.
+unsigned int DtDrvSwitchSetPosition(OsDrv* Drv, int Uuid, int PortIndex, int InputIndex,
+                                    int OutputIndex);
+unsigned int DtDrvSwitchSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+unsigned int DtDrvSdiDmx12GSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+unsigned int DtDrvSdiTxPSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// Makes the encoder clamp video symbols, and insert ANC checksums and line CRCs.
+unsigned int DtDrvSdiTxPSetGenerationMode(OsDrv* Drv, int Uuid, int PortIndex, bool Clamp,
+                                          bool AncChecksum, bool LineCrc);
+
+unsigned int DtDrvSdiTxPhySetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+
+// Reads and clears the flag the PHY sets when its data ran out. It stays set until
+// cleared.
+unsigned int DtDrvSdiTxPhyGetUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex,
+                                           bool* Underflow);
+unsigned int DtDrvSdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortIndex);
+
+// Delays the start of each frame by OffsetNs nanoseconds.
+unsigned int DtDrvSdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                                int OffsetNs);
 
 #endif // CDTAPILITE_DT_DRV_H

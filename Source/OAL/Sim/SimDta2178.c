@@ -350,6 +350,18 @@ bool SimDta2178FindFunction(int Uuid, int* PortIndex, int* Type)
     return false;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178PartCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+int SimDta2178PartCount(void)
+{
+    int Count = 0;
+    int a;
+
+    for (a = 0; a < API_FUNCTION_COUNT; a++)
+        Count += g_ApiFunctions[a].NumParts * SIM_SDI_PORT_COUNT;
+    return Count;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178DefaultConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void SimDta2178DefaultConfig(int PortIndex, int Group, int* Value, int* SubValue)

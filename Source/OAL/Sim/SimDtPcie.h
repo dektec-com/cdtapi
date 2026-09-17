@@ -165,4 +165,15 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size);
 
 #define SIM_MAX_RECORDED_INPUT 1024
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Emulator parts +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// For the emulated functions, not for tests.
+//
+
+// Whether Handle holds the part whose UUID has index PartIndex plus one, as
+// DtBc_ExclAccessCheck answers: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD
+// when nobody does, DT_STATUS_IN_USE when another handle does. Called with the
+// emulator's lock held.
+uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex);
+
 #endif // CDTAPILITE_SIM_DT_PCIE_H

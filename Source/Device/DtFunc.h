@@ -70,6 +70,13 @@ void DtFuncRelease(DtFuncInstance* Instance);
 const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
                             const char* Role);
 
+// Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every part
+// of the instance, as DtAf::ExclAccess does. A part that does not support it is passed
+// over. The first other failure stops the command and is returned; when acquiring, the
+// parts acquired before it are released again. Releasing goes on past failures, and
+// returns the first.
+unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
+
 // Checks that the driver is new enough for a part's proxy, as DtAf::GetPal does before
 // using it (DtProxy.cpp, PROXY_MIN_DRV_VERSIONS): DTAPI_OK, DTAPI_E_DRIVER_INCOMP when it
 // is older, and DTAPI_E_INTERNAL for a type the table does not have. The table holds the

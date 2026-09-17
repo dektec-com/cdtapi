@@ -50,6 +50,7 @@ set(CDTAPILITE_SOURCES
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
     Source/Drv/DtDrv.c
+    Source/Drv/DtDrvSdiTx.c
     Source/Drv/DtDrvStatus.c
     Source/Drv/DtIoConfig.c
     Source/OAL/OsDispatch.c

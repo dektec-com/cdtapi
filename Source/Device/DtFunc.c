@@ -148,6 +148,42 @@ const DtFuncPart* DtFuncGet(const DtFuncInstance* Instance, bool IsDf, int Type,
     return NULL;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exclusive access +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncExclAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+unsigned int DtFuncExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
+{
+    size_t Count = DtVecCount(&Instance->Parts);
+    unsigned int Result = DTAPI_OK;
+    size_t i;
+
+    for (i = 0;
+         i < Count && (Result == DTAPI_OK || Cmd == DT_EXCLUSIVE_ACCESS_CMD_RELEASE); i++)
+    {
+        const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
+        unsigned int PartResult =
+            DtDrvExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
+
+        if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
+            Result = PartResult;
+    }
+
+    if (Result != DTAPI_OK && Cmd == DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE)
+    {
+        size_t Acquired = i - 1;
+
+        for (i = 0; i < Acquired; i++)
+        {
+            const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
+
+            DtDrvExclAccess(Drv, Part->Uuid, Instance->PortIndex,
+                            DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+        }
+    }
+    return Result;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The oldest DtPcie driver each proxy works with, from DTAPI's PROXY_MIN_DRV_VERSIONS.
