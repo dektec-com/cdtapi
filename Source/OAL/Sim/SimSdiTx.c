@@ -1111,7 +1111,11 @@ void SimSdiTxReset(void)
         Port->PhyMode = DT_FUNC_OPMODE_IDLE;
         Port->Clamp = Port->AncChecksum = Port->LineCrc = true;
     }
+#if defined(_WIN32) || defined(_WIN64)
     g_Tx.AsLinux = false;
+#else
+    g_Tx.AsLinux = true;
+#endif
     g_Tx.Alignment = SIM_TX_STREAM_ALIGNMENT;
     g_Tx.FailFunctionCode = -1;
     g_Tx.FailCmd = -1;

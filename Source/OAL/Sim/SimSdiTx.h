@@ -79,7 +79,8 @@ void SimSdiTxReset(void);
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Makes CDMAC take a buffer as the Linux driver does, from the address in the input, when
-// true, or as the Windows driver does, as the output.
+// true, or as the Windows driver does, as the output. After a reset it takes it as the
+// driver of the platform the emulator is built for.
 void SimDtPcieRegisterTxBufferAsLinux(bool AsLinux);
 
 // Makes every formatter report this stream alignment in bits.
