@@ -26,8 +26,7 @@
 // the capabilities do not depend on the I/O configuration.
 //
 // DTAPI also caches each port's channel type, which follows the I/O direction, and
-// re-reads it after a configuration change. Nothing CDTAPI exposes uses it; it belongs
-// to the channels of a later milestone.
+// re-reads it after a configuration change; this does not.
 //
 
 // The capabilities of a port that a hardware function description reports.

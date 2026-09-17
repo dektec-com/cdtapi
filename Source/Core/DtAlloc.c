@@ -15,8 +15,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Fault injection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The counters are atomic, because applications allocate from several threads at once,
-// for example when each thread attaches a channel. Arming a failure is meant for a test
+// The counters are atomic, because allocations can happen on several threads at once.
+// Arming a failure is meant for a test
 // that allocates from one thread: with allocations on other threads at the same time, a
 // different allocation than the intended one may fail, or none.
 //

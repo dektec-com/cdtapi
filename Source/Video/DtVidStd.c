@@ -29,8 +29,7 @@ static const DtVidStdInfo g_VidStds[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdFind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A linear search over the forty-one standards; standards are looked up per attach or
-// detection, not per frame.
+// A linear search over the forty-one standards.
 //
 const DtVidStdInfo* DtVidStdFind(int VidStd)
 {

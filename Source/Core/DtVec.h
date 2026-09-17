@@ -15,8 +15,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtVec +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// Used for the things whose count is only known at run time: the devices a scan finds,
-// the ports on a device, the ANC packets in a frame.
+// A growable array of elements of one size, for a number of elements that is only known
+// at run time.
 //
 // The element size is carried in the structure rather than generated per type, so there
 // is one implementation instead of one per instantiation. Typed access goes through

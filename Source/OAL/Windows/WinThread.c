@@ -81,9 +81,8 @@ void OsThreadJoin(OsThread* Thread)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThreadRaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// THREAD_PRIORITY_HIGHEST, which is what DTAPI gives its DMA-buffer thread. Time-critical
-// is deliberately not used: a thread that polls every ten milliseconds does not need it,
-// and a stuck time-critical thread can starve the rest of the machine.
+// THREAD_PRIORITY_HIGHEST. Time-critical is deliberately not used: a stuck time-critical
+// thread can starve the rest of the machine.
 //
 int OsThreadRaisePriority(void)
 {

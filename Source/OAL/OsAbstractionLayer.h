@@ -98,9 +98,9 @@ int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, vo
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Memory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 // Maps Size bytes of memory the driver offers at Offset into the process, readable and
-// writable and shared with the driver, as the Linux driver offers a channel's DMA ring.
-// Returns the address, or NULL when the mapping fails or the platform maps no memory
-// this way: the Windows driver maps a ring itself, during the command that asks for it.
+// writable and shared with the driver. Returns the address, or NULL when the mapping
+// fails or the platform maps no memory this way: the Windows driver maps memory itself,
+// during the command that asks for it.
 void* OsDrvMapMemory(OsDrv* Drv, uint64_t Offset, size_t Size);
 
 // Releases a mapping OsDrvMapMemory made. Passing NULL does nothing.

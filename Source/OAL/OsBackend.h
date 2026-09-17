@@ -20,7 +20,7 @@
 // nothing above the layer sees them.
 //
 // A backend owns an opaque state pointer of its own. Open returns NULL when there is no
-// device at that index, which is the normal answer during a scan and not an error.
+// device at that index, which is not an error.
 //
 // IoCtl follows the OsDrvIoCtl contract, except that DrvStatus is never NULL.
 //
