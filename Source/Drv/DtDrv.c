@@ -11,17 +11,20 @@
 #include <string.h>
 
 // CDtapiLite includes
-#include "DtDrv.h"        // Interface being implemented.
-#include "DtDrvAbi.h"     // Vendored driver structures and IOCTL codes.
-#include "DtDrvCommand.h" // Issuing commands.
-#include "DtDrvStatus.h"  // Driver status to result.
-#include "DtIoConfig.h"   // I/O configuration codes to names and back.
+#include "CDtapiLite_Version.h" // The DTAPI version a request speaks for.
+#include "DtDrv.h"              // Interface being implemented.
+#include "DtDrvAbi.h"           // Vendored driver structures and IOCTL codes.
+#include "DtDrvCommand.h"       // Issuing commands.
+#include "DtDrvStatus.h"        // Driver status to result.
+#include "DtIoConfig.h"         // I/O configuration codes to names and back.
 
 // The DTAPI version a property request says it speaks for. The driver can hide or change
 // properties per DTAPI version, so CDtapiLite presents itself as the DTAPI whose
-// behaviour it reproduces.
-#define DT_DTAPI_MAJOR 6
-#define DT_DTAPI_MINOR 13
+// behaviour it reproduces: the major and minor number of its own version. The driver
+// compares the bug-fix number too (DtPropertiesFind), so that is DTAPI's, 0, and not
+// CDtapiLite's patch number, which would show properties of a later DTAPI.
+#define DT_DTAPI_MAJOR CDTAPILITE_VERSION_MAJOR
+#define DT_DTAPI_MINOR CDTAPILITE_VERSION_MINOR
 #define DT_DTAPI_BUGFIX 0
 
 // The size of the memory segment each port has for mapping on Linux. The ABI header

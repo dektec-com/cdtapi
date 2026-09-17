@@ -42,8 +42,9 @@ extern "C"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Global functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Returns the library version as a string, for example "1.0.0". The returned pointer is
-// static storage owned by the library and must not be freed.
+// Returns the library version as a string, for example "6.13.0": the major and minor
+// number of the DTAPI whose behaviour the library reproduces, and a patch number of its
+// own. The returned pointer is static storage owned by the library and must not be freed.
 CDTAPILITE_API const char* DtapiLiteGetVersion(void);
 
 // Converts a video standard to the I/O standard group value and sub-value that select it,

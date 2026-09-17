@@ -8,8 +8,11 @@
 # generator both need it. This is the one deliberate deviation from the SDK convention.
 cmake_minimum_required(VERSION 3.21)
 
+# The major and minor number are those of the DTAPI whose behaviour CDtapiLite reproduces;
+# the patch number is CDtapiLite's own. The driver is told the major and minor number in
+# every property request, see Source/Drv/DtDrv.c.
 project(CDtapiLite
-    VERSION 1.0.0
+    VERSION 6.13.0
     DESCRIPTION "Native open-source C API for DekTec SDI interfaces"
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)

@@ -75,6 +75,13 @@ as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`. `DtInpChannel` receives SD, HD
 `DtOutpChannel` is not there yet. The compatibility covers `CDTAPI.h` only: `CDTAPI_AvFifo.h` and
 the `ENABLE_AVFIFO` define have no equivalent yet.
 
+## Versions
+
+CDtapiLite's major and minor version number are those of the DTAPI whose behaviour it
+reproduces, now 6.13; the patch number counts CDtapiLite's own releases. The driver is
+told that DTAPI version, with bug-fix number 0, in every property request, so that it
+answers as it answers DTAPI 6.13.0.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the coding rules and how they are enforced.

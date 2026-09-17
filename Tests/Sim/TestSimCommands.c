@@ -14,6 +14,7 @@
 #include <time.h>
 
 // CDtapiLite includes
+#include "CDtapiLite_Version.h"     // The DTAPI version requests speak for.
 #include "Core/DtAlloc.h"           // Allocation failure injection.
 #include "DtDrv.h"                  // Driver commands under test.
 #include "DtDrvAbi.h"               // Raw structures and statuses.
@@ -686,9 +687,10 @@ DT_TEST(PropertyRequestCarriesTheFilter)
     DT_ASSERT_EQ(In.m_FirmwareVersion, 0);
     DT_ASSERT_EQ(In.m_FirmwareVariant, -1);
     DT_ASSERT_EQ(In.m_PortIndex, 3);
-    DT_ASSERT_EQ(In.m_DtapiMaj, 6);
-    DT_ASSERT_EQ(In.m_DtapiMin, 13);
+    DT_ASSERT_EQ(In.m_DtapiMaj, CDTAPILITE_VERSION_MAJOR);
+    DT_ASSERT_EQ(In.m_DtapiMin, CDTAPILITE_VERSION_MINOR);
     DT_ASSERT_EQ(In.m_DtapiBugfix, 0);
+    DT_ASSERT(CDTAPILITE_VERSION_MAJOR == 6 && CDTAPILITE_VERSION_MINOR == 13);
 
     // The name is terminated and the rest of its field is zero.
     memset(Name, 0, sizeof(Name));
