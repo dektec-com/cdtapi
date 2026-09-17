@@ -520,8 +520,9 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel,
 // DTAPI_TXCTRL_HOLD starts the card's pipeline without sending, so that what is written
 // is kept; DTAPI_TXCTRL_SEND sends, and needs a frame written (DTAPI_E_INSUF_LOAD), also
 // from idle, which goes through hold; DTAPI_TXCTRL_IDLE stops and discards what was
-// written. Holding in the 8-bit mode, or on a port configured for 4K, fails with
-// DTAPI_E_CONFIG_RAW_SDI.
+// written. In the 8-bit mode the channel holds and takes frames, but sending a frame
+// fails with DTAPI_E_CONFIG_RAW_SDI, as in DTAPI; holding on a port configured for 4K
+// fails with the same code.
 CDTAPILITE_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
                                                       int TxControl);
 
@@ -540,7 +541,8 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, i
 //
 // Returns, in DTAPI's order: DTAPI_E_INVALID_SIZE for a negative size; DTAPI_E_IDLE while
 // idle; DTAPI_E_INVALID_BUF for a size or a buffer address not a multiple of 4, which
-// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write;
+// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write while not
+// idle, where DTAPI would read it;
 // DTAPI_E_IN_USE while a Write or WriteFrame on another thread has not returned, where
 // DTAPI waits for it; and DTAPI_E_CANCELLED when the channel is detached meanwhile, or
 // DTAPI_E_IDLE when it is set idle meanwhile.

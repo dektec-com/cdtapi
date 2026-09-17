@@ -429,6 +429,33 @@ static void CopyBits(const uint8_t* In, size_t Bit, size_t Count, uint8_t* Out,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Packs Count 8-bit symbols from In, each shifted up by two bits, into the Bytes bytes at
+// Out, and clears the bits of Out after them.
+//
+static void Pack8(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
+{
+    uint64_t Accu = 0;
+    uint32_t Have = 0;
+    size_t Byte = 0;
+
+    memset(Out, 0, Bytes);
+    for (size_t i = 0; i < Count; i++)
+    {
+        Accu |= (uint64_t)In[i] << (Have + 2);
+        Have += 10;
+        while (Have >= 8)
+        {
+            Out[Byte++] = (uint8_t)Accu;
+            Accu >>= 8;
+            Have -= 8;
+        }
+    }
+    if (Have > 0)
+        Out[Byte] = (uint8_t)Accu;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Symbol16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The lower ten bits of the 16-bit symbol at Bytes.
@@ -503,6 +530,12 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                  (size_t)Layout->LineBytesHanc);
         CopyBits(RawLine, (size_t)Phase + Hanc * 10, Video * 10, VideoSection,
                  (size_t)Layout->LineBytesVideo);
+        return true;
+    case 8:
+        if (Phase != 0)
+            return false;
+        Pack8(RawLine, Hanc, CodedLine, (size_t)Layout->LineBytesHanc);
+        Pack8(RawLine + Hanc, Video, VideoSection, (size_t)Layout->LineBytesVideo);
         return true;
     case 16:
         if (Phase != 0)

@@ -182,11 +182,12 @@ void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 
 // Codes one raw line into the coded line at CodedLine, Layout->Stride bytes, as
 // PxCnvTaskRaw::Run does: the HANC section and the video section, each padded with zero
-// bits. The symbols take SymbolBits, 10 or 16; a 16-bit symbol gives its lower ten bits.
-// The line's first bit is bit Phase, from 0 for the least significant to 7, of the byte
-// at RawLine, and no byte after the one holding its last bit is read. Returns false,
-// writing nothing, for another symbol size, for a Phase outside 0 to 7, and for a Phase
-// other than 0 with 16 bits.
+// bits. The symbols take SymbolBits, 8, 10 or 16; a 16-bit symbol gives its lower ten
+// bits, and an 8-bit one its eight bits shifted up by two. The line's first bit is bit
+// Phase, from 0 for the least significant to 7, of the byte at RawLine, and no byte after
+// the one holding its last bit is read. Returns false, writing nothing, for another
+// symbol size, for a Phase outside 0 to 7, and for a Phase other than 0 with 8 or 16
+// bits.
 bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
 

@@ -806,7 +806,7 @@ DT_TEST(CodeLineRefuses)
     uint8_t Coded[16];
     memset(Coded, 0xEE, sizeof(Coded));
 
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 8, Raw, 0, Coded));
+    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 8, Raw, 1, Coded));
     DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 12, Raw, 0, Coded));
     DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 10, Raw, -1, Coded));
     DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 10, Raw, 8, Coded));
@@ -816,6 +816,40 @@ DT_TEST(CodeLineRefuses)
     DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 10, Raw, 7, Coded));
     DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 16, Raw, 0, Coded));
     DT_ASSERT_MEM(Coded + 10, Untouched, 6);
+}
+
+// An 8-bit symbol is coded as the 10-bit symbol with the same upper eight bits.
+DT_TEST(CodeLine8Bits)
+{
+    DtSdiFrameLayout Layout;
+
+    memset(&Layout, 0, sizeof(Layout));
+    Layout.VidStd = DTAPI_VIDSTD_625I50;
+    Layout.Alignment = 1;
+    Layout.NumLines = 1;
+    Layout.LineSymsHanc = 3;
+    Layout.LineBytesHanc = 4;
+    Layout.LineSymsVideo = 5;
+    Layout.LineBytesVideo = 7;
+    Layout.Stride = 11;
+    static const uint8_t Raw8[8] = {0xFF, 0x00, 0x80, 0x9D, 0x01, 0xFE, 0x10, 0x7F};
+    uint8_t Raw10[10];
+    memset(Raw10, 0, sizeof(Raw10));
+    for (int i = 0; i < 8; i++)
+    {
+        uint32_t Symbol = (uint32_t)Raw8[i] << 2;
+        for (int Bit = 0; Bit < 10; Bit++)
+            Raw10[(i * 10 + Bit) / 8] |=
+                (uint8_t)((Symbol >> Bit & 1) << ((i * 10 + Bit) % 8));
+    }
+    uint8_t Coded8[11];
+    uint8_t Coded10[11];
+    memset(Coded8, 0xEE, sizeof(Coded8));
+    memset(Coded10, 0x11, sizeof(Coded10));
+
+    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 8, Raw8, 0, Coded8));
+    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 10, Raw10, 0, Coded10));
+    DT_ASSERT_MEM(Coded8, Coded10, sizeof(Coded8));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -1064,5 +1098,5 @@ DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
              DT_RUN(LayoutTransmit), DT_RUN(TxHeaderBytes), DT_RUN(TxHeaderFieldWidths),
              DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
-             DT_RUN(CodeLineRefuses), DT_RUN(BlackFramesEveryStandard),
-             DT_RUN(BlackFrameRoundTrip))
+             DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
+             DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip))

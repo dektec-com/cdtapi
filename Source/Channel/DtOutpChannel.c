@@ -465,7 +465,7 @@ static DtapiResult IdleToHold(DtOutpChannel* Chan)
     OsDrv* Drv = Chan->Device.Drv;
     int Index = Chan->PortIndex;
 
-    if (Chan->SymbolBits == 8 || !Chan->Registered)
+    if (!Chan->Registered)
         return DTAPI_E_CONFIG_RAW_SDI;
 
     DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Chan->Cdmac, Index);
@@ -523,6 +523,8 @@ static DtapiResult HoldToSend(DtOutpChannel* Chan)
 
     if (UnsentFrames(Chan) < 1)
         return DTAPI_E_INSUF_LOAD;
+    if (Chan->SymbolBits == 8)
+        return DTAPI_E_CONFIG_RAW_SDI;
 
     DtapiResult Result;
     for (int Poll = 0; Poll < DT_BURST_POLLS; Poll++)
@@ -815,6 +817,8 @@ static uint32_t StartSymbol(const DtOutpChannel* Chan, const uint8_t* Bytes, siz
 {
     if (Chan->SymbolBits == 16)
         return ((uint32_t)Bytes[2 * Index] | (uint32_t)Bytes[2 * Index + 1] << 8) & 0x3FF;
+    else if (Chan->SymbolBits == 8)
+        return (uint32_t)Bytes[Index] << 2;
     else
     {
         size_t Bit = Index * 10;
@@ -1792,8 +1796,9 @@ DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int 
 //
 // DtOutpChannel::Write's checks, the four-byte checks always applied: the buffer's
 // address and the size must be multiples of 4, and a failing check overrides an idle
-// channel, as it does in DTAPI. A write while a Write or WriteFrame on another thread has
-// not returned gives DTAPI_E_IN_USE. Then the bytes are converted into the buffer,
+// channel, as it does in DTAPI. A null buffer with bytes to write is refused when not
+// idle, where DTAPI would read it. A write while a Write or WriteFrame on another thread
+// has not returned gives DTAPI_E_IN_USE. Then the bytes are converted into the buffer,
 // waiting for room without the lock.
 //
 DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
@@ -1814,7 +1819,7 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
     DtapiResult Result =
         OutpChannel->TxControl == DTAPI_TXCTRL_IDLE ? DTAPI_E_IDLE : DTAPI_OK;
     if ((uintptr_t)Buffer % 4 != 0 || NumBytesToWrite % 4 != 0 ||
-        (Buffer == NULL && NumBytesToWrite > 0))
+        (Result == DTAPI_OK && Buffer == NULL && NumBytesToWrite > 0))
     {
         Result = DTAPI_E_INVALID_BUF;
     }

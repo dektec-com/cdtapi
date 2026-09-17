@@ -497,10 +497,27 @@ DT_TEST(TransmitModes)
                                          DTAPI_TXMODE_SDI | DTAPI_TXMODE_SDI_HUFFMAN, 0),
                  DTAPI_E_INVALID_MODE);
 
-    // DTAPI_TXMODE_SDI alone is the full frame; 8 bits cannot hold.
+    // DTAPI_TXMODE_SDI alone is the full frame in 8 bits, which holds and takes frames
+    // but does not send them, as DTAPI does on the card: the load is checked first.
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI, 0));
-    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
+                 DTAPI_E_INSUF_LOAD);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
+                 DTAPI_E_INSUF_LOAD);
+    size_t Size16;
+    uint8_t* Frame16 = MakeFrame(DTAPI_VIDSTD_1080I50, 0, 16, &Size16);
+    DT_ASSERT(Frame16 != NULL);
+    for (size_t i = 0; i < Size16 / 2; i++)
+        Frame16[i] = (uint8_t)((Frame16[2 * i] | Frame16[2 * i + 1] << 8) >> 2);
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame16, (int)(Size16 / 2)));
+    free(Frame16);
+    int Load;
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 5940000);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
                  DTAPI_E_CONFIG_RAW_SDI);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
 
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI_FULL, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(
@@ -644,6 +661,7 @@ DT_TEST(WriteChecks)
                  DTAPI_E_INVALID_BUF);
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, (char*)Data, 6), DTAPI_E_INVALID_BUF);
 
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, NULL, 8), DTAPI_E_IDLE);
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, NULL, 8), DTAPI_E_INVALID_BUF);
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, NULL, 0));
@@ -825,7 +843,7 @@ DT_TEST(WriteFrameChecks)
     // Line 2 first, and line 1 with another line number.
     uint8_t* Shifted = (uint8_t*)calloc(Size, 1);
     DT_ASSERT(Shifted != NULL);
-    memcpy(Shifted, Frame + 3300, Size - 3300);
+    memcpy(Shifted, Frame + 6600, Size - 6600);
     DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Shifted, (int)Size, 10),
                  DTAPI_E_INVALID_FRAME);
     memcpy(Shifted, Frame, Size);
