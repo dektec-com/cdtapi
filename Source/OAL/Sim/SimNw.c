@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -1378,6 +1379,11 @@ void SimNw_Reset(void)
             DtAlloc_Free(g_Nw.Kept[(g_Nw.KeptFirst + i) % SIM_NW_KEPT_PACKETS].Data);
     }
     memset(&g_Nw, 0, sizeof(g_Nw));
+
+    // As the DTA-2110 itself in SimDtPcie_Reset: a program that calls no test control
+    // asks for the loopback through the environment.
+    const char* Loopback = getenv("CDTAPILITE_SIM_LOOPBACK");
+    g_Nw.Loopback = Loopback != NULL && Loopback[0] != '\0' && strcmp(Loopback, "0") != 0;
 
     for (int i = 0; i < SIM_NW_HW_PIPES; i++)
     {

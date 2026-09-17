@@ -1072,7 +1072,18 @@ void SimDtPcie_Reset(void)
         SimDtPcie_SetSdiSignal(j, NULL);
 
     g_Sim.Index = SIM_DEVICE_INDEX;
-    g_Sim.Dta2110Index = -1;
+
+    // A test puts the DTA-2110 there through SimDtPcie_SetDta2110Index. A program that
+    // calls no test control, an example, asks for it through the environment, with the
+    // device index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
+    const char* Dta2110 = getenv("CDTAPILITE_SIM_DTA2110");
+    g_Sim.Dta2110Index = Dta2110 != NULL && Dta2110[0] != '\0' ? atoi(Dta2110) : -1;
+    if (g_Sim.Dta2110Index >= 0)
+    {
+        static const uint8_t Mac[6] = SIM_DTA2110_MAC_ADDRESS;
+
+        SimNet_SetDta2110Interface(true, Mac);
+    }
     g_Sim.FirmwareStatus = DT_FWSTATUS_UPTODATE;
     g_Sim.DriverVersion.m_Major = SIM_DRIVER_MAJOR;
     g_Sim.DriverVersion.m_Minor = SIM_DRIVER_MINOR;

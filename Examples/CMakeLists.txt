@@ -5,7 +5,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
-    DtTransmitFrames)
+    DtTransmitFrames DtReceive2110 DtTransmit2110)
+
+# Programs of SMPTE ST 2110, which also take ExampleAvFifo.c and the AV FIFO header.
+set(ExampleAvPrograms DtReceive2110 DtTransmit2110)
 
 # Programs that use what CDtapiLite adds to CDTAPI.h, and so build against CDtapiLite.h
 # only.
@@ -26,6 +29,13 @@ if(EXISTS "${CDTAPILITE_CDTAPI_HEADER}")
     set(ExampleVariants Lite Cdtapi)
 else()
     set(ExampleVariants Lite)
+endif()
+
+# The ST 2110 programs need CDTAPI_AvFifo.h for their second variant, which an SDK that
+# has CDTAPI.h may still lack.
+set(ExampleAvVariants Lite)
+if(EXISTS "${ExampleCdtapiDir}/CDTAPI_AvFifo.h")
+    set(ExampleAvVariants ${ExampleVariants})
 endif()
 
 # The variants are named by a word rather than by their suffix, because a CMake list
@@ -49,6 +59,11 @@ function(cdtapilite_add_example Program Variant)
         "${CMAKE_CURRENT_SOURCE_DIR}/${Program}.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleCommon.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleCommon.h")
+    if(Program IN_LIST ExampleAvPrograms)
+        list(APPEND Sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.h")
+    endif()
     add_executable(${Target} ${Sources})
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "Examples" FILES ${Sources})
 
@@ -76,7 +91,11 @@ function(cdtapilite_add_example Program Variant)
 endfunction()
 
 foreach(Program IN LISTS ExamplePrograms)
-    foreach(Variant IN LISTS ExampleVariants)
+    set(Variants ${ExampleVariants})
+    if(Program IN_LIST ExampleAvPrograms)
+        set(Variants ${ExampleAvVariants})
+    endif()
+    foreach(Variant IN LISTS Variants)
         cdtapilite_add_example(${Program} ${Variant})
     endforeach()
 endforeach()
@@ -95,11 +114,15 @@ if(NOT CDTAPILITE_BUILD_TESTS)
 endif()
 
 # Registers a run of Program, in every variant, with the arguments after Expected. A
-# program of ExampleLitePrograms runs in its one variant.
+# program of ExampleLitePrograms runs in its one variant. Every entry of ExampleExtraEnv,
+# such as "CDTAPILITE_SIM_DTA2110=set:1", is added to the environment of the runs
+# registered while it is set.
 function(cdtapilite_example_test Name Program Expected)
     set(Variants ${ExampleVariants})
     if(Program IN_LIST ExampleLitePrograms)
         set(Variants Lite)
+    elseif(Program IN_LIST ExampleAvPrograms)
+        set(Variants ${ExampleAvVariants})
     endif()
     foreach(Variant IN LISTS Variants)
         cdtapilite_example_suffix(${Variant} Suffix)
@@ -108,6 +131,10 @@ function(cdtapilite_example_test Name Program Expected)
         set_tests_properties(${Test} PROPERTIES
             PASS_REGULAR_EXPRESSION "${Expected}"
             ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
+        foreach(Variable IN LISTS ExampleExtraEnv)
+            set_property(TEST ${Test} APPEND PROPERTY
+                ENVIRONMENT_MODIFICATION "${Variable}")
+        endforeach()
 
         # As for the test suites: an MSVC AddressSanitizer build finds its runtime next
         # to the compiler.
@@ -179,3 +206,42 @@ cdtapilite_example_test(TransmitFramesMissingFile DtTransmitFrames
     "^Cannot read no-such-frame0.raw" --in no-such-frame)
 cdtapilite_example_test(TransmitFramesNoPattern DtTransmitFrames
     "^No test pattern for video standard 2160P50" --vidstd 2160P50)
+
+# The ST 2110 programs need the emulated DTA-2110, which the environment adds; the
+# loopback makes the packets a program sends arrive at its own receive side, although
+# each program has an emulated card of its own and so cannot receive what another sends.
+set(ExampleExtraEnv "CDTAPILITE_SIM_DTA2110=set:1" "CDTAPILITE_SIM_LOOPBACK=set:1")
+
+cdtapilite_example_test(Transmit2110Video DtTransmit2110
+    "9211000001:1  (hardware |software |)pipe  239.1.2.3:5004  320x240 25Hz 10-bit\n9211000001:1  frame 0  192000 bytes  tod .*  rtp .*\n.*sent 2 frames"
+    --count 2 --width 320 --height 240 --rate 25)
+cdtapilite_example_test(Transmit2110EightBit DtTransmit2110
+    "320x240 25Hz 8-bit\n9211000001:1  frame 0  153600 bytes"
+    --count 1 --width 320 --height 240 --rate 25 --8bit --8bit)
+cdtapilite_example_test(Transmit2110Audio DtTransmit2110
+    "(software |)pipe  239.1.2.3:5004  2 channels L24 48000 Hz\n9211000001:1  frame 0  2880 bytes"
+    --audio 2 --count 2)
+cdtapilite_example_test(Transmit2110ToAddress DtTransmit2110
+    "239.9.9.9:5008  320x240 25Hz 10-bit" --ip 239.9.9.9 --udp 5008 --count 1
+    --width 320 --height 240 --rate 25)
+cdtapilite_example_test(Transmit2110BadAddress DtTransmit2110
+    "^Not an IPv4 address: 239.1.2" --ip 239.1.2)
+cdtapilite_example_test(Transmit2110BadPipe DtTransmit2110
+    "Unknown pipe: fast|no choice of pipe" --pipe fast)
+cdtapilite_example_test(Transmit2110Help DtTransmit2110 "^Usage: .*--audio" --help)
+
+cdtapilite_example_test(Receive2110WithoutStream DtReceive2110
+    "9211000001:1  (hardware |software |)pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit\n9211000001:1  no frame within 100 ms\n9211000001:1  ok 0  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0"
+    --count 1 --timeout 100)
+cdtapilite_example_test(Receive2110SoftwarePipe DtReceive2110
+    "9211000001:1  software pipe|no choice of pipe" --count 1 --timeout 20 --pipe sw)
+cdtapilite_example_test(Receive2110Audio DtReceive2110
+    "2 channels L24 48000 Hz" --audio 2 --count 1 --timeout 20)
+cdtapilite_example_test(Receive2110BadFormat DtReceive2110
+    "^Unknown receive format: 12b" --format 12b)
+
+set(ExampleExtraEnv "")
+
+# Without the emulated DTA-2110 there is no IP port at all.
+cdtapilite_example_test(Transmit2110WithoutPort DtTransmit2110 "^No IP port that suits")
+cdtapilite_example_test(Receive2110WithoutPort DtReceive2110 "^No IP port that suits")

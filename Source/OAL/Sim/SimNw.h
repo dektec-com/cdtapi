@@ -117,7 +117,9 @@ void SimDtPcie_SetNwTime(uint64_t TodNs);
 // Advances the time of day a test set by Ns, and moves the packets that are due.
 void SimDtPcie_AdvanceNwTime(uint64_t Ns);
 
-// Makes sent packets arrive at the receive side when true; off after a reset.
+// Makes sent packets arrive at the receive side when true. After a reset it is off,
+// unless CDTAPILITE_SIM_LOOPBACK holds a value other than 0 or nothing, which is how a
+// program with no test controls of its own, such as an example, asks for it.
 void SimDtPcie_SetNwLoopback(bool Loopback);
 
 // Lets the Ethernet frame of Size bytes at Frame arrive at the receive side at TodNs.

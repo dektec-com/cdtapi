@@ -62,7 +62,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
-| `Examples/` | Example programs that list devices, configure a port, detect a video standard, and receive and transmit frames |
+| `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames, and receive and transmit SMPTE ST 2110 video and audio |
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 

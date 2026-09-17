@@ -11,6 +11,8 @@ file, built with the library unless `CDTAPILITE_BUILD_EXAMPLES` is off.
 | `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files |
 | `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDtapiLite addition |
+| `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
+| `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
 
 Every program lists its options with `--help`. Without `--serial` a program uses the
 first device that has a port that suits, and without `--port` the first such port.
@@ -27,6 +29,17 @@ The emulated DTA-2178 answers when `CDTAPILITE_SIM=1` is set:
 The emulator starts afresh in each process, so a configuration one program sets is gone
 for the next. On a card the configuration stays.
 
+The emulated DTA-2178 has no IP port. `CDTAPILITE_SIM_DTA2110` adds an emulated DTA-2110,
+a card with one, at the device index it holds, and `CDTAPILITE_SIM_LOOPBACK` makes the
+packets a program sends arrive at its own receive side:
+
+    CDTAPILITE_SIM=1 CDTAPILITE_SIM_DTA2110=1 DtTransmit2110 --count 2 --width 320 \
+        --height 240 --rate 25
+    CDTAPILITE_SIM=1 CDTAPILITE_SIM_DTA2110=1 DtReceive2110 --count 1 --timeout 100
+
+Each program has an emulated card of its own, so one cannot receive what another sends;
+the `SimAvFifo` test suite is where transmission and reception meet.
+
 ## On a card
 
     DtListDevices
@@ -38,6 +51,15 @@ for the next. On a card the configuration stays.
 
 A legal frame `DtTransmitFrames` sends through a cable to an input arrives with the hash
 it printed, so the two programs' lines show whether it arrived bit for bit.
+
+On a card with an IP port, one machine sending and another receiving:
+
+    DtTransmit2110 --ip 239.1.2.3 --udp 5004 --count 250
+    DtReceive2110 --ip 239.1.2.3 --udp 5004 --count 250 --format 10b
+
+The port's IP address, and its PTP clock, belong to the card: ST 2110 output is on time
+only when DekTec's service runs a PTP slave on the port, and the frames a program sends
+are timed by the card's clock.
 
 ## Output and exit codes
 
