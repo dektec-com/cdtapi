@@ -265,23 +265,32 @@ DT_TEST(DriverVersionPerProxy)
 {
     static const struct
     {
+        bool IsDf;
         int Type;
         DtDriverVersion Enough;
         DtDriverVersion TooOld;
     } Cases[] = {
-        {DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}, {1, 4, 0, 110}},
-        {DT_FUNC_TYPE_CHSDIRX, {2, 0, 2, 328}, {2, 0, 2, 327}},
-        {DT_FUNC_TYPE_ASIRX, {1, 0, 4, 48}, {1, 0, 4, 47}},
-        {DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}, {1, 5, 4, 142}},
+        {true, DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}, {1, 4, 0, 110}},
+        {true, DT_FUNC_TYPE_CHSDIRX, {2, 0, 2, 328}, {2, 0, 2, 327}},
+        {true, DT_FUNC_TYPE_ASIRX, {1, 0, 4, 48}, {1, 0, 4, 47}},
+        {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}, {1, 5, 4, 142}},
+        {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}, {1, 0, 5, 49}},
+        {false, DT_BLOCK_TYPE_CDMAC, {1, 0, 4, 48}, {1, 0, 4, 47}},
+        {false, DT_BLOCK_TYPE_SDIDMX12G, {1, 2, 1, 68}, {1, 2, 1, 67}},
+        {false, DT_BLOCK_TYPE_SDITXF, {1, 0, 4, 48}, {1, 0, 3, 99}},
+        {false, DT_BLOCK_TYPE_SDITXP, {1, 0, 4, 48}, {0, 9, 9, 999}},
+        {false, DT_BLOCK_TYPE_SWITCH, {1, 0, 4, 48}, {1, 0, 4, 47}},
     };
     const DtDriverVersion Newest = {3, 6, 4, 398};
     size_t i;
 
     for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
-        if (DtFuncCheckDriverVersion(&Cases[i].Enough, true, Cases[i].Type) != DTAPI_OK ||
-            DtFuncCheckDriverVersion(&Newest, true, Cases[i].Type) != DTAPI_OK ||
-            DtFuncCheckDriverVersion(&Cases[i].TooOld, true, Cases[i].Type) !=
+        bool IsDf = Cases[i].IsDf;
+
+        if (DtFuncCheckDriverVersion(&Cases[i].Enough, IsDf, Cases[i].Type) != DTAPI_OK ||
+            DtFuncCheckDriverVersion(&Newest, IsDf, Cases[i].Type) != DTAPI_OK ||
+            DtFuncCheckDriverVersion(&Cases[i].TooOld, IsDf, Cases[i].Type) !=
                 DTAPI_E_DRIVER_INCOMP)
         {
             DT_FAIL("type %d", Cases[i].Type);

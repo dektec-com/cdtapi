@@ -161,6 +161,12 @@ static const struct
     {true, DT_FUNC_TYPE_CHSDIRX, {2, 0, 2, 328}},
     {true, DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}},
     {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}},
+    {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}},
+    {false, DT_BLOCK_TYPE_CDMAC, {1, 0, 4, 48}},
+    {false, DT_BLOCK_TYPE_SDIDMX12G, {1, 2, 1, 68}},
+    {false, DT_BLOCK_TYPE_SDITXF, {1, 0, 4, 48}},
+    {false, DT_BLOCK_TYPE_SDITXP, {1, 0, 4, 48}},
+    {false, DT_BLOCK_TYPE_SWITCH, {1, 0, 4, 48}},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFuncCheckDriverVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
