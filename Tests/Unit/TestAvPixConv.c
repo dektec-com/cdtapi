@@ -22,7 +22,7 @@
 #define GUARD_BYTE 0xE7
 
 // The numbers of pixel groups each conversion is tried with.
-static const size_t Counts[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 33, 960};
+static const size_t Counts[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 33, 960};
 
 typedef enum Pattern
 {
@@ -199,17 +199,22 @@ DT_TEST(Ssse3MatchesReference)
     CheckAgainstReference(Ssse3, DtFailures);
 }
 
-// The SSSE3 conversions give the portable ones' bytes for a frame's worth of random data
-// converted in rows of varying lengths, each row into its own place in the frame.
-DT_TEST(Ssse3MatchesPortable)
+DT_TEST(Avx2MatchesReference)
 {
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
-    const DtAvPixConv* C = DtAvPixConv_C();
-    if (Ssse3 == NULL)
+    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    if (Avx2 == NULL)
     {
-        printf("    no SSSE3 in this build or on this processor; skipped\n");
+        printf("    no AVX2 in this build or on this processor; skipped\n");
         return;
     }
+    CheckAgainstReference(Avx2, DtFailures);
+}
+
+// The conversions of Fast give the portable ones' bytes for a frame's worth of random
+// data converted in rows of varying lengths, each row into its own place in the frame.
+static void CheckAgainstPortable(const DtAvPixConv* Fast, int* DtFailures)
+{
+    const DtAvPixConv* C = DtAvPixConv_C();
     size_t N = 3840 / 2 * 3;
     uint8_t* Src = (uint8_t*)malloc(N * 5);
     uint8_t* A[4] = {Destination(N * 5), Destination(N * 4), Destination(N * 5),
@@ -228,14 +233,14 @@ DT_TEST(Ssse3MatchesPortable)
         if (Count > N - Done)
             Count = N - Done;
         const uint8_t* In = Src + Done * 5;
-        Ssse3->Pg10ToUyvy10(In, A[0] + Done * 5, Count);
+        Fast->Pg10ToUyvy10(In, A[0] + Done * 5, Count);
         C->Pg10ToUyvy10(In, B[0] + Done * 5, Count);
-        Ssse3->Pg10ToUyvy8(In, A[1] + Done * 4, Count);
+        Fast->Pg10ToUyvy8(In, A[1] + Done * 4, Count);
         C->Pg10ToUyvy8(In, B[1] + Done * 4, Count);
-        Ssse3->Uyvy10ToPg10(In, A[2] + Done * 5, Count);
+        Fast->Uyvy10ToPg10(In, A[2] + Done * 5, Count);
         C->Uyvy10ToPg10(In, B[2] + Done * 5, Count);
-        Ssse3->Uyvy8ToYuv422p(Src + Done * 4, Count, A[3] + Done * 2, A[3] + N * 2 + Done,
-                              A[3] + N * 3 + Done);
+        Fast->Uyvy8ToYuv422p(Src + Done * 4, Count, A[3] + Done * 2, A[3] + N * 2 + Done,
+                             A[3] + N * 3 + Done);
         C->Uyvy8ToYuv422p(Src + Done * 4, Count, B[3] + Done * 2, B[3] + N * 2 + Done,
                           B[3] + N * 3 + Done);
         Done += Count;
@@ -253,14 +258,38 @@ DT_TEST(Ssse3MatchesPortable)
     free(Src);
 }
 
+DT_TEST(Ssse3MatchesPortable)
+{
+    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    if (Ssse3 == NULL)
+    {
+        printf("    no SSSE3 in this build or on this processor; skipped\n");
+        return;
+    }
+    CheckAgainstPortable(Ssse3, DtFailures);
+}
+
+DT_TEST(Avx2MatchesPortable)
+{
+    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    if (Avx2 == NULL)
+    {
+        printf("    no AVX2 in this build or on this processor; skipped\n");
+        return;
+    }
+    CheckAgainstPortable(Avx2, DtFailures);
+}
+
 DT_TEST(BestIsAvailable)
 {
     const DtAvPixConv* Best = DtAvPixConv_Best();
+    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
     DT_ASSERT(Best != NULL);
-    DT_ASSERT(Best ==
-              (DtAvPixConv_Ssse3() != NULL ? DtAvPixConv_Ssse3() : DtAvPixConv_C()));
-    printf("    %s\n", Best == DtAvPixConv_C() ? "portable C" : "SSSE3");
+    DT_ASSERT(Best == (Avx2 != NULL ? Avx2 : Ssse3 != NULL ? Ssse3 : DtAvPixConv_C()));
+    printf("    %s\n", Best == Avx2 ? "AVX2" : Best == Ssse3 ? "SSSE3" : "portable C");
 }
 
 DT_TEST_MAIN("AvPixConv", DT_RUN(PortableMatchesReference), DT_RUN(Ssse3MatchesReference),
-             DT_RUN(Ssse3MatchesPortable), DT_RUN(BestIsAvailable))
+             DT_RUN(Avx2MatchesReference), DT_RUN(Ssse3MatchesPortable),
+             DT_RUN(Avx2MatchesPortable), DT_RUN(BestIsAvailable))

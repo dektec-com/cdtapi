@@ -52,9 +52,14 @@ const DtAvPixConv* DtAvPixConv_C(void);
 // processor lacks SSSE3.
 const DtAvPixConv* DtAvPixConv_Ssse3(void);
 
-// The fastest conversions the processor runs.
+// The conversions with AVX2 for 10-bit video and SSSE3 for planar video, or NULL when the
+// library was built without them, or the processor or the operating system lacks AVX2.
+const DtAvPixConv* DtAvPixConv_Avx2(void);
+
+// The fastest conversions the processor runs: AVX2, SSSE3 or portable C.
 const DtAvPixConv* DtAvPixConv_Best(void);
 
-// The SSSE3 conversions, whatever the processor supports; only for the build of this
-// library on x86, as DtAvPixConv_Ssse3 chooses them.
+// The SSSE3 and the AVX2 conversions, whatever the processor supports; only for the build
+// of this library on x86, as DtAvPixConv_Ssse3 and DtAvPixConv_Avx2 choose them.
 const DtAvPixConv* DtAvPixConv_Ssse3Table(void);
+const DtAvPixConv* DtAvPixConv_Avx2Table(void);

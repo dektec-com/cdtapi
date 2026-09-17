@@ -1,13 +1,14 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* BenchAvPixConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Measures the throughput of each pixel conversion, portable and SSSE3
+// CDtapiLite - Measures the throughput of each pixel conversion, portable, SSSE3 and AVX2
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Converts a 3840x2160 frame over and over for about a second per conversion, in three
-// ways, and prints the compiler and its flags, and for the portable and the SSSE3
-// conversions the milliseconds a frame takes, where lower is faster, the megabytes of
-// input converted per second, where higher is faster, and how many times faster SSSE3 is:
+// ways, and prints the compiler and its flags, and for the portable, the SSSE3 and the
+// AVX2 conversions the milliseconds a frame takes, where lower is faster, the megabytes
+// of input converted per second, where higher is faster, and how many times faster AVX2
+// is than SSSE3:
 //
 //   rows      a row at a time from a frame into a frame, as a transmit FIFO converts
 //   packets   a packet's pixel groups at a time from packets with their headers in
@@ -223,32 +224,61 @@ int main(int Argc, char** Argv)
         Buf.Frame[i] = (uint8_t)(State >> 24);
     }
 
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    enum
+    {
+        NUM_SETS = 3
+    };
+    static const char* const SetNames[NUM_SETS] = {"C", "SSSE3", "AVX2"};
+    const DtAvPixConv* Sets[NUM_SETS] = {DtAvPixConv_C(), DtAvPixConv_Ssse3(),
+                                         DtAvPixConv_Avx2()};
     PrintCompiler();
-    printf(
-        "A 3840x2160 frame; packets of %d pixel groups of 5 bytes or %d of 4 bytes%s\n",
-        PACKET_PGROUPS_10, PACKET_PGROUPS_8,
-        Ssse3 != NULL ? "" : "; this processor or build has no SSSE3");
+    printf("A 3840x2160 frame; packets of %d pixel groups of 5 bytes or %d of 4 bytes\n",
+           PACKET_PGROUPS_10, PACKET_PGROUPS_8);
+    if (Sets[1] == NULL || Sets[2] == NULL)
+        printf("This processor or build has no %s\n", Sets[1] == NULL ? "SSSE3" : "AVX2");
     for (int How = 0; How < NUM_WAYS; How++)
     {
         printf("\n%s\n", WayNames[How]);
-        printf("%-26s %21s %21s %9s\n", "", "ms per frame", "MB of input per s", "SSSE3");
-        printf("%-26s %21s %21s %9s\n", "", "(lower is faster)", "(higher is faster)",
-               "speed-up");
-        printf("%-26s %10s %10s %10s %10s\n", "Conversion", "C", "SSSE3", "C", "SSSE3");
+        printf("%-22s %23s %23s %8s\n", "", "ms per frame", "MB of input per s",
+               "AVX2 vs");
+        printf("%-22s %23s %23s %8s\n", "", "(lower is faster)", "(higher is faster)",
+               "SSSE3");
+        printf("%-22s", "Conversion");
+        for (int Pass = 0; Pass < 2; Pass++)
+        {
+            for (int Set = 0; Set < NUM_SETS; Set++)
+                printf(" %7s", SetNames[Set]);
+        }
+        printf("\n");
         for (int Kind = 0; Kind < NUM_WHICH; Kind++)
         {
             Packetize(&Buf, (size_t)InputBytes((Which)Kind));
-            Speed C = Measure(DtAvPixConv_C(), (Which)Kind, (Way)How, &Buf, Seconds);
-            printf("%-26s %10.2f", Names[Kind], C.MsPerFrame);
-            if (Ssse3 == NULL)
+            Speed Speeds[NUM_SETS] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
+            for (int Set = 0; Set < NUM_SETS; Set++)
             {
-                printf(" %10s %10.0f %10s\n", "-", C.MbPerSecond, "-");
-                continue;
+                if (Sets[Set] != NULL)
+                    Speeds[Set] =
+                        Measure(Sets[Set], (Which)Kind, (Way)How, &Buf, Seconds);
             }
-            Speed S = Measure(Ssse3, (Which)Kind, (Way)How, &Buf, Seconds);
-            printf(" %10.2f %10.0f %10.0f %8.1fx\n", S.MsPerFrame, C.MbPerSecond,
-                   S.MbPerSecond, S.MbPerSecond / C.MbPerSecond);
+            printf("%-22s", Names[Kind]);
+            for (int Set = 0; Set < NUM_SETS; Set++)
+            {
+                if (Sets[Set] != NULL)
+                    printf(" %7.2f", Speeds[Set].MsPerFrame);
+                else
+                    printf(" %7s", "-");
+            }
+            for (int Set = 0; Set < NUM_SETS; Set++)
+            {
+                if (Sets[Set] != NULL)
+                    printf(" %7.0f", Speeds[Set].MbPerSecond);
+                else
+                    printf(" %7s", "-");
+            }
+            if (Sets[1] != NULL && Sets[2] != NULL)
+                printf(" %7.2fx\n", Speeds[2].MbPerSecond / Speeds[1].MbPerSecond);
+            else
+                printf(" %8s\n", "-");
         }
     }
     free(Buf.Frame);

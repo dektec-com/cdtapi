@@ -94,10 +94,12 @@ list(APPEND CDTAPILITE_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)
 
-# The SSSE3 pixel conversions exist for x86 processors only. The library calls them when
-# CPUID reports SSSE3, so only their own file is compiled for it.
+# The SSSE3 and AVX2 pixel conversions exist for x86 processors only. The library calls
+# them when CPUID reports SSSE3 or AVX2, so only their own files are compiled for it.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
-    list(APPEND CDTAPILITE_SOURCES Source/AvFifo/DtAvPixConvSsse3.c)
+    list(APPEND CDTAPILITE_SOURCES
+        Source/AvFifo/DtAvPixConvSsse3.c
+        Source/AvFifo/DtAvPixConvAvx2.c)
     set(CDTAPILITE_HAVE_SSSE3 ON)
 else()
     set(CDTAPILITE_HAVE_SSSE3 OFF)
@@ -184,12 +186,19 @@ target_include_directories(cdtapilite
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/DtPcie)
 
 if(CDTAPILITE_HAVE_SSSE3)
-    target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_HAVE_SSSE3=1)
-    # MSVC compiles the intrinsics without a flag; GCC and Clang, clang-cl too, need one.
+    target_compile_definitions(cdtapilite PRIVATE
+        CDTAPILITE_HAVE_SSSE3=1 CDTAPILITE_HAVE_AVX2=1)
+    # MSVC compiles the SSSE3 intrinsics without a flag and needs /arch:AVX2 for AVX2;
+    # GCC and Clang, clang-cl too, need a flag for each.
+    set(PixConvDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo")
     if(NOT MSVC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
-        set_source_files_properties(
-            "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo/DtAvPixConvSsse3.c"
+        set_source_files_properties("${PixConvDir}/DtAvPixConvSsse3.c"
             PROPERTIES COMPILE_OPTIONS -mssse3)
+        set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
+            PROPERTIES COMPILE_OPTIONS -mavx2)
+    else()
+        set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
+            PROPERTIES COMPILE_OPTIONS /arch:AVX2)
     endif()
 endif()
 
