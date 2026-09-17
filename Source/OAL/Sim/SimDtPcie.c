@@ -26,6 +26,7 @@
 #include "SimDtPcie.h"              // What the emulated card reports.
 #include "SimDta2110.h"             // What the emulated DTA-2110 is.
 #include "SimDta2178.h"             // What the emulated card is.
+#include "SimNet.h"                 // The DTA-2110's interface in the network.
 #include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
 
@@ -1052,6 +1053,7 @@ void SimDtPcie_Reset(void)
     SimChSdiRx_Reset();
     SimSdiTx_Reset();
     SimNw_Reset();
+    SimNet_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;
@@ -1199,8 +1201,11 @@ void SimDtPcie_SetIndex(int Index)
 //
 void SimDtPcie_SetDta2110Index(int Index)
 {
+    static const uint8_t Mac[6] = SIM_DTA2110_MAC_ADDRESS;
+
     EnsureState();
     g_Sim.Dta2110Index = Index;
+    SimNet_SetDta2110Interface(Index >= 0, Mac);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenHandles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

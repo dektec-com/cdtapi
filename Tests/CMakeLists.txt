@@ -71,6 +71,8 @@ cdtapilite_add_test(IoConfig Unit/TestIoConfig.c)
 cdtapilite_add_test(IoctlOutcome Unit/TestIoctlOutcome.c)
 cdtapilite_add_test(LinIoctlBuffer Unit/TestLinIoctlBuffer.c)
 cdtapilite_add_test(LinTime Unit/TestLinTime.c)
+cdtapilite_add_test(Net Unit/TestNet.c)
+cdtapilite_add_test(NetAddr Unit/TestNetAddr.c)
 cdtapilite_add_test(Ring Unit/TestRing.c)
 cdtapilite_add_test(SdiFrame Unit/TestSdiFrame.c)
 cdtapilite_add_test(Smpte352 Unit/TestSmpte352.c)
@@ -144,7 +146,7 @@ endif()
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
-                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimNw)
+                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimNw SimNet)
     cdtapilite_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")

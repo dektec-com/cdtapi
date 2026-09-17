@@ -53,6 +53,7 @@ set(CDTAPILITE_SOURCES
     Source/Device/DtAvInput.c
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
+    Source/Net/DtNet.c
     Source/DtPcie/DtEthIp.c
     Source/DtPcie/DtPcieCmd.c
     Source/DtPcie/DtPcieCmdPipe.c
@@ -62,10 +63,12 @@ set(CDTAPILITE_SOURCES
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
+    Source/OAL/OsNet.c
     Source/OAL/Sim/SimChSdiRx.c
     Source/OAL/Sim/SimDta2110.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
+    Source/OAL/Sim/SimNet.c
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
     Source/Video/DtFrameProps.c
@@ -79,15 +82,18 @@ list(APPEND CDTAPILITE_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)
 
-# Threads, events, mutexes and DMA memory belong to the operating system rather than to
-# a device, so they are built for the host platform whether or not the driver backend is.
+# Threads, events, mutexes, DMA memory and the network belong to the operating system
+# rather than to a device, so they are built for the host platform whether or not the
+# driver backend is.
 if(WIN32)
     list(APPEND CDTAPILITE_SOURCES
         Source/OAL/Windows/WinMemory.c
+        Source/OAL/Windows/WinNet.c
         Source/OAL/Windows/WinThread.c)
 else()
     list(APPEND CDTAPILITE_SOURCES
         Source/OAL/Linux/LinMemory.c
+        Source/OAL/Linux/LinNet.c
         Source/OAL/Linux/LinThread.c)
 endif()
 
@@ -163,7 +169,10 @@ elseif(WIN32)
     target_link_libraries(cdtapilite PRIVATE setupapi)
 endif()
 
-if(NOT WIN32)
+if(WIN32)
+    # Winsock and IP Helper give the network.
+    target_link_libraries(cdtapilite PRIVATE ws2_32 iphlpapi)
+else()
     find_package(Threads REQUIRED)
     target_link_libraries(cdtapilite PUBLIC Threads::Threads)
 endif()
