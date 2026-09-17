@@ -4,11 +4,18 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Converts the rows of a 3840x2160 frame over and over for about a second per conversion
-// and prints the compiler and its flags, and for the portable and the SSSE3 conversions
-// the milliseconds a frame takes,
-// where lower is faster, the megabytes of input converted per second, where higher is
-// faster, and how many times faster SSSE3 is. Not a test: it asserts nothing about time.
+// Converts a 3840x2160 frame over and over for about a second per conversion, in three
+// ways, and prints the compiler and its flags, and for the portable and the SSSE3
+// conversions the milliseconds a frame takes, where lower is faster, the megabytes of
+// input converted per second, where higher is faster, and how many times faster SSSE3 is:
+//
+//   rows      a row at a time from a frame into a frame, as a transmit FIFO converts
+//   packets   a packet's pixel groups at a time from packets with their headers in
+//             between into a frame, as a receive FIFO converts
+//   cache     one packet over and over into the same memory: the conversion's own speed,
+//             without the wait for memory that both others include
+//
+// Not a test: it asserts nothing about time.
 //
 // Usage: BenchAvPixConv [seconds per conversion]
 
@@ -17,6 +24,7 @@
 // Standard includes
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // CDtapiLite includes
 #include "AvFifo/DtAvPixConv.h" // Conversions measured.
@@ -28,6 +36,17 @@
 #define WIDTH 3840
 #define HEIGHT 2160
 #define PGROUPS_PER_ROW (WIDTH / 2)
+#define FRAME_PGROUPS ((size_t)HEIGHT * PGROUPS_PER_ROW)
+
+// What lies between two packets' pixel groups in a pipe's buffer: the DtEthIp header, 16
+// bytes; Ethernet, IPv4, UDP and RTP, 54; the extended sequence number and a row header,
+// 8.
+#define PACKET_HEADERS 78
+
+// The pixel groups in a packet of DTAPI's default payload of 1,420 bytes, less the
+// extended sequence number and a row header: 282 of 5 bytes, 353 of 4.
+#define PACKET_PGROUPS_10 282
+#define PACKET_PGROUPS_8 353
 
 typedef enum Which
 {
@@ -41,6 +60,32 @@ typedef enum Which
 static const char* const Names[NUM_WHICH] = {
     "pgroup 10 to UYVY 10", "pgroup 10 to UYVY 8", "UYVY 10 to pgroup 10",
     "UYVY 8 to YUV 4:2:2p"};
+
+typedef enum Way
+{
+    ROWS,
+    PACKETS,
+    CACHE,
+    NUM_WAYS
+} Way;
+
+static const char* const WayNames[NUM_WAYS] = {
+    "Rows: a row at a time, from a frame into a frame",
+    "Packets: a packet at a time, from packets with headers into a frame",
+    "Cache: one packet over and over into the same memory"};
+
+// The memory the conversions read and write.
+typedef struct Buffers
+{
+    uint8_t* Frame;   // The source frame, of 5 bytes per pixel group
+    uint8_t* Packets; // The frame's pixel groups in packets, with headers in between
+    uint8_t* Dst;     // The destination, of 5 bytes per pixel group
+} Buffers;
+
+static int InputBytes(Which Kind)
+{
+    return Kind == UYVY8_TO_YUV422P ? 4 : 5;
+}
 
 // Prints the compiler, its version, the configuration and the flags.
 static void PrintCompiler(void)
@@ -62,32 +107,53 @@ static void PrintCompiler(void)
     printf(", %s, flags \"%s\"\n", BENCH_CONFIG, Flags);
 }
 
-// Converts every row of a frame once.
-static void ConvertFrame(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
-                         uint8_t* Dst)
+// Converts Count pixel groups from Src into pixel group First of a destination of Total
+// pixel groups at Dst.
+static void Convert(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src, uint8_t* Dst,
+                    size_t First, size_t Count, size_t Total)
 {
-    for (size_t Row = 0; Row < HEIGHT; Row++)
+    switch (Kind)
     {
-        size_t In = Row * PGROUPS_PER_ROW;
-        switch (Kind)
+    case PG10_TO_UYVY10:
+        Conv->Pg10ToUyvy10(Src, Dst + First * 5, Count);
+        break;
+    case PG10_TO_UYVY8:
+        Conv->Pg10ToUyvy8(Src, Dst + First * 4, Count);
+        break;
+    case UYVY10_TO_PG10:
+        Conv->Uyvy10ToPg10(Src, Dst + First * 5, Count);
+        break;
+    default:
+        Conv->Uyvy8ToYuv422p(Src, Count, Dst + First * 2, Dst + Total * 2 + First,
+                             Dst + Total * 3 + First);
+        break;
+    }
+}
+
+// Converts a frame's worth of pixel groups once, in the given way.
+static void ConvertFrame(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf)
+{
+    size_t Bytes = (size_t)InputBytes(Kind);
+    size_t PerPacket = Bytes == 5 ? PACKET_PGROUPS_10 : PACKET_PGROUPS_8;
+    if (How == ROWS)
+    {
+        for (size_t Done = 0; Done < FRAME_PGROUPS; Done += PGROUPS_PER_ROW)
+            Convert(Conv, Kind, Buf->Frame + Done * Bytes, Buf->Dst, Done,
+                    PGROUPS_PER_ROW, FRAME_PGROUPS);
+        return;
+    }
+    const uint8_t* Src = Buf->Packets + PACKET_HEADERS;
+    for (size_t Done = 0; Done < FRAME_PGROUPS; Done += PerPacket)
+    {
+        size_t Count =
+            FRAME_PGROUPS - Done < PerPacket ? FRAME_PGROUPS - Done : PerPacket;
+        if (How == PACKETS)
         {
-        case PG10_TO_UYVY10:
-            Conv->Pg10ToUyvy10(Src + In * 5, Dst + In * 5, PGROUPS_PER_ROW);
-            break;
-        case PG10_TO_UYVY8:
-            Conv->Pg10ToUyvy8(Src + In * 5, Dst + In * 4, PGROUPS_PER_ROW);
-            break;
-        case UYVY10_TO_PG10:
-            Conv->Uyvy10ToPg10(Src + In * 5, Dst + In * 5, PGROUPS_PER_ROW);
-            break;
-        default:
-        {
-            size_t Plane = (size_t)HEIGHT * PGROUPS_PER_ROW;
-            Conv->Uyvy8ToYuv422p(Src + In * 4, PGROUPS_PER_ROW, Dst + In * 2,
-                                 Dst + Plane * 2 + In, Dst + Plane * 3 + In);
-            break;
+            Convert(Conv, Kind, Src, Buf->Dst, Done, Count, FRAME_PGROUPS);
+            Src += Count * Bytes + PACKET_HEADERS;
         }
-        }
+        else
+            Convert(Conv, Kind, Src, Buf->Dst, 0, Count, PerPacket);
     }
 }
 
@@ -99,25 +165,39 @@ typedef struct Speed
 } Speed;
 
 // Measures one conversion for Seconds.
-static Speed Measure(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
-                     uint8_t* Dst, int Seconds)
+static Speed Measure(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf,
+                     int Seconds)
 {
-    size_t InputBytes =
-        (size_t)HEIGHT * PGROUPS_PER_ROW * (Kind == UYVY8_TO_YUV422P ? 4u : 5u);
+    size_t Bytes = FRAME_PGROUPS * (size_t)InputBytes(Kind);
     uint64_t Start = OsTime_MonotonicMs();
     uint64_t Elapsed = 0;
     int Frames = 0;
     while (Elapsed < (uint64_t)Seconds * 1000u)
     {
-        ConvertFrame(Conv, Kind, Src, Dst);
+        ConvertFrame(Conv, Kind, How, Buf);
         Frames++;
         Elapsed = OsTime_MonotonicMs() - Start;
     }
     Speed Result;
     Result.MsPerFrame = (double)Elapsed / Frames;
     Result.MbPerSecond =
-        (double)Frames * (double)InputBytes / 1e6 / ((double)Elapsed / 1000.0);
+        (double)Frames * (double)Bytes / 1e6 / ((double)Elapsed / 1000.0);
     return Result;
+}
+
+// Lays the frame's pixel groups of Bytes bytes out in packets, headers in between.
+static void Packetize(const Buffers* Buf, size_t Bytes)
+{
+    size_t PerPacket = Bytes == 5 ? PACKET_PGROUPS_10 : PACKET_PGROUPS_8;
+    uint8_t* Dst = Buf->Packets;
+    for (size_t Done = 0; Done < FRAME_PGROUPS; Done += PerPacket)
+    {
+        size_t Count =
+            FRAME_PGROUPS - Done < PerPacket ? FRAME_PGROUPS - Done : PerPacket;
+        memset(Dst, 0, PACKET_HEADERS);
+        memcpy(Dst + PACKET_HEADERS, Buf->Frame + Done * Bytes, Count * Bytes);
+        Dst += PACKET_HEADERS + Count * Bytes;
+    }
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -125,10 +205,13 @@ static Speed Measure(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src,
 int main(int Argc, char** Argv)
 {
     int Seconds = Argc > 1 ? atoi(Argv[1]) : 1;
-    size_t Size = (size_t)HEIGHT * PGROUPS_PER_ROW * 5;
-    uint8_t* Src = (uint8_t*)malloc(Size);
-    uint8_t* Dst = (uint8_t*)malloc(Size);
-    if (Src == NULL || Dst == NULL || Seconds <= 0)
+    size_t Size = FRAME_PGROUPS * 5;
+    size_t Packets = FRAME_PGROUPS / PACKET_PGROUPS_10 + 1;
+    Buffers Buf;
+    Buf.Frame = (uint8_t*)malloc(Size);
+    Buf.Packets = (uint8_t*)malloc(Size + Packets * PACKET_HEADERS);
+    Buf.Dst = (uint8_t*)malloc(Size);
+    if (Buf.Frame == NULL || Buf.Packets == NULL || Buf.Dst == NULL || Seconds <= 0)
     {
         fprintf(stderr, "Usage: BenchAvPixConv [seconds per conversion]\n");
         return 1;
@@ -137,31 +220,39 @@ int main(int Argc, char** Argv)
     for (size_t i = 0; i < Size; i++)
     {
         State = State * 1664525u + 1013904223u;
-        Src[i] = (uint8_t)(State >> 24);
+        Buf.Frame[i] = (uint8_t)(State >> 24);
     }
 
     const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
     PrintCompiler();
-    printf("One 3840x2160 frame, converted row by row%s\n\n",
-           Ssse3 != NULL ? "" : "; this processor or build has no SSSE3");
-    printf("%-26s %21s %21s %9s\n", "", "ms per frame", "MB of input per s", "SSSE3");
-    printf("%-26s %21s %21s %9s\n", "", "(lower is faster)", "(higher is faster)",
-           "speed-up");
-    printf("%-26s %10s %10s %10s %10s\n", "Conversion", "C", "SSSE3", "C", "SSSE3");
-    for (int Kind = 0; Kind < NUM_WHICH; Kind++)
+    printf(
+        "A 3840x2160 frame; packets of %d pixel groups of 5 bytes or %d of 4 bytes%s\n",
+        PACKET_PGROUPS_10, PACKET_PGROUPS_8,
+        Ssse3 != NULL ? "" : "; this processor or build has no SSSE3");
+    for (int How = 0; How < NUM_WAYS; How++)
     {
-        Speed C = Measure(DtAvPixConv_C(), (Which)Kind, Src, Dst, Seconds);
-        printf("%-26s %10.2f", Names[Kind], C.MsPerFrame);
-        if (Ssse3 == NULL)
+        printf("\n%s\n", WayNames[How]);
+        printf("%-26s %21s %21s %9s\n", "", "ms per frame", "MB of input per s", "SSSE3");
+        printf("%-26s %21s %21s %9s\n", "", "(lower is faster)", "(higher is faster)",
+               "speed-up");
+        printf("%-26s %10s %10s %10s %10s\n", "Conversion", "C", "SSSE3", "C", "SSSE3");
+        for (int Kind = 0; Kind < NUM_WHICH; Kind++)
         {
-            printf(" %10s %10.0f %10s\n", "-", C.MbPerSecond, "-");
-            continue;
+            Packetize(&Buf, (size_t)InputBytes((Which)Kind));
+            Speed C = Measure(DtAvPixConv_C(), (Which)Kind, (Way)How, &Buf, Seconds);
+            printf("%-26s %10.2f", Names[Kind], C.MsPerFrame);
+            if (Ssse3 == NULL)
+            {
+                printf(" %10s %10.0f %10s\n", "-", C.MbPerSecond, "-");
+                continue;
+            }
+            Speed S = Measure(Ssse3, (Which)Kind, (Way)How, &Buf, Seconds);
+            printf(" %10.2f %10.0f %10.0f %8.1fx\n", S.MsPerFrame, C.MbPerSecond,
+                   S.MbPerSecond, S.MbPerSecond / C.MbPerSecond);
         }
-        Speed S = Measure(Ssse3, (Which)Kind, Src, Dst, Seconds);
-        printf(" %10.2f %10.0f %10.0f %8.1fx\n", S.MsPerFrame, C.MbPerSecond,
-               S.MbPerSecond, S.MbPerSecond / C.MbPerSecond);
     }
-    free(Src);
-    free(Dst);
+    free(Buf.Frame);
+    free(Buf.Packets);
+    free(Buf.Dst);
     return 0;
 }

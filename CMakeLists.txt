@@ -185,7 +185,8 @@ target_include_directories(cdtapilite
 
 if(CDTAPILITE_HAVE_SSSE3)
     target_compile_definitions(cdtapilite PRIVATE CDTAPILITE_HAVE_SSSE3=1)
-    if(NOT MSVC)
+    # MSVC compiles the intrinsics without a flag; GCC and Clang, clang-cl too, need one.
+    if(NOT MSVC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
         set_source_files_properties(
             "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo/DtAvPixConvSsse3.c"
             PROPERTIES COMPILE_OPTIONS -mssse3)
