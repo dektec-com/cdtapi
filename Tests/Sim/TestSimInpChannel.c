@@ -458,6 +458,35 @@ DT_TEST(RingHoldsTwoFramesAtLeast)
     FINISH(Fix);
 }
 
+// A channel on a 4K port has no ring and no frame size: a read waits for its time-out,
+// also after the channel was attached to the port with an HD standard before.
+DT_TEST(FourKPortReadsNothing)
+{
+    Fixture Fix;
+    int Size;
+    uint64_t Before;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+
+    SimDtPcieOverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcieOverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+
+    Size = 4;
+    Before = OsMonotonicMs();
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 30),
+                 DTAPI_E_TIMEOUT);
+    DT_ASSERT(OsMonotonicMs() - Before >= 30);
+    DT_ASSERT_EQ(Size, 0);
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+    FINISH(Fix);
+}
+
 // The channel has its own handle: the device object may go.
 DT_TEST(OwnHandle)
 {
@@ -622,6 +651,33 @@ DT_TEST(FullRingSetsOverflow)
     FINISH(Fix);
 }
 
+// The load counts the frames waiting before any has been read.
+DT_TEST(FifoLoadBeforeTheFirstRead)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    int Load = -1;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(
+        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B,
+                 DtFailures))
+        return;
+
+    DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 0);
+    SimDtPcieRunRxEvents(PORT - 1, 12);
+    DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 3 * (int)DtSdiFrameRawSize(&Layout, 10));
+
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 10, DtFailures));
+    DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 2 * (int)DtSdiFrameRawSize(&Layout, 10));
+    FINISH(Fix);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ReadFrame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // DtInpChannel::ReadFrame's checks in their order, and the frame size after them.
@@ -726,6 +782,67 @@ DT_TEST(DetachCancelsARead)
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 1));
     OsThreadJoin(Thread);
     DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
+    FINISH(Fix);
+}
+
+typedef struct SizedReader
+{
+    DtInpChannel* Channel;
+    char* Buffer;
+    int Size;
+    unsigned int Result;
+} SizedReader;
+
+static void ReadSized(void* Context)
+{
+    SizedReader* R = (SizedReader*)Context;
+
+    R->Result = DtInpChannel_ReadFrame(R->Channel, R->Buffer, &R->Size, 3000);
+}
+
+// A read waiting with a buffer for a 10-bit frame, while another thread switches the
+// channel to 16 bits and starts it again, finds its buffer too small and writes nothing.
+DT_TEST(ReadAfterAModeChangeChecksTheBuffer)
+{
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    SizedReader R;
+    OsThread* Thread;
+    size_t Raw10, i;
+    bool Untouched = true;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(
+        DtSdiFrameLayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    Raw10 = DtSdiFrameRawSize(&Layout, 10);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+
+    memset(Fix.Buffer, 0xA5, BUFFER_SIZE);
+    R.Channel = Fix.Channel;
+    R.Buffer = Fix.Buffer;
+    R.Size = (int)Raw10;
+    R.Result = DTAPI_OK;
+    Thread = OsThreadStart(ReadSized, &R);
+    DT_ASSERT(Thread != NULL);
+    OsSleepMs(60);
+
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_IDLE));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
+    SimDtPcieSetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+    OsThreadJoin(Thread);
+
+    DT_ASSERT_EQ(R.Result, DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(R.Size, 0);
+    for (i = 0; i < BUFFER_SIZE; i++)
+        Untouched = Untouched && (uint8_t)Fix.Buffer[i] == 0xA5;
+    DT_ASSERT(Untouched);
     FINISH(Fix);
 }
 
@@ -869,9 +986,10 @@ DT_TEST(DetectsTheIoStandard)
 
 DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AttachRefusals), DT_RUN(AttachCleansUpAfterFailures),
-             DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(OwnHandle),
-             DT_RUN(ReadsFramesBitForBit), DT_RUN(ReadsAcrossTheEndOfTheRing),
-             DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),
+             DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(FourKPortReadsNothing),
+             DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
+             DT_RUN(ReadsAcrossTheEndOfTheRing), DT_RUN(RecoversFromFaults),
+             DT_RUN(FullRingSetsOverflow), DT_RUN(FifoLoadBeforeTheFirstRead),
              DT_RUN(ReadFrameChecks), DT_RUN(ReadFrameTimesOut),
-             DT_RUN(DetachCancelsARead), DT_RUN(ReceiveModes), DT_RUN(IoConfiguration),
-             DT_RUN(DetectsTheIoStandard))
+             DT_RUN(DetachCancelsARead), DT_RUN(ReadAfterAModeChangeChecksTheBuffer),
+             DT_RUN(ReceiveModes), DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))

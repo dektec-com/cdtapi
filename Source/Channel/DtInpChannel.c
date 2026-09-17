@@ -164,9 +164,12 @@ static void ReleaseChannel(DtInpChannel* Chan)
                             Chan->RingMapped);
     Chan->Ring = NULL;
     Chan->RingSize = 0;
+    Chan->MaxLoad = 0;
     Chan->RingMapped = false;
     DtFree(Chan->LineBuf);
     Chan->LineBuf = NULL;
+    memset(&Chan->Layout, 0, sizeof(Chan->Layout));
+    Chan->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
 
     if (Chan->ChannelAttached)
     {
@@ -202,7 +205,12 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     // DtapiIoStd2VidStd: the sub-value of an SDI standard is its video standard.
     if (!DtFramePropsInit(&Frame, Chan->IoStdSubValue))
         return DTAPI_E_INVALID_VIDSTD;
-    Chan->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+
+    // A read waits a quarter frame at a time, also on a channel without a ring.
+    DtVidStdFps(Chan->IoStdSubValue, &Num, &Den);
+    Chan->QuarterMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
+    if (Chan->QuarterMs < 1)
+        Chan->QuarterMs = 1;
 
     // DtPalCHSDIRX::Attach: the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
@@ -241,7 +249,6 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
         return Result;
     }
 
-    DtVidStdFps(Chan->IoStdSubValue, &Num, &Den);
     memset(&Config, 0, sizeof(Config));
     Config.NumPorts = 1;
     Config.PortIndices[0] = Chan->PortIndex;
@@ -257,10 +264,6 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
                                                 : DT_DRV_SDIRATE_HD;
     Config.AssumeInterlaced = DtFramePropsIsInterlaced(&Frame);
     Config.Scale12GTo3G = Chan->Scale12GTo3G;
-
-    Chan->QuarterMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
-    if (Chan->QuarterMs < 1)
-        Chan->QuarterMs = 1;
 
     Result = DtDrvChSdiRxConfigure(Drv, Chan->Uuid, Chan->PortIndex, &Config);
     if (Result == DTAPI_OK)
@@ -840,8 +843,10 @@ unsigned int DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad)
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
+    // The complete frames from the read offset on, counted also before a read has found
+    // the first header.
     *FifoLoad = 0;
-    if (InpChannel->RxControl == DTAPI_RXCTRL_RCV && InpChannel->InSync)
+    if (InpChannel->RxControl == DTAPI_RXCTRL_RCV && InpChannel->Ring != NULL)
     {
         Result = DtDrvChSdiRxGetWriteOffset(InpChannel->Device.Drv, InpChannel->Uuid,
                                             InpChannel->PortIndex, &WriteOffset);
@@ -1035,6 +1040,23 @@ unsigned int DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reading +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// DtInpChannel::ReadFrame's last checks of the buffer: DTAPI_E_BUF_TOO_SMALL when it
+// cannot hold a frame of the channel's standard in its receive mode, and
+// DTAPI_E_INVALID_SIZE for a frame larger than DTAPI's FIFO. Sets *RawSize to the size
+// of that frame.
+//
+static unsigned int CheckBuffer(const DtInpChannel* Chan, int FrameSize, size_t* RawSize)
+{
+    *RawSize = DtSdiFrameRawSize(&Chan->Layout, Chan->SymbolBits);
+    if ((size_t)FrameSize < *RawSize)
+        return DTAPI_E_BUF_TOO_SMALL;
+    if (*RawSize > DT_FIFO_SIZE_MAX)
+        return DTAPI_E_INVALID_SIZE;
+    return DTAPI_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ReadFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtInpChannel::ReadFrame's checks. Then, until a frame is taken, the time is up or the
@@ -1067,13 +1089,7 @@ unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel, char* FrameBuffer,
         return DTAPI_E_NOT_ATTACHED;
     }
 
-    RawSize = DtSdiFrameRawSize(&InpChannel->Layout, InpChannel->SymbolBits);
-    if ((size_t)*FrameSize < RawSize)
-        Result = DTAPI_E_BUF_TOO_SMALL;
-    else if (RawSize > DT_FIFO_SIZE_MAX)
-        Result = DTAPI_E_INVALID_SIZE;
-    else
-        Result = DTAPI_OK;
+    Result = CheckBuffer(InpChannel, *FrameSize, &RawSize);
 
     InpChannel->Readers++;
     while (Result == DTAPI_OK)
@@ -1082,9 +1098,13 @@ unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel, char* FrameBuffer,
         uint64_t Elapsed;
         int Wait;
 
+        // While this read waited without the lock, another thread may have stopped the
+        // channel, changed its standard or receive mode, and started it again.
         if (InpChannel->RxControl != DTAPI_RXCTRL_IDLE)
         {
-            Result = TakeFrame(InpChannel, (uint8_t*)FrameBuffer, &Taken);
+            Result = CheckBuffer(InpChannel, *FrameSize, &RawSize);
+            if (Result == DTAPI_OK)
+                Result = TakeFrame(InpChannel, (uint8_t*)FrameBuffer, &Taken);
             if (Result != DTAPI_OK || Taken)
                 break;
         }

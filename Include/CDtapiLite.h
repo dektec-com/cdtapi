@@ -364,7 +364,7 @@ CDTAPILITE_API unsigned int DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, i
                                                      int* SubValue);
 
 // The bytes of complete frames waiting to be read, as raw frames in the current receive
-// mode; 0 while not receiving or not in sync.
+// mode; 0 while not receiving.
 CDTAPILITE_API unsigned int DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel,
                                                      int* FifoLoad);
 
