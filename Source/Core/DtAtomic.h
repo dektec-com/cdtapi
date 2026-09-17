@@ -18,7 +18,7 @@
 // C11 <stdatomic.h> would express this directly, but MSVC compiles it only behind
 // /experimental:c11atomics and otherwise stops with "C atomic support is not enabled".
 // Requiring an experimental compiler switch to build a library that is meant to be
-// packaged widely is a poor trade for the handful of operations used here, so the four
+// packaged widely is a poor trade for the handful of operations used here, so the ones
 // that are needed are mapped onto compiler intrinsics instead.
 //
 // long rather than int, because the Windows interlocked intrinsics are defined on long.
@@ -53,6 +53,11 @@ static inline long DtAtomicLoad(const DtAtomicInt* Value)
     return *Value;
 }
 
+static inline void DtAtomicStore(DtAtomicInt* Value, long Desired)
+{
+    _InterlockedExchange(Value, Desired);
+}
+
 #else
 
 static inline long DtAtomicIncrement(DtAtomicInt* Value)
@@ -68,6 +73,11 @@ static inline long DtAtomicDecrement(DtAtomicInt* Value)
 static inline long DtAtomicLoad(const DtAtomicInt* Value)
 {
     return __atomic_load_n(Value, __ATOMIC_ACQUIRE);
+}
+
+static inline void DtAtomicStore(DtAtomicInt* Value, long Desired)
+{
+    __atomic_store_n(Value, Desired, __ATOMIC_ACQ_REL);
 }
 
 #endif

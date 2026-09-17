@@ -10,68 +10,64 @@
 #include <stdlib.h>
 
 // CDtapiLite includes
-#include "DtAlloc.h" // Interface being implemented.
+#include "DtAlloc.h"  // Interface being implemented.
+#include "DtAtomic.h" // The counters.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Fault injection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// Deliberately not thread-safe and deliberately global. Fault injection is driven from a
-// single-threaded test; making it per-thread or atomic would suggest it is meant for
-// production use.
+// The counters are atomic, because applications allocate from several threads at once,
+// for example when each thread attaches a channel. Arming a failure is meant for a test
+// that allocates from one thread: with allocations on other threads at the same time, a
+// different allocation than the intended one may fail, or none.
 //
 
-static long g_AllocCount = 0;
-static long g_FailAfter = -1;
-static long g_Live = 0;
+static DtAtomicInt g_AllocCount = 0;
+static DtAtomicInt g_FailAfter = -1;
+static DtAtomicInt g_Live = 0;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtAllocFailAfter(long Count)
 {
-    g_FailAfter = Count;
+    DtAtomicStore(&g_FailAfter, Count < 0 ? -1 : Count);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 long DtAllocCount(void)
 {
-    return g_AllocCount;
+    return DtAtomicLoad(&g_AllocCount);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 long DtAllocLive(void)
 {
-    return g_Live;
+    return DtAtomicLoad(&g_Live);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtAllocResetCount(void)
 {
-    g_AllocCount = 0;
-    g_FailAfter = -1;
+    DtAtomicStore(&g_AllocCount, 0);
+    DtAtomicStore(&g_FailAfter, -1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ShouldFail -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Counts this allocation and reports whether it is the one that was armed to fail.
+// Counts this allocation and reports whether it is the one that was armed to fail. The
+// armed count goes down by one per allocation; the allocation that takes it from 0 to -1
+// fails, which also disarms it, so that the caller's recovery path can itself allocate.
 //
 static int ShouldFail(void)
 {
-    g_AllocCount++;
+    DtAtomicIncrement(&g_AllocCount);
 
-    if (g_FailAfter < 0)
+    if (DtAtomicLoad(&g_FailAfter) < 0)
         return 0;
 
-    if (g_FailAfter == 0)
-    {
-        // One-shot: disarm so that the caller's recovery path can itself allocate.
-        g_FailAfter = -1;
-        return 1;
-    }
-
-    g_FailAfter--;
-    return 0;
+    return DtAtomicDecrement(&g_FailAfter) == -1 ? 1 : 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Allocation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -87,7 +83,7 @@ void* DtMalloc(size_t Size)
 
     Block = malloc(Size);
     if (Block != NULL)
-        g_Live++;
+        DtAtomicIncrement(&g_Live);
     return Block;
 }
 
@@ -105,7 +101,7 @@ void* DtRealloc(void* Ptr, size_t Size)
 
     Block = realloc(Ptr, Size);
     if (Block != NULL && Ptr == NULL)
-        g_Live++;
+        DtAtomicIncrement(&g_Live);
     return Block;
 }
 
@@ -114,7 +110,7 @@ void* DtRealloc(void* Ptr, size_t Size)
 void DtFree(void* Ptr)
 {
     if (Ptr != NULL)
-        g_Live--;
+        DtAtomicDecrement(&g_Live);
     free(Ptr);
 }
 
