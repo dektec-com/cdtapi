@@ -115,6 +115,20 @@ static void Unlock(void)
     DtAtomicDecrement(&g_Lock);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieLock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieLock(void)
+{
+    Lock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcieUnlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcieUnlock(void)
+{
+    Unlock();
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static void EnsureState(void)
@@ -752,7 +766,8 @@ static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, i
                    Config[DTAPI_IOCONFIG_IOSTD].Value != DTAPI_IOCONFIG_ASI;
     uint32_t Access = SimDtPcieCheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
     uint32_t Status = SimSdiTxCmd(Dev, PortIndex, FunctionCode, Type, Role, Cmd, Access,
-                                  Enabled, In, InSize, Out, OutSize, &Dev->SleepMs);
+                                  Enabled, Config[DTAPI_IOCONFIG_IOSTD].SubValue, In,
+                                  InSize, Out, OutSize, &Dev->SleepMs);
 
     if (Status != DT_STATUS_OK)
         return SimFail(Dev, Status, DrvStatus);

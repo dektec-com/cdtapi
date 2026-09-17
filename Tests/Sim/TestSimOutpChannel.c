@@ -1,0 +1,1020 @@
+// #*#*#*#*#*#*#*#*#*#*#*#* TestSimOutpChannel.c *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDtapiLite - DtOutpChannel against the emulated card
+//
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// state, whose output follows the clock, and ends with no handle to it and no allocation
+// left open. The frames written are those the emulator's receive source sends, and the
+// frames the emulated card sent are compared with them symbol by symbol.
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <stdlib.h>
+#include <string.h>
+
+// CDtapiLite includes
+#include "CDtapiLite.h"             // Public API under test.
+#include "Core/DtAlloc.h"           // Live allocations.
+#include "Device/DtDevice.h"        // The device object, to change its firmware status.
+#include "DtPcieAbi.h"              // Operational modes, commands and statuses.
+#include "DtTest.h"                 // Test framework.
+#include "OAL/OsAbstractionLayer.h" // Direct handles.
+#include "OAL/OsThread.h"           // A writer on another thread, and the clock.
+#include "OAL/Sim/SimChSdiRx.h"     // The symbols of the frames written.
+#include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks.
+#include "Video/DtSdiFrame.h"       // Frame sizes and black frames.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Port 2, an output by default with HD-SDI 1080i50, and port 1, an input.
+#define PORT 2
+#define PORT_INPUT 1
+
+// How long a case waits for frames to be sent.
+#define SEND_TIMEOUT_MS 5000
+
+typedef struct Fixture
+{
+    int Live;
+    DtDevice* Device;
+    DtOutpChannel* Channel;
+} Fixture;
+
+// Resets the emulator, attaches a device object and allocates a channel. Returns false,
+// having recorded a failure, when that is not possible.
+static bool Start(Fixture* Fix, int* DtFailures)
+{
+    OsDrv* Drv;
+
+    SimDtPcieReset();
+    Fix->Live = DtAllocLive();
+    Fix->Device = NULL;
+    Fix->Channel = NULL;
+
+    Drv = OsDrvOpen(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrvIsEmulated(Drv))
+    {
+        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        (*DtFailures)++;
+        OsDrvClose(Drv);
+        return false;
+    }
+    OsDrvClose(Drv);
+
+    Fix->Device = DtDevice_Alloc();
+    Fix->Channel = DtOutpChannel_Alloc();
+    if (Fix->Device == NULL || Fix->Channel == NULL ||
+        DtDevice_AttachToSerial(Fix->Device, SIM_SERIAL) != DTAPI_OK)
+    {
+        printf("    FAIL: cannot set up\n");
+        (*DtFailures)++;
+        return false;
+    }
+    return true;
+}
+
+// Frees what Start made, lets the emulator free the frames it kept, and checks that
+// nothing is left open or allocated.
+#define FINISH(Fix)                                                                      \
+    do                                                                                   \
+    {                                                                                    \
+        DtOutpChannel_Free((Fix).Channel);                                               \
+        DtDevice_Free((Fix).Device);                                                     \
+        DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);                                         \
+        SimDtPcieReset();                                                                \
+        DT_ASSERT_EQ(DtAllocLive(), (Fix).Live);                                         \
+    } while (0)
+
+// Sets the I/O standard of PORT to VidStd through the device.
+static unsigned int SetStandard(Fixture* Fix, int VidStd)
+{
+    int Value, SubValue;
+    unsigned int Result = DtapiVidStd2IoStd(VidStd, -1, &Value, &SubValue);
+
+    if (Result != DTAPI_OK)
+        return Result;
+    return DtDevice_SetIoConfig(Fix->Device, PORT, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
+}
+
+// Frame FrameNumber of VidStd as the emulator's receive source makes it, as a raw frame
+// with Bits bits per symbol, in a new buffer of *Size bytes aligned to 8.
+static uint8_t* MakeFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t* Size)
+{
+    DtSdiFrameLayout Layout;
+    uint16_t Symbols[8250];
+    uint8_t* Frame;
+    uint8_t* Out;
+    uint64_t Accu = 0;
+    int Have = 0, Line;
+
+    *Size = 0;
+    if (!DtSdiFrameLayoutInit(&Layout, VidStd, 32))
+        return NULL;
+    *Size = DtSdiFrameRawSize(&Layout, Bits);
+    Frame = (uint8_t*)calloc(*Size, 1);
+    if (Frame == NULL)
+        return NULL;
+
+    Out = Frame;
+    for (Line = 1; Line <= Layout.NumLines; Line++)
+    {
+        int Count = SimChSdiRxLine(VidStd, FrameNumber, Line, Symbols);
+        int i;
+
+        for (i = 0; i < Count; i++)
+        {
+            if (Bits == 16)
+            {
+                *Out++ = (uint8_t)Symbols[i];
+                *Out++ = (uint8_t)(Symbols[i] >> 8);
+                continue;
+            }
+            Accu |= (uint64_t)Symbols[i] << Have;
+            for (Have += 10; Have >= 8; Have -= 8)
+            {
+                *Out++ = (uint8_t)Accu;
+                Accu >>= 8;
+            }
+        }
+    }
+    if (Have > 0)
+        *Out = (uint8_t)Accu;
+    return Frame;
+}
+
+// Writes Size bytes of Data in pieces whose sizes go through Pieces in turn, each a
+// multiple of 4. Returns the first failure.
+static unsigned int WriteInPieces(DtOutpChannel* Channel, const uint8_t* Data,
+                                  size_t Size, const size_t* Pieces, size_t NumPieces)
+{
+    size_t Done = 0, p = 0;
+
+    while (Done < Size)
+    {
+        size_t Piece = Pieces[p++ % NumPieces];
+        unsigned int Result;
+
+        if (Piece > Size - Done)
+            Piece = Size - Done;
+        Result = DtOutpChannel_Write(Channel, (char*)Data + Done, (int)Piece);
+        if (Result != DTAPI_OK)
+            return Result;
+        Done += Piece;
+    }
+    return DTAPI_OK;
+}
+
+// Writes frame FrameNumber of VidStd in one piece.
+static unsigned int WriteFrame(DtOutpChannel* Channel, int VidStd, uint32_t FrameNumber,
+                               int Bits)
+{
+    size_t Size;
+    uint8_t* Frame = MakeFrame(VidStd, FrameNumber, Bits, &Size);
+    unsigned int Result = Frame == NULL
+                              ? DTAPI_E_OUT_OF_MEM
+                              : DtOutpChannel_Write(Channel, (char*)Frame, (int)Size);
+
+    free(Frame);
+    return Result;
+}
+
+// Waits until the card has sent Count frames. Returns false after SEND_TIMEOUT_MS.
+static bool WaitForFrames(int Count)
+{
+    uint64_t Start = OsMonotonicMs();
+
+    for (;;)
+    {
+        SimTxState State;
+
+        SimDtPcieGetTxState(PORT - 1, &State);
+        if (State.FramesSent >= Count)
+            return true;
+        if (OsMonotonicMs() - Start > SEND_TIMEOUT_MS)
+            return false;
+        OsSleepMs(2);
+    }
+}
+
+// Waits until the card has sent Count frames and holds, so that the frames the emulator
+// keeps are not replaced by black frames while a slow test compares them.
+static bool SentAndHeld(DtOutpChannel* Channel, int Count)
+{
+    return WaitForFrames(Count) &&
+           DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD) == DTAPI_OK;
+}
+
+// The symbols of the kept frame with FrameId, in a new buffer; NULL when there is none.
+static uint16_t* SentFrame(int FrameId, int VidStd, SimTxFrame* Frame)
+{
+    DtSdiFrameLayout Layout;
+    size_t Count;
+    uint16_t* Symbols;
+
+    if (!DtSdiFrameLayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT))
+        return NULL;
+    Count =
+        (size_t)Layout.NumLines * (size_t)(Layout.LineSymsHanc + Layout.LineSymsVideo);
+    Symbols = (uint16_t*)malloc(Count * sizeof(uint16_t));
+    if (Symbols != NULL &&
+        !SimDtPcieCopyTxFrame(PORT - 1, FrameId, Symbols, Count, Frame))
+    {
+        free(Symbols);
+        Symbols = NULL;
+    }
+    return Symbols;
+}
+
+// Whether the card sent frame FrameNumber of VidStd with FrameId.
+static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
+{
+    SimTxFrame Frame;
+    uint16_t* Symbols = SentFrame(FrameId, VidStd, &Frame);
+    uint16_t Line[8250];
+    bool Same = Symbols != NULL;
+    int n;
+
+    for (n = 1; Same && n <= Frame.NumLines; n++)
+    {
+        int Count = SimChSdiRxLine(VidStd, FrameNumber, n, Line);
+        size_t At = (size_t)(n - 1) * (size_t)(Frame.SymsHanc + Frame.SymsVideo);
+
+        Same = Count == Frame.SymsHanc + Frame.SymsVideo &&
+               memcmp(Symbols + At, Line, (size_t)Count * sizeof(uint16_t)) == 0;
+    }
+    free(Symbols);
+    return Same;
+}
+
+// Whether the card sent a black frame of VidStd with FrameId: the coded lines of
+// DtSdiFrameBlackLines, symbol by symbol.
+static bool SentFrameIsBlack(int FrameId, int VidStd)
+{
+    DtSdiFrameLayout Layout = {0};
+    SimTxFrame Frame;
+    uint16_t* Symbols = SentFrame(FrameId, VidStd, &Frame);
+    uint8_t* Black;
+    bool Same =
+        Symbols != NULL && DtSdiFrameLayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT);
+    int n;
+
+    Black =
+        Same ? (uint8_t*)malloc((size_t)Layout.NumLines * (size_t)Layout.Stride) : NULL;
+    Same = Same && Black != NULL;
+    if (Same)
+        DtSdiFrameBlackLines(&Layout, Black);
+
+    for (n = 0; Same && n < Layout.NumLines; n++)
+    {
+        const uint8_t* Coded = Black + (size_t)n * (size_t)Layout.Stride;
+        size_t At = (size_t)n * (size_t)(Layout.LineSymsHanc + Layout.LineSymsVideo);
+        int s;
+
+        for (s = 0; Same && s < Layout.LineSymsHanc + Layout.LineSymsVideo; s++)
+        {
+            const uint8_t* Section =
+                s < Layout.LineSymsHanc ? Coded : Coded + Layout.LineBytesHanc;
+            size_t Index =
+                (size_t)(s < Layout.LineSymsHanc ? s : s - Layout.LineSymsHanc);
+            size_t Bit = Index * 10;
+            uint32_t Value =
+                ((uint32_t)Section[Bit / 8] | (uint32_t)Section[Bit / 8 + 1] << 8) >>
+                    (Bit % 8) &
+                0x3FF;
+
+            Same = Symbols[At + (size_t)s] == Value;
+        }
+    }
+    free(Black);
+    free(Symbols);
+    return Same;
+}
+
+// Attaches the channel to PORT for VidStd in TxMode and holds. Returns false, having
+// recorded a failure, when that fails.
+static bool Hold(Fixture* Fix, int VidStd, int TxMode, int* DtFailures)
+{
+    unsigned int Result = SetStandard(Fix, VidStd);
+
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_AttachToPort(Fix->Channel, Fix->Device, PORT);
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_SetTxMode(Fix->Channel, TxMode, 0);
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_SetTxControl(Fix->Channel, DTAPI_TXCTRL_HOLD);
+    if (Result != DTAPI_OK)
+    {
+        printf("    FAIL: cannot hold: %s\n", DtapiResult2Str(Result));
+        (*DtFailures)++;
+    }
+    return Result == DTAPI_OK;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+DT_TEST(NullAndDetached)
+{
+    Fixture Fix;
+    char Data[8];
+    int Value, Other;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+
+    DtOutpChannel_Free(NULL);
+    DtOutpChannel_Freep(NULL);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(NULL, Fix.Device, PORT), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_ClearFifo(NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_Detach(NULL, 0), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_GetFifoLoad(NULL, &Value), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_GetFifoLoad(Fix.Channel, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_GetFifoSize(Fix.Channel, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_GetMaxFifoSize(Fix.Channel, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_GetFlags(Fix.Channel, &Value, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(NULL, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(NULL, DTAPI_TXCTRL_HOLD),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(NULL, DTAPI_TXMODE_SDI_FULL, 0),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_Write(NULL, Data, 8), DTAPI_E_INVALID_ARG);
+
+    // Detached: the checks DTAPI makes before it looks first.
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, -4), DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, 0x10 | DTAPI_TXMODE_SDI_FULL, 0),
+                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD, 12345, -1),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, 8), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_Detach(Fix.Channel, 3), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_ClearFifo(Fix.Channel), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_GetFifoLoad(Fix.Channel, &Value), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_GetFifoSize(Fix.Channel, &Value), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_GetMaxFifoSize(Fix.Channel, &Value), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_GetFlags(Fix.Channel, &Value, &Other),
+                 DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
+                 DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI_FULL, 0),
+                 DTAPI_E_NOT_ATTACHED);
+    FINISH(Fix);
+}
+
+DT_TEST(AttachChecks)
+{
+    Fixture Fix;
+    DtDevice* Detached;
+    DtOutpChannel* Second;
+    SimTxState State;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    Detached = DtDevice_Alloc();
+    Second = DtOutpChannel_Alloc();
+
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, NULL, PORT), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Detached, PORT), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, 0),
+                 DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, SIM_PORT_COUNT + 1),
+                 DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT_INPUT),
+                 DTAPI_E_NO_DT_OUTPUT);
+
+    Fix.Device->Info.FirmwareStatus = DT_FWSTATUS_OBSOLETE;
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_OBSOLETE_FW);
+    Fix.Device->Info.FirmwareStatus = DT_FWSTATUS_UPTODATE;
+
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_ATTACHED);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Second, Fix.Device, PORT), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 2);
+
+    // The blocks as MxChannelMemlessTx leaves them for 1080i50: idle, the encoder's
+    // corrections on, the bypass of the demultiplexer, and a buffer of 128 MB.
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
+              State.TxfMode == DT_BLOCK_OPMODE_IDLE &&
+              State.PhyMode == DT_FUNC_OPMODE_IDLE);
+    DT_ASSERT(State.Clamp && State.AncChecksum && State.LineCrc);
+    DT_ASSERT(State.SwitchIn[0] == 0 && State.SwitchIn[1] == 0 &&
+              State.SwitchOut[0] == 0 && State.SwitchOut[1] == 0);
+    DT_ASSERT(State.BufferRegistered);
+    DT_ASSERT_EQ(State.BufferSize, 128 * 1024 * 1024);
+    DT_ASSERT_EQ(State.NumLinesPerEvent, 283);
+    DT_ASSERT_EQ(State.NumSofsBetweenTod, 1);
+    DT_ASSERT_EQ(State.TestMode, DT_CDMAC_TESTMODE_NORMAL);
+
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
+    DT_ASSERT_EQ(DtOutpChannel_Detach(Fix.Channel, 0), DTAPI_E_NOT_ATTACHED);
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(!State.BufferRegistered);
+
+    DtOutpChannel_Free(Second);
+    DtDevice_Free(Detached);
+    FINISH(Fix);
+}
+
+// An ASI standard, a failing command, and a 4K standard, which attaches but does not
+// leave idle.
+DT_TEST(AttachRefusals)
+{
+    Fixture Fix;
+    int Size;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                                      DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_1080I50));
+
+    SimDtPcieFailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER,
+                       DT_STATUS_OUT_OF_MEMORY);
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_OUT_OF_MEM);
+    SimDtPcieFailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
+    DT_ASSERT_EQ(SimDtPcieOpenHandles(), 1);
+
+    // The exclusive access was released: another attach succeeds.
+    SimDtPcieOverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcieOverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
+                 DTAPI_E_CONFIG_RAW_SDI);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoSize(Fix.Channel, &Size));
+    DT_ASSERT_EQ(Size, 48 * 1024 * 1024);
+    DT_ASSERT_OK(DtOutpChannel_GetMaxFifoSize(Fix.Channel, &Size));
+    DT_ASSERT_EQ(Size, 64 * 1024 * 1024);
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+DT_TEST(TransmitModes)
+{
+    Fixture Fix;
+    int Size;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+
+    // 1080i50 in a 128 MB buffer: 18 coded frames of 7,434,032 bytes.
+    DT_ASSERT_OK(DtOutpChannel_GetFifoSize(Fix.Channel, &Size));
+    DT_ASSERT_EQ(Size, 18 * 7425000);
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_16B, 0));
+    DT_ASSERT_OK(DtOutpChannel_GetMaxFifoSize(Fix.Channel, &Size));
+    DT_ASSERT_EQ(Size, 18 * 11880000);
+
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI_ACTVID, 0),
+                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, 0x10, 0), DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel,
+                                         DTAPI_TXMODE_SDI | DTAPI_TXMODE_SDI_HUFFMAN, 0),
+                 DTAPI_E_INVALID_MODE);
+
+    // DTAPI_TXMODE_SDI alone is the full frame; 8 bits cannot hold.
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI, 0));
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
+                 DTAPI_E_CONFIG_RAW_SDI);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI_FULL, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI_FULL, 0),
+                 DTAPI_E_NOT_IDLE);
+    FINISH(Fix);
+}
+
+// The checks of SetIoConfig, a new standard with a new buffer, and the transmit mode kept
+// across it.
+DT_TEST(IoConfiguration)
+{
+    Fixture Fix;
+    SimTxState State;
+    int Size;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_16B, 0));
+
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                           DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_ASI, -1),
+                 DTAPI_E_NOT_SUPPORTED);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94),
+                 DTAPI_E_NOT_IDLE);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
+
+    // 525i59.94: 1,801,800 bytes per 16-bit frame, 1,134,032 per coded frame, 128 MB.
+    DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(State.BufferRegistered);
+    DT_ASSERT_EQ(State.NumLinesPerEvent, 133);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoSize(Fix.Channel, &Size));
+    DT_ASSERT_EQ(Size, (int)((State.BufferSize - 32) / 1134032 * 1801800));
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= States +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+DT_TEST(States)
+{
+    Fixture Fix;
+    SimTxState State;
+    char Data[8];
+    int Load;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, 8), DTAPI_E_IDLE);
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, 7), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
+
+    // Sending from idle holds first, and then needs a frame.
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
+                 DTAPI_E_INSUF_LOAD);
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(
+        State.CdmacMode == DT_BLOCK_OPMODE_RUN &&
+        State.BurstMode == DT_BLOCK_OPMODE_RUN && State.TxfMode == DT_BLOCK_OPMODE_RUN &&
+        State.SwitchInMode == DT_BLOCK_OPMODE_RUN &&
+        State.DmxMode == DT_BLOCK_OPMODE_IDLE &&
+        State.SwitchOutMode == DT_BLOCK_OPMODE_RUN &&
+        State.TxpMode == DT_BLOCK_OPMODE_RUN && State.PhyMode == DT_FUNC_OPMODE_STANDBY);
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Data, 0));
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 0);
+
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 1126128);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT_EQ(State.PhyMode, DT_FUNC_OPMODE_RUN);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT_EQ(State.PhyMode, DT_FUNC_OPMODE_STANDBY);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
+              State.TxfMode == DT_BLOCK_OPMODE_IDLE &&
+              State.PhyMode == DT_FUNC_OPMODE_IDLE);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 0);
+    FINISH(Fix);
+}
+
+// A refused command leaves the blocks idle and the channel idle.
+DT_TEST(RefusedCommands)
+{
+    Fixture Fix;
+    SimTxState State;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+
+    SimDtPcieFailTxCmd(DT_FUNC_CODE_SDITXP_CMD, DT_SDITXP_CMD_SET_OPERATIONAL_MODE,
+                       DT_STATUS_OUT_OF_MEMORY);
+    DT_ASSERT(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD) >= DTAPI_E);
+    SimDtPcieFailTxCmd(DT_FUNC_CODE_SDITXP_CMD, DT_SDITXP_CMD_SET_OPERATIONAL_MODE, 0);
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
+              State.TxfMode == DT_BLOCK_OPMODE_IDLE);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Writing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+DT_TEST(WriteChecks)
+{
+    Fixture Fix;
+    uint8_t Data[16];
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+
+    // A misaligned buffer or size overrides idle, as in DTAPI.
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, (char*)Data + 1, 8),
+                 DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, (char*)Data, 6), DTAPI_E_INVALID_BUF);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, NULL, 8), DTAPI_E_INVALID_BUF);
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, NULL, 0));
+    memset(Data, 0, sizeof(Data));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Data, 16));
+    FINISH(Fix);
+}
+
+// Frames written in pieces of many sizes reach the card bit for bit, with frame IDs from
+// 0. In HD and 3G bytes before the first frame and between frames are skipped; in SD
+// they would make the search wait for field 2 of the next frame, see SdStartsAtField1.
+static void FramesInPieces(int VidStd, int Bits, int NumFrames, int* DtFailures)
+{
+    static const size_t Pieces[] = {1000, 4, 8, 12, 20, 65536, 36, 4, 3000000, 16};
+    Fixture Fix;
+    DtSdiFrameLayout Layout;
+    int TxMode = DTAPI_TXMODE_SDI_FULL |
+                 (Bits == 16 ? DTAPI_TXMODE_SDI_16B : DTAPI_TXMODE_SDI_10B);
+    int Load, i;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, VidStd, TxMode, DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    for (i = 0; i < NumFrames; i++)
+    {
+        size_t Size, Skip = VidStd == DTAPI_VIDSTD_525I59_94 ? 0 : 4 * (size_t)i + 28;
+        uint8_t* Frame = MakeFrame(VidStd, (uint32_t)i, Bits, &Size);
+        uint8_t* Data = (uint8_t*)calloc(Size + Skip, 1);
+
+        // Zeros first, in the same writes as the frame.
+        DT_ASSERT(Frame != NULL && Data != NULL);
+        memcpy(Data + Skip, Frame, Size);
+        DT_ASSERT_OK(WriteInPieces(Fix.Channel, Data, Size + Skip, Pieces + i, 4));
+        free(Data);
+        free(Frame);
+    }
+    DT_ASSERT(DtSdiFrameLayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT));
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, NumFrames * (int)DtSdiFrameRawSize(&Layout, Bits));
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(SentAndHeld(Fix.Channel, NumFrames));
+    for (i = 0; i < NumFrames; i++)
+    {
+        if (!SentFrameIs(i, VidStd, (uint32_t)i))
+        {
+            printf("    FAIL: standard %d, %d bits: frame %d differs\n", VidStd, Bits, i);
+            (*DtFailures)++;
+        }
+    }
+    FINISH(Fix);
+}
+
+DT_TEST(FramesInPieces525i)
+{
+    FramesInPieces(DTAPI_VIDSTD_525I59_94, 10, 3, DtFailures);
+    FramesInPieces(DTAPI_VIDSTD_525I59_94, 16, 2, DtFailures);
+}
+
+DT_TEST(FramesInPieces720p24)
+{
+    FramesInPieces(DTAPI_VIDSTD_720P24, 10, 2, DtFailures);
+}
+
+DT_TEST(FramesInPieces1080p50)
+{
+    FramesInPieces(DTAPI_VIDSTD_1080P50, 16, 2, DtFailures);
+}
+
+// An SD stream that starts in the active part of field 1 is picked up at line 1 of the
+// next frame, not at the blanking lines at the end of field 1, which match line 1 too.
+DT_TEST(SdStartsAtField1)
+{
+    Fixture Fix;
+    size_t Size, Tail;
+    uint8_t* Frame;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    // From line 30 of frame 0, on a four-byte boundary from its end, then frame 1. Line
+    // 261 of frame 0 then starts on such a boundary.
+    Frame = MakeFrame(DTAPI_VIDSTD_525I59_94, 0, 10, &Size);
+    DT_ASSERT(Frame != NULL);
+    Tail = (Size - 29 * 2145) / 4 * 4;
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame + Size - Tail, (int)Tail));
+    free(Frame);
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 1, 10));
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(SentAndHeld(Fix.Channel, 1));
+    DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 1));
+    FINISH(Fix);
+}
+
+// Frames go on across the end of the buffer, and a write waits for room while sending.
+DT_TEST(AcrossTheEndOfTheBuffer)
+{
+    Fixture Fix;
+    SimTxState State;
+    int i;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_1080I50, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+
+    // The buffer holds 18 frames; the 19th and 20th wait while the first go out, and the
+    // 19th has a line across the end of the buffer.
+    for (i = 0; i < 18; i++)
+        DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    for (i = 18; i < 20; i++)
+        DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10));
+
+    DT_ASSERT(SentAndHeld(Fix.Channel, 20));
+    DT_ASSERT(SentFrameIs(18, DTAPI_VIDSTD_1080I50, 18));
+    DT_ASSERT(SentFrameIs(19, DTAPI_VIDSTD_1080I50, 19));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT_EQ(State.HeaderErrors, 0);
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Signal +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// When the application stops writing, black frames follow with consecutive frame IDs,
+// and the underflow flag is latched until ClearFifo.
+DT_TEST(BlackFramesWhenWritingStops)
+{
+    Fixture Fix;
+    int Status, Latched;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 1, 10));
+    DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
+    DT_ASSERT(Status == 0 && Latched == 0);
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(SentAndHeld(Fix.Channel, 4));
+    DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 0));
+    DT_ASSERT(SentFrameIs(1, DTAPI_VIDSTD_525I59_94, 1));
+    DT_ASSERT(SentFrameIsBlack(2, DTAPI_VIDSTD_525I59_94));
+    DT_ASSERT(SentFrameIsBlack(3, DTAPI_VIDSTD_525I59_94));
+
+    DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
+    DT_ASSERT((Latched & DTAPI_TX_FIFO_UFL) != 0);
+    DT_ASSERT_OK(DtOutpChannel_ClearFifo(Fix.Channel));
+    DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
+    DT_ASSERT(Status == 0 && Latched == 0);
+    FINISH(Fix);
+}
+
+// A frame the application has only partly written when the card runs short follows the
+// black frames whole, with the next frame ID.
+DT_TEST(BlackFrameBeforeAPartlyWrittenFrame)
+{
+    Fixture Fix;
+    size_t Size;
+    uint8_t* Frame;
+    int Id, FirstNotBlack = -1;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    Frame = MakeFrame(DTAPI_VIDSTD_525I59_94, 1, 10, &Size);
+    DT_ASSERT(Frame != NULL);
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)(Size / 2 / 4 * 4)));
+
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(WaitForFrames(2));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame + Size / 2 / 4 * 4,
+                                     (int)(Size - Size / 2 / 4 * 4)));
+    free(Frame);
+
+    DT_ASSERT(SentAndHeld(Fix.Channel, SIM_TX_KEPT_FRAMES - 2));
+    DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 0));
+    DT_ASSERT(SentFrameIsBlack(1, DTAPI_VIDSTD_525I59_94));
+    for (Id = 2; Id < SIM_TX_KEPT_FRAMES - 2 && FirstNotBlack < 0; Id++)
+    {
+        if (!SentFrameIsBlack(Id, DTAPI_VIDSTD_525I59_94))
+            FirstNotBlack = Id;
+    }
+    DT_ASSERT(FirstNotBlack > 1);
+    DT_ASSERT(SentFrameIs(FirstNotBlack, DTAPI_VIDSTD_525I59_94, 1));
+    FINISH(Fix);
+}
+
+// The formatter's and the transmitter's underflow give the two flags.
+DT_TEST(UnderflowFlags)
+{
+    Fixture Fix;
+    int Status, Latched;
+    uint64_t Start0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(WaitForFrames(1));
+    SimDtPcieStarveTx(PORT - 1, 3);
+
+    Start0 = OsMonotonicMs();
+    do
+    {
+        OsSleepMs(10);
+        DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
+    } while ((Latched & DTAPI_TX_DMA_UFL) == 0 &&
+             OsMonotonicMs() - Start0 < SEND_TIMEOUT_MS);
+    DT_ASSERT((Latched & DTAPI_TX_DMA_UFL) != 0);
+    DT_ASSERT((Latched & DTAPI_TX_FIFO_UFL) != 0);
+    FINISH(Fix);
+}
+
+// A read offset of an earlier run, as the card reports right after the DMA controller
+// starts, does not keep a write waiting.
+DT_TEST(StaleReadOffset)
+{
+    Fixture Fix;
+    uint64_t Start0;
+    int Load;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    SimDtPcieStaleTxReadOffset(PORT - 1, 24576, 1000);
+
+    Start0 = OsMonotonicMs();
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    DT_ASSERT(OsMonotonicMs() - Start0 < 500);
+    DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    DT_ASSERT_EQ(Load, 1126128);
+    SimDtPcieStaleTxReadOffset(PORT - 1, 0, 0);
+    FINISH(Fix);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Detach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+typedef struct Writer
+{
+    DtOutpChannel* Channel;
+    unsigned int Result;
+} Writer;
+
+// Writes 1080i50 frames until a write fails.
+static void WriteUntilFailure(void* Context)
+{
+    Writer* W = (Writer*)Context;
+    size_t Size;
+    uint8_t* Frame = MakeFrame(DTAPI_VIDSTD_1080I50, 0, 10, &Size);
+
+    W->Result = DTAPI_E_OUT_OF_MEM;
+    while (Frame != NULL)
+    {
+        W->Result = DtOutpChannel_Write(W->Channel, (char*)Frame, (int)Size);
+        if (W->Result != DTAPI_OK)
+            break;
+    }
+    free(Frame);
+}
+
+// A write waiting for room while holding is ended by a detach.
+DT_TEST(DetachCancelsAWrite)
+{
+    Fixture Fix;
+    Writer W;
+    OsThread* Thread;
+    uint64_t Start0;
+    int Load = 0;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+
+    W.Channel = Fix.Channel;
+    W.Result = DTAPI_OK;
+    Thread = OsThreadStart(WriteUntilFailure, &W);
+    DT_ASSERT(Thread != NULL);
+
+    Start0 = OsMonotonicMs();
+    while (Load < 18 * 7425000 && OsMonotonicMs() - Start0 < SEND_TIMEOUT_MS)
+    {
+        OsSleepMs(10);
+        DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
+    }
+    DT_ASSERT_EQ(Load, 18 * 7425000);
+
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
+    OsThreadJoin(Thread);
+    DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
+    FINISH(Fix);
+}
+
+// Detaching when everything is sent, and the flags that cannot go together.
+DT_TEST(DetachWaitsUntilSent)
+{
+    Fixture Fix;
+    SimTxState State;
+    int i;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    for (i = 0; i < 3; i++)
+        DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, (uint32_t)i, 10));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+
+    DT_ASSERT_EQ(DtOutpChannel_Detach(Fix.Channel, 3), DTAPI_E_INVALID_FLAGS);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 2));
+    SimDtPcieGetTxState(PORT - 1, &State);
+    DT_ASSERT_EQ(State.FramesSent, 3);
+    DT_ASSERT(SentFrameIs(2, DTAPI_VIDSTD_525I59_94, 2));
+    FINISH(Fix);
+}
+
+// Freeing a sending channel stops its thread.
+DT_TEST(FreeWhileSending)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    if (!Hold(&Fix, DTAPI_VIDSTD_525I59_94, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B,
+              DtFailures))
+    {
+        FINISH(Fix);
+        return;
+    }
+    DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 0, 10));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT(WaitForFrames(3));
+    FINISH(Fix);
+}
+
+DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
+             DT_RUN(AttachRefusals), DT_RUN(TransmitModes), DT_RUN(IoConfiguration),
+             DT_RUN(States), DT_RUN(RefusedCommands), DT_RUN(WriteChecks),
+             DT_RUN(FramesInPieces525i), DT_RUN(FramesInPieces720p24),
+             DT_RUN(FramesInPieces1080p50), DT_RUN(SdStartsAtField1),
+             DT_RUN(AcrossTheEndOfTheBuffer), DT_RUN(BlackFramesWhenWritingStops),
+             DT_RUN(BlackFrameBeforeAPartlyWrittenFrame), DT_RUN(UnderflowFlags),
+             DT_RUN(StaleReadOffset), DT_RUN(DetachCancelsAWrite),
+             DT_RUN(DetachWaitsUntilSent), DT_RUN(FreeWhileSending))

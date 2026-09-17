@@ -5,7 +5,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
-// state, and ends with no handle to it and no allocation left open.
+// state, with the output going out as fast as waits come rather than on the clock, and
+// ends with no handle to it and no allocation left open.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -44,6 +45,7 @@ typedef struct Fixture
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcieReset();
+    SimDtPcieSetTxRealTime(false);
     Fix->Live = DtAllocLive();
     Fix->Drv = OsDrvOpen(SIM_DEVICE_INDEX);
     DtVecInit(&Fix->Tx.Parts, sizeof(DtFuncPart));

@@ -35,7 +35,10 @@
 //               encoder and the PHY run and the demultiplexer is idle, each wait for a
 //               format event sends the next part of a frame, reading on from the buffer
 //               as it goes: the lines of one event, as the format event setting asks,
-//               and the header before the first; the event names the frame and the part
+//               and the header before the first; the event names the frame and the part.
+//               The parts follow the clock, as many per frame period of the port's
+//               video standard as a frame has, and a wait that comes early returns after
+//               the time of its part, or times out when that is later
 //   underflow   a wait that finds too little sends nothing and times out; it sets the
 //               PHY's flag, counts in the burst FIFO, and, once the formatter has given
 //               its first event, sets the formatter's flag for the next event
@@ -46,7 +49,8 @@
 // with what it wrote. The encoder's clamping and its regeneration of checksums and CRCs
 // are not modelled; the symbols are kept as they were written.
 //
-// Called with the emulator's lock held, as the receive channels are.
+// The commands are called with the emulator's lock held, as the receive channels are; the
+// test controls take the lock themselves.
 //
 
 // The properties the blocks report, as the DTA-2178's did with driver 3.6.4.
@@ -60,12 +64,13 @@
 bool SimSdiTxTakes(int FunctionCode);
 
 // Handles a command from Handle for the block of type Type, with role Role, of the port
-// at PortIndex. Access is what SimDtPcieCheckAccess answers for Handle and the block, and
-// Enabled whether the port is an SDI output. Returns the DtStatus the driver would, and
-// fills Out and *OutSize for a command that answers. *SleepMs receives how long the
-// caller sleeps after releasing the emulator's lock.
+// at PortIndex. Access is what SimDtPcieCheckAccess answers for Handle and the block,
+// Enabled whether the port is an SDI output, and VidStd the video standard of its I/O
+// standard, which paces the output. Returns the DtStatus the driver would, and fills Out
+// and *OutSize for a command that answers. *SleepMs receives how long the caller sleeps
+// after releasing the emulator's lock.
 uint32_t SimSdiTxCmd(void* Handle, int PortIndex, int FunctionCode, int Type,
-                     const char* Role, int Cmd, uint32_t Access, bool Enabled,
+                     const char* Role, int Cmd, uint32_t Access, bool Enabled, int VidStd,
                      const void* In, size_t InSize, void* Out, size_t* OutSize,
                      int* SleepMs);
 
@@ -94,6 +99,15 @@ int SimDtPcieRunTxEvents(int PortIndex, int Events);
 // Makes the next Events waits of the port at PortIndex underflow, whatever the pipeline
 // holds.
 void SimDtPcieStarveTx(int PortIndex, int Events);
+
+// Makes the output follow the clock when true, as after a reset, or go out as fast as
+// waits come when false.
+void SimDtPcieSetTxRealTime(bool RealTime);
+
+// Makes the next Reads reads of the read offset of the port at PortIndex answer Offset,
+// as a DTA-2178 answered an offset of an earlier run right after its DMA controller was
+// set running.
+void SimDtPcieStaleTxReadOffset(int PortIndex, uint32_t Offset, int Reads);
 
 // Refuses command Cmd with DT_FUNC_CODE_ FunctionCode, of every port, with Status from
 // now on; Status 0 ends it. One command can be refused at a time.
@@ -139,4 +153,11 @@ int SimDtPcieTxFrameCount(int PortIndex);
 // The kept frame at Index, 0 for the oldest. Returns false when there is none.
 bool SimDtPcieGetTxFrame(int PortIndex, int Index, SimTxFrame* Frame);
 
-#define SIM_TX_KEPT_FRAMES 4
+// Copies the newest kept frame with frame ID FrameId: its header's fields into *Frame,
+// and its symbols into Symbols, which holds MaxSymbols, with Frame->Symbols pointing
+// there. Returns false, copying nothing, when no kept frame has the ID or its symbols do
+// not fit. Unlike SimDtPcieGetTxFrame, the copy stays valid while commands go on.
+bool SimDtPcieCopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
+                          size_t MaxSymbols, SimTxFrame* Frame);
+
+#define SIM_TX_KEPT_FRAMES 8

@@ -174,3 +174,8 @@ size_t SimDtPcieLastInput(int* FunctionCode, void* Buf, size_t Size);
 // when nobody does, DT_STATUS_IN_USE when another handle does. Called with the
 // emulator's lock held.
 uint32_t SimDtPcieCheckAccess(void* Handle, int PartIndex);
+
+// Takes and releases the emulator's lock, for a test control that reads or changes state
+// a command on another thread may be using. Not recursive.
+void SimDtPcieLock(void);
+void SimDtPcieUnlock(void);

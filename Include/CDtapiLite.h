@@ -413,6 +413,119 @@ CDTAPILITE_API unsigned int DtInpChannel_ReadFrame(DtInpChannel* InpChannel,
                                                    char* FrameBuffer, int* FrameSize,
                                                    int TimeOut);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtOutpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// An SDI output channel on a port of a DtPcie card, taking DTAPI's raw SDI frames: every
+// line, EAV first, with 10- or 16-bit symbols. Write converts the frames straight into
+// the card's DMA buffer for the port, without a software FIFO; the channel's frame IDs
+// count from 0 each time it leaves idle. While sending, a thread of the channel keeps the
+// signal: when the card holds less than a frame, it writes a black frame, and a frame a
+// write had only partly written follows it.
+//
+// SD, HD and 3G standards are transmitted; 4K, ASI, 8-bit symbols and active-video-only
+// modes are not. A channel attaches exclusively and is configured for the port's I/O
+// standard when it attaches and whenever that standard is set through the channel.
+//
+// Every function taking a DtOutpChannel returns DTAPI_E_INVALID_ARG for a null pointer,
+// and DTAPI_E_NOT_ATTACHED when the channel is not attached.
+//
+
+typedef struct DtOutpChannelC DtOutpChannel;
+
+// Allocates a detached output channel. Returns NULL when memory runs out.
+CDTAPILITE_API DtOutpChannel* DtOutpChannel_Alloc(void);
+
+// Detaches the channel, discarding what it has not sent, and frees it. A Write waiting on
+// another thread returns DTAPI_E_CANCELLED first; this waits for that as long as it
+// takes. NULL is allowed.
+CDTAPILITE_API void DtOutpChannel_Free(DtOutpChannel* OutpChannel);
+
+// Frees *OutpChannel as DtOutpChannel_Free does and sets *OutpChannel to NULL.
+CDTAPILITE_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
+
+// Attaches to a port of an attached device, numbered from 1, exclusively. The channel
+// uses its own handle to the device, so the device object may be detached afterwards.
+//
+// Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
+// DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_OUTPUT
+// for a port that cannot be, or is not configured as, an output; DTAPI_E_NOT_SUPPORTED
+// for a port without an ASI/SDI transmitter and for an ASI I/O standard;
+// DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a transmitter the driver does not
+// describe or is too old for; DTAPI_E_IN_USE when another user has the port; and the
+// driver's result of any command.
+CDTAPILITE_API unsigned int DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
+                                                       DtDevice* Device, int Port);
+
+// Stops transmitting, discards what the channel has not sent, and clears the flags.
+CDTAPILITE_API unsigned int DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
+
+// Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel has not sent is discarded;
+// with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this first waits until the card has
+// sent it, which ends when no more goes out for a second; both together give
+// DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write waiting on another thread
+// returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned after 100 ms, and
+// the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED when another thread
+// detached it meanwhile.
+CDTAPILITE_API unsigned int DtOutpChannel_Detach(DtOutpChannel* OutpChannel,
+                                                 int DetachMode);
+
+// The bytes the card has yet to send, as raw frames in the current transmit mode: the
+// complete frames written and not yet taken, and what was written of the next; 0 while
+// idle. Never more than the FIFO size.
+CDTAPILITE_API unsigned int DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel,
+                                                      int* FifoLoad);
+
+// The largest load GetFifoLoad can report: the complete frames the channel's buffer holds
+// when full, as raw frames in the current transmit mode, at least two. On a 4K port,
+// where the channel does not transmit, DTAPI's FIFO size of 48 MB.
+CDTAPILITE_API unsigned int DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel,
+                                                      int* FifoSize);
+
+// The same as GetFifoSize; on a 4K port DTAPI's maximum FIFO size of 64 MB.
+CDTAPILITE_API unsigned int DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
+                                                         int* MaxFifoSize);
+
+// The status flags and the latched flags: DTAPI_TX_FIFO_UFL when the channel wrote a
+// black frame or the card's formatter ran out of data, and DTAPI_TX_DMA_UFL when the
+// card's transmitter did. The latched flags stay set until ClearFifo.
+CDTAPILITE_API unsigned int DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel,
+                                                   int* Status, int* Latched);
+
+// Sets an I/O configuration of the channel's port, while idle (DTAPI_E_NOT_IDLE). A new
+// SDI standard reconfigures the channel for it; the transmit mode is kept. Returns
+// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an input direction
+// and for an output that names another port, and DTAPI_E_NOT_SUPPORTED for ASI.
+CDTAPILITE_API unsigned int DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel,
+                                                      int Group, int Value, int SubValue);
+
+// DTAPI_TXCTRL_HOLD starts the card's pipeline without sending, so that what is written
+// is kept; DTAPI_TXCTRL_SEND sends, and needs a frame written (DTAPI_E_INSUF_LOAD), also
+// from idle, which goes through hold; DTAPI_TXCTRL_IDLE stops and discards what was
+// written. Holding in the 8-bit mode, or on a port configured for 4K, fails with
+// DTAPI_E_CONFIG_RAW_SDI.
+CDTAPILITE_API unsigned int DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
+                                                       int TxControl);
+
+// Sets the transmit mode while idle: DTAPI_TXMODE_SDI_FULL, optionally with
+// DTAPI_TXMODE_SDI_10B or DTAPI_TXMODE_SDI_16B, 8-bit without either. StuffMode is not
+// used. Any other mode gives DTAPI_E_INVALID_MODE; a channel that is not idle gives
+// DTAPI_E_NOT_IDLE.
+CDTAPILITE_API unsigned int DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel,
+                                                    int TxMode, int StuffMode);
+
+// Writes NumBytesToWrite bytes of raw frames from Buffer. The stream is aligned on
+// frames: at the start of each frame, bytes are skipped four at a time until they start
+// line 1, and bytes too few to tell are kept for the next Write. Waits while the card has
+// no room, for as long as that takes.
+//
+// Returns, in DTAPI's order: DTAPI_E_INVALID_SIZE for a negative size; DTAPI_E_IDLE while
+// idle; DTAPI_E_INVALID_BUF for a size or a buffer address not a multiple of 4, which
+// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write; and
+// DTAPI_E_CANCELLED when the channel is detached meanwhile, or DTAPI_E_IDLE when it is
+// set idle meanwhile.
+CDTAPILITE_API unsigned int DtOutpChannel_Write(DtOutpChannel* OutpChannel, char* Buffer,
+                                                int NumBytesToWrite);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
