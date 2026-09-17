@@ -93,8 +93,8 @@ struct DtOutpChannelC
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;
-    int Detachers; // Detaches waiting for writes to leave
-    int Writers;   // Write and WriteFrame calls between their start and their return
+    int Detachers; // Detaches waiting for the write to return
+    bool Writing;  // A Write or WriteFrame call is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
     int Port;        // From 1
@@ -1232,7 +1232,7 @@ static void PadToWord(DtOutpChannel* Chan)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtOutpChannel::Detach: asks writes on other threads to return and waits for them up to
+// DtOutpChannel::Detach: asks a write on another thread to return and waits for it up to
 // Tries pauses of 10 ms, or without a limit for -1. Then, with DTAPI_WAIT_UNTIL_SENT and
 // while sending, waits until the card has taken what was written; with
 // DTAPI_INSTANT_DETACH forgets it. Stops, and releases everything.
@@ -1252,7 +1252,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
     }
 
     Chan->Detachers++;
-    for (int Try = 0; Chan->Attached && Chan->Writers > 0; Try++)
+    for (int Try = 0; Chan->Attached && Chan->Writing; Try++)
     {
         if (Try == Tries)
         {
@@ -1350,8 +1350,8 @@ DtOutpChannel* DtOutpChannel_Alloc(void)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // As DTAPI's destructor: an instant detach whose result is ignored. Unlike a detach, it
-// waits for writes on other threads to return for as long as they take, so that none of
-// them uses the channel after it is gone.
+// waits for a write on another thread to return for as long as it takes, so that it does
+// not use the channel after it is gone.
 //
 void DtOutpChannel_Free(DtOutpChannel* OutpChannel)
 {
@@ -1792,8 +1792,9 @@ DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int 
 //
 // DtOutpChannel::Write's checks, the four-byte checks always applied: the buffer's
 // address and the size must be multiples of 4, and a failing check overrides an idle
-// channel, as it does in DTAPI. Then one write at a time converts the bytes into the
-// buffer, waiting for room without the lock.
+// channel, as it does in DTAPI. A write while a Write or WriteFrame on another thread has
+// not returned gives DTAPI_E_IN_USE. Then the bytes are converted into the buffer,
+// waiting for room without the lock.
 //
 DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
                                 int NumBytesToWrite)
@@ -1818,21 +1819,14 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
         Result = DTAPI_E_INVALID_BUF;
     }
 
-    // A write on another thread goes first.
-    while (Result == DTAPI_OK && OutpChannel->Writers > 0)
-    {
-        OsMutex_Unlock(OutpChannel->Lock);
-        OsTime_SleepMs(1);
-        OsMutex_Lock(OutpChannel->Lock);
-        if (OutpChannel->Detachers > 0)
-            Result = DTAPI_E_CANCELLED;
-    }
+    if (Result == DTAPI_OK && OutpChannel->Writing)
+        Result = DTAPI_E_IN_USE;
 
     if (Result == DTAPI_OK)
     {
-        OutpChannel->Writers++;
+        OutpChannel->Writing = true;
         Result = WriteSdi(OutpChannel, (const uint8_t*)Buffer, (size_t)NumBytesToWrite);
-        OutpChannel->Writers--;
+        OutpChannel->Writing = false;
     }
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
@@ -1865,7 +1859,7 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
         Result = DTAPI_E_NOT_ATTACHED;
     else if (OutpChannel->TxControl == DTAPI_TXCTRL_IDLE)
         Result = DTAPI_E_IDLE;
-    else if (OutpChannel->Writers > 0)
+    else if (OutpChannel->Writing)
         Result = DTAPI_E_IN_USE;
     else if (OutpChannel->Stage != DT_STAGE_SEARCH || OutpChannel->RawHave > 0)
         Result = DTAPI_E_INCOMP_FRAME;
@@ -1873,9 +1867,9 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
     {
         uint64_t Deadline = TimeOut == -1 ? DT_NO_DEADLINE : Start + (uint64_t)TimeOut;
 
-        OutpChannel->Writers++;
+        OutpChannel->Writing = true;
         Result = WriteWhole(OutpChannel, (const uint8_t*)Frame, FrameSize, Deadline);
-        OutpChannel->Writers--;
+        OutpChannel->Writing = false;
     }
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;

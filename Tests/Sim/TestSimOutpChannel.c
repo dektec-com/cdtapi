@@ -1010,7 +1010,7 @@ static void WriteFramesUntilFailure(void* Context)
     free(Frame);
 }
 
-// While a WriteFrame on another thread waits for room, another WriteFrame is refused;
+// While a WriteFrame on another thread waits for room, Write and WriteFrame are refused;
 // a detach ends the wait.
 DT_TEST(WriteFrameInUseAndCancelled)
 {
@@ -1040,6 +1040,7 @@ DT_TEST(WriteFrameInUseAndCancelled)
 
     DT_ASSERT_EQ(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10, 20),
                  DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10), DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
     OsThread_Join(Thread);
     DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
@@ -1268,7 +1269,8 @@ static void WriteUntilFailure(void* Context)
     free(Frame);
 }
 
-// A write waiting for room while holding is ended by a detach.
+// A write waiting for room while holding is ended by a detach. While it waits, Write and
+// WriteFrame are refused.
 DT_TEST(DetachCancelsAWrite)
 {
     Fixture Fix;
@@ -1292,7 +1294,12 @@ DT_TEST(DetachCancelsAWrite)
         DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     }
     DT_ASSERT_EQ(Load, 18 * 7425000);
+    OsTime_SleepMs(20);
 
+    uint8_t Data[8] = {0};
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, 8), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10, 20),
+                 DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
     OsThread_Join(Thread);
     DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);

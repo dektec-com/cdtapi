@@ -454,9 +454,9 @@ typedef struct DtOutpChannelC DtOutpChannel;
 // Allocates a detached output channel. Returns NULL when memory runs out.
 CDTAPILITE_API DtOutpChannel* DtOutpChannel_Alloc(void);
 
-// Detaches the channel, discarding what it has not sent, and frees it. A Write waiting on
-// another thread returns DTAPI_E_CANCELLED first; this waits for that as long as it
-// takes. NULL is allowed.
+// Detaches the channel, discarding what it has not sent, and frees it. A Write or
+// WriteFrame waiting on another thread returns DTAPI_E_CANCELLED first; this waits for
+// that as long as it takes. NULL is allowed.
 CDTAPILITE_API void DtOutpChannel_Free(DtOutpChannel* OutpChannel);
 
 // Frees *OutpChannel as DtOutpChannel_Free does and sets *OutpChannel to NULL.
@@ -481,10 +481,10 @@ CDTAPILITE_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel has not sent is discarded;
 // with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this first waits until the card has
 // sent it, which ends when no more goes out for a second; both together give
-// DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write waiting on another thread
-// returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned after 100 ms, and
-// the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED when another thread
-// detached it meanwhile.
+// DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write or WriteFrame waiting on
+// another thread returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned
+// after 100 ms, and the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED when
+// another thread detached it meanwhile.
 CDTAPILITE_API DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel,
                                                 int DetachMode);
 
@@ -540,9 +540,10 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, i
 //
 // Returns, in DTAPI's order: DTAPI_E_INVALID_SIZE for a negative size; DTAPI_E_IDLE while
 // idle; DTAPI_E_INVALID_BUF for a size or a buffer address not a multiple of 4, which
-// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write; and
-// DTAPI_E_CANCELLED when the channel is detached meanwhile, or DTAPI_E_IDLE when it is
-// set idle meanwhile.
+// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write;
+// DTAPI_E_IN_USE while a Write or WriteFrame on another thread has not returned, where
+// DTAPI waits for it; and DTAPI_E_CANCELLED when the channel is detached meanwhile, or
+// DTAPI_E_IDLE when it is set idle meanwhile.
 CDTAPILITE_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel,
                                                const void* Buffer, int NumBytesToWrite);
 
