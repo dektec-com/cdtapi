@@ -65,6 +65,6 @@ size_t DtBufSize(const DtBuf* Buf);
 
 // The current reference count. Intended for tests and diagnostics; in live code the
 // answer can be stale the moment it is returned. Zero when Buf is NULL.
-long DtBufRefCount(const DtBuf* Buf);
+int DtBufRefCount(const DtBuf* Buf);
 
 #endif // CDTAPILITE_DT_BUF_H

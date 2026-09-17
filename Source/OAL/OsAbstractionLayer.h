@@ -78,7 +78,7 @@ bool OsDrvIsEmulated(const OsDrv* Drv);
 // Returns one of the OS_IOCTL_ outcomes below. DrvStatus may be NULL; otherwise it
 // receives the driver's DtStatus when the outcome is OS_IOCTL_DRIVER_STATUS, and
 // DT_STATUS_OK, which is zero, for every other outcome.
-int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, void* Out,
+int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
                size_t* OutSize, uint32_t* DrvStatus);
 
 // Outcomes of OsDrvIoCtl.
@@ -109,6 +109,6 @@ void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size);
 // The error the last failed call on this handle reported, for diagnostics: the driver
 // status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
 // Linux and GetLastError on Windows. Zero when nothing has failed.
-unsigned long OsDrvLastError(const OsDrv* Drv);
+uint32_t OsDrvLastError(const OsDrv* Drv);
 
 #endif // CDTAPILITE_OS_ABSTRACTION_LAYER_H

@@ -137,7 +137,7 @@ bool ExampleInt64(int Argc, char** Argv, const char* Name, int64_t* Value)
 {
     const char* Text = ExampleValue(Argc, Argv, Name);
     char* End = NULL;
-    long long Parsed;
+    int64_t Parsed;
 
     if (Text == NULL)
         return true;

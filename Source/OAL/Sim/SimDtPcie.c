@@ -31,7 +31,7 @@
 
 typedef struct SimDevice
 {
-    unsigned long LastError;
+    uint32_t LastError;
     int SleepMs; // How long the command just handled waits after the lock is released
 } SimDevice;
 
@@ -950,8 +950,8 @@ static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size
 //
 // One command at a time. A wait that paces its events sleeps after the lock is released.
 //
-static int SimIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
+static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                    size_t* OutSize, uint32_t* DrvStatus)
 {
     SimDevice* Dev = (SimDevice*)State;
     int FunctionCode = (int)DT_IOCTL_TO_FUNCTION(Code);
@@ -992,7 +992,7 @@ static void SimUnmapMemory(void* State, void* Address, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static unsigned long SimLastError(const void* State)
+static uint32_t SimLastError(const void* State)
 {
     return ((const SimDevice*)State)->LastError;
 }

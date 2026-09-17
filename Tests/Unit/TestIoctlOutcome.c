@@ -15,7 +15,7 @@
 #include "OAL/OsIoctlOutcome.h" // Interface under test.
 
 // DT_STATUS_IN_USE as the Windows driver reports it: error severity, customer bit, 10.
-#define WIN_DT_STATUS_IN_USE 0xE000000AUL
+#define WIN_DT_STATUS_IN_USE 0xE000000Au
 
 // DT_STATUS_IN_USE as the Linux driver encodes it, before negating it.
 #define LIN_DT_STATUS_IN_USE 0x0001000A
@@ -36,8 +36,8 @@ DT_TEST(WindowsCustomerBitIsDriverStatus)
     DT_ASSERT_EQ(Status, WIN_DT_STATUS_IN_USE);
 
     // Bit 29 alone is enough; the severity bits are not what decides.
-    DT_ASSERT_EQ(OsIoctlClassifyWindows(0x20000001UL, &Status), OS_IOCTL_DRIVER_STATUS);
-    DT_ASSERT_EQ(Status, 0x20000001UL);
+    DT_ASSERT_EQ(OsIoctlClassifyWindows(0x20000001u, &Status), OS_IOCTL_DRIVER_STATUS);
+    DT_ASSERT_EQ(Status, 0x20000001u);
 }
 
 DT_TEST(WindowsNoSystemResourcesIsNoResources)
@@ -62,7 +62,7 @@ DT_TEST(WindowsOtherErrorsAreCommunication)
                  OS_IOCTL_COMMUNICATION);
 
     // Every bit but the customer bit set: still an error of Windows itself.
-    DT_ASSERT_EQ(OsIoctlClassifyWindows(0xDFFFFFFFUL, &Status), OS_IOCTL_COMMUNICATION);
+    DT_ASSERT_EQ(OsIoctlClassifyWindows(0xDFFFFFFFu, &Status), OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
 }
 
@@ -101,10 +101,10 @@ DT_TEST(LinuxExtremesDoNotOverflow)
     uint32_t Status = 0;
 
     DT_ASSERT_EQ(OsIoctlClassifyLinux(-2147483647 - 1, &Status), OS_IOCTL_DRIVER_STATUS);
-    DT_ASSERT_EQ(Status, 0x80000000UL);
+    DT_ASSERT_EQ(Status, 0x80000000u);
 
     DT_ASSERT_EQ(OsIoctlClassifyLinux(1, &Status), OS_IOCTL_DRIVER_STATUS);
-    DT_ASSERT_EQ(Status, 0xFFFFFFFFUL);
+    DT_ASSERT_EQ(Status, 0xFFFFFFFFu);
 }
 
 DT_TEST_MAIN("IoctlOutcome", DT_RUN(WindowsCustomerBitIsDriverStatus),

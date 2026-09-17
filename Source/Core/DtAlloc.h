@@ -34,11 +34,11 @@ void DtFree(void* Ptr);
 // Makes the next allocation after Count more succeed-then-fail: 0 fails the very next
 // one, 1 lets one through and fails the one after it. A negative value disarms the
 // injection, which is the default.
-void DtAllocFailAfter(long Count);
+void DtAllocFailAfter(int Count);
 
 // How many allocations have been made since the last DtAllocResetCount. Lets a test
 // assert that the path it meant to exercise really did allocate.
-long DtAllocCount(void);
+int DtAllocCount(void);
 
 // Sets the count back to zero and disarms any pending injection.
 void DtAllocResetCount(void);
@@ -46,7 +46,7 @@ void DtAllocResetCount(void);
 // How many blocks allocated through the seam have not been freed. A test compares it
 // before and after an operation to find a leak, which matters on platforms where no leak
 // sanitizer runs. DtAllocResetCount does not change it.
-long DtAllocLive(void);
+int DtAllocLive(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

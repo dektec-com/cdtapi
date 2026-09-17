@@ -36,7 +36,7 @@ typedef struct Fixture
     OsDrv* Drv;
     DtFuncInstance Tx;  // AF_ASISDITX
     DtFuncInstance Dma; // AF_DMA
-    long Live;
+    int Live;
 } Fixture;
 
 // Opens the emulated device in its power-on state and finds the port's transmitter and

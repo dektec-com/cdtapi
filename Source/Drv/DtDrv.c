@@ -111,7 +111,7 @@ static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDrvIssue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned int DtDrvIssue(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize,
+unsigned int DtDrvIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                         void* Out, size_t OutSize)
 {
     size_t Returned = OutSize;

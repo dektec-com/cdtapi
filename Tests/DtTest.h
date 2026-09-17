@@ -10,7 +10,9 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <inttypes.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,10 +69,10 @@
 #define DT_ASSERT_EQ(Actual, Expected)                                                   \
     do                                                                                   \
     {                                                                                    \
-        long long DtA = (long long)(Actual);                                             \
-        long long DtE = (long long)(Expected);                                           \
+        int64_t DtA = (int64_t)(Actual);                                                 \
+        int64_t DtE = (int64_t)(Expected);                                               \
         if (DtA != DtE)                                                                  \
-            DT_FAIL("%s: expected %lld, got %lld", #Actual, DtE, DtA);                   \
+            DT_FAIL("%s: expected %" PRId64 ", got %" PRId64, #Actual, DtE, DtA);        \
     } while (0)
 
 #define DT_ASSERT_OK(Result) DT_ASSERT_EQ((Result), 0)

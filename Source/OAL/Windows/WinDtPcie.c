@@ -24,7 +24,7 @@ _Static_assert(OS_WIN_ERROR_NO_SYSTEM_RESOURCES == ERROR_NO_SYSTEM_RESOURCES,
 typedef struct WinDevice
 {
     HANDLE Handle;
-    unsigned long LastError;
+    uint32_t LastError;
 } WinDevice;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -133,8 +133,8 @@ static void WinClose(void* State)
 // set. OsIoctlClassifyWindows separates it from errors of Windows itself; translating it
 // into a DTAPI result is the driver ABI layer's job, not this one's.
 //
-static int WinIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
+static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                    size_t* OutSize, uint32_t* DrvStatus)
 {
     WinDevice* Dev = (WinDevice*)State;
     DWORD Returned = 0;
@@ -143,7 +143,7 @@ static int WinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
     if (!DeviceIoControl(Dev->Handle, (DWORD)Code, (LPVOID)In, (DWORD)InSize, Out,
                          OutCapacity, &Returned, NULL))
     {
-        Dev->LastError = GetLastError();
+        Dev->LastError = (uint32_t)GetLastError();
         return OsIoctlClassifyWindows(Dev->LastError, DrvStatus);
     }
 
@@ -155,7 +155,7 @@ static int WinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static unsigned long WinLastError(const void* State)
+static uint32_t WinLastError(const void* State)
 {
     return ((const WinDevice*)State)->LastError;
 }

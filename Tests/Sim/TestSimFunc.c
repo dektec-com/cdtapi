@@ -44,7 +44,7 @@ static const struct
 
 // Opens the emulated device in its power-on state and notes the live allocations. Returns
 // NULL, having recorded a failure, when it is not the emulator.
-static OsDrv* OpenSim(int* DtFailures, long* Live)
+static OsDrv* OpenSim(int* DtFailures, int* Live)
 {
     OsDrv* Drv;
 
@@ -84,7 +84,7 @@ static const DtFuncPart* PartAt(const DtFuncInstance* Instance, size_t Index)
 DT_TEST(PartsOfTheReceiverFunction)
 {
     DtFuncInstance Func;
-    long Live;
+    int Live;
     size_t i;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
@@ -140,7 +140,7 @@ DT_TEST(PartsOfTheTransmitFunctions)
     };
     const size_t Count = sizeof(Expected) / sizeof(Expected[0]);
     DtFuncInstance None;
-    long Live;
+    int Live;
     int Port;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
@@ -185,7 +185,7 @@ DT_TEST(UuidsAreUnique)
     static const char* const Functions[] = {"AF_ASISDIRX", "AF_ASISDITX", "AF_DMA"};
     int Uuids[SIM_SDI_PORT_COUNT * 32];
     int Count = 0;
-    long Live;
+    int Live;
     int Port, j;
     size_t f, i;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
@@ -228,7 +228,7 @@ DT_TEST(MissingFunctionIsNotFound)
 {
     char TooLong[PROPERTY_NAME_MAX_SIZE];
     DtFuncInstance Func;
-    long Live;
+    int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
@@ -252,7 +252,7 @@ DT_TEST(MissingFunctionIsNotFound)
 DT_TEST(InstanceIsChosenByRole)
 {
     DtFuncInstance Func;
-    long Live;
+    int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
@@ -281,7 +281,7 @@ DT_TEST(InstanceIsChosenByRole)
 DT_TEST(ReadFailures)
 {
     DtFuncInstance Func;
-    long Live;
+    int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
@@ -314,7 +314,7 @@ DT_TEST(ReadFailures)
 DT_TEST(OutOfMemory)
 {
     DtFuncInstance Func;
-    long Live;
+    int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)
@@ -335,7 +335,7 @@ DT_TEST(PartsAreGotByKindTypeAndRole)
 {
     DtFuncInstance Func;
     const DtFuncPart* Part;
-    long Live;
+    int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
 
     if (Drv == NULL)

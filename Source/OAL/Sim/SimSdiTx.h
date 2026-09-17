@@ -117,8 +117,8 @@ typedef struct SimTxState
     int StartOfFrameOffsetNs;
     bool PhyUnderflow;
     uint32_t BurstOvfUflCount;
-    long FramesSent;   // Whole frames the sink received
-    long HeaderErrors; // Headers that did not check
+    int FramesSent;   // Whole frames the sink received
+    int HeaderErrors; // Headers that did not check
 } SimTxState;
 
 void SimDtPcieGetTxState(int PortIndex, SimTxState* State);

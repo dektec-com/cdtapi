@@ -98,7 +98,7 @@ static int Direction(int Port, int* SubValue)
 DT_TEST(ScanCountsThePorts)
 {
     int Count = -1;
-    long Live = DtAllocLive();
+    int Live = DtAllocLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -251,8 +251,8 @@ DT_TEST(ScanSurvivesAllocationFailure)
 {
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Count = -1;
-    long Needed;
-    long Live = DtAllocLive();
+    int Needed;
+    int Live = DtAllocLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -263,7 +263,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
     Needed = DtAllocCount();
     DT_ASSERT(Needed > 0);
 
-    for (long Fail = 0; Fail < Needed; Fail++)
+    for (int Fail = 0; Fail < Needed; Fail++)
     {
         unsigned int Result;
 
@@ -275,9 +275,9 @@ DT_TEST(ScanSurvivesAllocationFailure)
         // Either the device could not be opened, and is left out, or the list could
         // not grow, and the scan fails; never a list with ports missing.
         if (Result != DTAPI_OK && Result != DTAPI_E_OUT_OF_MEM)
-            DT_FAIL("allocation %ld failing gave 0x%X", Fail, Result);
+            DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
         if (Result == DTAPI_OK && Count != 0 && Count != SIM_PORT_COUNT)
-            DT_FAIL("allocation %ld failing gave %d ports", Fail, Count);
+            DT_FAIL("allocation %d failing gave %d ports", Fail, Count);
         DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
         DT_ASSERT_EQ(DtAllocLive(), Live);
     }
@@ -287,7 +287,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
 
 DT_TEST(AttachAndDetach)
 {
-    long Live = DtAllocLive();
+    int Live = DtAllocLive();
     DtDevice* Device = AttachSim(DtFailures);
 
     if (Device == NULL)
@@ -381,7 +381,7 @@ DT_TEST(FirmwareStatusIsAWarning)
 DT_TEST(UnreadableDeviceIsNoSuchDevice)
 {
     DtDevice* Device;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures))
         return;
@@ -505,8 +505,8 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
 DT_TEST(AttachSurvivesAllocationFailure)
 {
     DtDevice* Device;
-    long Needed, Fail;
-    long Live;
+    int Needed, Fail;
+    int Live;
 
     if (!StartSim(DtFailures))
         return;
@@ -532,7 +532,7 @@ DT_TEST(AttachSurvivesAllocationFailure)
         // The handle's own allocations fail as a device that cannot be opened; the
         // port capabilities as memory.
         if (Result != DTAPI_E_NO_SUCH_DEVICE && Result != DTAPI_E_OUT_OF_MEM)
-            DT_FAIL("allocation %ld failing gave 0x%X", Fail, Result);
+            DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
         DT_ASSERT_EQ(SimDtPcieOpenHandles(), 0);
         DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
         DT_ASSERT_EQ(DtAllocLive(), Live);

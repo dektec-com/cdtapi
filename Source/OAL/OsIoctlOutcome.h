@@ -31,7 +31,7 @@
 
 // Classifies the GetLastError value of a failed DeviceIoControl. A driver status has the
 // customer bit, bit 29, set and is passed on unchanged.
-int OsIoctlClassifyWindows(unsigned long Error, uint32_t* DrvStatus);
+int OsIoctlClassifyWindows(uint32_t Error, uint32_t* DrvStatus);
 
 // Classifies the return value of ioctl. The driver returns a refused command's DtStatus
 // negated, and those values lie outside the range the C library turns into errno, so a

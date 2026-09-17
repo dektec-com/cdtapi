@@ -10,13 +10,13 @@
 #include "OsIoctlOutcome.h" // Interface being implemented.
 
 // The customer bit of a Windows error value, set for errors a driver defines itself.
-#define OS_WIN_CUSTOMER_BIT 0x20000000UL
+#define OS_WIN_CUSTOMER_BIT 0x20000000u
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsIoctlClassifyWindows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsIoctlClassifyWindows(unsigned long Error, uint32_t* DrvStatus)
+int OsIoctlClassifyWindows(uint32_t Error, uint32_t* DrvStatus)
 {
     *DrvStatus = 0;
 

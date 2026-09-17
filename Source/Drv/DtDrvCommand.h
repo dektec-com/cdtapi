@@ -11,6 +11,7 @@
 
 // Standard includes
 #include <stddef.h>
+#include <stdint.h>
 
 // CDtapiLite includes
 #include "DtDrvAbi.h"               // DtIoctlInputDataHdr.
@@ -23,9 +24,9 @@
 //
 
 // The IOCTL codes come from CTL_CODE on Windows, which the SDK evaluates as int. The
-// device type DekTec uses puts the value above INT_MAX, so it is converted once, here,
-// rather than at every call.
-#define DT_IOCTL(Code) ((unsigned long)(Code))
+// device type DekTec uses puts the value above INT_MAX, so it is converted to the
+// unsigned 32 bits it is once, here, rather than at every call.
+#define DT_IOCTL(Code) ((uint32_t)(Code))
 
 // Fills the header every command starts with, for the driver function or building block
 // with this UUID in the port with this index.
@@ -42,7 +43,7 @@ void DtDrvInitHeaderFor(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortInd
 // That check only has teeth on Windows and against the emulator. The Linux driver does
 // not report how much it wrote, so there OsDrvIoCtl leaves the size as it was and a
 // short answer cannot be detected here.
-unsigned int DtDrvIssue(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize,
+unsigned int DtDrvIssue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                         void* Out, size_t OutSize);
 
 #endif // CDTAPILITE_DT_DRV_COMMAND_H

@@ -20,12 +20,12 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Milliseconds on a clock that only moves forward, for measuring how long a wait took.
-static long long NowMs(void)
+static int64_t NowMs(void)
 {
     struct timespec Ts;
 
     timespec_get(&Ts, TIME_UTC);
-    return (long long)Ts.tv_sec * 1000 + Ts.tv_nsec / 1000000;
+    return (int64_t)Ts.tv_sec * 1000 + Ts.tv_nsec / 1000000;
 }
 
 // Pauses the calling thread, using an event that is never set.
@@ -83,7 +83,7 @@ DT_TEST(RaisingPriorityDoesNotFailHere)
 DT_TEST(UnsetEventTimesOut)
 {
     OsEvent* Event = OsEventCreate();
-    long long Start;
+    int64_t Start;
 
     DT_ASSERT(Event != NULL);
 
@@ -155,7 +155,7 @@ DT_TEST(SetFromAnotherThreadWakesTheWaiter)
 {
     DelayedSet Job;
     OsThread* Thread;
-    long long Start;
+    int64_t Start;
 
     Job.Event = OsEventCreate();
     Job.DelayMs = 30;
@@ -205,7 +205,7 @@ DT_TEST(KillEventStopsAPollingThread)
 {
     Worker Self;
     OsThread* Thread;
-    long long Start;
+    int64_t Start;
 
     Self.Kill = OsEventCreate();
     Self.Rounds = 0;
@@ -235,7 +235,7 @@ DT_TEST(KillEventStopsAPollingThread)
 typedef struct Counter
 {
     OsMutex* Lock;
-    long Value;
+    int32_t Value;
 } Counter;
 
 static void IncrementManyTimes(void* Context)
@@ -272,7 +272,7 @@ DT_TEST(MutexLosesNoUpdates)
     for (i = 0; i < INCREMENT_THREADS; i++)
         OsThreadJoin(Threads[i]);
 
-    DT_ASSERT_EQ(Shared.Value, (long)INCREMENT_THREADS * INCREMENTS_PER_THREAD);
+    DT_ASSERT_EQ(Shared.Value, INCREMENT_THREADS * INCREMENTS_PER_THREAD);
 
     OsMutexDestroy(Shared.Lock);
 }

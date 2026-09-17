@@ -133,7 +133,7 @@ static void Unconfigure(SimRxChannel* Channel)
 // SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant bit
 // first.
 //
-static uint32_t Crc18(uint32_t Crc, unsigned Word)
+static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 {
     int Bit;
 
@@ -152,7 +152,7 @@ static uint32_t Crc18(uint32_t Crc, unsigned Word)
 //
 // A symbol that is no timing reference, between 040 and 3BF.
 //
-static unsigned DataSymbol(uint32_t FrameNumber, int Line, int Index)
+static uint32_t DataSymbol(uint32_t FrameNumber, int Line, int Index)
 {
     uint32_t Hash = FrameNumber * 0x9E3779B1u ^ (uint32_t)Line * 0x85EBCA77u ^
                     (uint32_t)Index * 0xC2B2AE3Du;
@@ -168,12 +168,12 @@ static unsigned DataSymbol(uint32_t FrameNumber, int Line, int Index)
 // The fourth word of a timing reference: field, vertical blanking, EAV or SAV, and the
 // protection bits over those three.
 //
-static unsigned Xyz(const DtFrameProps* Props, int Line, bool Eav)
+static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
 {
-    unsigned F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
+    uint32_t F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
     const DtFieldProps* Field = &Props->Fields[F];
-    unsigned V = Line < Field->VidStartLine || Line > Field->VidEndLine ? 1 : 0;
-    unsigned H = Eav ? 1 : 0;
+    uint32_t V = Line < Field->VidStartLine || Line > Field->VidEndLine ? 1 : 0;
+    uint32_t H = Eav ? 1 : 0;
 
     return 0x200 | F << 8 | V << 7 | H << 6 | (V ^ H) << 5 | (F ^ H) << 4 | (F ^ V) << 3 |
            (F ^ V ^ H) << 2;
@@ -183,7 +183,7 @@ static unsigned Xyz(const DtFrameProps* Props, int Line, bool Eav)
 //
 // Nine bits with bit 9 the inverse of bit 8, as line numbers and CRC words carry them.
 //
-static unsigned WithParity(unsigned Nine)
+static uint32_t WithParity(uint32_t Nine)
 {
     Nine &= 0x1FF;
     return Nine | ((Nine >> 8) ^ 1) << 9;
@@ -210,8 +210,8 @@ int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols
 
     if (Props.LineNumSymEav == 4)
     {
-        const unsigned Eav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, true)};
-        const unsigned Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
+        const uint32_t Eav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, true)};
+        const uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
 
         for (i = 0; i < 4; i++)
         {
@@ -225,12 +225,12 @@ int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols
     {
         uint32_t PrevFrame = Line == 1 ? FrameNumber - 1 : FrameNumber;
         int PrevLine = Line == 1 ? NumLines : Line - 1;
-        unsigned Words[8] = {0x3FF,
+        uint32_t Words[8] = {0x3FF,
                              0x000,
                              0x000,
                              Xyz(&Props, Line, true),
-                             WithParity((unsigned)Line << 2),
-                             WithParity((unsigned)(Line >> 7) << 2 & 0x3C),
+                             WithParity((uint32_t)Line << 2),
+                             WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
                              0,
                              0};
         int Channel;
@@ -251,7 +251,7 @@ int SimChSdiRxLine(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols
                 Symbols[2 * j + Channel] = (uint16_t)Words[j];
             for (j = 0; j < 4; j++)
             {
-                unsigned Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
+                uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
                 Symbols[Blank - 8 + 2 * j + Channel] = (uint16_t)Sav[j];
             }
         }

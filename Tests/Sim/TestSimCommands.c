@@ -24,7 +24,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-#define DT_TEST_IOCTL(Code) ((unsigned long)(Code))
+#define DT_TEST_IOCTL(Code) ((uint32_t)(Code))
 
 // Opens the emulated device in its power-on state, or records why not. Returns NULL on
 // failure, in which case the calling case must return.

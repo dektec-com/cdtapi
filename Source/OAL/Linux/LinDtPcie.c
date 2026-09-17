@@ -33,7 +33,7 @@
 typedef struct LinDevice
 {
     int Fd;
-    unsigned long LastError;
+    uint32_t LastError;
 } LinDevice;
 
 // Most commands fit in this much, so they need no allocation. A larger one falls back to
@@ -90,8 +90,8 @@ static void LinClose(void* State)
 // A command the driver refuses comes back as its DtStatus, negated, in the return value
 // of ioctl rather than in errno. OsIoctlClassifyLinux separates the two.
 //
-static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSize,
-                    void* Out, size_t* OutSize, uint32_t* DrvStatus)
+static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                    size_t* OutSize, uint32_t* DrvStatus)
 {
     LinDevice* Dev = (LinDevice*)State;
     uint8_t Stack[LIN_STACK_BUFFER_BYTES];
@@ -107,29 +107,29 @@ static int LinIoCtl(void* State, unsigned long Code, const void* In, size_t InSi
         Buf = (uint8_t*)DtMalloc(BufSize);
         if (Buf == NULL)
         {
-            Dev->LastError = ENOMEM;
+            Dev->LastError = (uint32_t)ENOMEM;
             return OS_IOCTL_NO_RESOURCES;
         }
     }
 
     if (LinIoctlPack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
     {
-        Dev->LastError = EINVAL;
+        Dev->LastError = (uint32_t)EINVAL;
         goto Cleanup;
     }
 
-    Rc = ioctl(Dev->Fd, Code, Buf);
+    Rc = ioctl(Dev->Fd, (unsigned long)Code, Buf);
     if (Rc != 0)
     {
         Result = OsIoctlClassifyLinux(Rc, DrvStatus);
         Dev->LastError =
-            (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (unsigned long)errno;
+            (Result == OS_IOCTL_DRIVER_STATUS) ? *DrvStatus : (uint32_t)errno;
         goto Cleanup;
     }
 
     if (LinIoctlUnpack(Buf, BufSize, Out, OutBytes) != 0)
     {
-        Dev->LastError = EINVAL;
+        Dev->LastError = (uint32_t)EINVAL;
         goto Cleanup;
     }
 
@@ -147,7 +147,7 @@ Cleanup:
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static unsigned long LinLastError(const void* State)
+static uint32_t LinLastError(const void* State)
 {
     return ((const LinDevice*)State)->LastError;
 }
@@ -165,7 +165,7 @@ static void* LinMapMemory(void* State, uint64_t Offset, size_t Size)
 
     if (Address == MAP_FAILED)
     {
-        Dev->LastError = (unsigned long)errno;
+        Dev->LastError = (uint32_t)errno;
         return NULL;
     }
     return Address;

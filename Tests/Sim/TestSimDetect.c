@@ -34,7 +34,7 @@
 
 // Resets the emulator, checks that it is what the process talks to, and notes the live
 // allocations. Returns false, having recorded a failure, when it is not the emulator.
-static bool StartSim(int* DtFailures, long* Live)
+static bool StartSim(int* DtFailures, int* Live)
 {
     OsDrv* Drv;
 
@@ -171,7 +171,7 @@ DT_TEST(NullArgumentsAreRefused)
 {
     DtDetVidStd Info;
     int VidStd = 12345;
-    long Live;
+    int Live;
     DtDevice* Device;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
@@ -200,7 +200,7 @@ DT_TEST(DetachedDeviceIsNoDevice)
 {
     DtDetVidStd Info;
     int VidStd = 12345;
-    long Live;
+    int Live;
     DtDevice* Device;
 
     if (!StartSim(DtFailures, &Live))
@@ -223,7 +223,7 @@ DT_TEST(DetachedDeviceIsNoDevice)
 DT_TEST(FirmwareStatusComesFirst)
 {
     int VidStd = 12345;
-    long Live;
+    int Live;
     DtDevice* Device;
 
     if (!StartSim(DtFailures, &Live))
@@ -249,7 +249,7 @@ DT_TEST(FirmwareStatusComesFirst)
 DT_TEST(PortsAreAllPortsOfTheCard)
 {
     int VidStd = 12345;
-    long Live;
+    int Live;
     DtDevice* Device;
 
     if (!StartSim(DtFailures, &Live))
@@ -281,7 +281,7 @@ static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
     DtIoctlInputDataHdr Hdr;
     int FunctionCode;
     int VidStd = 12345;
-    long Live;
+    int Live;
     DtDevice* Device;
 
     if (!StartSim(DtFailures, &Live))
@@ -328,7 +328,7 @@ DT_TEST(InternalInputIsNoInputToTheScan)
 {
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     int Found = 0;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
@@ -364,7 +364,7 @@ DT_TEST(FirstInstanceWithTheEmptyRole)
 {
     DtDevice* Device;
     int VidStd;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
@@ -395,7 +395,7 @@ DT_TEST(ReadFailureIsReturned)
 {
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -433,7 +433,7 @@ DT_TEST(PartsEndAtTheFirstMissingOne)
 {
     DtDevice* Device;
     int VidStd;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
@@ -472,7 +472,7 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
     };
     DtDevice* Device;
     int VidStd;
-    long Live;
+    int Live;
     size_t i;
 
     for (i = 0; i < sizeof(Breaks) / sizeof(Breaks[0]); i++)
@@ -517,7 +517,7 @@ DT_TEST(LastReceiverIsUsed)
 {
     DtDevice* Device;
     int VidStd;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
@@ -559,7 +559,7 @@ static DtDetVidStd WaitFor(int* DtFailures, DtDevice* Device, const SdiFormat* F
 DT_TEST(EveryStandardWithItsVpid)
 {
     DtDevice* Device;
-    long Live;
+    int Live;
     int i;
 
     if (!StartSim(DtFailures, &Live))
@@ -593,7 +593,7 @@ DT_TEST(EveryStandardWithItsVpid)
 DT_TEST(EveryStandardWithoutVpid)
 {
     DtDevice* Device;
-    long Live;
+    int Live;
     int i;
 
     if (!StartSim(DtFailures, &Live))
@@ -631,7 +631,7 @@ DT_TEST(EveryStandardWithoutVpid)
 DT_TEST(ScaledPortReportsOneLink)
 {
     DtDevice* Device;
-    long Live;
+    int Live;
     int i;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
@@ -660,7 +660,7 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     SimSdiSignal Signal;
     DtDetVidStd Info;
     DtDevice* Device;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -689,7 +689,7 @@ DT_TEST(NoStandardIsUnknown)
     DtDetVidStd Info;
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -727,7 +727,7 @@ DT_TEST(OutputPortIsInTheWrongMode)
     SimSdiSignal Signal = SignalOf(FormatOf(DTAPI_VIDSTD_720P50), true);
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -750,7 +750,7 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
 {
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
@@ -780,7 +780,7 @@ DT_TEST(DownScalingIsReadOnlyWhereItExists)
 {
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -808,7 +808,7 @@ DT_TEST(WaitRetriesUntilTheSignalAppears)
     DtDetVidStd Info;
     DtDevice* Device;
     int VidStd = 12345;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -850,7 +850,7 @@ DT_TEST(WaitEndsAtItsTimeLimit)
     DtDetVidStd Info;
     DtDevice* Device;
     uint64_t Start, Elapsed;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
@@ -878,7 +878,7 @@ DT_TEST(WaitReturnsAtOnceForAPortItCannotAttach)
 {
     DtDetVidStd Info;
     DtDevice* Device;
-    long Live;
+    int Live;
 
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;

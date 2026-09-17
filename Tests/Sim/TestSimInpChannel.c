@@ -38,7 +38,7 @@
 
 typedef struct Fixture
 {
-    long Live;
+    int Live;
     DtDevice* Device;
     DtInpChannel* Channel;
     char* Buffer; // BUFFER_SIZE bytes, aligned to 8
@@ -126,7 +126,7 @@ static uint8_t* ExpectedFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t
 
         for (i = 0; i < Count; i++, Symbol++)
         {
-            unsigned Value = Symbols[i];
+            uint32_t Value = Symbols[i];
             int b;
 
             if (Bits == 8)
@@ -402,7 +402,7 @@ DT_TEST(AttachCleansUpAfterFailures)
     {
         unsigned int Result;
 
-        DtAllocFailAfter((long)i);
+        DtAllocFailAfter((int)i);
         Result = DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT);
         DtAllocFailAfter(-1);
         if (Result == DTAPI_OK)

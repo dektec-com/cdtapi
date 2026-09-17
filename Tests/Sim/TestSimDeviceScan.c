@@ -90,7 +90,7 @@ DT_TEST(RefusesBadArguments)
 DT_TEST(CountsWithoutAnArray)
 {
     int Count = -1;
-    long Live = DtAllocLive();
+    int Live = DtAllocLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -180,7 +180,7 @@ DT_TEST(DescribesTheCard)
 {
     static const unsigned char Zero[sizeof(((DtDeviceDesc*)0)->IpV6)] = {0};
     DtDeviceDesc Desc;
-    long Live = DtAllocLive();
+    int Live = DtAllocLive();
 
     if (!StartSim(DtFailures) || !ScanOne(&Desc, DtFailures))
         return;

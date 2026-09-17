@@ -94,6 +94,6 @@ uint64_t OsMonotonicMs(void);
 void OsProcessName(char* Buf, size_t Size);
 
 // The process's identifier.
-unsigned long OsProcessId(void);
+uint32_t OsProcessId(void);
 
 #endif // CDTAPILITE_OS_THREAD_H

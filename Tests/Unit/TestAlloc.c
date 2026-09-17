@@ -100,7 +100,7 @@ DT_TEST(ResetDisarmsInjection)
 // make another, and neither does a failed allocation or freeing NULL.
 DT_TEST(LiveBlocksAreCounted)
 {
-    long Before = DtAllocLive();
+    int Before = DtAllocLive();
     void* Block;
     void* Grown;
 
@@ -130,7 +130,7 @@ DT_TEST(LiveBlocksAreCounted)
 
 DT_TEST(FreeAcceptsNull)
 {
-    long Before;
+    int Before;
 
     DtAllocResetCount();
     Before = DtAllocCount();

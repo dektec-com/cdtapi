@@ -14,6 +14,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -213,8 +214,8 @@ static unsigned int ConfigureChannel(DtInpChannel* Chan)
     // DtPalCHSDIRX::Attach: the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
     OsProcessName(Process, sizeof(Process));
-    snprintf(Full, sizeof(Full), "%s:%lu", Process[0] != '\0' ? Process : "CDtapiLite",
-             OsProcessId());
+    snprintf(Full, sizeof(Full), "%s:%" PRIu32,
+             Process[0] != '\0' ? Process : "CDtapiLite", OsProcessId());
     memcpy(Name, Full, sizeof(Name) - 1);
     Name[sizeof(Name) - 1] = '\0';
 

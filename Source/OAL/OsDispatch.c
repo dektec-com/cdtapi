@@ -82,7 +82,7 @@ bool OsDrvIsEmulated(const OsDrv* Drv)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int OsDrvIoCtl(OsDrv* Drv, unsigned long Code, const void* In, size_t InSize, void* Out,
+int OsDrvIoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
                size_t* OutSize, uint32_t* DrvStatus)
 {
     uint32_t Ignored;
@@ -124,7 +124,7 @@ void OsDrvUnmapMemory(OsDrv* Drv, void* Address, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrvLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-unsigned long OsDrvLastError(const OsDrv* Drv)
+uint32_t OsDrvLastError(const OsDrv* Drv)
 {
     if (Drv == NULL)
         return 0;

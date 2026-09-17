@@ -29,9 +29,9 @@ typedef struct OsBackend
 {
     void* (*Open)(int Index);
     void (*Close)(void* State);
-    int (*IoCtl)(void* State, unsigned long Code, const void* In, size_t InSize,
-                 void* Out, size_t* OutSize, uint32_t* DrvStatus);
-    unsigned long (*LastError)(const void* State);
+    int (*IoCtl)(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                 size_t* OutSize, uint32_t* DrvStatus);
+    uint32_t (*LastError)(const void* State);
 
     // NULL for a backend that maps no memory; see OsDrvMapMemory.
     void* (*MapMemory)(void* State, uint64_t Offset, size_t Size);

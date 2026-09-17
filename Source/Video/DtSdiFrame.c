@@ -151,17 +151,17 @@ size_t DtSdiFrameRawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
 //
 // Symbol Index of a packed 10-bit section. Reads no byte beyond the symbol.
 //
-static unsigned ReadSymbol(const uint8_t* Section, size_t Index)
+static uint32_t ReadSymbol(const uint8_t* Section, size_t Index)
 {
     size_t Bit = Index * 10;
     size_t Byte = Bit / 8;
-    unsigned Shift = (unsigned)(Bit % 8);
-    unsigned Value = (unsigned)Section[Byte] >> Shift;
-    unsigned Have = 8 - Shift;
+    uint32_t Shift = (uint32_t)(Bit % 8);
+    uint32_t Value = (uint32_t)Section[Byte] >> Shift;
+    uint32_t Have = 8 - Shift;
 
     while (Have < 10)
     {
-        Value |= (unsigned)Section[++Byte] << Have;
+        Value |= (uint32_t)Section[++Byte] << Have;
         Have += 8;
     }
     return Value & 0x3FF;
@@ -171,10 +171,10 @@ static unsigned ReadSymbol(const uint8_t* Section, size_t Index)
 //
 // Adds the Count low bits of Value to Raw at bit position Bit, into bits that are zero.
 //
-static void OrBits(uint8_t* Raw, size_t Bit, unsigned Value, unsigned Count)
+static void OrBits(uint8_t* Raw, size_t Bit, uint32_t Value, uint32_t Count)
 {
     size_t Byte = Bit / 8;
-    unsigned Shift = (unsigned)(Bit % 8);
+    uint32_t Shift = (uint32_t)(Bit % 8);
     uint32_t Bits = ((uint32_t)Value & ((1u << Count) - 1)) << Shift;
 
     for (Count += Shift; Count > 0; Count = Count > 8 ? Count - 8 : 0)
@@ -202,7 +202,7 @@ static void CopySection10(const uint8_t* Section, size_t Symbols, uint8_t* Raw,
 
         memcpy(Raw + Bit / 8, Section, Whole);
         if (Bits % 8 != 0)
-            OrBits(Raw, Bit + Whole * 8, Section[Whole], (unsigned)(Bits % 8));
+            OrBits(Raw, Bit + Whole * 8, Section[Whole], (uint32_t)(Bits % 8));
         return;
     }
 
@@ -250,13 +250,13 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
         const uint8_t* In = Section + 5 * i;
         uint32_t Word = Read32(In);
         uint8_t* Out = Raw + 8 * i;
-        unsigned Values[4];
+        uint32_t Values[4];
         int j;
 
         Values[0] = Word & 0x3FF;
         Values[1] = (Word >> 10) & 0x3FF;
         Values[2] = (Word >> 20) & 0x3FF;
-        Values[3] = (Word >> 30) | (unsigned)In[4] << 2;
+        Values[3] = (Word >> 30) | (uint32_t)In[4] << 2;
         for (j = 0; j < 4; j++)
         {
             Out[2 * j] = (uint8_t)Values[j];
@@ -266,7 +266,7 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 
     for (i = 4 * Groups; i < Symbols; i++)
     {
-        unsigned Value = ReadSymbol(Section, i);
+        uint32_t Value = ReadSymbol(Section, i);
 
         Raw[2 * i] = (uint8_t)Value;
         Raw[2 * i + 1] = (uint8_t)(Value >> 8);
@@ -333,7 +333,7 @@ static int LineNumber(const uint8_t* Line)
 //
 // True when the four symbols of an SD line's EAV equal Eav in their upper eight bits.
 //
-static bool MatchesSdEav(const uint8_t* Line, const unsigned Eav[4])
+static bool MatchesSdEav(const uint8_t* Line, const uint32_t Eav[4])
 {
     size_t i;
 
@@ -352,8 +352,8 @@ unsigned int DtSdiFrameCheckLines(const DtSdiFrameLayout* Layout,
 {
     // The EAV of the first line, in the first field's vertical blanking, and of the last,
     // in the second field's.
-    static const unsigned SdEavFirstLine[4] = {0x3FC, 0x000, 0x000, 0x2D8};
-    static const unsigned SdEavLastLine[4] = {0x3FC, 0x000, 0x000, 0x3C4};
+    static const uint32_t SdEavFirstLine[4] = {0x3FC, 0x000, 0x000, 0x2D8};
+    static const uint32_t SdEavLastLine[4] = {0x3FC, 0x000, 0x000, 0x3C4};
     bool InSync;
 
     if (Layout->NumLines <= 625)

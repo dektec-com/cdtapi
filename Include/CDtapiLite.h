@@ -73,8 +73,8 @@ CDTAPILITE_API const char* DtapiResult2Str(unsigned int Result);
 // A time from a device's time-of-day clock.
 typedef struct DtTimeOfDay
 {
-    unsigned int Seconds;     // Integer number of seconds part of the TOD time
-    unsigned int Nanoseconds; // Number of nanoseconds part of the TOD time
+    uint32_t Seconds;     // Integer number of seconds part of the TOD time
+    uint32_t Nanoseconds; // Number of nanoseconds part of the TOD time
 } DtTimeOfDay;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtHwFuncDesc +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -154,36 +154,36 @@ typedef struct DtFwBuildDateTime
 
 typedef struct DtDeviceDesc
 {
-    int Category;                          // DTAPI_CAT_ value
-    int64_t Serial;                        // Unique serial number of the device
-    int PciBusNumber;                      // PCI bus number
-    int SlotNumber;                        // PCI slot number
-    int UsbAddress;                        // USB address; 0 for a PCIe device
-    int TypeNumber;                        // Device type number, 2178 for a DTA-2178
-    int SubType;                           // Device subtype: 0 for none, 1 for A, ...
-    int DeviceId;                          // PCI device ID
-    int VendorId;                          // PCI vendor ID
-    int SubsystemId;                       // PCI subsystem ID
-    int SubVendorId;                       // PCI subsystem vendor ID
-    int NumHwFuncs;                        // Number of hardware functions: the ports
-    int HardwareRevision;                  // Hardware revision, such as 302 for 3.2
-    int FirmwareVersion;                   // Firmware version
-    int FirmwareVariant;                   // Firmware variant
-    DtFirmwareStatus FirmwareStatus;       // Firmware status
-    DtFwBuildDateTime FwBuildDate;         // Firmware build date and time
-    int NumDtInpChan;                      // Number of ports that are inputs
-    int NumDtOutpChan;                     // Number of ports that are outputs
-    int NumPorts;                          // Number of physical ports
-    unsigned char Ip[4];                   // IPv4 address; DTE-31xx only
-    unsigned char IpV6[MAX_IPV6_ADDR][16]; // IPv6 addresses; DTE-31xx only
-    unsigned char MacAddr[6];              // MAC address; DTE-31xx only
-    int PcieNumLanes;                      // Number of PCIe lanes in use
-    int PcieMaxLanes;                      // Maximum number of PCIe lanes
-    int PcieLinkSpeed;                     // PCIe generation of the link
-    int PcieMaxSpeed;                      // PCIe generation the link can reach
-    int PcieMaxPayloadSize;                // Maximum PCIe payload size in bytes
-    int PcieMaxReadRequestSize;            // Maximum PCIe read request size in bytes
-    int PcieMaxSlotPower;                  // Maximum PCIe slot power in milliwatts
+    int Category;                    // DTAPI_CAT_ value
+    int64_t Serial;                  // Unique serial number of the device
+    int PciBusNumber;                // PCI bus number
+    int SlotNumber;                  // PCI slot number
+    int UsbAddress;                  // USB address; 0 for a PCIe device
+    int TypeNumber;                  // Device type number, 2178 for a DTA-2178
+    int SubType;                     // Device subtype: 0 for none, 1 for A, ...
+    int DeviceId;                    // PCI device ID
+    int VendorId;                    // PCI vendor ID
+    int SubsystemId;                 // PCI subsystem ID
+    int SubVendorId;                 // PCI subsystem vendor ID
+    int NumHwFuncs;                  // Number of hardware functions: the ports
+    int HardwareRevision;            // Hardware revision, such as 302 for 3.2
+    int FirmwareVersion;             // Firmware version
+    int FirmwareVariant;             // Firmware variant
+    DtFirmwareStatus FirmwareStatus; // Firmware status
+    DtFwBuildDateTime FwBuildDate;   // Firmware build date and time
+    int NumDtInpChan;                // Number of ports that are inputs
+    int NumDtOutpChan;               // Number of ports that are outputs
+    int NumPorts;                    // Number of physical ports
+    uint8_t Ip[4];                   // IPv4 address; DTE-31xx only
+    uint8_t IpV6[MAX_IPV6_ADDR][16]; // IPv6 addresses; DTE-31xx only
+    uint8_t MacAddr[6];              // MAC address; DTE-31xx only
+    int PcieNumLanes;                // Number of PCIe lanes in use
+    int PcieMaxLanes;                // Maximum number of PCIe lanes
+    int PcieLinkSpeed;               // PCIe generation of the link
+    int PcieMaxSpeed;                // PCIe generation the link can reach
+    int PcieMaxPayloadSize;          // Maximum PCIe payload size in bytes
+    int PcieMaxReadRequestSize;      // Maximum PCIe read request size in bytes
+    int PcieMaxSlotPower;            // Maximum PCIe slot power in milliwatts
 } DtDeviceDesc;
 
 // Describes every device, in the order the driver numbers them, as DTAPI's
@@ -226,8 +226,8 @@ typedef struct DtDetVidStd
     int VidStd;                // DTAPI_VIDSTD_ code, DTAPI_VIDSTD_UNKNOWN when none
     int LinkStd;               // How 4K is carried, 0 to 3; -1 for none
     int LinkNr;                // The VPID's link number from 1; -1 without a VPID
-    unsigned int Vpid;         // Raw VPID, 0 if not available
-    unsigned int Vpid2;        // Raw VPID of 3G level B's second channel; always 0
+    uint32_t Vpid;             // Raw VPID, 0 if not available
+    uint32_t Vpid2;            // Raw VPID of 3G level B's second channel; always 0
     DtAspectRatio AspectRatio; // From the VPID: 4:3 or 16:9; unknown without one
 
     // What the input carries before the hardware processes it: 12G or 6G 4K on one link

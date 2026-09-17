@@ -39,13 +39,13 @@ static const int g_Standards[] = {
 #define STANDARD_COUNT ((int)(sizeof(g_Standards) / sizeof(g_Standards[0])))
 
 // The symbol a test puts at a position of a line.
-static unsigned Symbol(int Line, int Section, size_t Index)
+static uint32_t Symbol(int Line, int Section, size_t Index)
 {
     uint32_t Value = (uint32_t)Line * 2654435761u ^ (uint32_t)Section * 40503u ^
                      (uint32_t)Index * 2246822519u;
 
     Value ^= Value >> 13;
-    return (unsigned)(Value & 0x3FF);
+    return (uint32_t)(Value & 0x3FF);
 }
 
 // Sets bit Bit of Bytes.
@@ -70,7 +70,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int Line, uint8_t* Coded)
 
         for (i = 0; i < (size_t)Syms[s]; i++)
         {
-            unsigned Value = Symbol(Line, s, i);
+            uint32_t Value = Symbol(Line, s, i);
             for (b = 0; b < 10; b++)
             {
                 if (Value >> b & 1)
@@ -97,7 +97,7 @@ static void ExpectLine(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
 
         for (i = 0; i < (size_t)Syms[s]; i++)
         {
-            unsigned Value = Symbol(Line, s, i);
+            uint32_t Value = Symbol(Line, s, i);
             size_t Bit = (Symbol0 + i) * (size_t)SymbolBits;
 
             if (SymbolBits == 8)
@@ -408,7 +408,7 @@ DT_TEST(ConvertsNothingForOtherSizes)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame sync +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Packs twelve 10-bit symbols into the start of a coded line.
-static void PackLineStart(const unsigned Symbols[12], uint8_t* Bytes)
+static void PackLineStart(const uint32_t Symbols[12], uint8_t* Bytes)
 {
     size_t i, b;
 
@@ -422,19 +422,19 @@ static void PackLineStart(const unsigned Symbols[12], uint8_t* Bytes)
 // The start of an HD line numbered Chroma and Luma in its two channels.
 static void HdLineStart(int Chroma, int Luma, uint8_t* Bytes)
 {
-    unsigned Symbols[12] = {0x3FF, 0x3FF, 0, 0, 0, 0, 0x274, 0x274, 0, 0, 0, 0};
+    uint32_t Symbols[12] = {0x3FF, 0x3FF, 0, 0, 0, 0, 0x274, 0x274, 0, 0, 0, 0};
 
-    Symbols[8] = (unsigned)((Chroma & 0x7F) << 2) | 0x200;
-    Symbols[9] = (unsigned)((Luma & 0x7F) << 2) | 0x200;
-    Symbols[10] = (unsigned)(((Chroma >> 7) & 0xF) << 2) | 0x200;
-    Symbols[11] = (unsigned)(((Luma >> 7) & 0xF) << 2) | 0x200;
+    Symbols[8] = (uint32_t)((Chroma & 0x7F) << 2) | 0x200;
+    Symbols[9] = (uint32_t)((Luma & 0x7F) << 2) | 0x200;
+    Symbols[10] = (uint32_t)(((Chroma >> 7) & 0xF) << 2) | 0x200;
+    Symbols[11] = (uint32_t)(((Luma >> 7) & 0xF) << 2) | 0x200;
     PackLineStart(Symbols, Bytes);
 }
 
 // The start of an SD line with this XYZ word in its EAV.
-static void SdLineStart(unsigned Xyz, uint8_t* Bytes)
+static void SdLineStart(uint32_t Xyz, uint8_t* Bytes)
 {
-    unsigned Symbols[12] = {0x3FF, 0,     0,     0,     0x200, 0x200,
+    uint32_t Symbols[12] = {0x3FF, 0,     0,     0,     0x200, 0x200,
                             0x200, 0x200, 0x200, 0x200, 0x200, 0x200};
 
     Symbols[3] = Xyz;

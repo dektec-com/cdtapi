@@ -95,8 +95,8 @@ typedef struct SimTxPort
     int SeqNumber;
     uint16_t* Symbols; // The frame being received
     int Starve;
-    long FramesSent;
-    long HeaderErrors;
+    int FramesSent;
+    int HeaderErrors;
     SimTxKept Kept[SIM_TX_KEPT_FRAMES];
     int NumKept;
 } SimTxPort;

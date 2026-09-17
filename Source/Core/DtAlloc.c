@@ -27,21 +27,21 @@ static DtAtomicInt g_Live = 0;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocFailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtAllocFailAfter(long Count)
+void DtAllocFailAfter(int Count)
 {
     DtAtomicStore(&g_FailAfter, Count < 0 ? -1 : Count);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-long DtAllocCount(void)
+int DtAllocCount(void)
 {
     return DtAtomicLoad(&g_AllocCount);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAllocLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-long DtAllocLive(void)
+int DtAllocLive(void)
 {
     return DtAtomicLoad(&g_Live);
 }

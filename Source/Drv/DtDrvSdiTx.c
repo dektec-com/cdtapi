@@ -67,8 +67,8 @@ _Static_assert((int)DT_BLOCK_OPMODE_IDLE == (int)DT_FUNC_OPMODE_IDLE &&
                    (int)DT_BLOCK_OPMODE_RUN == (int)DT_FUNC_OPMODE_RUN,
                "Block and function operational modes must be the same numbers");
 
-static unsigned int SetOpMode(OsDrv* Drv, unsigned long Code, int Cmd, int Uuid,
-                              int PortIndex, int OpMode)
+static unsigned int SetOpMode(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int PortIndex,
+                              int OpMode)
 {
     OpModeInput In;
 
@@ -90,8 +90,8 @@ static unsigned int SetOpMode(OsDrv* Drv, unsigned long Code, int Cmd, int Uuid,
 //
 // A command that is only its header, answered with Out of OutSize bytes or nothing.
 //
-static unsigned int Plain(OsDrv* Drv, unsigned long Code, int Cmd, int Uuid,
-                          int PortIndex, void* Out, size_t OutSize)
+static unsigned int Plain(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int PortIndex,
+                          void* Out, size_t OutSize)
 {
     DtIoctlInputDataHdr In;
 

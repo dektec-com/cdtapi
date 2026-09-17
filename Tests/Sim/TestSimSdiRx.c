@@ -21,7 +21,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-#define DT_TEST_IOCTL(Code) ((unsigned long)(Code))
+#define DT_TEST_IOCTL(Code) ((uint32_t)(Code))
 
 // The functions of the ASI/SDI receiver of every SDI port, in the order a DTA-2178 lists
 // them, with their roles and types.

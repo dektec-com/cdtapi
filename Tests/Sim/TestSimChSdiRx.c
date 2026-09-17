@@ -36,7 +36,7 @@ typedef struct Fixture
 {
     OsDrv* Drv;
     int Uuid;
-    long Live;
+    int Live;
 } Fixture;
 
 // Opens the emulated device in its power-on state and finds the channel's UUID. Returns
@@ -133,8 +133,8 @@ static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* L
         bool Video = i >= Layout->LineSymsHanc;
         size_t Bit = (size_t)(Video ? i - Layout->LineSymsHanc : i) * 10;
         const uint8_t* Section = Ring + Offset + (Video ? Layout->LineBytesHanc : 0);
-        unsigned Value =
-            (unsigned)(Section[Bit / 8] | Section[Bit / 8 + 1] << 8) >> (Bit % 8) & 0x3FF;
+        uint32_t Value =
+            (uint32_t)(Section[Bit / 8] | Section[Bit / 8 + 1] << 8) >> (Bit % 8) & 0x3FF;
 
         if (Value != Symbols[i])
             return false;

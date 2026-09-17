@@ -250,7 +250,7 @@ void OsProcessName(char* Buf, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned long OsProcessId(void)
+uint32_t OsProcessId(void)
 {
-    return (unsigned long)GetCurrentProcessId();
+    return (uint32_t)GetCurrentProcessId();
 }

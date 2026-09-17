@@ -138,7 +138,7 @@ size_t DtBufSize(const DtBuf* Buf)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBufRefCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-long DtBufRefCount(const DtBuf* Buf)
+int DtBufRefCount(const DtBuf* Buf)
 {
     return Buf != NULL ? DtAtomicLoad(&Buf->RefCount) : 0;
 }

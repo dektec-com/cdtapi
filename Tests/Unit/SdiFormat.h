@@ -10,6 +10,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -65,11 +66,11 @@ static const SdiFormat g_SdiFormats[] = {
 #define SDI_ASSERT_EQ(Format, Actual, Expected)                                          \
     do                                                                                   \
     {                                                                                    \
-        long long SdiA = (long long)(Actual);                                            \
-        long long SdiE = (long long)(Expected);                                          \
+        int64_t SdiA = (int64_t)(Actual);                                                \
+        int64_t SdiE = (int64_t)(Expected);                                              \
         if (SdiA != SdiE)                                                                \
-            DT_FAIL("%s: %s: expected %lld, got %lld", (Format)->Name, #Actual, SdiE,    \
-                    SdiA);                                                               \
+            DT_FAIL("%s: %s: expected %" PRId64 ", got %" PRId64, (Format)->Name,        \
+                    #Actual, SdiE, SdiA);                                                \
     } while (0)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Receiver view +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

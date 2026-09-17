@@ -317,7 +317,7 @@ void OsProcessName(char* Buf, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcessId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-unsigned long OsProcessId(void)
+uint32_t OsProcessId(void)
 {
-    return (unsigned long)getpid();
+    return (uint32_t)getpid();
 }
