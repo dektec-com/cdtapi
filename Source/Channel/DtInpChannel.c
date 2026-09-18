@@ -50,7 +50,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-struct DtInpChannelC
+struct DtInpChannel
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;

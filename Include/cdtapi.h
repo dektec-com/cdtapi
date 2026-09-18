@@ -260,7 +260,7 @@ typedef struct DtIoConfig
     int64_t ParXtra[2];
 } DtIoConfig;
 
-typedef struct DtDeviceC DtDevice;
+typedef struct DtDevice DtDevice;
 
 // Allocates a detached device object. Returns NULL when memory runs out.
 CDTAPI_API DtDevice* DtDevice_Alloc(void);
@@ -361,7 +361,7 @@ CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
 // and DTAPI_E_NOT_ATTACHED when the channel is not attached.
 //
 
-typedef struct DtInpChannelC DtInpChannel;
+typedef struct DtInpChannel DtInpChannel;
 
 // Allocates a detached input channel. Returns NULL when memory runs out.
 CDTAPI_API DtInpChannel* DtInpChannel_Alloc(void);
@@ -476,7 +476,7 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 // and DTAPI_E_NOT_ATTACHED when the channel is not attached.
 //
 
-typedef struct DtOutpChannelC DtOutpChannel;
+typedef struct DtOutpChannel DtOutpChannel;
 
 // Allocates a detached output channel. Returns NULL when memory runs out.
 CDTAPI_API DtOutpChannel* DtOutpChannel_Alloc(void);

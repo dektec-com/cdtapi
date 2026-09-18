@@ -94,7 +94,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-struct DtOutpChannelC
+struct DtOutpChannel
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;

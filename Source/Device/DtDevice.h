@@ -66,7 +66,7 @@
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
 
-struct DtDeviceC
+struct DtDevice
 {
     OsDrv* Drv; // NULL while detached
     int Index;  // The index the driver numbers the device by
