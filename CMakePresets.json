@@ -18,10 +18,8 @@
     {
       "name": "windows-debug",
       "displayName": "Windows Debug",
-      "description": "Visual Studio 2026, x64. Opens directly in the IDE.",
+      "description": "The newest Visual Studio installed, x64. Opens directly in the IDE.",
       "inherits": "base",
-      "generator": "Visual Studio 18 2026",
-      "architecture": "x64",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",

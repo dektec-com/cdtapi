@@ -22,8 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The version, not just the program: another major version formats differently.
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-format-18
+          echo "CLANG_FORMAT=clang-format-18" >> $GITHUB_ENV
 
       # The binding gate. The pre-commit hook runs the same script, but a contributor
       # without it installed has to be stopped here.

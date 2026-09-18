@@ -16,7 +16,7 @@
    `int32_t`, `uint32_t`, `int64_t` and the like — also in `cdtapi.h`. Counters,
    indices and port numbers stay `int`; sizes stay `size_t`, text `char`. `long` and
    `unsigned long` appear only where an operating-system interface defines them, such
-   as `timespec.tv_nsec`. The result code keeps CDTAPI.h's `unsigned int`, and the
+   as `timespec.tv_nsec`. The result code is `unsigned int`, as DTAPI's is, and the
    vendored driver ABI keeps its own types.
 8. **A header guards itself with `#pragma once`**, as the first line after the file
    header, rather than with an `#ifndef` guard, as `LibDekTec_C` does. The vendored driver
@@ -46,6 +46,32 @@ which states the house style in machine-readable form.
 
 The first line must name the file it is in. The style check verifies that, because a
 copy-pasted header naming the wrong file otherwise survives for years.
+
+## Tools
+
+`Scripts/check_tools.sh`, or `Scripts/check_tools.ps1` on Windows, says what is there and
+what is missing:
+
+| Tool | Version | For |
+|---|---|---|
+| clang-format | exactly 18 | Rules 4 and 6. Another major version formats differently and would reformat files that are right |
+| CMake | 3.21 or newer | The presets, which need schema 6 |
+| Python | 3.8 or newer | `Scripts/fix_banners.py` and the generated test cases |
+| Visual Studio | 2022 or newer | The Windows presets; CMake builds with the newest that is installed |
+| GCC | 11 or newer | The Linux presets |
+| Ninja | any | What the Linux presets build with |
+| Git | any | |
+
+`CLANG_FORMAT` points at another clang-format, for a machine where the right version is
+not the one on the path.
+
+## What a comment may say about DTAPI
+
+CDTAPI reproduces DTAPI's behaviour, and a comment that says which behaviour is being
+reproduced is what makes the code maintainable: "the order DTAPI's receive FIFO starts
+in", or the value of an output delay. What a comment must not carry is DTAPI's own
+source: no code, no file names, no line numbers. Behaviour is what this library
+implements; the code that implements it elsewhere is not ours to publish.
 
 ## How the rules are enforced
 

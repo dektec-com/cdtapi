@@ -106,16 +106,22 @@ done < <(OwnFiles) | awk '{ s += $1 } END { print s + 0 }')
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
+# The major version decides how code is formatted, so another one reformats files that
+# are already right. Scripts/check_tools.sh checks the same number.
+ClangFormatMajor=18
 ClangFormat="${CLANG_FORMAT:-clang-format}"
-if command -v "$ClangFormat" >/dev/null 2>&1; then
+if ! command -v "$ClangFormat" >/dev/null 2>&1; then
+    Fail "clang-format not found; install version $ClangFormatMajor, or point CLANG_FORMAT at it. Scripts/check_tools.sh lists what this project needs."
+elif [ "$("$ClangFormat" --version | sed 's/.*version \([0-9][0-9]*\).*/\1/')" != \
+       "$ClangFormatMajor" ]; then
+    Fail "clang-format is $("$ClangFormat" --version | sed 's/.*version //'), and this project is formatted with version $ClangFormatMajor; another one reformats files that are right."
+else
     echo "Rules 4 and 6: clang-format"
     while IFS= read -r File; do
         if ! "$ClangFormat" --dry-run --Werror "$File" >/dev/null 2>&1; then
             Fail "$File: not formatted; run '$ClangFormat -i $File'"
         fi
     done < <(OwnFiles)
-else
-    echo "Rules 4 and 6: clang-format not found, skipping (set CLANG_FORMAT to override)"
 fi
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Verdict -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
