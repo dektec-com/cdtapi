@@ -8,7 +8,8 @@
 // at a time, and AsiSdiOutpChannel_Bb2, which keeps the implementation of the port's
 // transmitter for its I/O standard. This file does what those two do: the checks in
 // DTAPI's order, the lock, attaching and detaching. The transmitting is the side's, a
-// DtTx behind the functions of DtTxBackend.h: DtSdiTx.c for raw SDI frames.
+// DtTx behind the functions of DtTxBackend.h: DtSdiTx.c for raw SDI frames, DtAsiTx.c
+// for a transport stream over ASI (0011).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -19,6 +20,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"    // Allocation seam.
 #include "Device/DtDevice.h" // The device and its port capabilities.
+#include "DtAsiTx.h"         // The ASI side.
 #include "DtIoConfig.h"      // Validating I/O configurations.
 #include "DtPcieAbi.h"       // Firmware statuses.
 #include "DtSdiTx.h"         // The SDI side.
@@ -32,8 +34,6 @@
 
 #define DT_INSTANT_DETACH 1  // DTAPI_INSTANT_DETACH
 #define DT_WAIT_UNTIL_SENT 2 // DTAPI_WAIT_UNTIL_SENT
-
-#define DT_TXMODE_TS 0x10 // DTAPI_TXMODE_TS
 
 // How long DtOutpChannel::Detach waits for users of the channel: ten times 10 ms.
 #define DT_DETACH_TRIES 10
@@ -226,8 +226,8 @@ static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
     Config.Group = DTAPI_IOCONFIG_IOSTD;
     Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &Config);
     if (Result == DTAPI_OK && Config.Value == DTAPI_IOCONFIG_ASI)
-        Result = DTAPI_E_NOT_SUPPORTED;
-    if (Result == DTAPI_OK)
+        Result = DtAsiTx_Attach(&Chan->Port, &Chan->Tx);
+    else if (Result == DTAPI_OK)
         Result = DtSdiTx_Attach(&Chan->Port, &Config, &Chan->Tx);
     if (Result != DTAPI_OK)
         return Result;
@@ -386,7 +386,10 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
 //
 // DtOutpChannel::SetIoConfig's checks, then AsiSdiOutpChannel_Bb2::SetIoConfig's. DTAPI
 // also refuses a configuration the port lacks a capability for; here the driver does.
-// The transmit mode is kept.
+// The transmit mode is kept. A standard that crosses between SDI and ASI releases the
+// one side, sets the configuration and attaches the other, with its default transmit
+// mode; when that fails the channel is left detached, where DTAPI leaves it without a
+// side.
 //
 DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int Value,
                                       int SubValue)
@@ -412,8 +415,6 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
     }
     else if (OutpChannel->Tx->TxControl != DTAPI_TXCTRL_IDLE)
         Result = DTAPI_E_NOT_IDLE;
-    else if (Group == DTAPI_IOCONFIG_IOSTD && Value == DTAPI_IOCONFIG_ASI)
-        Result = DTAPI_E_NOT_SUPPORTED;
     else
     {
         DtIoConfig Config;
@@ -422,9 +423,33 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
         Config.Value = Value;
         Config.SubValue = SubValue;
         Config.ParXtra[0] = Config.ParXtra[1] = -1;
-        Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
-        if (Result == DTAPI_OK)
-            Result = OutpChannel->Tx->Ops->ApplyIoConfig(OutpChannel->Tx, &Config);
+        DtTx* Tx = OutpChannel->Tx;
+        const bool IsAsi = Tx->Ops->SetTsRateBps != NULL;
+        const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
+
+        if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
+        {
+            Tx->Ops->Release(Tx);
+            OutpChannel->Tx = NULL;
+            Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
+            if (Result == DTAPI_OK && NewAsi)
+                Result = DtAsiTx_Attach(&OutpChannel->Port, &OutpChannel->Tx);
+            else if (Result == DTAPI_OK)
+                Result = DtSdiTx_Attach(&OutpChannel->Port, &Config, &OutpChannel->Tx);
+            if (Result != DTAPI_OK)
+            {
+                ReleaseAll(OutpChannel);
+                OutpChannel->Attached = false;
+            }
+        }
+        else
+        {
+            if (Tx->Ops->BeforeIoConfig != NULL)
+                Result = Tx->Ops->BeforeIoConfig(Tx);
+            if (Result == DTAPI_OK)
+                Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
+            Result = Tx->Ops->ApplyIoConfig(Tx, &Config, Result);
+        }
     }
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
@@ -446,19 +471,38 @@ DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtOutpChannel::SetTxMode's first check, then the side's.
+// DtOutpChannel::SetTxMode's checks, then the side's: no 192-byte packets, and an SDI
+// mode with the full frame when it names neither the full frame nor active video, and
+// with compression and network byte order only on a port that has them.
 //
 DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int StuffMode)
 {
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
-    if ((TxMode & DT_TXMODE_TS) != 0 && (TxMode & DTAPI_TXMODE_SDI) != 0)
+    if ((TxMode & DTAPI_TXMODE_TS) != 0 && (TxMode & DTAPI_TXMODE_SDI) != 0)
         return DTAPI_E_INVALID_MODE;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result =
-        OutpChannel->Tx->Ops->SetTxMode(OutpChannel->Tx, TxMode, StuffMode);
+    const uint64_t Caps = OutpChannel->Port.Caps;
+    DtapiResult Result = DTAPI_OK;
+    if ((TxMode & DTAPI_TXMODE_TS_MASK) == DTAPI_TXMODE_192)
+        Result = DTAPI_E_INVALID_MODE;
+    if (Result == DTAPI_OK && (TxMode & DTAPI_TXMODE_SDI) != 0)
+    {
+        if ((TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_FULL &&
+            (TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_ACTVID)
+        {
+            TxMode |= DTAPI_TXMODE_SDI_FULL;
+        }
+        if (((TxMode & DTAPI_TXMODE_SDI_HUFFMAN) != 0 && (Caps & DT_CAP_HUFFMAN) == 0) ||
+            ((TxMode & DTAPI_TXMODE_SDI_10B_NBO) != 0 && (Caps & DT_CAP_SDI10BNBO) == 0))
+        {
+            Result = DTAPI_E_INVALID_MODE;
+        }
+    }
+    if (Result == DTAPI_OK)
+        Result = OutpChannel->Tx->Ops->SetTxMode(OutpChannel->Tx, TxMode, StuffMode);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -548,6 +592,70 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
         Result = Tx->Ops->WriteFrame(Tx, (const uint8_t*)Frame, FrameSize, Deadline);
         OutpChannel->Writing = false;
     }
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flags and ASI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int Latched)
+{
+    if (OutpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtapiResult Result = OutpChannel->Tx->Ops->ClearFlags(OutpChannel->Tx, Latched);
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtOutpChannel_GetTsRateBps(DtOutpChannel* OutpChannel, int* TsRate)
+{
+    if (OutpChannel == NULL || TsRate == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtTx* Tx = OutpChannel->Tx;
+    DtapiResult Result = Tx->Ops->GetTsRateBps == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Tx->Ops->GetTsRateBps(Tx, TsRate);
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtOutpChannel_SetTsRateBps(DtOutpChannel* OutpChannel, int TsRate)
+{
+    if (OutpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtTx* Tx = OutpChannel->Tx;
+    DtapiResult Result = Tx->Ops->SetTsRateBps == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Tx->Ops->SetTsRateBps(Tx, TsRate);
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxPolarity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel, int TxPolarity)
+{
+    if (OutpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtapiResult Result = OutpChannel->Tx->Ops->SetTxPolarity(OutpChannel->Tx, TxPolarity);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }

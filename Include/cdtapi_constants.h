@@ -496,6 +496,10 @@
 #define DTAPI_IOCONFIG_TODREF_INTERNAL   111     // Internal clock reference
 #define DTAPI_IOCONFIG_TODREF_STEADYCLOCK 112    // Steady clock reference
 
+// Detach modes
+#define DTAPI_INSTANT_DETACH        1
+#define DTAPI_WAIT_UNTIL_SENT       2
+
 // Transmit control
 #define DTAPI_TXCTRL_IDLE           1
 #define DTAPI_TXCTRL_HOLD           2

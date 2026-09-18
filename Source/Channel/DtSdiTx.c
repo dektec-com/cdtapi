@@ -22,13 +22,6 @@
 #include "Video/DtVidStd.h"     // Which standards are 4K.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-//
-// DTAPI's values for what CDTAPI.h does not define.
-//
-
-#define DT_TXMODE_TS 0x10                       // DTAPI_TXMODE_TS
-#define DT_TXMODE_TS_MASK (DT_TXMODE_TS | 0x0F) // DTAPI_TXMODE_TS_MASK
-#define DT_TXMODE_192 (DT_TXMODE_TS | 0x02)     // DTAPI_TXMODE_192
 
 // SdiTxImpl_Bb2's typical and maximum FIFO size, reported for a port without a buffer.
 #define DT_FIFO_SIZE_TYP (48 * 1024 * 1024)
@@ -1369,8 +1362,9 @@ static DtapiResult GetFlags(DtTx* Tx, int* Status, int* Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The rest of DtOutpChannel::SetTxMode's checks, then SdiTxImpl_Bb2::SetTxMode's. The
-// mode is kept for the side's life, also across a change of SDI standard.
+// SdiTxImpl_Bb2::SetTxMode, once DtOutpChannel.c has checked the mode: while idle, the
+// full frame only. The mode is kept for the side's life, also across a change of SDI
+// standard.
 //
 static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
 {
@@ -1378,30 +1372,11 @@ static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
     DtapiResult Result = DTAPI_OK;
 
     (void)StuffMode;
-    if ((TxMode & DT_TXMODE_TS_MASK) == DT_TXMODE_192)
-        Result = DTAPI_E_INVALID_MODE;
-    if (Result == DTAPI_OK && (TxMode & DTAPI_TXMODE_SDI) != 0)
-    {
-        if ((TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_FULL &&
-            (TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_ACTVID)
-        {
-            TxMode |= DTAPI_TXMODE_SDI_FULL;
-        }
-        if (((TxMode & DTAPI_TXMODE_SDI_HUFFMAN) != 0 &&
-             (Tx->Port.Caps & DT_CAP_HUFFMAN) == 0) ||
-            ((TxMode & DTAPI_TXMODE_SDI_10B_NBO) != 0 &&
-             (Tx->Port.Caps & DT_CAP_SDI10BNBO) == 0))
-        {
-            Result = DTAPI_E_INVALID_MODE;
-        }
-    }
-
-    if (Result == DTAPI_OK && Tx->TxControl != DTAPI_TXCTRL_IDLE)
+    if (Tx->TxControl != DTAPI_TXCTRL_IDLE)
         Result = DTAPI_E_NOT_IDLE;
-    else if (Result == DTAPI_OK &&
-             (TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_FULL)
+    else if ((TxMode & DTAPI_TXMODE_SDI_MASK) != DTAPI_TXMODE_SDI_FULL)
         Result = DTAPI_E_INVALID_MODE;
-    else if (Result == DTAPI_OK)
+    else
     {
         Tx->TxMode = TxMode;
         Sdi->SymbolBits = (TxMode & DTAPI_TXMODE_SDI_10B) != 0   ? 10
@@ -1417,15 +1392,41 @@ static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
 //
 // A new standard sets the channel up for it; the transmit mode is kept.
 //
-static DtapiResult ApplyIoConfig(DtTx* Tx, const DtIoConfig* Config)
+static DtapiResult ApplyIoConfig(DtTx* Tx, const DtIoConfig* Config,
+                                 DtapiResult SetResult)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    if (Config->Group != DTAPI_IOCONFIG_IOSTD)
-        return DTAPI_OK;
+    if (SetResult != DTAPI_OK || Config->Group != DTAPI_IOCONFIG_IOSTD)
+        return SetResult;
     Sdi->IoStdValue = Config->Value;
     Sdi->IoStdSubValue = Config->SubValue;
     return ConfigureChannel(Sdi);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlagsSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// SdiTxImpl_Bb2::ClearFlags.
+//
+static DtapiResult ClearFlagsSdi(DtTx* Tx, int Latched)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+
+    if ((Latched & DTAPI_TX_FIFO_UFL) != 0)
+        Sdi->FifoUfl = Sdi->FifoUflLatched = false;
+    if ((Latched & DTAPI_TX_DMA_UFL) != 0)
+        Sdi->DmaUfl = Sdi->DmaUflLatched = false;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxPolarity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// AsiSdiTxImpl_Bb2::SetTxPolarity: SDI takes the normal polarity only.
+//
+static DtapiResult SetTxPolarity(DtTx* Tx, int TxPolarity)
+{
+    (void)Tx;
+    return TxPolarity == DTAPI_TXPOL_NORMAL ? DTAPI_OK : DTAPI_E_INVALID_ARG;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1522,7 +1523,9 @@ static const DtTxBackend g_Ops = {
     .GetMaxFifoSize = GetMaxFifoSize,
     .GetFlags = GetFlags,
     .SetTxMode = SetTxMode,
+    .ClearFlags = ClearFlagsSdi,
     .ApplyIoConfig = ApplyIoConfig,
+    .SetTxPolarity = SetTxPolarity,
     .Write = Write,
     .WriteFrame = WriteFrame,
     .Wake = Wake,

@@ -460,10 +460,17 @@ DT_TEST(AttachRefusals)
     if (!Start(&Fix, DtFailures))
         return;
 
+    // An ASI port attaches, and takes no frames.
     DT_ASSERT_OK(
         SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
-    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
-                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    {
+        static uint32_t Frame[4];
+        DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, sizeof(Frame), 10),
+                     DTAPI_E_NOT_SDI_MODE);
+    }
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
     DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_1080I50));
 
     SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER,
@@ -564,9 +571,20 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
                                            DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_ASI, -1),
-                 DTAPI_E_NOT_SUPPORTED);
+
+    // ASI switches the channel over, with its own settings, and SDI back.
+    DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_ASI, -1));
+    int Rate = 0;
+    DT_ASSERT_OK(DtOutpChannel_GetTsRateBps(Fix.Channel, &Rate));
+    DT_ASSERT_EQ(Rate, 10000000);
+    DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50));
+    DT_ASSERT_EQ(DtOutpChannel_GetTsRateBps(Fix.Channel, &Rate), DTAPI_E_NOT_SUPPORTED);
+
+    // The switch back gave SDI's default transmit mode, 10-bit; 16-bit is set again.
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_16B, 0));
 
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
@@ -855,7 +873,7 @@ DT_TEST(AcrossTheEndOfTheBuffer)
     FINISH(Fix);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= WriteFrame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= WriteFrame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // WriteFrame's checks in their order. A refused frame leaves nothing in the buffer.
 DT_TEST(WriteFrameChecks)

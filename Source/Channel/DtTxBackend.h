@@ -77,9 +77,22 @@ struct DtTxBackend
     // SetTxMode once DtOutpChannel.c has checked what does not depend on the side.
     DtapiResult (*SetTxMode)(DtTx* Tx, int TxMode, int StuffMode);
 
-    // What the side does after DtOutpChannel.c has set Config on the port, the side
-    // staying the same.
-    DtapiResult (*ApplyIoConfig)(DtTx* Tx, const DtIoConfig* Config);
+    // ClearFlags.
+    DtapiResult (*ClearFlags)(DtTx* Tx, int Latched);
+
+    // What the side does around DtOutpChannel.c setting Config on the port, the side
+    // staying the same: BeforeIoConfig first, when there is one, and ApplyIoConfig with
+    // the result of setting it, which it gives back unless it fails itself.
+    DtapiResult (*BeforeIoConfig)(DtTx* Tx);
+    DtapiResult (*ApplyIoConfig)(DtTx* Tx, const DtIoConfig* Config,
+                                 DtapiResult SetResult);
+
+    // SetTxPolarity.
+    DtapiResult (*SetTxPolarity)(DtTx* Tx, int TxPolarity);
+
+    // GetTsRateBps and SetTsRateBps. NULL gives DTAPI_E_NOT_SUPPORTED.
+    DtapiResult (*GetTsRateBps)(DtTx* Tx, int* TsRate);
+    DtapiResult (*SetTsRateBps)(DtTx* Tx, int TsRate);
 
     // Write, while not idle and with no other write going on.
     DtapiResult (*Write)(DtTx* Tx, const uint8_t* Data, size_t Size);

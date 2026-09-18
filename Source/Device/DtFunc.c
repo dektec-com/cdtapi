@@ -192,6 +192,8 @@ static const struct
     {true, DT_FUNC_TYPE_NW, {2, 0, 0, 1}},
     {true, DT_FUNC_TYPE_SDIRX, {1, 4, 0, 111}},
     {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}},
+    {false, DT_BLOCK_TYPE_ASITXG, {1, 0, 4, 48}},
+    {false, DT_BLOCK_TYPE_ASITXSER, {1, 0, 4, 48}},
     {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}},
     {false, DT_BLOCK_TYPE_CDMAC, {1, 0, 4, 48}},
     {false, DT_BLOCK_TYPE_SDIDMX12G, {1, 2, 1, 68}},
