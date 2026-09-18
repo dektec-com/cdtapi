@@ -56,7 +56,8 @@ echo
 
 ClangFormat="${CLANG_FORMAT:-clang-format}"
 if command -v "$ClangFormat" >/dev/null 2>&1; then
-    Version=$("$ClangFormat" --version | sed 's/.*version //' | tr -d '\r')
+    Version=$("$ClangFormat" --version | sed 's/.*version //;s/[^0-9.].*//' |
+              tr -d '\r')
     if [ "$Version" = "$ClangFormatVersion" ]; then
         Report "clang-format" "$Version"
     else

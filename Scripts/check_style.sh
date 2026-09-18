@@ -123,7 +123,7 @@ ClangFormatVersion="18.1.8"
 ClangFormat="${CLANG_FORMAT:-clang-format}"
 if ! command -v "$ClangFormat" >/dev/null 2>&1; then
     Fail "clang-format not found; pip install clang-format==$ClangFormatVersion, or point CLANG_FORMAT at it. Scripts/check_tools.sh lists what this project needs."
-elif [ "$("$ClangFormat" --version | sed 's/.*version //' | tr -d '\r')" != \
+elif [ "$("$ClangFormat" --version | sed 's/.*version //;s/[^0-9.].*//')" != \
        "$ClangFormatVersion" ]; then
     Fail "clang-format is $("$ClangFormat" --version | sed 's/.*version //'), and this project is formatted with $ClangFormatVersion; another build reformats files that are right."
 else
