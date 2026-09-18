@@ -64,6 +64,7 @@ set(CDTAPI_SOURCES
     Source/AvFifo/DtSt2110Audio.c
     Source/AvFifo/DtSt2110Video.c
     Source/Channel/DtInpChannel.c
+    Source/Channel/DtSdiRx.c
     Source/Channel/DtOutpChannel.c
     Source/Core/DtAlloc.c
     Source/Core/DtBuf.c
