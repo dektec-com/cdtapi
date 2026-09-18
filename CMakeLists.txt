@@ -177,6 +177,27 @@ endif()
 
 add_library(cdtapi::cdtapi ALIAS cdtapi)
 
+# Where the installed files land. The SDK's layout is Include, Lib and Bin, as its other
+# libraries have it and as an application that builds against the SDK already looks for
+# them; a build of the library on its own installs as libraries on the platform usually
+# do, which is what a distribution, vcpkg or a developer expects. The target's install
+# interface names the same directory, so this stands before the target is described.
+include(GNUInstallDirs)
+
+if(CDTAPI_SDK_LAYOUT)
+    set(CDTAPI_INCLUDE_DIR "Include")
+    set(CDTAPI_LIB_DIR "Lib")
+    set(CDTAPI_BIN_DIR "Bin")
+    set(CDTAPI_PKGCONFIG_DIR "Lib/pkgconfig")
+    set(CDTAPI_CMAKE_DIR "Lib/cmake/cdtapi")
+else()
+    set(CDTAPI_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(CDTAPI_LIB_DIR "${CMAKE_INSTALL_LIBDIR}")
+    set(CDTAPI_BIN_DIR "${CMAKE_INSTALL_BINDIR}")
+    set(CDTAPI_PKGCONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+    set(CDTAPI_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/cdtapi")
+endif()
+
 set_target_properties(cdtapi PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
@@ -189,7 +210,7 @@ target_include_directories(cdtapi
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/Generated>
-        $<INSTALL_INTERFACE:Include>
+        $<INSTALL_INTERFACE:${CDTAPI_INCLUDE_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Source
         ${CMAKE_CURRENT_SOURCE_DIR}/Source/Device
@@ -260,23 +281,8 @@ endif()
 
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Install +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-include(GNUInstallDirs)
-
-# Where things land. The SDK's layout is Include, Lib and Bin, as its other libraries
-# have it and as an application that builds against the SDK already looks for them.
-if(CDTAPI_SDK_LAYOUT)
-    set(CDTAPI_INCLUDE_DIR "Include")
-    set(CDTAPI_LIB_DIR "Lib")
-    set(CDTAPI_BIN_DIR "Bin")
-    set(CDTAPI_PKGCONFIG_DIR "Lib/pkgconfig")
-    set(CDTAPI_CMAKE_DIR "Lib/cmake/cdtapi")
-else()
-    set(CDTAPI_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
-    set(CDTAPI_LIB_DIR "${CMAKE_INSTALL_LIBDIR}")
-    set(CDTAPI_BIN_DIR "${CMAKE_INSTALL_BINDIR}")
-    set(CDTAPI_PKGCONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-    set(CDTAPI_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/cdtapi")
-endif()
+# The directories are set where the target is described, because its install interface
+# names one of them.
 
 # What the file is called. On Windows a static library fixes which C runtime it calls, so
 # the SDK ships one per runtime and configuration, named as DTAPI's own are: cdtapi64mt,
