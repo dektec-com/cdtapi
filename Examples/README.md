@@ -97,6 +97,3 @@ every program against the emulator.
 
 On a machine with DTAPI's Linux SDK, `Scripts/compare_device_scan.sh <LinuxSDK>`
 compares `DtListDeviceDescs` with DTAPI's own device scan.
-`Scripts/compare_cdtapi.sh <CDTAPI> <LinuxSDK> <Program> [args]` builds a program
-against the C wrapper over DTAPI as well, runs both and compares their output, for as
-long as that wrapper is there to compare against.
