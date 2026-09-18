@@ -23,6 +23,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Surround SCM hands out read-only files, which stops a build from writing generated
+# sources and git from replacing files. Does nothing outside a Surround working directory.
+& "$PSScriptRoot\unlock_surround.ps1"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 

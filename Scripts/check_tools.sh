@@ -11,9 +11,10 @@
 
 set -u
 
-# The versions the project is held to. clang-format is exact, because its major version
-# decides how code is formatted: another one reformats files that are already right.
-ClangFormatMajor=18
+# The versions the project is held to. clang-format is exact to the patch number: builds
+# of one major version do not format alike either, so another one reformats files that
+# are already right. pip install clang-format==<version> gives exactly this one.
+ClangFormatVersion="18.1.8"
 CMakeMinimum="3.21"
 PythonMinimum="3.8"
 GccMinimum=11
@@ -55,16 +56,16 @@ echo
 
 ClangFormat="${CLANG_FORMAT:-clang-format}"
 if command -v "$ClangFormat" >/dev/null 2>&1; then
-    Version=$("$ClangFormat" --version | sed 's/.*version //')
-    if [ "$(Major "$Version")" = "$ClangFormatMajor" ]; then
+    Version=$("$ClangFormat" --version | sed 's/.*version //' | tr -d '\r')
+    if [ "$Version" = "$ClangFormatVersion" ]; then
         Report "clang-format" "$Version"
     else
-        Fail "clang-format" "$Version, and $ClangFormatMajor is what the project uses" \
-             "apt install clang-format-$ClangFormatMajor, or point CLANG_FORMAT at it"
+        Fail "clang-format" "$Version, and the project is formatted with $ClangFormatVersion" \
+             "pip install clang-format==$ClangFormatVersion, or point CLANG_FORMAT at it"
     fi
 else
     Fail "clang-format" "not found" \
-         "apt install clang-format-$ClangFormatMajor, or winget install LLVM.LLVM"
+         "pip install clang-format==$ClangFormatVersion, or point CLANG_FORMAT at it"
 fi
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CMake -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

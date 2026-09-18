@@ -65,6 +65,22 @@ what is missing:
 `CLANG_FORMAT` points at another clang-format, for a machine where the right version is
 not the one on the path.
 
+## Surround SCM, where the tree is shared with it
+
+Inside DekTec this working tree is a Surround SCM working directory as well, which the
+`.MySCMServerInfo` files in it say. Surround hands out read-only files unless it is told
+otherwise, and git cannot replace a file that is read-only: a pull or a checkout then
+fails halfway. Two things keep that from happening:
+
+- `sscm ci -w` and `sscm get -e` leave the files writable. Make that the habit.
+- `Scripts/unlock_surround.sh`, or `.ps1`, clears the read-only bit of everything git
+  tracks. Both build scripts run it, and so do the `post-checkout` and `post-merge`
+  hooks. Outside a Surround working directory it does nothing, so a plain clone, the
+  build server and an outside contributor never notice it.
+
+Git ignores what belongs to Surround, `.MySCMServerInfo` and the `*.vssscc` files, and
+`.sscmignore` keeps `.git`, `.github` and the build directories out of Surround.
+
 ## What a comment may say about DTAPI
 
 CDTAPI reproduces DTAPI's behaviour, and a comment that says which behaviour is being

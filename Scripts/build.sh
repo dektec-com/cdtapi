@@ -10,6 +10,10 @@ set -euo pipefail
 RepoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RepoRoot"
 
+# Surround SCM hands out read-only files, which stops a build from writing generated
+# sources and git from replacing files. Does nothing outside a Surround working directory.
+"$RepoRoot/Scripts/unlock_surround.sh" || true
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Usage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 Usage()

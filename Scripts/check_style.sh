@@ -117,15 +117,15 @@ fi
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-# The major version decides how code is formatted, so another one reformats files that
-# are already right. Scripts/check_tools.sh checks the same number.
-ClangFormatMajor=18
+# Builds of clang-format do not format alike, not even within one major version, so the
+# version is exact here. Scripts/check_tools.sh checks the same one.
+ClangFormatVersion="18.1.8"
 ClangFormat="${CLANG_FORMAT:-clang-format}"
 if ! command -v "$ClangFormat" >/dev/null 2>&1; then
-    Fail "clang-format not found; install version $ClangFormatMajor, or point CLANG_FORMAT at it. Scripts/check_tools.sh lists what this project needs."
-elif [ "$("$ClangFormat" --version | sed 's/.*version \([0-9][0-9]*\).*/\1/')" != \
-       "$ClangFormatMajor" ]; then
-    Fail "clang-format is $("$ClangFormat" --version | sed 's/.*version //'), and this project is formatted with version $ClangFormatMajor; another one reformats files that are right."
+    Fail "clang-format not found; pip install clang-format==$ClangFormatVersion, or point CLANG_FORMAT at it. Scripts/check_tools.sh lists what this project needs."
+elif [ "$("$ClangFormat" --version | sed 's/.*version //' | tr -d '\r')" != \
+       "$ClangFormatVersion" ]; then
+    Fail "clang-format is $("$ClangFormat" --version | sed 's/.*version //'), and this project is formatted with $ClangFormatVersion; another build reformats files that are right."
 else
     echo "Rules 4 and 6: clang-format"
     while IFS= read -r File; do

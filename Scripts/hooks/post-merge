@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* post-merge *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+#
+# CDTAPI - Keeps the working tree writable where Surround SCM shares it
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Surround SCM hands out read-only files. Git has no hook that runs before it writes, so
+# this one runs after, which keeps the next operation from failing. Outside a Surround
+# working directory it does nothing.
+
+Root="$(git rev-parse --show-toplevel)"
+"$Root/Scripts/unlock_surround.sh" --quiet
+exit 0

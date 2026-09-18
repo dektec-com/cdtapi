@@ -2,26 +2,29 @@
 
 A native, open-source C API for DekTec SDI and SMPTE ST 2110 interfaces.
 
-CDTAPI talks to the DekTec `DtPcie` driver directly over its documented ioctl
-interface. It contains no closed-source component, so an application that links it —
-FFmpeg in particular — stays redistributable.
+CDTAPI talks to the DekTec `DtPcie` driver directly over its ioctl interface. It
+contains no closed-source component, and needs none at run time: the driver is what it
+needs, and the driver is open source as well.
 
 - **Licence:** BSD-3-Clause. See [LICENSE](LICENSE).
 - **Language:** C11. No dependencies beyond libc and the OS API.
 - **Platforms:** Linux and Windows.
 - **Status:** early development.
 
-## Why it exists
+## What it makes possible
 
-FFmpeg's `configure` places closed-source capture SDKs in
-`EXTERNAL_LIBRARY_NONFREE_LIST`. Building FFmpeg against one of those requires
-`--enable-nonfree`, and the resulting binary cannot be redistributed at all — which is
-what happens today with Blackmagic DeckLink. Wrapping a closed library in a C API does
-not change that; the closed code is still linked in.
+DekTec hardware can now be used from open-source software that is shipped to others.
+CDTAPI is BSD-3-Clause and links nothing closed, so a project under the GPL, the LGPL or
+a similar licence can support DekTec cards and still be redistributed as it always was.
 
-An open-source library does change it. With CDTAPI, DekTec support can sit in
-FFmpeg's ordinary `EXTERNAL_LIBRARY_LIST`, alongside the other `--enable-lib*` options,
-and the resulting build is redistributable under the LGPL like any other.
+That was not possible before. A capture SDK that ships as a closed library puts the
+project that links it in a corner: FFmpeg, for one, keeps such SDKs in
+`EXTERNAL_LIBRARY_NONFREE_LIST`, where building against them needs `--enable-nonfree`
+and the result may not be redistributed at all. Wrapping a closed library in a C
+interface changes nothing about that, because the closed code is still linked in.
+
+With CDTAPI, DekTec support belongs with the ordinary `--enable-lib*` options, and the
+build that comes out is redistributable like any other.
 
 ## Building
 
