@@ -61,6 +61,7 @@
 #define DT_CAP_FAILSAFE 0x800000    // A fail-safe relay
 #define DT_CAP_SPI 0x1000000        // SPI
 #define DT_CAP_SPISDI 0x2000000     // SDI over SPI
+#define DT_CAP_QUADLINK 0x4000000   // A 12G port that also sends and receives quad link
 
 // Any of the SDI rates.
 #define DT_CAP_ANY_SDI                                                                   \

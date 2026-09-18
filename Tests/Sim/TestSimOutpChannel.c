@@ -641,6 +641,42 @@ DT_TEST(States)
     FINISH(Fix);
 }
 
+// A port without DT_CAP_QUADLINK has no demultiplexer: the channel attaches and holds
+// without it, as MxChannelMemlessTx does. A quad-link port without one is refused.
+DT_TEST(SingleLinkPort)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+
+    // The transmitter's parts less the demultiplexer and its two switches.
+    SimDtPcie_OverrideString("AF_ASISDITX#1.3", PORT - 1, true, "BC_SDITXP#1");
+    SimDtPcie_OverrideString("AF_ASISDITX#1.4", PORT - 1, true, "DF_SDITXPHY#1");
+    SimDtPcie_OverrideString("AF_ASISDITX#1.5", PORT - 1, false, NULL);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_FOUND);
+
+    SimDtPcie_OverrideProperty("CAP_QUADLINK", PORT - 1, false, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
+                 DTAPI_E_INSUF_LOAD);
+    SimTxState State;
+    SimDtPcie_GetTxState(PORT - 1, &State);
+    DT_ASSERT(
+        State.CdmacMode == DT_BLOCK_OPMODE_RUN && State.TxfMode == DT_BLOCK_OPMODE_RUN &&
+        State.SwitchInMode == DT_BLOCK_OPMODE_IDLE &&
+        State.SwitchOutMode == DT_BLOCK_OPMODE_IDLE &&
+        State.TxpMode == DT_BLOCK_OPMODE_RUN && State.PhyMode == DT_FUNC_OPMODE_STANDBY);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
+    FINISH(Fix);
+}
+
 // A refused command leaves the blocks idle and the channel idle.
 DT_TEST(RefusedCommands)
 {
@@ -1457,10 +1493,11 @@ DT_TEST(FreeWhileSending)
 
 DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AttachRefusals), DT_RUN(TransmitModes), DT_RUN(IoConfiguration),
-             DT_RUN(States), DT_RUN(RefusedCommands), DT_RUN(WriteChecks),
-             DT_RUN(FramesInPieces525i), DT_RUN(FramesInPieces720p24),
-             DT_RUN(FramesInPieces1080p50), DT_RUN(SdStartsAtField1),
-             DT_RUN(AcrossTheEndOfTheBuffer), DT_RUN(BlackFramesWhenWritingStops),
+             DT_RUN(States), DT_RUN(SingleLinkPort), DT_RUN(RefusedCommands),
+             DT_RUN(WriteChecks), DT_RUN(FramesInPieces525i),
+             DT_RUN(FramesInPieces720p24), DT_RUN(FramesInPieces1080p50),
+             DT_RUN(SdStartsAtField1), DT_RUN(AcrossTheEndOfTheBuffer),
+             DT_RUN(BlackFramesWhenWritingStops),
              DT_RUN(BlackFrameBeforeAPartlyWrittenFrame), DT_RUN(UnderflowFlags),
              DT_RUN(StaleReadOffset), DT_RUN(DetachCancelsAWrite),
              DT_RUN(DetachWaitsUntilSent), DT_RUN(DetachWaitsUntilSentFromAFullBuffer),

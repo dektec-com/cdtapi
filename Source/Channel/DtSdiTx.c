@@ -79,7 +79,13 @@ typedef struct DtSdiTx
 
     // The transmit blocks, held exclusively while attached.
     DtFuncInstance AfTx, AfDma;
-    int Cdmac, Burst, Txf, SwitchIn, SwitchOut, Dmx, Txp, Phy; // UUIDs
+    int Cdmac, Burst, Txf, Txp, Phy; // UUIDs
+
+    // The demultiplexer and its switches of a port with DT_CAP_QUADLINK, and the switch
+    // from a quad-link master where the port has it; their UUIDs are 0 otherwise.
+    bool QuadLink;
+    int SwitchIn, SwitchOut, Dmx;
+    int FromMaster;
 
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
@@ -410,26 +416,36 @@ static void StopKeeper(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BlocksToIdle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Every block idle, downstream first, as DoStandbyToIdleImpl. Returns the first failure;
-// the blocks after it are set idle all the same.
+// Every block idle, downstream first, as DoStandbyToIdleImpl: the switch from a quad-link
+// master where the port has it, and the demultiplexer and its switches on a port with
+// DT_CAP_QUADLINK. Returns the first failure; the blocks after it are set idle all the
+// same.
 //
 static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
     int Index = Sdi->Base.Port.PortIndex;
-    DtapiResult Results[8];
+    DtapiResult Results[9] = {DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK,
+                              DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK};
 
     Results[0] = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, Index, DT_FUNC_OPMODE_IDLE);
     Results[1] = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[2] =
-        DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[3] = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[4] =
-        DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[5] = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[6] =
+    if (Sdi->FromMaster != 0)
+        Results[2] =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, Index, DT_BLOCK_OPMODE_IDLE);
+    if (Sdi->QuadLink)
+    {
+        Results[3] =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, Index, DT_BLOCK_OPMODE_IDLE);
+        Results[4] =
+            DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, Index, DT_BLOCK_OPMODE_IDLE);
+        Results[5] =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, Index, DT_BLOCK_OPMODE_IDLE);
+    }
+    Results[6] = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, Index, DT_BLOCK_OPMODE_IDLE);
+    Results[7] =
         DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[7] = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+    Results[8] = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
 
     for (size_t i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
     {
@@ -441,9 +457,10 @@ static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IdleToHold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DoIdleToStandyImpl: the pipeline runs and fills from the start of the buffer, and the
-// PHY waits. With 8-bit symbols or a 4K standard holding fails as the Matrix's row
-// validation fails DTAPI's (MxOutpDma::ValidateRowConfigRaw), before a block changes.
+// DoIdleToStandyImpl: the pipeline runs and fills from the start of the buffer, the
+// demultiplexer left out on a single link, and the PHY waits. With 8-bit symbols or a 4K
+// standard holding fails as the Matrix's row validation fails DTAPI's
+// (MxOutpDma::ValidateRowConfigRaw), before a block changes.
 //
 static DtapiResult IdleToHold(DtSdiTx* Sdi)
 {
@@ -463,12 +480,15 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
             DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, Index, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, Index, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK)
+    if (Result == DTAPI_OK && Sdi->FromMaster != 0)
+        Result =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, Index, DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Sdi->QuadLink)
         Result =
             DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, Index, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK)
+    if (Result == DTAPI_OK && Sdi->QuadLink)
         Result = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, Index, DT_BLOCK_OPMODE_IDLE);
-    if (Result == DTAPI_OK)
+    if (Result == DTAPI_OK && Sdi->QuadLink)
         Result =
             DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, Index, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
@@ -703,9 +723,9 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
             1);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Drv, Sdi->Phy, Index, 0);
-    if (Result == DTAPI_OK)
+    if (Result == DTAPI_OK && Sdi->QuadLink)
         Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchIn, Index, 0, 0);
-    if (Result == DTAPI_OK)
+    if (Result == DTAPI_OK && Sdi->QuadLink)
         Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchOut, Index, 0, 0);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacGetProps(Drv, Sdi->Cdmac, Index, &Props);
@@ -1187,8 +1207,11 @@ static void PadToWord(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The eight parts of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is
-// new enough for each.
+// The parts of AF_ASISDITX and AF_DMA the channel drives, as
+// MxChannelMemlessTx::GetProxies asks for them, and whether the driver is new enough for
+// each: always the DMA controller, the burst FIFO, the formatter, the encoder and the
+// PHY; the demultiplexer and its two switches on a port with DT_CAP_QUADLINK; and the
+// switch from a quad-link master when the port has it.
 //
 static DtapiResult FindParts(DtSdiTx* Sdi)
 {
@@ -1199,16 +1222,22 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
         int Type;
         const char* Role;
         int* Uuid;
+        bool Needed;
     } Wanted;
+    const bool QuadLink = (Sdi->Base.Port.Caps & DT_CAP_QUADLINK) != 0;
     const Wanted Parts[] = {
-        {&Sdi->AfDma, false, DT_BLOCK_TYPE_CDMAC, "", &Sdi->Cdmac},
-        {&Sdi->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "", &Sdi->Burst},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXF, "", &Sdi->Txf},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN", &Sdi->SwitchIn},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDIDMX12G, "", &Sdi->Dmx},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT", &Sdi->SwitchOut},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXP, "", &Sdi->Txp},
-        {&Sdi->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "", &Sdi->Phy},
+        {&Sdi->AfDma, false, DT_BLOCK_TYPE_CDMAC, "", &Sdi->Cdmac, true},
+        {&Sdi->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "", &Sdi->Burst, true},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXF, "", &Sdi->Txf, true},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "FROM_QUAD_LINK_MASTER",
+         &Sdi->FromMaster, false},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXP, "", &Sdi->Txp, true},
+        {&Sdi->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "", &Sdi->Phy, true},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN", &Sdi->SwitchIn,
+         QuadLink},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDIDMX12G, "", &Sdi->Dmx, QuadLink},
+        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT", &Sdi->SwitchOut,
+         QuadLink},
     };
 
     DtapiResult Result =
@@ -1218,18 +1247,22 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
             DtFunc_Find(DrvOf(Sdi), Sdi->Base.Port.PortIndex, "AF_DMA", "", &Sdi->AfDma);
     for (size_t i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
     {
+        const bool Optional = Parts[i].Uuid == &Sdi->FromMaster;
+        if (!Parts[i].Needed && !Optional)
+            continue;
         const DtFuncPart* Part =
             DtFunc_Get(Parts[i].Instance, Parts[i].IsDf, Parts[i].Type, Parts[i].Role);
 
-        if (Part == NULL)
+        if (Part == NULL && !Optional)
             Result = DTAPI_E_NOT_FOUND;
-        else
+        else if (Part != NULL)
         {
             *Parts[i].Uuid = Part->Uuid;
             Result = DtFunc_CheckDriverVersion(&Sdi->Base.Port.Device->DriverVersion,
                                                Parts[i].IsDf, Parts[i].Type);
         }
     }
+    Sdi->QuadLink = QuadLink;
     return Result;
 }
 
@@ -1537,6 +1570,12 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
             DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfDma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)
         Result = BlocksToIdle(Sdi);
+
+    // MxChannelMemlessTx::InitChannel: the data comes from the channel, not from a
+    // quad-link master, where the port has that switch.
+    if (Result == DTAPI_OK && Sdi->FromMaster != 0)
+        Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->FromMaster, Port->PortIndex,
+                                             0, 0);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPSetGenerationMode(DrvOf(Sdi), Sdi->Txp, Port->PortIndex,
                                                    true, true, true);

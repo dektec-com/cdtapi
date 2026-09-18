@@ -19,7 +19,8 @@
 //
 // Per port, as the device description lists them for firmware variant 1. Ports 1 to 8
 // share one list, extended by the direction each can take; ports 9 and 10 are the genlock
-// reference ports, and port 10 is virtual.
+// reference ports, and port 10 is virtual. CAP_QUADLINK comes with the demultiplexer
+// every port's transmitter lists below, as it does on ports 1 and 5 of a variant 2 card.
 //
 
 static const char* const SdiPortCaps[] = {
@@ -70,6 +71,7 @@ static const char* const SdiPortCaps[] = {
     "CAP_TXONTIME",
     "CAP_INPUT",
     "CAP_OUTPUT",
+    "CAP_QUADLINK",
 };
 
 static const char* const GenRefPortCaps[] = {

@@ -53,6 +53,7 @@ static const struct
     {"CAP_FAILSAFE", DT_CAP_FAILSAFE},
     {"CAP_SPI", DT_CAP_SPI},
     {"CAP_SPISDI", DT_CAP_SPISDI},
+    {"CAP_QUADLINK", DT_CAP_QUADLINK},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
