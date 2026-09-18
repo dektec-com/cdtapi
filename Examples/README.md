@@ -5,11 +5,13 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 
 | Program | Does |
 |---|---|
-| `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, AV FIFO, input or output |
-| `DtConfigPort` | Makes an SDI port an input or output and, with `--vidstd`, sets its I/O standard for a video standard |
+| `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, ASI, AV FIFO, input or output |
+| `DtConfigPort` | Makes a port an input or output and sets its I/O standard: with `--vidstd` for a video standard, with `--asi` to DVB-ASI |
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
 | `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files |
 | `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame |
+| `DtReceiveTs` | Receives a transport stream from an ASI input, optionally to a file, with the rate, packet size, lock and flags once a second; `--check` checks `DtTransmitTs`'s numbered packets one by one |
+| `DtTransmitTs` | Transmits a transport stream on an ASI output at a set rate: a file, numbered packets, or an MPEG-2 test picture; `--generate` writes either stream to a file instead |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
 | `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
 | `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
@@ -25,6 +27,7 @@ The emulated DTA-2178 answers when `CDTAPI_SIM=1` is set:
     CDTAPI_SIM=1 DtConfigPort --port 2 --input --vidstd 1080I50
     CDTAPI_SIM=1 DtDetectVidStd --port 1
     CDTAPI_SIM=1 DtTransmitFrames --port 2 --vidstd 1080I50 --count 3
+    CDTAPI_SIM=1 DtTransmitTs --port 2 --count 2000 --rate 40000000
 
 The emulator starts afresh in each process, so a configuration one program sets is gone
 for the next. On a card the configuration stays.
@@ -51,6 +54,26 @@ the `SimAvFifo` test suite is where transmission and reception meet.
 
 A legal frame `DtTransmitFrames` sends through a cable to an input arrives with the hash
 it printed, so the two programs' lines show whether it arrived bit for bit.
+
+### DVB-ASI
+
+The two ASI programs set the port's I/O standard to ASI themselves; the direction is
+DtConfigPort's. With a cable from port 5 to port 1, numbered packets are checked one by
+one as they arrive, in one shell and then another:
+
+    DtReceiveTs --port 1 --count 250000 --check
+    DtTransmitTs --port 5 --count 250000 --rate 40000000
+
+`DtReceiveTs` prints `gaps 0  bad 0` when every packet arrived, in order. `--txmode 204`
+and `--rxmode 204` do the same with 204-byte packets. The test picture, for a player or
+an analyser on the output, and the files a player such as DekTec's DtPlay takes:
+
+    DtTransmitTs --port 5 --stream service --rate 10000000
+    DtTransmitTs --generate service.ts --stream service --rate 10000000
+    DtTransmitTs --generate numbered.ts --count 250000
+
+The test picture is one MPEG-2 service, "CDTAPI ASI test": colour bars, the time code of
+each frame and a block that moves, so that a lost frame shows at a glance.
 
 ### What ST 2110 needs first
 
@@ -91,7 +114,8 @@ found nothing, such as no ports or no signal.
 ## The headers they use
 
 Every program includes `cdtapi.h`, and the two ST 2110 programs `cdtapi_avfifo.h` as
-well, through `Common/ExampleCommon.h` and `Common/ExampleAvFifo.h`. Nothing of the
+well, through `Common/ExampleCommon.h` and `Common/ExampleAvFifo.h`. The ASI programs
+make their streams with `Common/ExampleTsStream.c`. Nothing of the
 library's own headers is used, so what a program does, an application can do. CTest runs
 every program against the emulator.
 

@@ -5,10 +5,14 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
-    DtTransmitFrames DtReceive2110 DtTransmit2110 DtListDeviceDescs)
+    DtTransmitFrames DtReceive2110 DtTransmit2110 DtListDeviceDescs DtReceiveTs
+    DtTransmitTs)
 
 # Programs of SMPTE ST 2110, which also take ExampleAvFifo.c and the AV FIFO header.
 set(ExampleAvPrograms DtReceive2110 DtTransmit2110)
+
+# Programs of DVB-ASI, which also take the test streams of ExampleTsStream.c.
+set(ExampleTsPrograms DtReceiveTs DtTransmitTs)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Programs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
@@ -23,6 +27,11 @@ function(cdtapi_add_example Program)
         list(APPEND Sources
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.h")
+    endif()
+    if(Program IN_LIST ExampleTsPrograms)
+        list(APPEND Sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.h")
     endif()
     add_executable(${Target} ${Sources})
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "Examples" FILES ${Sources})
@@ -99,6 +108,11 @@ cdtapi_example_test(ConfigPortWithoutLink DtConfigPort
     "DtapiVidStd2IoStd: DTAPI_E_INVALID_LINKSTD" --vidstd 2160P60)
 cdtapi_example_test(ConfigPortUnknownStandard DtConfigPort
     "Unknown video standard: 1080X" --vidstd 1080X)
+cdtapi_example_test(ConfigPortAsi DtConfigPort
+    "^9217800001:5  IODIR OUTPUT  DTAPI_OK\n9217800001:5  IOSTD ASI  DTAPI_OK"
+    --port 5 --output --asi)
+cdtapi_example_test(ConfigPortAsiAndVidStd DtConfigPort
+    "^Give --vidstd or --asi, not both" --asi --vidstd 1080I50)
 cdtapi_example_test(ConfigPortNothingToDo DtConfigPort "^Nothing to do")
 cdtapi_example_test(ConfigPortBadOption DtConfigPort "^Unknown option: --bogus" --bogus)
 
@@ -141,6 +155,43 @@ cdtapi_example_test(TransmitFramesMissingFile DtTransmitFrames
     "^Cannot read no-such-frame0.raw" --in no-such-frame)
 cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
     "^No test pattern for video standard 2160P50" --vidstd 2160P50)
+
+# The ASI programs set the port's I/O standard to ASI themselves. The emulated card has
+# no signal on its inputs, and each program has a card of its own, so what one sends
+# does not reach the other.
+cdtapi_example_test(ReceiveTsWithoutSignal DtReceiveTs
+    "^9217800001:1  io standard ASI\n9217800001:1  no data within 100 ms\n9217800001:1  0 packets  rate 0  packets of [?]  no lock  flags -"
+    --timeout 100)
+cdtapi_example_test(ReceiveTsOnOutput DtReceiveTs
+    "^9217800001:2  DtInpChannel_AttachToPort: DTAPI_E_NO_DT_INPUT" --port 2)
+cdtapi_example_test(ReceiveTsBadMode DtReceiveTs
+    "^Unknown receive mode: 188B" --rxmode 188B)
+cdtapi_example_test(ReceiveTsNoPort DtReceiveTs "^No ASI input that suits" --port 9)
+
+cdtapi_example_test(TransmitTsNumbered DtTransmitTs
+    "^9217800001:2  io standard ASI\n(9217800001:2  [0-9]+ packets  load [0-9]+  flags -\n)*9217800001:2  sent 2000 packets"
+    --port 2 --count 2000 --rate 40000000)
+cdtapi_example_test(TransmitTsService DtTransmitTs
+    "9217800001:2  sent 500 packets" --port 2 --stream service --count 500 --rate 20000000)
+cdtapi_example_test(TransmitTs204Stuffed DtTransmitTs
+    "9217800001:2  sent 300 packets" --port 2 --txmode 204 --stuff --count 300)
+cdtapi_example_test(TransmitTsOnInput DtTransmitTs
+    "^9217800001:1  DtOutpChannel_AttachToPort: DTAPI_E_NO_DT_OUTPUT" --port 1)
+cdtapi_example_test(TransmitTsBadRate DtTransmitTs
+    "^9217800001:2  io standard ASI\nDtOutpChannel_SetTsRateBps: DTAPI_E_INVALID_RATE"
+    --port 2 --rate 500000000 --count 1)
+cdtapi_example_test(TransmitTsGenerate DtTransmitTs
+    "^wrote 1000 packets to generated.ts" --generate generated.ts --count 1000)
+cdtapi_example_test(TransmitTsGenerateService DtTransmitTs
+    "^wrote 66489 packets to service.ts" --generate service.ts --stream service)
+cdtapi_example_test(TransmitTsServiceOf204 DtTransmitTs
+    "^The test service has 188-byte packets" --stream service --txmode 204)
+cdtapi_example_test(TransmitTsServiceTooSlow DtTransmitTs
+    "^The test service needs a rate from 3000000" --stream service --rate 1000000)
+cdtapi_example_test(TransmitTsBadStream DtTransmitTs
+    "^Unknown stream: noise" --stream noise)
+cdtapi_example_test(TransmitTsMissingFile DtTransmitTs
+    "^Cannot read no-such-file.ts" --file no-such-file.ts)
 
 # The ST 2110 programs need the emulated DTA-2110, which the environment adds; the
 # loopback makes the packets a program sends arrive at its own receive side, although

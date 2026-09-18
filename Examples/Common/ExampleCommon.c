@@ -7,7 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // With -std=c11 the C library declares only ISO C. Asked for before any header, this
-// also exposes nanosleep.
+// also exposes nanosleep and clock_gettime.
 #ifndef _WIN32
     #define _POSIX_C_SOURCE 199309L
 #endif
@@ -275,6 +275,8 @@ const char* Example_IoStdName(int Value)
         return "6GSDI";
     case DTAPI_IOCONFIG_12GSDI:
         return "12GSDI";
+    case DTAPI_IOCONFIG_ASI:
+        return "ASI";
     default:
         return "?";
     }
@@ -291,5 +293,18 @@ void Example_SleepMs(int Ms)
 #else
     struct timespec Time = {.tv_sec = Ms / 1000, .tv_nsec = (long)(Ms % 1000) * 1000000L};
     nanosleep(&Time, NULL);
+#endif
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_NowMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+int64_t Example_NowMs(void)
+{
+#ifdef _WIN32
+    return (int64_t)GetTickCount64();
+#else
+    struct timespec Time;
+    clock_gettime(CLOCK_MONOTONIC, &Time);
+    return (int64_t)Time.tv_sec * 1000 + Time.tv_nsec / 1000000;
 #endif
 }

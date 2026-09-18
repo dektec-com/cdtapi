@@ -1,15 +1,16 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtConfigPort.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Example: makes an SDI port an input or output, with a video standard
+// CDTAPI - Example: makes a port an input or output, with a video standard or ASI
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Attaches to the device, then makes the port an input with --input or an output with
 // --output, and with --vidstd sets its I/O standard to the one that carries that video
-// standard. Prints one line per step with its result:
+// standard, or with --asi to DVB-ASI. Prints one line per step with its result:
 //
 //     9217800001:1  IODIR INPUT  DTAPI_OK
 //     9217800001:1  IOSTD HDSDI 1080I50  DTAPI_OK
+//     9217800001:5  IOSTD ASI  DTAPI_OK
 //
 // The configuration stays on the device after the program ends. Exits with 0 when every
 // step succeeds, 1 when one fails or the command line is wrong, and 2 when no port suits.
@@ -28,12 +29,13 @@
 static const ExampleOption g_Options[] = {
     {"--serial", true,
      "The device's serial number; the first device with a port that suits"},
-    {"--port", true, "The port number; the first SDI port that suits"},
+    {"--port", true, "The port number; the first SDI or ASI port that suits"},
     {"--input", false, "Make the port an input"},
     {"--output", false, "Make the port an output"},
     {"--vidstd", true, "Set the I/O standard for this video standard, such as 1080I50"},
     {"--linkstd", true,
      "How 4K is carried: 0 or 1 four 3G links, 2 6G, 3 12G; default -1"},
+    {"--asi", false, "Set the I/O standard to DVB-ASI"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -57,6 +59,27 @@ static bool IsSdi(const DtHwFuncDesc* Port)
     return Port->IsSdi != 0;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static bool IsAsiInput(const DtHwFuncDesc* Port)
+{
+    return Port->IsAsi && Port->IsInput;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static bool IsAsiOutput(const DtHwFuncDesc* Port)
+{
+    return Port->IsAsi && Port->IsOutput;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static bool IsAsi(const DtHwFuncDesc* Port)
+{
+    return Port->IsAsi != 0;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtapiVidStd2IoStd turns a video standard into the value and sub-value of the IOSTD
@@ -69,6 +92,7 @@ int main(int Argc, char** Argv)
     int64_t LinkStd = -1;
     bool Input = Example_HasFlag(Argc, Argv, "--input");
     bool Output = Example_HasFlag(Argc, Argv, "--output");
+    bool Asi = Example_HasFlag(Argc, Argv, "--asi");
     const char* VidStdName = Example_Value(Argc, Argv, "--vidstd");
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     int Value = -1;
@@ -76,8 +100,8 @@ int main(int Argc, char** Argv)
     int Exit = EXAMPLE_OK;
 
     if (!Example_CheckArguments(Argc, Argv,
-                                "Makes an SDI port an input or output, and sets its I/O "
-                                "standard for a video standard.",
+                                "Makes a port an input or output, and sets its I/O "
+                                "standard for a video standard or to ASI.",
                                 g_Options,
                                 (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
         !Example_Int64(Argc, Argv, "--serial", &Serial) ||
@@ -91,9 +115,15 @@ int main(int Argc, char** Argv)
         printf("Give --input or --output, not both\n");
         return EXAMPLE_FAILED;
     }
-    if (!Input && !Output && VidStdName == NULL)
+    if (Asi && VidStdName != NULL)
     {
-        printf("Nothing to do: give --input, --output or --vidstd; --help lists them\n");
+        printf("Give --vidstd or --asi, not both\n");
+        return EXAMPLE_FAILED;
+    }
+    if (!Input && !Output && VidStdName == NULL && !Asi)
+    {
+        printf("Nothing to do: give --input, --output, --vidstd or --asi; --help lists "
+               "them\n");
         return EXAMPLE_FAILED;
     }
 
@@ -111,9 +141,11 @@ int main(int Argc, char** Argv)
             return Example_Failed("DtapiVidStd2IoStd", Result);
     }
 
+    ExampleSuits Suits = Input ? IsSdiInput : (Output ? IsSdiOutput : IsSdi);
+    if (Asi)
+        Suits = Input ? IsAsiInput : (Output ? IsAsiOutput : IsAsi);
     DtHwFuncDesc Port;
-    Result = Example_FindPort(Serial, (int)PortNumber,
-                              Input ? IsSdiInput : (Output ? IsSdiOutput : IsSdi), &Port);
+    Result = Example_FindPort(Serial, (int)PortNumber, Suits, &Port);
     if (Result == DTAPI_E_NOT_FOUND)
     {
         printf("No port that suits\n");
@@ -149,6 +181,16 @@ int main(int Argc, char** Argv)
         Result = DtDevice_SetIoConfig(Device, &Config, 1);
         printf("%s  IOSTD %s %s  %s\n", Port.DeviceName, Example_IoStdName(Value),
                Example_VidStdName(SubValue), DtapiResult2Str(Result));
+        if (!Example_Succeeded(Result))
+            Exit = EXAMPLE_FAILED;
+    }
+
+    if (Asi && Exit == EXAMPLE_OK)
+    {
+        DtIoConfig Config = {
+            Port.Port, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1, {-1, -1}};
+        Result = DtDevice_SetIoConfig(Device, &Config, 1);
+        printf("%s  IOSTD ASI  %s\n", Port.DeviceName, DtapiResult2Str(Result));
         if (!Example_Succeeded(Result))
             Exit = EXAMPLE_FAILED;
     }

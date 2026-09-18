@@ -195,6 +195,35 @@ the header says which codes it returns and what each one means there.
 For the AV FIFO, `GetLastException` gives the text of the calling thread's last failure,
 beside the code the call returned.
 
+## DVB-ASI
+
+A port that carries ASI has `IsAsi` set in its `DtHwFuncDesc`. The same channels carry
+it as carry SDI: once the port's I/O standard is `DTAPI_IOCONFIG_ASI`, an output channel
+takes a transport stream with `DtOutpChannel_Write` and an input channel gives one with
+`DtInpChannel_Read`. Setting the I/O standard through the channel switches it between
+SDI and ASI:
+
+    DtOutpChannel_SetIoConfig(Out, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1, -1, -1);
+    DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_188, DTAPI_TXSTUFF_MODE_OFF);
+    DtOutpChannel_SetTsRateBps(Out, 40000000);
+    DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD);
+    DtOutpChannel_Write(Out, Packets, Size); // Whole packets, a multiple of 4 bytes
+    DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND);
+    ...
+    DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT);
+
+and on the other side:
+
+    DtInpChannel_SetIoConfig(In, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1, -1, -1);
+    DtInpChannel_SetRxMode(In, DTAPI_RXMODE_ST188);
+    DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV);
+    DtInpChannel_Read(In, Buffer, Size, 1000); // Waits up to a second for Size bytes
+
+The rate is in bits a second of 188-byte packets, also in the 204-byte modes, as in
+DTAPI. `DtInpChannel_GetTsRateBps` and `DtInpChannel_GetStatus` report what arrives;
+the flags say when the receive FIFO overflowed or the input lost sync, and when the
+transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all of this.
+
 ## Without a card
 
     CDTAPI_SIM=1 ./list_ports
@@ -207,8 +236,9 @@ process, so a configuration one program sets is gone for the next.
 ## Where to go next
 
 - [`Examples/README.md`](../Examples/README.md) lists example programs that configure a
-  port, detect a video standard, receive and transmit SDI frames, and receive and
-  transmit SMPTE ST 2110 video and audio, with the command lines to run them.
+  port, detect a video standard, receive and transmit SDI frames and ASI transport
+  streams, and receive and transmit SMPTE ST 2110 video and audio, with the command
+  lines to run them.
 - The headers are the reference. `cdtapi.h` documents every function above its
   declaration: what it does, what it writes, and every result code it returns.
 - [`migrating-from-the-wrapper.md`](migrating-from-the-wrapper.md), for an application

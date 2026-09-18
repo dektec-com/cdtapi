@@ -78,11 +78,13 @@ const char* Example_VidStdName(int VidStd);
 // none.
 bool Example_VidStdFromName(const char* Name, int* VidStd);
 
-// The name of an I/O standard value DtapiVidStd2IoStd gives, such as "3GSDI"; "?" for
-// any other.
+// The name of an I/O standard value, such as "3GSDI" or "ASI"; "?" for any other.
 const char* Example_IoStdName(int Value);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Sleeps for about Ms milliseconds.
 void Example_SleepMs(int Ms);
+
+// Milliseconds on a clock that only goes forward, from an arbitrary start.
+int64_t Example_NowMs(void);

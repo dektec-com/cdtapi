@@ -1,6 +1,6 @@
 # CDTAPI
 
-A native, open-source C API for DekTec SDI and SMPTE ST 2110 interfaces.
+A native, open-source C API for DekTec SDI, DVB-ASI and SMPTE ST 2110 interfaces.
 
 CDTAPI talks to the DekTec `DtPcie` driver directly over its ioctl interface. It
 contains no closed-source component, and needs none at run time: the driver is what it
@@ -74,11 +74,12 @@ is selected at run time with `CDTAPI_SIM=1`.
 | `Source/OAL/` | OS abstraction: `Linux/`, `Windows/`, and the `Sim/` emulator |
 | `Source/DtPcie/` | Commands of the DtPcie driver, with its vendored ABI under `Abi/` |
 | `Source/Device/` | Device scan, attach and I/O configuration |
-| `Source/Channel/` | SDI input and output channels |
+| `Source/Channel/` | Input and output channels, with an SDI and an ASI side each |
+| `Source/Ts/` | Transport-stream packets from the card's receive format, and ASI's 8b/10b code |
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/`, `Compat/`, `Conformance/` and `Bench/` suites |
-| `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames, and receive and transmit SMPTE ST 2110 video and audio |
+| `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames and ASI transport streams, and receive and transmit SMPTE ST 2110 video and audio |
 | `Scripts/` | Build and style-check entry points |
 | `Docs/` | Getting started, and migrating from the C wrapper |
 

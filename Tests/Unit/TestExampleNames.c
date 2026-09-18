@@ -79,7 +79,7 @@ DT_TEST(NoStandardHasNoName)
     DT_ASSERT_EQ(VidStd, 7);
 }
 
-// The I/O standards DtapiVidStd2IoStd gives have names.
+// The I/O standards DtapiVidStd2IoStd gives, and ASI, have names; another value has none.
 DT_TEST(IoStandardNames)
 {
     DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_SDI), "SDI");
@@ -87,7 +87,8 @@ DT_TEST(IoStandardNames)
     DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_3GSDI), "3GSDI");
     DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_6GSDI), "6GSDI");
     DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_12GSDI), "12GSDI");
-    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_ASI), "?");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_ASI), "ASI");
+    DT_ASSERT_STR(Example_IoStdName(DTAPI_IOCONFIG_INPUT), "?");
 }
 
 DT_TEST_MAIN("ExampleNames", DT_RUN(EveryHeaderStandardHasItsName),
