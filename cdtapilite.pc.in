@@ -3,7 +3,7 @@ libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/Include
 
 Name: CDtapiLite
-Description: Native open-source C API for DekTec SDI interfaces
+Description: Native open-source C API for DekTec SDI and SMPTE ST 2110 interfaces
 Version: @PROJECT_VERSION@
 URL: https://www.dektec.com
 Libs: -L"${libdir}" -lcdtapilite

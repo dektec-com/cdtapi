@@ -1,6 +1,6 @@
 # CDtapiLite
 
-A native, open-source C API for DekTec SDI interfaces.
+A native, open-source C API for DekTec SDI and SMPTE ST 2110 interfaces.
 
 CDtapiLite talks to the DekTec `DtPcie` driver directly over its documented ioctl
 interface. It contains no closed-source component, so an application that links it —
@@ -61,7 +61,7 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Source/Channel/` | SDI input and output channels |
 | `Source/Video/` | Video-standard tables and detection |
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
-| `Tests/` | `Unit/`, `Abi/`, `Sim/` and `Conformance/` suites |
+| `Tests/` | `Unit/`, `Abi/`, `Sim/`, `Compat/`, `Conformance/` and `Bench/` suites |
 | `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames, and receive and transmit SMPTE ST 2110 video and audio |
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |

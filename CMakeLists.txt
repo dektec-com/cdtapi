@@ -4,8 +4,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# 3.21 rather than the SDK's usual 3.15: CMakePresets schema v6 and the Visual Studio 18
-# generator both need it. This is the one deliberate deviation from the SDK convention.
 cmake_minimum_required(VERSION 3.21)
 
 # The major and minor number are those of the DTAPI whose behaviour CDtapiLite reproduces;
@@ -13,7 +11,7 @@ cmake_minimum_required(VERSION 3.21)
 # every property request, see Source/DtPcie/DtPcieCmd.c.
 project(CDtapiLite
     VERSION 6.13.0
-    DESCRIPTION "Native open-source C API for DekTec SDI interfaces"
+    DESCRIPTION "Native open-source C API for DekTec SDI and SMPTE ST 2110 interfaces"
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)
 

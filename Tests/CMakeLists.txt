@@ -128,6 +128,38 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/ResultCodes.inc" "${ResultCode
 cdtapilite_add_test(Result Unit/TestResult.c)
 target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Generated")
 
+# Every function the public headers declare, as an X-macro list for the conformance
+# suite. That suite takes the address of each, so a function that is declared and not
+# defined fails the link, and one that leaves a header fails the build.
+set(PublicHeaders
+    "${CMAKE_SOURCE_DIR}/Include/CDtapiLite.h"
+    "${CMAKE_SOURCE_DIR}/Include/CDtapiLite_AvFifo.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PublicHeaders})
+set(PublicFunctions "")
+foreach(PublicHeader IN LISTS PublicHeaders)
+    file(READ "${PublicHeader}" HeaderText)
+    string(REGEX MATCHALL "CDTAPILITE_API[^;(]+\\(" Declarations "${HeaderText}")
+    foreach(Declaration IN LISTS Declarations)
+        if(NOT Declaration MATCHES "define|__declspec|__attribute__")
+            string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*\\($" Unused
+                   "${Declaration}")
+            string(APPEND PublicFunctions "F(${CMAKE_MATCH_1})\n")
+        endif()
+    endforeach()
+endforeach()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/PublicFunctions.inc"
+     "${PublicFunctions}")
+
+# The whole interface called once against the emulator, which needs the emulated DTA-2110
+# for the AV FIFO.
+cdtapilite_add_test(Conformance Conformance/TestConformance.c)
+target_include_directories(test_Conformance PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/Generated")
+set_property(TEST Conformance APPEND PROPERTY
+    ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM=set:1")
+set_property(TEST Conformance APPEND PROPERTY
+    ENVIRONMENT_MODIFICATION "CDTAPILITE_SIM_DTA2110=set:1")
+
 # The names the example programs give video standards are checked against every video
 # standard the public header defines, read from the header at configure time.
 if(CDTAPILITE_BUILD_EXAMPLES)
