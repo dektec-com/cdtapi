@@ -356,13 +356,13 @@ static void ConvertNormal(DtAsiEnc* Enc, Cursor* C)
         if (!StartPacket(Enc, C))
             break;
 
-        // The packet's bytes, then the zeros that make it OutSize.
+        // The packet's bytes, then the zeros that make it OutSize. Among the zeros of
+        // ADD16 no byte of the packet is left.
         for (int Zeros = 0; Zeros < 2; Zeros++)
         {
-            int Want =
-                Zeros == 0
-                    ? Enc->InUsed - Enc->ByteIndex
-                    : (Enc->ByteIndex < Enc->InUsed ? 0 : Enc->OutSize - Enc->ByteIndex);
+            int Want = Enc->ByteIndex < Enc->InUsed
+                           ? (Zeros == 0 ? Enc->InUsed - Enc->ByteIndex : 0)
+                           : (Zeros == 0 ? 0 : Enc->OutSize - Enc->ByteIndex);
             if (Zeros == 0 && (size_t)Want > C->InLeft)
                 Want = (int)C->InLeft;
             while (C->OutLeft > 0 && Want > 0)

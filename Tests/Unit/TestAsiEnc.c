@@ -430,30 +430,46 @@ DT_TEST(CommasBeforePackets)
     free(Ts);
 }
 
-// ADD16 adds 16 zeros to each 188-byte packet; MIN16 drops the last 16 of each 204.
+// ADD16 adds 16 zeros to each 188-byte packet, in burst and in normal mode, also when the
+// room for symbols runs out among the zeros; the zeros of the last packet wait for more
+// input, as in DTAPI. MIN16 drops the last 16 bytes of each 204.
 DT_TEST(SixteenBytesMoreOrLess)
 {
     BuildDecoder();
-    uint8_t* Ts188 = Packets(3, 188);
+    uint8_t* Ts188 = Packets(4, 188);
     uint8_t* Ts204 = Packets(3, 204);
     DtAsiEnc Enc;
     DtAsiEnc_Init(&Enc);
     size_t NumSyms;
+    Decoded D = NewDecoded(4 * 204);
+    uint16_t* Syms;
 
-    DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_ADD16 | DTAPI_TXMODE_BURST));
-    DT_ASSERT_OK(DtAsiEnc_Start(&Enc));
-    uint16_t* Syms = EncodeAll(&Enc, Ts188, 3 * 188, 100, 50, &NumSyms);
-    Decoded D = NewDecoded(3 * 204);
-    Decode(&D, Syms, NumSyms, NULL);
-    DT_ASSERT(D.Valid);
-    DT_ASSERT_EQ(D.NumBytes, 3u * 204);
-    for (int n = 0; n < 3; n++)
+    const size_t OutSteps[] = {50, 7, 1};
+    for (int Mode = 0; Mode < 2; Mode++)
     {
-        DT_ASSERT_MEM(D.Bytes + n * 204, Ts188 + n * 188, 188);
-        for (int i = 188; i < 204; i++)
-            DT_ASSERT_EQ(D.Bytes[n * 204 + i], 0);
+        for (size_t s = 0; s < sizeof(OutSteps) / sizeof(OutSteps[0]); s++)
+        {
+            DT_ASSERT_OK(DtAsiEnc_SetTxMode(
+                &Enc, DTAPI_TXMODE_ADD16 | (Mode == 0 ? DTAPI_TXMODE_BURST : 0)));
+            DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 2000000));
+            DT_ASSERT_OK(DtAsiEnc_Start(&Enc));
+            Syms = EncodeAll(&Enc, Ts188, 4 * 188, 100, OutSteps[s], &NumSyms);
+            D.NumBytes = D.NumK28 = D.NumSyms = 0;
+            D.Rd = 1;
+            D.Valid = true;
+            Decode(&D, Syms, NumSyms, NULL);
+            DT_ASSERT(D.Valid);
+            DT_ASSERT(D.NumBytes >= 3u * 204 + 188);
+            for (int n = 0; n < 3; n++)
+            {
+                DT_ASSERT_MEM(D.Bytes + n * 204, Ts188 + n * 188, 188);
+                for (int i = 188; i < 204; i++)
+                    DT_ASSERT_EQ(D.Bytes[n * 204 + i], 0);
+            }
+            DT_ASSERT_MEM(D.Bytes + 3 * 204, Ts188 + 3 * 188, 188);
+            free(Syms);
+        }
     }
-    free(Syms);
 
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_MIN16));
     DT_ASSERT_OK(DtAsiEnc_Start(&Enc));
