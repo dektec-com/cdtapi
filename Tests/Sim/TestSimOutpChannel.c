@@ -212,13 +212,20 @@ static bool WaitForFrames(int Count)
     }
 }
 
-// Waits until the card has sent Count frames and holds. The emulator is told to stop
-// after those frames as well: it keeps the last few, and on a loaded machine a test can
-// be away long enough for the black frames that follow to push the frames it is about to
-// compare out of that store.
-static bool SentAndHeld(DtOutpChannel* Channel, int Count)
+// Starts sending, having told the emulator to stop after Count frames. The emulator keeps
+// the last few frames it sent, and the black frames that follow the ones a test wrote
+// would push those out of that store before a test on a slow or busy machine compares
+// them. The limit is set before sending starts: by the time the frames are counted, they
+// can already be gone.
+static unsigned int SendUpTo(DtOutpChannel* Channel, int Count)
 {
     SimDtPcie_SetTxFrameLimit(PORT - 1, Count);
+    return DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
+}
+
+// Waits until the card has sent Count frames and holds.
+static bool SentAndHeld(DtOutpChannel* Channel, int Count)
+{
     return WaitForFrames(Count) &&
            DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD) == DTAPI_OK;
 }
@@ -712,7 +719,7 @@ static void FramesInPieces(int VidStd, int Bits, int NumFrames, int* DtFailures)
     DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, NumFrames * (int)DtSdiFrame_RawSize(&Layout, Bits));
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, NumFrames));
     DT_ASSERT(SentAndHeld(Fix.Channel, NumFrames));
     for (i = 0; i < NumFrames; i++)
     {
@@ -766,7 +773,7 @@ DT_TEST(SdStartsAtField1)
     free(Frame);
     DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 1, 10));
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 1));
     DT_ASSERT(SentAndHeld(Fix.Channel, 1));
     DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 1));
     FINISH(Fix);
@@ -791,7 +798,7 @@ DT_TEST(AcrossTheEndOfTheBuffer)
     int i;
     for (i = 0; i < 18; i++)
         DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 20));
     for (i = 18; i < 20; i++)
         DT_ASSERT_OK(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, (uint32_t)i, 10));
 
@@ -904,7 +911,7 @@ DT_TEST(WriteFrameChecksTheSdStart)
     free(Frame);
 
     DT_ASSERT_OK(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_525I59_94, 1, 10, 100));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 1));
     DT_ASSERT(SentAndHeld(Fix.Channel, 1));
     DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 1));
     FINISH(Fix);
@@ -940,7 +947,7 @@ static void WholeFrames(int VidStd, int Bits, int NumFrames, int* DtFailures)
     DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, NumFrames * (int)DtSdiFrame_RawSize(&Layout, Bits));
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, NumFrames));
     DT_ASSERT(SentAndHeld(Fix.Channel, NumFrames));
     for (i = 0; i < NumFrames; i++)
     {
@@ -998,7 +1005,7 @@ DT_TEST(WriteFrameTimesOut)
     DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, 18 * 7425000);
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 19));
     DT_ASSERT_OK(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 18, 10, -1));
     DT_ASSERT(SentAndHeld(Fix.Channel, 19));
     DT_ASSERT(SentFrameIs(17, DTAPI_VIDSTD_1080I50, 17));
@@ -1155,7 +1162,7 @@ DT_TEST(BlackFramesWhenWritingStops)
     DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix.Channel, &Status, &Latched));
     DT_ASSERT(Status == 0 && Latched == 0);
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 4));
     DT_ASSERT(SentAndHeld(Fix.Channel, 4));
     DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 0));
     DT_ASSERT(SentFrameIs(1, DTAPI_VIDSTD_525I59_94, 1));
@@ -1191,7 +1198,7 @@ DT_TEST(BlackFrameBeforeAPartlyWrittenFrame)
     DT_ASSERT(Frame != NULL);
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)(Size / 2 / 4 * 4)));
 
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, SIM_TX_KEPT_FRAMES - 2));
     DT_ASSERT(WaitForFrames(2));
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame + Size / 2 / 4 * 4,
                                      (int)(Size - Size / 2 / 4 * 4)));
@@ -1405,7 +1412,7 @@ DT_TEST(TimeForTheSecondFrame)
     }
 
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frames[0], (int)Size));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 3));
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frames[1], (int)Size));
     int Status;
     int Latched;

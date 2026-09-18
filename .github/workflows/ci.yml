@@ -22,11 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The version, not just the program: another major version formats differently.
+      # The exact version, not just the program: builds of the same major version
+      # differ in what they format, and a distribution ships whichever it ships.
       - name: Install clang-format
         run: |
-          sudo apt-get update && sudo apt-get install -y clang-format-18
-          echo "CLANG_FORMAT=clang-format-18" >> $GITHUB_ENV
+          python3 -m pip install --user --break-system-packages clang-format==18.1.8
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       # The binding gate. The pre-commit hook runs the same script, but a contributor
       # without it installed has to be stopped here.
