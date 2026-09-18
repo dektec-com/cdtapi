@@ -334,7 +334,7 @@
 //
 // Each DTAPI_IOCONFIG_ value also has a name, which is what actually travels to the
 // driver: the macro name without its DTAPI_IOCONFIG_ prefix. DTAPI_IOCONFIG_2160P50 is
-// sent as "2160P50". See Documentation/0002-io-configuration-tables.md.
+// sent as "2160P50"; plan 0002 says why.
 //
 // Every video standard shares its number with the I/O configuration sub-value of the
 // same name: DTAPI_VIDSTD_1080I50 and DTAPI_IOCONFIG_1080I50 are both 67.

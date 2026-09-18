@@ -30,7 +30,7 @@
 // The kinds and parents are what DTAPI validates a configuration against. They are
 // derived from DekTec's capability definitions by Scripts/extract_ioconfig_relation.py,
 // which repeats the derivation of DekTec's CapParser; see
-// Documentation/0003-device-layer.md.
+// plan 0003.
 //
 // No include guard: the file is meant to be included more than once.
 

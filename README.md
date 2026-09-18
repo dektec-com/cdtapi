@@ -9,7 +9,7 @@ FFmpeg in particular — stays redistributable.
 - **Licence:** BSD-3-Clause. See [LICENSE](LICENSE).
 - **Language:** C11. No dependencies beyond libc and the OS API.
 - **Platforms:** Linux and Windows.
-- **Status:** early development. See [Documentation](Documentation/) for the design.
+- **Status:** early development.
 
 ## Why it exists
 
@@ -63,7 +63,6 @@ is selected at run time with `CDTAPI_SIM=1`.
 | `Source/Tables/` | Tables generated from the SDK capability descriptions |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/`, `Compat/`, `Conformance/` and `Bench/` suites |
 | `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames, and receive and transmit SMPTE ST 2110 video and audio |
-| `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 
 ## Relationship to DTAPI

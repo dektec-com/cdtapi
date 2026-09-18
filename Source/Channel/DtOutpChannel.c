@@ -11,7 +11,7 @@
 // SdiTxImpl_Bb2 does, codes each line into its place behind a header, and moves the
 // write offset on when a frame is complete. A thread keeps the signal while sending by
 // writing a black frame whenever less than a frame is left. See
-// Documentation/0008-transmit-channel.md for where it departs from DTAPI.
+// Plan 0008 holds where it departs from DTAPI.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

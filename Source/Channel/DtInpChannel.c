@@ -9,7 +9,7 @@
 // does what those layers do for raw SDI frames, directly on the ring: it follows the
 // write offset the driver reports, checks each frame's header, converts the frame's
 // coded lines into the caller's buffer and sets the read offset past it. See
-// Documentation/0007-receive-channel.md for where it departs from DTAPI.
+// Plan 0007 holds where it departs from DTAPI.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

@@ -35,3 +35,7 @@ __pycache__/
 *.swp
 Thumbs.db
 .DS_Store
+
+# .-.-.- The design documents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# They live in dektec-com/cdtapi-design; see CONTRIBUTING.md.
+Documentation/

@@ -104,6 +104,17 @@ HistoryHits=$(while IFS= read -r File; do
 done < <(OwnFiles) | awk '{ s += $1 } END { print s + 0 }')
 [ "$HistoryHits" -ne 0 ] && Failures=$((Failures + HistoryHits))
 
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- No internal documents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+#
+# The design documents live in a repository of their own, because they describe DTAPI's
+# internals and DekTec's own infrastructure. This repository is public.
+#
+echo "Internal documents stay out"
+Internal=$(git ls-files 'Documentation/*' 'Documentation' 2>/dev/null | head -5)
+if [ -n "$Internal" ]; then
+    Fail "Documentation/ belongs in dektec-com/cdtapi-design, not here: $(echo $Internal)"
+fi
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 # The major version decides how code is formatted, so another one reformats files that

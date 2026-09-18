@@ -120,6 +120,11 @@ painful and is usually only done halfway.
 
 ## Design documents
 
-Design decisions are recorded in [`Documentation/`](Documentation/) as numbered
-documents. Add a new one rather than rewriting an old one; see
-[Documentation/README.md](Documentation/README.md).
+Design decisions are recorded as numbered documents, and a decision that changes gets a
+new document rather than a rewrite of the old one. They are not in this repository: they
+describe how DTAPI behaves, how DekTec builds and ships its SDK, and why this library
+exists, which is not ours to publish. They live in `dektec-com/cdtapi-design`, and a
+comment or a commit message refers to them by number, such as "plan 0009".
+
+The style check refuses a file under `Documentation/` here, so that an internal document
+cannot walk back in by accident.
