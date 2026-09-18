@@ -1,0 +1,98 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtTxBackend.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+//
+// CDTAPI - What an output channel asks of the side that transmits
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
+#pragma once
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+// CDTAPI includes
+#include "Device/DtDevice.h" // The device and its port capabilities.
+#include "DtPcieCmd.h"       // DtIoConfig.
+#include "OAL/OsThread.h"    // The channel's lock.
+#include "cdtapi.h"          // Results.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtTxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// DTAPI's AsiSdiOutpChannel_Bb2 keeps one implementation of the port's transmitter, an
+// AsiTxImpl_Bb2 or an SdiTxImpl_Bb2 by the I/O standard, as its input channel does. Here
+// the implementation is a DtTx, a struct that each side's own begins with, and its
+// functions are the side's DtTxBackend, as DtRxBackend.h describes for the input.
+// DtOutpChannel.c keeps the checks that do not depend on the side, the lock and
+// detaching, and calls these with the lock held. A side may release the lock while it
+// waits, and has the channel's lock and its count of waiting detaches for that; after a
+// wait it gives DTAPI_E_CANCELLED while a detach waits.
+//
+// A function that is NULL gives the default the function says.
+//
+
+// The deadline of a wait without a time limit.
+#define DT_TX_NO_DEADLINE UINT64_MAX
+
+typedef struct DtTxBackend DtTxBackend;
+
+// The port the channel attached to, and what a side needs of the channel to wait. Device
+// is the channel's own, and lives as long as the side does.
+typedef struct DtTxPort
+{
+    DtDevice* Device;
+    int Port; // From 1
+    int PortIndex;
+    uint32_t Caps;        // DT_CAP_ flags of the port
+    OsMutex* Lock;        // The channel's
+    const int* Detachers; // Detaches waiting for a write to return
+} DtTxPort;
+
+// What every side has: its functions, its port, and the transmit mode and control, which
+// the checks in DtOutpChannel.c read.
+typedef struct DtTx
+{
+    const DtTxBackend* Ops;
+    DtTxPort Port;
+    int TxMode;
+    int TxControl;
+} DtTx;
+
+struct DtTxBackend
+{
+    // Lets go of what the side holds, ignoring failures, and frees Tx.
+    void (*Release)(DtTx* Tx);
+
+    // The side's part of SetTxControl, ClearFifo, GetFifoLoad, GetFifoSize,
+    // GetMaxFifoSize and GetFlags.
+    DtapiResult (*SetTxControl)(DtTx* Tx, int TxControl);
+    DtapiResult (*ClearFifo)(DtTx* Tx);
+    DtapiResult (*GetFifoLoad)(DtTx* Tx, int* FifoLoad);
+    DtapiResult (*GetFifoSize)(DtTx* Tx, int* FifoSize);
+    DtapiResult (*GetMaxFifoSize)(DtTx* Tx, int* MaxFifoSize);
+    DtapiResult (*GetFlags)(DtTx* Tx, int* Status, int* Latched);
+
+    // SetTxMode once DtOutpChannel.c has checked what does not depend on the side.
+    DtapiResult (*SetTxMode)(DtTx* Tx, int TxMode, int StuffMode);
+
+    // What the side does after DtOutpChannel.c has set Config on the port, the side
+    // staying the same.
+    DtapiResult (*ApplyIoConfig)(DtTx* Tx, const DtIoConfig* Config);
+
+    // Write, while not idle and with no other write going on.
+    DtapiResult (*Write)(DtTx* Tx, const uint8_t* Data, size_t Size);
+
+    // WriteFrame, likewise, waiting for room until the monotonic clock reaches Deadline.
+    // NULL gives DTAPI_E_NOT_SDI_MODE.
+    DtapiResult (*WriteFrame)(DtTx* Tx, const uint8_t* Frame, int FrameSize,
+                              uint64_t Deadline);
+
+    // Wakes a write that waits for room, for a detach.
+    void (*Wake)(DtTx* Tx);
+
+    // A detach with DTAPI_WAIT_UNTIL_SENT while sending: returns when what was written
+    // has gone out, or when it stalls.
+    void (*WaitUntilSent)(DtTx* Tx);
+};

@@ -67,6 +67,7 @@ set(CDTAPI_SOURCES
     Source/Channel/DtInpChannel.c
     Source/Channel/DtSdiRx.c
     Source/Channel/DtOutpChannel.c
+    Source/Channel/DtSdiTx.c
     Source/Core/DtAlloc.c
     Source/Core/DtBuf.c
     Source/Core/DtRing.c
