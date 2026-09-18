@@ -176,3 +176,23 @@ DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue)
 
     return DTAPI_OK;
 }
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_CheckGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtIoConfig_CheckGroup(int Group)
+{
+    if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
+        return DTAPI_E_INVALID_ARG;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_IsCapOfGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtIoConfig_IsCapOfGroup(int Code, int Group)
+{
+    if (!IsCode(Code) || DtIoConfig_CheckGroup(Group) != DTAPI_OK)
+        return false;
+    if (IsKind(Group, DT_IOCFG_BOOLIO))
+        return Code == Group;
+    return IsKind(Code, DT_IOCFG_VALUE) && HasParent(Code, Group);
+}

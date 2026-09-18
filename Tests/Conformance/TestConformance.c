@@ -174,8 +174,15 @@ DT_TEST(DeviceCalls)
     DT_ASSERT(ToD.Seconds > 0);
 
     DT_ASSERT_OK(DtDevice_SetToInput(Device, Port.Port));
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, Port.Port, DTAPI_IOCONFIG_IODIR,
-                                      DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT));
+    DtIoConfig Config = {Port.Port,
+                         DTAPI_IOCONFIG_IODIR,
+                         DTAPI_IOCONFIG_INPUT,
+                         DTAPI_IOCONFIG_INPUT,
+                         {-1, -1}};
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, &Config, 1));
+    Config.Value = Config.SubValue = 0;
+    DT_ASSERT_OK(DtDevice_GetIoConfig(Device, &Config, 1));
+    DT_ASSERT_EQ(Config.Value, DTAPI_IOCONFIG_INPUT);
 
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     DT_ASSERT(IsOneOf(DtDevice_DetectVidStd(Device, Port.Port, &VidStd), DTAPI_OK,
@@ -271,8 +278,12 @@ DT_TEST(OutputChannelCalls)
     DtDevice* Device = AttachTo(&Port);
     DT_ASSERT(Device != NULL);
     DT_ASSERT_OK(DtDevice_SetToOutput(Device, Port.Port));
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, Port.Port, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50));
+    DtIoConfig Config = {Port.Port,
+                         DTAPI_IOCONFIG_IOSTD,
+                         DTAPI_IOCONFIG_HDSDI,
+                         DTAPI_IOCONFIG_1080I50,
+                         {-1, -1}};
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, &Config, 1));
 
     DtOutpChannel* Channel = DtOutpChannel_Alloc();
     DT_ASSERT(Channel != NULL);

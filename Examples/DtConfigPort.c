@@ -145,8 +145,8 @@ int main(int Argc, char** Argv)
 
     if (VidStdName != NULL && Exit == EXAMPLE_OK)
     {
-        Result = DtDevice_SetIoConfig(Device, Port.Port, DTAPI_IOCONFIG_IOSTD, Value,
-                                      SubValue);
+        DtIoConfig Config = {Port.Port, DTAPI_IOCONFIG_IOSTD, Value, SubValue, {-1, -1}};
+        Result = DtDevice_SetIoConfig(Device, &Config, 1);
         printf("%s  IOSTD %s %s  %s\n", Port.DeviceName, Example_IoStdName(Value),
                Example_VidStdName(SubValue), DtapiResult2Str(Result));
         if (!Example_Succeeded(Result))

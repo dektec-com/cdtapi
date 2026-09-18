@@ -247,6 +247,19 @@ typedef struct DtDetVidStd
     int OriginalLinkStd;
 } DtDetVidStd;
 
+// One I/O configuration of a port, as DTAPI's DtIoConfig. Group, Value and SubValue are
+// DTAPI_IOCONFIG_ codes, -1 for none. ParXtra holds what some values take besides: the
+// port a double-buffered or monitor output copies, numbered from 1, in ParXtra[0]; the
+// ISI of a loop-through to a transport stream in ParXtra[1]; -1 where nothing is taken.
+typedef struct DtIoConfig
+{
+    int Port; // Numbered from 1
+    int Group;
+    int Value;
+    int SubValue;
+    int64_t ParXtra[2];
+} DtIoConfig;
+
 typedef struct DtDeviceC DtDevice;
 
 // Allocates a detached device object. Returns NULL when memory runs out.
@@ -268,12 +281,30 @@ CDTAPI_API DtapiResult DtDevice_AttachToSerial(DtDevice* Device, int64_t SerialN
 // Detaches from the device.
 CDTAPI_API DtapiResult DtDevice_Detach(DtDevice* Device);
 
-// Sets one I/O configuration of a port, numbered from 1. Returns DTAPI_E_OBSOLETE_FW or
-// DTAPI_E_TAINTED_FW for a device whose firmware is, DTAPI_E_NO_SUCH_PORT for a port the
-// device does not have, and DTAPI_E_INVALID_ARG for a combination of group, value and
-// sub-value that is no configuration; otherwise the driver's result.
-CDTAPI_API DtapiResult DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group,
-                                            int Value, int SubValue);
+// Sets the Count I/O configurations in Configs, which the driver applies together or not
+// at all, so that a port and the ports that copy it change at once. Every entry is
+// checked before any is applied.
+//
+// Returns DTAPI_E_INVALID_ARG for a negative Count or a null Configs with a Count above
+// 0; DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW for a device whose firmware is; for the
+// first entry that fails, DTAPI_E_NO_SUCH_PORT for a port the device does not have and
+// DTAPI_E_INVALID_ARG for a combination of group, value and sub-value that is no
+// configuration; DTAPI_E_INVALID_ISI for an ISI outside 0 to 255; otherwise the driver's
+// result. A Count of 0 does nothing.
+CDTAPI_API DtapiResult DtDevice_SetIoConfig(DtDevice* Device, const DtIoConfig* Configs,
+                                            int Count);
+
+// Reads the Count I/O configurations Configs names by Port and Group, and fills in their
+// Value, SubValue and ParXtra, which are -1 wherever this fails.
+//
+// Returns DTAPI_E_INVALID_ARG for a negative Count or a null Configs with a Count above
+// 0; for the first entry that fails, DTAPI_E_NO_SUCH_PORT for a port the device does not
+// have, DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW for a device whose firmware is,
+// DTAPI_E_INVALID_ARG for a Group that is neither a group nor a boolean I/O capability,
+// and DTAPI_E_NOT_SUPPORTED for a group the port has no capability of; otherwise the
+// driver's result. A Count of 0 does nothing.
+CDTAPI_API DtapiResult DtDevice_GetIoConfig(DtDevice* Device, DtIoConfig* Configs,
+                                            int Count);
 
 // Makes a port an output: DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT.
 CDTAPI_API DtapiResult DtDevice_SetToOutput(DtDevice* Device, int Port);

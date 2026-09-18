@@ -493,55 +493,123 @@ DtapiResult DtDevice_Detach(DtDevice* Device)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFirmware -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The checks of DtDevice::SetIoConfig, in its order. DTAPI's two extra parameters are
-// -1, as DtDevice::SetIoConfig defaults them.
-//
-DtapiResult DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
-                                 int SubValue)
+static DtapiResult CheckFirmware(const DtDevice* Device)
 {
-    if (Device == NULL)
-        return DTAPI_E_INVALID_ARG;
-    if (Device->Drv == NULL)
-        return DTAPI_E_NOT_ATTACHED;
-
     if (Device->Info.FirmwareStatus == DT_FWSTATUS_OBSOLETE)
         return DTAPI_E_OBSOLETE_FW;
     if (Device->Info.FirmwareStatus == DT_FWSTATUS_TAINTED)
         return DTAPI_E_TAINTED_FW;
+    return DTAPI_OK;
+}
 
-    if (Port < 1 || Port > Device->NumPublicPorts)
-        return DTAPI_E_NO_SUCH_PORT;
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The checks of DtDevice::SetIoConfig(DtIoConfig*, int), in its order: the firmware,
+// then each entry's port and combination, before the driver is asked to apply them all.
+//
+DtapiResult DtDevice_SetIoConfig(DtDevice* Device, const DtIoConfig* Configs, int Count)
+{
+    if (Device == NULL || Count < 0 || (Configs == NULL && Count > 0))
+        return DTAPI_E_INVALID_ARG;
+    if (Device->Drv == NULL)
+        return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = DtIoConfig_IsValid(Group, Value, SubValue);
-    if (Result != DTAPI_OK)
+    DtapiResult Result = CheckFirmware(Device);
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        if (Configs[i].Port < 1 || Configs[i].Port > Device->NumPublicPorts)
+            Result = DTAPI_E_NO_SUCH_PORT;
+        else
+            Result = DtIoConfig_IsValid(Configs[i].Group, Configs[i].Value,
+                                        Configs[i].SubValue);
+    }
+    if (Result != DTAPI_OK || Count == 0)
         return Result;
+    return DtPcieCmd_SetIoConfigList(Device->Drv, Configs, Count);
+}
 
-    DtIoConfig Config;
-    Config.Port = Port;
-    Config.Group = Group;
-    Config.Value = Value;
-    Config.SubValue = SubValue;
-    Config.ParXtra[0] = -1;
-    Config.ParXtra[1] = -1;
-    return DtPcieCmd_SetIoConfig(Device->Drv, &Config);
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortHasGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Whether the port at PortIndex has a capability of Group, as DtDevice::GetIoConfig
+// requires: any of the capabilities GetGroupCaps collects for it. The driver reports a
+// capability as a property named CAP_ and the code's name; one it does not report, the
+// port does not have.
+//
+static bool PortHasGroup(const DtDevice* Device, int PortIndex, int Group)
+{
+    for (int Code = 0; Code < DtIoConfig_Count(); Code++)
+    {
+        if (!DtIoConfig_IsCapOfGroup(Code, Group))
+            continue;
+        char Name[4 + DT_PROPERTY_STR_SIZE] = "CAP_";
+        bool Has = false;
+        if (DtIoConfig_GetName(Code, Name + 4, sizeof(Name) - 4) == DTAPI_OK &&
+            DtPcieCmd_GetPropertyBool(Device->Drv, Name, PortIndex, &Has) == DTAPI_OK &&
+            Has)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The checks of DtDevice::GetIoConfig for each entry, in its order: the port, the
+// firmware, the group and whether the port has it. Every entry is -1 until the driver
+// has answered for all of them.
+//
+DtapiResult DtDevice_GetIoConfig(DtDevice* Device, DtIoConfig* Configs, int Count)
+{
+    if (Device == NULL || Count < 0 || (Configs == NULL && Count > 0))
+        return DTAPI_E_INVALID_ARG;
+    for (int i = 0; i < Count; i++)
+    {
+        Configs[i].Value = Configs[i].SubValue = -1;
+        Configs[i].ParXtra[0] = Configs[i].ParXtra[1] = -1;
+    }
+    if (Device->Drv == NULL)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtapiResult Result = DTAPI_OK;
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        if (Configs[i].Port < 1 || Configs[i].Port > Device->NumPublicPorts)
+            Result = DTAPI_E_NO_SUCH_PORT;
+        else if ((Result = CheckFirmware(Device)) != DTAPI_OK)
+            break;
+        else if ((Result = DtIoConfig_CheckGroup(Configs[i].Group)) != DTAPI_OK)
+            break;
+        else if (!PortHasGroup(Device, Configs[i].Port - 1, Configs[i].Group))
+            Result = DTAPI_E_NOT_SUPPORTED;
+    }
+    if (Result != DTAPI_OK || Count == 0)
+        return Result;
+    return DtPcieCmd_GetIoConfigList(Device->Drv, Configs, Count);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetDirection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static DtapiResult SetDirection(DtDevice* Device, int Port, int Direction)
+{
+    DtIoConfig Config = {Port, DTAPI_IOCONFIG_IODIR, Direction, Direction, {-1, -1}};
+    return DtDevice_SetIoConfig(Device, &Config, 1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetToOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtDevice_SetToOutput(DtDevice* Device, int Port)
 {
-    return DtDevice_SetIoConfig(Device, Port, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
-                                DTAPI_IOCONFIG_OUTPUT);
+    return SetDirection(Device, Port, DTAPI_IOCONFIG_OUTPUT);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetToInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtDevice_SetToInput(DtDevice* Device, int Port)
 {
-    return DtDevice_SetIoConfig(Device, Port, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
-                                DTAPI_IOCONFIG_INPUT);
+    return SetDirection(Device, Port, DTAPI_IOCONFIG_INPUT);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetTimeOfDay -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

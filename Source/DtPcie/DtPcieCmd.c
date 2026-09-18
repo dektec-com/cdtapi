@@ -11,6 +11,7 @@
 #include <string.h>
 
 // CDTAPI includes
+#include "Core/DtAlloc.h"   // Requests whose size depends on their content.
 #include "DtIoConfig.h"     // I/O configuration codes to names and back.
 #include "DtPcieAbi.h"      // Vendored driver structures and IOCTL codes.
 #include "DtPcieCmd.h"      // Interface being implemented.
@@ -38,53 +39,6 @@
 #define DT_DRIVER_MIN_MAJOR 1
 #define DT_DRIVER_MIN_MINOR 3
 #define DT_DRIVER_MIN_MICRO 1
-
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= I/O configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-//
-// The driver's I/O configuration commands end in a flexible array, one element per
-// configuration. CDTAPI only ever sends one, so each request is laid out here with a
-// single element in place of the array. The assertions hold these to exactly the bytes
-// DTAPI sends: the size of the vendored structure plus one element.
-//
-
-typedef struct IoConfigGetIn
-{
-    DtIoctlInputDataHdr m_CmdHdr;
-    Int m_IoConfigCount;
-    DtIoctlIoConfigId m_IoCfgId;
-} IoConfigGetIn;
-
-typedef struct IoConfigGetOut
-{
-    Int m_IoConfigCount;
-    DtIoctlIoConfigValue m_IoCfgValue;
-} IoConfigGetOut;
-
-typedef struct IoConfigSetIn
-{
-    DtIoctlInputDataHdr m_CmdHdr;
-    Int m_IoConfigCount;
-    DtIoctlIoConfig m_IoCfgPars;
-} IoConfigSetIn;
-
-_Static_assert(offsetof(IoConfigGetIn, m_IoCfgId) ==
-                   offsetof(DtIoctlIoConfigCmdGetIoConfigInput, m_IoCfgId),
-               "IoConfigGetIn must match the driver's layout");
-_Static_assert(sizeof(IoConfigGetIn) ==
-                   sizeof(DtIoctlIoConfigCmdGetIoConfigInput) + sizeof(DtIoctlIoConfigId),
-               "IoConfigGetIn must be the driver's size for one configuration");
-_Static_assert(offsetof(IoConfigGetOut, m_IoCfgValue) ==
-                   offsetof(DtIoctlIoConfigCmdGetIoConfigOutput, m_IoCfgValue),
-               "IoConfigGetOut must match the driver's layout");
-_Static_assert(sizeof(IoConfigGetOut) == sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) +
-                                             sizeof(DtIoctlIoConfigValue),
-               "IoConfigGetOut must be the driver's size for one configuration");
-_Static_assert(offsetof(IoConfigSetIn, m_IoCfgPars) ==
-                   offsetof(DtIoctlIoConfigCmdSetIoConfigInput, m_IoCfgPars),
-               "IoConfigSetIn must match the driver's layout");
-_Static_assert(sizeof(IoConfigSetIn) ==
-                   sizeof(DtIoctlIoConfigCmdSetIoConfigInput) + sizeof(DtIoctlIoConfig),
-               "IoConfigSetIn must be the driver's size for one configuration");
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -469,71 +423,124 @@ DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetIoConfigList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The request and the answer end in an array of one element per configuration, as
+// DtProxyCORE_IOCONFIG::Get lays them out. The answers are converted into a copy first,
+// so that a list the driver answers only in part leaves every entry as it was.
+//
+DtapiResult DtPcieCmd_GetIoConfigList(OsDrv* Drv, DtIoConfig* Configs, int Count)
+{
+    if (Drv == NULL || Configs == NULL || Count < 1)
+        return DTAPI_E_INVALID_ARG;
+
+    const size_t InSize = sizeof(DtIoctlIoConfigCmdGetIoConfigInput) +
+                          (size_t)Count * sizeof(DtIoctlIoConfigId);
+    const size_t OutSize = sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) +
+                           (size_t)Count * sizeof(DtIoctlIoConfigValue);
+    DtIoctlIoConfigCmdGetIoConfigInput* In =
+        (DtIoctlIoConfigCmdGetIoConfigInput*)DtAlloc_Malloc(InSize);
+    DtIoctlIoConfigCmdGetIoConfigOutput* Out =
+        (DtIoctlIoConfigCmdGetIoConfigOutput*)DtAlloc_Malloc(OutSize);
+    DtIoConfig* Got = (DtIoConfig*)DtAlloc_Malloc((size_t)Count * sizeof(DtIoConfig));
+    DtapiResult Result = DTAPI_OK;
+    if (In == NULL || Out == NULL || Got == NULL)
+    {
+        Result = DTAPI_E_OUT_OF_MEM;
+        goto Cleanup;
+    }
+
+    memset(In, 0, InSize);
+    memset(Out, 0, OutSize);
+    InitHeader(&In->m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
+    In->m_IoConfigCount = Count;
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        In->m_IoCfgId[i].m_PortIndex = Configs[i].Port - 1;
+        Result = DtIoConfig_GetName(Configs[i].Group, In->m_IoCfgId[i].m_Group,
+                                    sizeof(In->m_IoCfgId[i].m_Group));
+    }
+    if (Result != DTAPI_OK)
+        goto Cleanup;
+
+    Result =
+        DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, Out, OutSize);
+    if (!DT_SUCCEEDED(Result))
+        goto Cleanup;
+
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        DtIoctlIoConfigValue* Value = &Out->m_IoCfgValue[i];
+        Got[i] = Configs[i];
+        Result = CodeFromDriver(Value->m_Value, sizeof(Value->m_Value), &Got[i].Value);
+        if (Result == DTAPI_OK)
+            Result = CodeFromDriver(Value->m_SubValue, sizeof(Value->m_SubValue),
+                                    &Got[i].SubValue);
+        Got[i].ParXtra[0] = Value->m_ParXtra[0];
+        Got[i].ParXtra[1] = Value->m_ParXtra[1];
+        if (IsBuddyPort(&Got[i]))
+            Got[i].ParXtra[0] = Value->m_ParXtra[0] + 1;
+    }
+    if (Result == DTAPI_OK)
+        memcpy(Configs, Got, (size_t)Count * sizeof(DtIoConfig));
+
+Cleanup:
+    DtAlloc_Free(In);
+    DtAlloc_Free(Out);
+    DtAlloc_Free(Got);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SetIoConfigList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtPcieCmd_SetIoConfigList(OsDrv* Drv, const DtIoConfig* Configs, int Count)
+{
+    if (Drv == NULL || Configs == NULL || Count < 1)
+        return DTAPI_E_INVALID_ARG;
+
+    const size_t InSize = sizeof(DtIoctlIoConfigCmdSetIoConfigInput) +
+                          (size_t)Count * sizeof(DtIoctlIoConfig);
+    DtIoctlIoConfigCmdSetIoConfigInput* In =
+        (DtIoctlIoConfigCmdSetIoConfigInput*)DtAlloc_Malloc(InSize);
+    if (In == NULL)
+        return DTAPI_E_OUT_OF_MEM;
+
+    memset(In, 0, InSize);
+    InitHeader(&In->m_CmdHdr, DT_IOCONFIG_CMD_SET_IOCONFIG);
+    In->m_IoConfigCount = Count;
+
+    DtapiResult Result = DTAPI_OK;
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        DtIoctlIoConfig* Pars = &In->m_IoCfgPars[i];
+        Result = ConfigToDriver(&Configs[i], Pars);
+
+        // DTAPI skips the driver's exclusive-access check when the configured port is
+        // the one its proxy addresses. A device-level request addresses port index -1, so
+        // that is only ever the case for a port number of 0, which the device layer has
+        // refused before it gets here.
+        Pars->m_SkipExclAccessCheck = (Pars->m_PortIndex == -1) ? 1 : 0;
+    }
+
+    if (Result == DTAPI_OK)
+        Result =
+            DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, NULL, 0);
+    DtAlloc_Free(In);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtPcieCmd_GetIoConfig(OsDrv* Drv, DtIoConfig* Config)
 {
-    if (Drv == NULL || Config == NULL)
-        return DTAPI_E_INVALID_ARG;
-
-    IoConfigGetIn In;
-    memset(&In, 0, sizeof(In));
-    InitHeader(&In.m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
-    In.m_IoConfigCount = 1;
-    In.m_IoCfgId.m_PortIndex = Config->Port - 1;
-    DtapiResult Result = DtIoConfig_GetName(Config->Group, In.m_IoCfgId.m_Group,
-                                            sizeof(In.m_IoCfgId.m_Group));
-    if (Result != DTAPI_OK)
-        return Result;
-
-    IoConfigGetOut Out;
-    memset(&Out, 0, sizeof(Out));
-    Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), &Out,
-                             sizeof(Out));
-    if (!DT_SUCCEEDED(Result))
-        return Result;
-
-    DtIoctlIoConfigValue* Value = &Out.m_IoCfgValue;
-    Result = CodeFromDriver(Value->m_Value, sizeof(Value->m_Value), &Config->Value);
-    if (Result != DTAPI_OK)
-        return Result;
-    Result =
-        CodeFromDriver(Value->m_SubValue, sizeof(Value->m_SubValue), &Config->SubValue);
-    if (Result != DTAPI_OK)
-        return Result;
-
-    Config->ParXtra[0] = Value->m_ParXtra[0];
-    Config->ParXtra[1] = Value->m_ParXtra[1];
-    if (IsBuddyPort(Config))
-        Config->ParXtra[0] = Value->m_ParXtra[0] + 1;
-
-    return DTAPI_OK;
+    return DtPcieCmd_GetIoConfigList(Drv, Config, 1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtPcieCmd_SetIoConfig(OsDrv* Drv, const DtIoConfig* Config)
 {
-    if (Drv == NULL || Config == NULL)
-        return DTAPI_E_INVALID_ARG;
-
-    IoConfigSetIn In;
-    memset(&In, 0, sizeof(In));
-    InitHeader(&In.m_CmdHdr, DT_IOCONFIG_CMD_SET_IOCONFIG);
-    In.m_IoConfigCount = 1;
-
-    DtapiResult Result = ConfigToDriver(Config, &In.m_IoCfgPars);
-    if (Result != DTAPI_OK)
-        return Result;
-
-    // DTAPI skips the driver's exclusive-access check when the configured port is the
-    // one its proxy addresses. A device-level request addresses port index -1, so that
-    // is only ever the case for a port number of 0, which the device layer has refused
-    // before it gets here.
-    In.m_IoCfgPars.m_SkipExclAccessCheck = (In.m_IoCfgPars.m_PortIndex == -1) ? 1 : 0;
-
-    return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), NULL,
-                           0);
+    return DtPcieCmd_SetIoConfigList(Drv, Config, 1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetTimeOfDay -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

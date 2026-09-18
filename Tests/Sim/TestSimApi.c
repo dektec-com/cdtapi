@@ -24,6 +24,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// One I/O configuration through the device, which takes a list.
+static DtapiResult SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
+                               int SubValue)
+{
+    DtIoConfig Config = {Port, Group, Value, SubValue, {-1, -1}};
+    return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
 // Resets the emulator and checks that it is what the process talks to. Returns false,
 // having recorded a failure, when it is not.
 static bool StartSim(int* DtFailures)
@@ -541,8 +549,8 @@ DT_TEST(DirectionsReachTheCard)
     DT_ASSERT_EQ(Direction(2, &SubValue), DTAPI_IOCONFIG_INPUT);
     DT_ASSERT_EQ(SubValue, DTAPI_IOCONFIG_INPUT);
 
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, 3, DTAPI_IOCONFIG_IODIR,
-                                      DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF));
+    DT_ASSERT_OK(SetIoConfig(Device, 3, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
+                             DTAPI_IOCONFIG_DBLBUF));
     DT_ASSERT_EQ(Direction(3, &SubValue), DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(SubValue, DTAPI_IOCONFIG_DBLBUF);
 
@@ -562,12 +570,11 @@ DT_TEST(ConfigurationIsCheckedFirst)
 
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, 0), DTAPI_E_NO_SUCH_PORT);
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, SIM_PORT_COUNT + 1), DTAPI_E_NO_SUCH_PORT);
-    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, 0, -1, -1, -1), DTAPI_E_NO_SUCH_PORT);
-    DT_ASSERT_EQ(
-        DtDevice_SetIoConfig(Device, 1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, -1),
-        DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, 1, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT),
+    DT_ASSERT_EQ(SetIoConfig(Device, 0, -1, -1, -1), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(SetIoConfig(Device, 1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, -1),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(SetIoConfig(Device, 1, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_OUTPUT,
+                             DTAPI_IOCONFIG_OUTPUT),
                  DTAPI_E_INVALID_ARG);
 
     // Valid, so the driver is asked, and refuses.
@@ -576,6 +583,134 @@ DT_TEST(ConfigurationIsCheckedFirst)
     SimDtPcie_Reset();
     DT_ASSERT_EQ(DtDevice_SetToOutput(Device, SIM_PORT_COUNT), DTAPI_E_CONFIG);
     DT_ASSERT_OK(DtDevice_SetToOutput(Device, 1));
+
+    DtDevice_Free(Device);
+}
+
+// A list goes to the driver as one request, the other port of a double-buffered output
+// as an index there and as a number here, and reads back as it was set.
+DT_TEST(ListsAreSetAndReadInOneRequest)
+{
+    DtDevice* Device = AttachSim(DtFailures);
+
+    if (Device == NULL)
+        return;
+
+    DtIoConfig Set[3] = {
+        {1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT, {-1, -1}},
+        {2, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT, {-1, -1}},
+        {3, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF, {1, -1}},
+    };
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, Set, 3));
+    {
+        struct
+        {
+            DtIoctlInputDataHdr m_CmdHdr;
+            Int m_IoConfigCount;
+            DtIoctlIoConfig m_IoCfgPars[3];
+        } Sent;
+        int FunctionCode;
+        DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Sent, sizeof(Sent)),
+                     sizeof(Sent));
+        DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_IOCONFIG_CMD);
+        DT_ASSERT_EQ(Sent.m_IoConfigCount, 3);
+        DT_ASSERT_EQ(Sent.m_IoCfgPars[2].m_PortIndex, 2);
+        DT_ASSERT_EQ(Sent.m_IoCfgPars[2].m_ParXtra[0], 0);
+    }
+
+    DtIoConfig Got[3];
+    for (int i = 0; i < 3; i++)
+    {
+        Got[i].Port = i + 1;
+        Got[i].Group = DTAPI_IOCONFIG_IODIR;
+    }
+    DT_ASSERT_OK(DtDevice_GetIoConfig(Device, Got, 3));
+    for (int i = 0; i < 3; i++)
+    {
+        DT_ASSERT_EQ(Got[i].Value, Set[i].Value);
+        DT_ASSERT_EQ(Got[i].SubValue, Set[i].SubValue);
+        DT_ASSERT_EQ(Got[i].ParXtra[0], Set[i].ParXtra[0]);
+    }
+
+    // Nothing to do is no failure, and asks the driver nothing.
+    SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_IN_USE);
+    DT_ASSERT_OK(DtDevice_SetIoConfig(Device, NULL, 0));
+    DT_ASSERT_OK(DtDevice_GetIoConfig(Device, NULL, 0));
+
+    DtDevice_Free(Device);
+}
+
+// Every entry is checked before any is sent, so a bad entry anywhere leaves the card as
+// it was; so does a list the driver refuses.
+DT_TEST(ABadEntryRefusesTheWholeList)
+{
+    DtDevice* Device = AttachSim(DtFailures);
+
+    if (Device == NULL)
+        return;
+
+    DT_ASSERT_OK(DtDevice_SetToInput(Device, 1));
+    DtIoConfig List[2] = {
+        {1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT, {-1, -1}},
+        {0, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT, {-1, -1}},
+    };
+    int SubValue;
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, List, 2), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(Direction(1, &SubValue), DTAPI_IOCONFIG_INPUT);
+
+    List[1].Port = 2;
+    List[1].SubValue = -1;
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, List, 2), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(Direction(1, &SubValue), DTAPI_IOCONFIG_INPUT);
+
+    // Valid for the library, not for the card: the last port has no output.
+    List[1].Port = SIM_PORT_COUNT;
+    List[1].SubValue = DTAPI_IOCONFIG_OUTPUT;
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, List, 2), DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(Direction(1, &SubValue), DTAPI_IOCONFIG_INPUT);
+
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, List, -1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, NULL, 1), DTAPI_E_INVALID_ARG);
+
+    DtDevice_Free(Device);
+}
+
+// DtDevice::GetIoConfig's checks, per entry and in its order: the port, the group, and
+// whether the port has a capability of the group. The values stay -1 on a failure.
+DT_TEST(ReadingIsCheckedFirst)
+{
+    DtDevice* Device = AttachSim(DtFailures);
+
+    if (Device == NULL)
+        return;
+
+    DtIoConfig List[2] = {
+        {1, DTAPI_IOCONFIG_IODIR, 5, 5, {5, 5}},
+        {0, DTAPI_IOCONFIG_IODIR, 5, 5, {5, 5}},
+    };
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(List[0].Value, -1);
+    DT_ASSERT_EQ(List[0].SubValue, -1);
+    DT_ASSERT_EQ(List[0].ParXtra[0], -1);
+    DT_ASSERT_EQ(List[0].ParXtra[1], -1);
+
+    List[1].Port = 1;
+    List[1].Group = DTAPI_IOCONFIG_INPUT; // A value, not a group
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_INVALID_ARG);
+
+    // The emulated DTA-2178 has no transport-stream rate selection.
+    List[1].Group = DTAPI_IOCONFIG_TSRATESEL;
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_NOT_SUPPORTED);
+
+    // A boolean I/O capability is a group of its own.
+    List[1].Group = DTAPI_IOCONFIG_DMATESTMODE;
+    DT_ASSERT_OK(DtDevice_GetIoConfig(Device, List, 2));
+
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, -1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, NULL, 1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtDevice_Detach(Device));
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(Device, List, 2), DTAPI_E_NOT_ATTACHED);
 
     DtDevice_Free(Device);
 }
@@ -625,4 +760,6 @@ DT_TEST_MAIN("SimApi", DT_RUN(ScanCountsThePorts), DT_RUN(ScanDescribesEveryPort
              DT_RUN(PublicPortsComeFromMainPortCount),
              DT_RUN(UnreadableCapabilityIsAbsent), DT_RUN(EachSdiRateMakesAnSdiPort),
              DT_RUN(AttachSurvivesAllocationFailure), DT_RUN(DirectionsReachTheCard),
-             DT_RUN(ConfigurationIsCheckedFirst), DT_RUN(TimeOfDayComesFromTheCard))
+             DT_RUN(ConfigurationIsCheckedFirst), DT_RUN(ListsAreSetAndReadInOneRequest),
+             DT_RUN(ABadEntryRefusesTheWholeList), DT_RUN(ReadingIsCheckedFirst),
+             DT_RUN(TimeOfDayComesFromTheCard))

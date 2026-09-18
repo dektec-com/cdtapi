@@ -44,6 +44,14 @@ typedef struct Fixture
     char* Buffer; // BUFFER_SIZE bytes, aligned to 8
 } Fixture;
 
+// One I/O configuration through the device, which takes a list.
+static DtapiResult SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
+                               int SubValue)
+{
+    DtIoConfig Config = {Port, Group, Value, SubValue, {-1, -1}};
+    return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
 // Resets the emulator, attaches a device object and allocates a channel and a buffer.
 // Returns false, having recorded a failure, when that is not possible.
 static bool Start(Fixture* Fix, int* DtFailures)
@@ -99,7 +107,7 @@ static DtapiResult SetStandard(Fixture* Fix, int Port, int VidStd)
 
     if (Result != DTAPI_OK)
         return Result;
-    return DtDevice_SetIoConfig(Fix->Device, Port, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
+    return SetIoConfig(Fix->Device, Port, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
 }
 
 // Builds frame FrameNumber of VidStd as a raw frame with Bits bits per symbol, into a new
@@ -345,8 +353,8 @@ DT_TEST(AttachRefusals)
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                             DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
                  DTAPI_E_CONFIG_RAW_SDI);
@@ -360,8 +368,8 @@ DT_TEST(AttachRefusals)
     SimDtPcie_Reset();
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_OK(
+        SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
@@ -463,8 +471,8 @@ DT_TEST(FourKPortReadsNothing)
 
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                             DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
     int Size = 4;

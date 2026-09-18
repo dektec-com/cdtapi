@@ -124,28 +124,27 @@ DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- I/O configuration -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The fields are as DTAPI's DtIoConfig has them: a port number from 1, and the group,
-// value and sub-value as DTAPI_IOCONFIG_ codes, -1 for none. This layer converts to what
-// the driver takes: a port index from 0, the codes as names, and, for the I/O direction
+// A configuration is cdtapi.h's DtIoConfig: a port number from 1, and the group, value
+// and sub-value as DTAPI_IOCONFIG_ codes, -1 for none. This layer converts to what the
+// driver takes: a port index from 0, the codes as names, and, for the I/O direction
 // values that name another port in ParXtra[0], that port as an index as well.
 //
+// The driver takes a list in one command, as DtProxyCORE_IOCONFIG sends it. A list of one
+// is the request the single forms send.
+//
 
-typedef struct DtIoConfig
-{
-    int Port;
-    int Group;
-    int Value;
-    int SubValue;
-    int64_t ParXtra[2];
-} DtIoConfig;
+// Reads the configurations of Configs[i].Group on Configs[i].Port, and fills in the other
+// fields of each. Count must be at least 1. When this fails, the entries are as they
+// were.
+DtapiResult DtPcieCmd_GetIoConfigList(OsDrv* Drv, DtIoConfig* Configs, int Count);
 
-// Reads the configuration of Config->Group on Config->Port, and fills in the other
-// fields.
+// Applies Count configurations together, Count at least 1. The driver validates them;
+// this layer only converts them, and refuses a LOOPS2TS output whose ParXtra[1], the
+// ISI, is outside 0 to 255 with DTAPI_E_INVALID_ISI, as DTAPI does before sending it.
+DtapiResult DtPcieCmd_SetIoConfigList(OsDrv* Drv, const DtIoConfig* Configs, int Count);
+
+// The same for one configuration.
 DtapiResult DtPcieCmd_GetIoConfig(OsDrv* Drv, DtIoConfig* Config);
-
-// Applies one configuration. The driver validates it; this layer only converts it, and
-// refuses a LOOPS2TS output whose ParXtra[1], the ISI, is outside 0 to 255 with
-// DTAPI_E_INVALID_ISI, as DTAPI does before sending it.
 DtapiResult DtPcieCmd_SetIoConfig(OsDrv* Drv, const DtIoConfig* Config);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Time of day -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

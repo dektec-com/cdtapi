@@ -9,6 +9,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <stddef.h>
 
 // CDTAPI includes
@@ -61,3 +62,13 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 // required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
 // checks and their order are those of DTAPI's DtConfigDefs::IsValidConfig.
 DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue);
+
+// Returns DTAPI_OK when Group is a group or a boolean I/O capability, which is what
+// configurations can be read of, and DTAPI_E_INVALID_ARG otherwise, as DTAPI's
+// DtConfigDefs::GetGroupCaps checks.
+DtapiResult DtIoConfig_CheckGroup(int Group);
+
+// True when a port with the capability named after Code, CAP_ and the code's name, has
+// Group, as GetGroupCaps collects a group's capabilities: a boolean I/O capability is its
+// own, a group has those of its values.
+bool DtIoConfig_IsCapOfGroup(int Code, int Group);

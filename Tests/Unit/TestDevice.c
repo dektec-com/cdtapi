@@ -104,9 +104,10 @@ DT_TEST(NullDeviceIsRefused)
 
     DT_ASSERT_EQ(DtDevice_AttachToSerial(NULL, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_Detach(NULL), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDevice_SetIoConfig(NULL, 1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
-                                      DTAPI_IOCONFIG_INPUT),
-                 DTAPI_E_INVALID_ARG);
+    DtIoConfig Config = {
+        1, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT, {-1, -1}};
+    DT_ASSERT_EQ(DtDevice_SetIoConfig(NULL, &Config, 1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(NULL, &Config, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_SetToInput(NULL, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_SetToOutput(NULL, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_GetTimeOfDay(NULL, &Tod), DTAPI_E_INVALID_ARG);

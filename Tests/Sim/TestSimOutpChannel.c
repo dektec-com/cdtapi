@@ -44,6 +44,14 @@ typedef struct Fixture
     DtOutpChannel* Channel;
 } Fixture;
 
+// One I/O configuration through the device, which takes a list.
+static DtapiResult SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
+                               int SubValue)
+{
+    DtIoConfig Config = {Port, Group, Value, SubValue, {-1, -1}};
+    return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
 // Resets the emulator, attaches a device object and allocates a channel. Returns false,
 // having recorded a failure, when that is not possible.
 static bool Start(Fixture* Fix, int* DtFailures)
@@ -98,7 +106,7 @@ static DtapiResult SetStandard(Fixture* Fix, int VidStd)
 
     if (Result != DTAPI_OK)
         return Result;
-    return DtDevice_SetIoConfig(Fix->Device, PORT, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
+    return SetIoConfig(Fix->Device, PORT, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
 }
 
 // Frame FrameNumber of VidStd as the emulator's receive source makes it, as a raw frame
@@ -452,8 +460,8 @@ DT_TEST(AttachRefusals)
     if (!Start(&Fix, DtFailures))
         return;
 
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_OK(
+        SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_1080I50));
@@ -468,8 +476,8 @@ DT_TEST(AttachRefusals)
     // The exclusive access was released: another attach succeeds.
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
-    DT_ASSERT_OK(DtDevice_SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
-                                      DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                             DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
                  DTAPI_E_CONFIG_RAW_SDI);
