@@ -385,6 +385,9 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
+// On ASI the output sends K28.5 from here on, and so from a switch to ASI; a receiver
+// needs a moment to lock to it, and a stream sent at once loses its start. DekTec's
+// DtPlay waits 200 ms before sending, as DtTransmitTs does.
 //
 // Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT

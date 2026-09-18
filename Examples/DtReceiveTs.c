@@ -45,7 +45,7 @@
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an ASI input"},
     {"--port", true, "The port number; the first ASI input"},
-    {"--rxmode", true, "188, 204, MP2 (204 to 188) or RAW; 188 without it"},
+    {"--rxmode", true, "188, 204, or MP2 or RAW as they arrive; 188 without it"},
     {"--count", true, "The number of packets to receive; until stopped without it"},
     {"--timeout", true,
      "Milliseconds to wait for each part of the stream; 1000 without it"},
@@ -74,13 +74,16 @@ static bool IsAsiInput(const DtHwFuncDesc* Port)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The receive mode for a name on the command line, and the size of the packets it
-// delivers. False for another name.
+// delivers: 0 for MP2 and RAW, which deliver them as they arrive. False for another name.
 //
 static bool RxModeFrom(const char* Name, int* RxMode, int* PacketSize)
 {
-    *PacketSize = 188;
+    *PacketSize = 0;
     if (Name == NULL || strcmp(Name, "188") == 0)
+    {
         *RxMode = DTAPI_RXMODE_ST188;
+        *PacketSize = 188;
+    }
     else if (strcmp(Name, "204") == 0)
     {
         *RxMode = DTAPI_RXMODE_ST204;
@@ -93,6 +96,28 @@ static bool RxModeFrom(const char* Name, int* RxMode, int* PacketSize)
     else
         return false;
     return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ArrivingSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The size of the packets that arrive, as the input reports it once it has found them;
+// 0 when it has not within TimeoutMs.
+//
+static int ArrivingSize(DtInpChannel* Channel, int64_t TimeoutMs)
+{
+    const int64_t End = Example_NowMs() + TimeoutMs;
+    for (;;)
+    {
+        int PacketSize = DTAPI_PCKSIZE_INV;
+        int NumInv = 0, ClkDet = 0, AsiLock = 0, RateOk = 0, AsiInv = 0;
+        DtInpChannel_GetStatus(Channel, &PacketSize, &NumInv, &ClkDet, &AsiLock, &RateOk,
+                               &AsiInv);
+        if (PacketSize == DTAPI_PCKSIZE_188 || PacketSize == DTAPI_PCKSIZE_204)
+            return PacketSize == DTAPI_PCKSIZE_188 ? 188 : 204;
+        if (Example_NowMs() >= End)
+            return 0;
+        Example_SleepMs(10);
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -163,6 +188,12 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
     Result = DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV);
     if (Result != DTAPI_OK)
         return Example_Failed("DtInpChannel_SetRxControl", Result);
+    if (PacketSize == 0 && (PacketSize = ArrivingSize(Channel, TimeoutMs)) == 0)
+    {
+        printf("%s  no data within %lld ms\n", Port->DeviceName, (long long)TimeoutMs);
+        PrintStatus(Channel, Port, Counts);
+        return EXAMPLE_NOTHING;
+    }
 
     int64_t NextStatus = Example_NowMs() + 1000;
     while (Count == 0 || Counts->Packets < Count)

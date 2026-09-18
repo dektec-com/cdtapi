@@ -172,8 +172,9 @@ static void PrintStatus(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int64_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets the channel up and sends. The channel holds while the first part of the stream
-// is written, so that it starts sending with data at hand. Returns the exit code.
+// Sets the channel up and sends. The channel holds while the first tenth of a second of
+// the stream is written, or all of it when it is shorter, so that it starts sending with
+// data at hand and the card's buffer does not run dry at once. Returns the exit code.
 //
 static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int TxMode,
                     bool Stuff, int64_t Rate, int64_t Count, Source* Src, uint8_t* Buffer)
@@ -190,6 +191,7 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int TxMode
 
     int64_t Bytes = 0;
     const int64_t Limit = Count * Src->PacketSize;
+    const int64_t Prefill = Rate / 8 / 10;
     bool Sending = false;
     int64_t NextStatus = Example_NowMs() + 1000;
     for (;;)
@@ -198,21 +200,23 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int TxMode
         if (Count != 0 && Limit - Bytes < Max)
             Max = (int)(Limit - Bytes);
         int Size = Max > 0 ? Fill(Src, Buffer, Max) : 0;
-        if (Size == 0)
-            break;
+        if (Size > 0)
+        {
+            Result = DtOutpChannel_Write(Channel, Buffer, Size);
+            if (Result != DTAPI_OK)
+                return Example_Failed("DtOutpChannel_Write", Result);
+            Bytes += Size;
+        }
 
-        Result = DtOutpChannel_Write(Channel, Buffer, Size);
-        if (Result != DTAPI_OK)
-            return Example_Failed("DtOutpChannel_Write", Result);
-        Bytes += Size;
-
-        if (!Sending)
+        if (!Sending && Bytes > 0 && (Bytes >= Prefill || Size == 0))
         {
             Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
             if (Result != DTAPI_OK)
                 return Example_Failed("DtOutpChannel_SetTxControl", Result);
             Sending = true;
         }
+        if (Size == 0)
+            break;
         if (Example_NowMs() >= NextStatus)
         {
             PrintStatus(Channel, Port, Bytes / Src->PacketSize);
@@ -266,6 +270,11 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel, uint8_t* 
         return Example_Failed("DtOutpChannel_SetIoConfig", Result);
     }
     printf("%s  io standard ASI\n", Port->DeviceName);
+
+    // The output sends K28.5 from the attach on, and the receiver at the other end of the
+    // cable needs a moment to lock to it; a stream sent at once loses its first tens of
+    // milliseconds. DekTec's DtPlay waits 200 ms too.
+    Example_SleepMs(200);
 
     int Exit = Transmit(Channel, Port, TxMode, Stuff, Rate, Count, Src, Buffer);
     if (Exit != EXAMPLE_OK)

@@ -219,6 +219,11 @@ and on the other side:
     DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV);
     DtInpChannel_Read(In, Buffer, Size, 1000); // Waits up to a second for Size bytes
 
+An ASI output sends idle characters, K28.5, from the moment the channel attaches or
+switches to ASI. Give the receiver at the other end about 200 ms to lock to them before
+the stream starts, as DekTec's DtPlay does; a stream sent at once loses its first tens
+of milliseconds.
+
 The rate is in bits a second of 188-byte packets, also in the 204-byte modes, as in
 DTAPI. `DtInpChannel_GetTsRateBps` and `DtInpChannel_GetStatus` report what arrives;
 the flags say when the receive FIFO overflowed or the input lost sync, and when the
