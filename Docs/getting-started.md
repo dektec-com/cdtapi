@@ -12,6 +12,27 @@ It assumes C and a compiler, and nothing about DekTec's other software.
 
 ## Getting the library
 
+### With vcpkg
+
+CDTAPI has a port in DekTec's own registry. A project names that registry in
+`vcpkg-configuration.json`, beside its manifest:
+
+    {
+      "registries": [
+        {
+          "kind": "git",
+          "repository": "https://github.com/dektec-com/dektec-vcpkg-registry",
+          "baseline": "<the registry commit to build against>",
+          "packages": [ "cdtapi" ]
+        }
+      ]
+    }
+
+and puts `cdtapi` among the `dependencies` in its `vcpkg.json`. The port builds the
+library from source, so the triplet decides what comes out: `x64-windows` gives the DLL,
+`x64-windows-static` and `x64-linux` the static library. Nothing else has to be
+installed for it, and `find_package(cdtapi CONFIG)` finds it.
+
 ### From the SDK
 
 DekTec's SDK distribution ships CDTAPI built, under `DTAPI`:
