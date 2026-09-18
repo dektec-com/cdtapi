@@ -18,6 +18,7 @@
 #include "AvFifo/DtAvPixConv.h" // The reference conversions.
 #include "AvFifo/DtAvTime.h"    // Times of day.
 #include "Core/DtAlloc.h"       // Live allocations.
+#include "Device/DtDevice.h"    // The port's capabilities.
 #include "DtPcieAbi.h"          // Pipe modes and filter flags.
 #include "DtTest.h"             // Test framework.
 #include "OAL/OsThread.h"       // Sleeping and a second thread.
@@ -850,10 +851,25 @@ DT_TEST(FailureTextPerThread)
     DT_ASSERT(strstr(GetLastException(), "No FIFO") != NULL);
 }
 
-DT_TEST_MAIN("SimAvFifo", DT_RUN(ResultsOfTheLifecycle), DT_RUN(SdiPortIsRefused),
-             DT_RUN(StartFailures), DT_RUN(StartedAndStopped), DT_RUN(PacketsOnTheWire),
-             DT_RUN(Loopback10BitRawHardware), DT_RUN(Loopback10BitSoftware),
-             DT_RUN(Loopback10BitTo8Bit), DT_RUN(Loopback8Bit),
-             DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackAudioL24),
+// The capabilities the emulated DTA-2110 gives its port are read.
+DT_TEST(PortCapabilities)
+{
+    Fixture Fix;
+    if (!Open(&Fix, DtFailures))
+        return;
+
+    const uint64_t Caps = Fix.Device->PortCaps[0];
+    const uint64_t Want = DT_CAP_AVFIFO | DT_CAP_IP | DT_CAP_PTP | DT_CAP_SFP10G |
+                          DT_CAP_ST2110 | DT_CAP_TS;
+    DT_ASSERT_EQ(Caps & Want, Want);
+    DT_ASSERT_EQ(Caps & DT_CAP_SFP25G, 0);
+    FINISH(Fix);
+}
+
+DT_TEST_MAIN("SimAvFifo", DT_RUN(PortCapabilities), DT_RUN(ResultsOfTheLifecycle),
+             DT_RUN(SdiPortIsRefused), DT_RUN(StartFailures), DT_RUN(StartedAndStopped),
+             DT_RUN(PacketsOnTheWire), DT_RUN(Loopback10BitRawHardware),
+             DT_RUN(Loopback10BitSoftware), DT_RUN(Loopback10BitTo8Bit),
+             DT_RUN(Loopback8Bit), DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackAudioL24),
              DT_RUN(LoopbackAudioL16), DT_RUN(FullFifos), DT_RUN(InjectedFaultIsCounted),
              DT_RUN(FailureTextPerThread))

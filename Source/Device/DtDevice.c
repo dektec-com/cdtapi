@@ -21,7 +21,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The capability properties read per port, and the flag each sets.
+// The capability properties read per port, and the flag each sets, in alphabetical
+// order.
 static const struct
 {
     const char* Name;
@@ -30,30 +31,34 @@ static const struct
     {"CAP_12GSDI", DT_CAP_12GSDI},
     {"CAP_3GSDI", DT_CAP_3GSDI},
     {"CAP_6GSDI", DT_CAP_6GSDI},
-    {"CAP_HDSDI", DT_CAP_HDSDI},
-    {"CAP_SDI", DT_CAP_SDI},
-    {"CAP_AVFIFO", DT_CAP_AVFIFO},
-    {"CAP_INPUT", DT_CAP_INPUT},
-    {"CAP_OUTPUT", DT_CAP_OUTPUT},
-    {"CAP_INTINPUT", DT_CAP_INTINPUT},
-    {"CAP_MATRIX2", DT_CAP_MATRIX2},
-    {"CAP_SDIRX", DT_CAP_SDIRX},
-    {"CAP_HDMI", DT_CAP_HDMI},
-    {"CAP_SCALE_12GTO3G", DT_CAP_SCALE_12GTO3G},
-    {"CAP_IP", DT_CAP_IP},
     {"CAP_ASI", DT_CAP_ASI},
-    {"CAP_MATRIX", DT_CAP_MATRIX},
-    {"CAP_TS", DT_CAP_TS},
-    {"CAP_HUFFMAN", DT_CAP_HUFFMAN},
-    {"CAP_L3MODE", DT_CAP_L3MODE},
-    {"CAP_TRPMODE", DT_CAP_TRPMODE},
-    {"CAP_TIMESTAMP64", DT_CAP_TIMESTAMP64},
-    {"CAP_SDI10BNBO", DT_CAP_SDI10BNBO},
+    {"CAP_AVFIFO", DT_CAP_AVFIFO},
     {"CAP_DMATESTMODE", DT_CAP_DMATESTMODE},
     {"CAP_FAILSAFE", DT_CAP_FAILSAFE},
+    {"CAP_HDMI", DT_CAP_HDMI},
+    {"CAP_HDSDI", DT_CAP_HDSDI},
+    {"CAP_HUFFMAN", DT_CAP_HUFFMAN},
+    {"CAP_INPUT", DT_CAP_INPUT},
+    {"CAP_INTINPUT", DT_CAP_INTINPUT},
+    {"CAP_IP", DT_CAP_IP},
+    {"CAP_L3MODE", DT_CAP_L3MODE},
+    {"CAP_MATRIX", DT_CAP_MATRIX},
+    {"CAP_MATRIX2", DT_CAP_MATRIX2},
+    {"CAP_OUTPUT", DT_CAP_OUTPUT},
+    {"CAP_PTP", DT_CAP_PTP},
+    {"CAP_QUADLINK", DT_CAP_QUADLINK},
+    {"CAP_SCALE_12GTO3G", DT_CAP_SCALE_12GTO3G},
+    {"CAP_SDI", DT_CAP_SDI},
+    {"CAP_SDI10BNBO", DT_CAP_SDI10BNBO},
+    {"CAP_SDIRX", DT_CAP_SDIRX},
+    {"CAP_SFP10G", DT_CAP_SFP10G},
+    {"CAP_SFP25G", DT_CAP_SFP25G},
     {"CAP_SPI", DT_CAP_SPI},
     {"CAP_SPISDI", DT_CAP_SPISDI},
-    {"CAP_QUADLINK", DT_CAP_QUADLINK},
+    {"CAP_ST2110", DT_CAP_ST2110},
+    {"CAP_TIMESTAMP64", DT_CAP_TIMESTAMP64},
+    {"CAP_TRPMODE", DT_CAP_TRPMODE},
+    {"CAP_TS", DT_CAP_TS},
 };
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))

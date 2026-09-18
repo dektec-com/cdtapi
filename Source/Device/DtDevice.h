@@ -62,8 +62,13 @@
 #define DT_CAP_FAILSAFE UINT64_C(0x800000)    // A fail-safe relay
 #define DT_CAP_SPI UINT64_C(0x1000000)        // SPI
 #define DT_CAP_SPISDI UINT64_C(0x2000000)     // SDI over SPI
-#define DT_CAP_QUADLINK                                                                  \
-    UINT64_C(0x4000000) // A 12G port that also sends and receives quad link
+#define DT_CAP_QUADLINK UINT64_C(0x4000000)   // 12G, also sending quad link
+
+// The capabilities of an SMPTE ST 2110 port.
+#define DT_CAP_PTP UINT64_C(0x8000000)     // PTP time from the network
+#define DT_CAP_SFP10G UINT64_C(0x10000000) // An SFP+ cage for 10 Gbit/s
+#define DT_CAP_SFP25G UINT64_C(0x20000000) // An SFP28 cage for 25 Gbit/s
+#define DT_CAP_ST2110 UINT64_C(0x40000000) // SMPTE ST 2110 streams
 
 // Any of the SDI rates.
 #define DT_CAP_ANY_SDI                                                                   \
