@@ -28,7 +28,7 @@ typedef struct DtAvInput
 {
     DtDevice* Device;
     int PortIndex;
-    uint32_t Caps; // DT_CAP_ flags of the port
+    uint64_t Caps; // DT_CAP_ flags of the port
     int SdiRxUuid; // The UUID of the port's SDI receiver
 } DtAvInput;
 

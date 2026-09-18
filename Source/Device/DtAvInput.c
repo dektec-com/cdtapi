@@ -36,7 +36,7 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
     if (Port < 1 || Port > Device->NumPorts)
         return DTAPI_E_NO_SUCH_PORT;
 
-    uint32_t Caps = Device->PortCaps[Port - 1];
+    uint64_t Caps = Device->PortCaps[Port - 1];
     if ((Caps & (DT_CAP_INPUT | DT_CAP_INTINPUT)) == 0)
         return DTAPI_E_NOT_SUPPORTED;
     if ((Caps & (DT_CAP_MATRIX2 | DT_CAP_SDIRX | DT_CAP_HDMI)) == 0)

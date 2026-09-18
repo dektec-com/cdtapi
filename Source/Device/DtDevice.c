@@ -25,7 +25,7 @@
 static const struct
 {
     const char* Name;
-    uint32_t Flag;
+    uint64_t Flag;
 } g_PortCaps[] = {
     {"CAP_12GSDI", DT_CAP_12GSDI},
     {"CAP_3GSDI", DT_CAP_3GSDI},
@@ -97,7 +97,7 @@ static DtapiResult LoadPorts(DtDevice* Device, OsDrv* Drv)
     if (Count == 0)
         return DTAPI_OK;
 
-    Device->PortCaps = (uint32_t*)DtAlloc_Malloc(Count * sizeof(uint32_t));
+    Device->PortCaps = (uint64_t*)DtAlloc_Malloc(Count * sizeof(uint64_t));
     if (Device->PortCaps == NULL)
         return DTAPI_E_OUT_OF_MEM;
 
@@ -212,7 +212,7 @@ DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
 //
 void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 {
-    uint32_t Caps = Device->PortCaps[Port - 1];
+    uint64_t Caps = Device->PortCaps[Port - 1];
 
     memset(Desc, 0, sizeof(*Desc));
     snprintf(Desc->DeviceName, sizeof(Desc->DeviceName), "%lld:%d",
@@ -362,7 +362,7 @@ void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
 
     for (int Port = 1; Port <= Device->NumPublicPorts; Port++)
     {
-        uint32_t Direction = Device->PortCaps[Port - 1] & (DT_CAP_INPUT | DT_CAP_OUTPUT);
+        uint64_t Direction = Device->PortCaps[Port - 1] & (DT_CAP_INPUT | DT_CAP_OUTPUT);
 
         if (Direction == DT_CAP_INPUT)
             Desc->NumDtInpChan++;

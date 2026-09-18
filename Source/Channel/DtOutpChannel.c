@@ -192,7 +192,7 @@ void DtOutpChannel_Freep(DtOutpChannel** OutpChannel)
 // AttachToPort's steps once the channel has its own handle to the device. The caller
 // releases everything when they fail.
 //
-static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint32_t Caps)
+static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
 {
     Chan->Port.Device = &Chan->Device;
     Chan->Port.Port = Port;
@@ -264,7 +264,7 @@ static DtapiResult Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
     if (Port < 1 || Port > Device->NumPublicPorts)
         return DTAPI_E_NO_SUCH_PORT;
 
-    uint32_t Caps = Device->PortCaps[Port - 1];
+    uint64_t Caps = Device->PortCaps[Port - 1];
     if ((Caps & DT_CAP_OUTPUT) == 0 && (Caps & DT_CAP_IP) == 0)
         return DTAPI_E_NO_DT_OUTPUT;
     if ((Caps & DT_CAP_MATRIX) != 0 || (Caps & DT_CAP_ASI) == 0)

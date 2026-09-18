@@ -215,7 +215,7 @@ static DtapiResult CheckFailSafe(DtInpChannel* Chan, const DtIoConfig* Config)
 // AttachToPort's steps once the channel has its own handle to the device, which the
 // caller releases when they fail.
 //
-static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint32_t Caps)
+static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint64_t Caps)
 {
     Chan->Port.Device = &Chan->Device;
     Chan->Port.Port = Port;
@@ -274,7 +274,7 @@ static DtapiResult Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
     if (Port < 1 || Port > Device->NumPublicPorts)
         return DTAPI_E_NO_SUCH_PORT;
 
-    uint32_t Caps = Device->PortCaps[Port - 1];
+    uint64_t Caps = Device->PortCaps[Port - 1];
     if ((Caps & DT_CAP_INPUT) == 0 && (Caps & DT_CAP_IP) == 0)
         return DTAPI_E_NO_DT_INPUT;
     if ((Caps & DT_CAP_MATRIX) != 0 || (Caps & DT_CAP_ASI) == 0)
@@ -358,7 +358,7 @@ DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched)
 //
 DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value, int* SubValue)
 {
-    const uint32_t Usable = DT_CAP_ASI | DT_CAP_SDI | DT_CAP_HDSDI | DT_CAP_3GSDI |
+    const uint64_t Usable = DT_CAP_ASI | DT_CAP_SDI | DT_CAP_HDSDI | DT_CAP_3GSDI |
                             DT_CAP_SPI | DT_CAP_SPISDI;
 
     if (InpChannel == NULL || Value == NULL || SubValue == NULL)
@@ -535,7 +535,7 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
         return DTAPI_E_NOT_ATTACHED;
 
     DtapiResult Result;
-    uint32_t Caps = InpChannel->Port.Caps;
+    uint64_t Caps = InpChannel->Port.Caps;
     if (((RxMode & DT_RXMODE_TS) == DT_RXMODE_TS && (Caps & DT_CAP_TS) == 0) ||
         ((RxMode & DT_RXMODE_TIMESTAMP64) == DT_RXMODE_TIMESTAMP64 &&
          (Caps & DT_CAP_TIMESTAMP64) == 0) ||
