@@ -269,11 +269,13 @@ if(CDTAPI_SDK_LAYOUT)
     set(CDTAPI_LIB_DIR "Lib")
     set(CDTAPI_BIN_DIR "Bin")
     set(CDTAPI_PKGCONFIG_DIR "Lib/pkgconfig")
+    set(CDTAPI_CMAKE_DIR "Lib/cmake/cdtapi")
 else()
     set(CDTAPI_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
     set(CDTAPI_LIB_DIR "${CMAKE_INSTALL_LIBDIR}")
     set(CDTAPI_BIN_DIR "${CMAKE_INSTALL_BINDIR}")
     set(CDTAPI_PKGCONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+    set(CDTAPI_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/cdtapi")
 endif()
 
 # What the file is called. On Windows a static library fixes which C runtime it calls, so
@@ -337,4 +339,33 @@ if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
 
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
         DESTINATION ${CDTAPI_PKGCONFIG_DIR})
+endif()
+
+# The package find_package(cdtapi CONFIG) loads, which is how a CMake project and vcpkg
+# ask for the library. The SDK's Windows tree leaves it out for the reason the .pc is
+# left out: its four static archives install into one prefix, and each would write the
+# same target file over the one before it.
+if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
+    include(CMakePackageConfigHelpers)
+
+    install(EXPORT cdtapiTargets
+        FILE cdtapi-targets.cmake
+        NAMESPACE cdtapi::
+        DESTINATION ${CDTAPI_CMAKE_DIR})
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cdtapi-config.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config.cmake"
+        INSTALL_DESTINATION ${CDTAPI_CMAKE_DIR})
+
+    # The minor number, not only the major one: it is the version of the DTAPI whose
+    # behaviour this library reproduces, so 6.14 does not answer a request for 6.13.
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config-version.cmake"
+        COMPATIBILITY SameMinorVersion)
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config-version.cmake"
+        DESTINATION ${CDTAPI_CMAKE_DIR})
 endif()

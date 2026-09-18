@@ -1,0 +1,19 @@
+# *#*#*#*#*#*#*#*#*#*#*#*#*# cdtapi-config.cmake.in #*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+#
+# CDTAPI - The package find_package(cdtapi CONFIG) loads
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# The library links the platform's threads library, and says so in its interface, so a
+# consumer's project must find it before the target can be loaded.
+if(NOT WIN32)
+    find_dependency(Threads)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cdtapi-targets.cmake")
+
+check_required_components(cdtapi)
