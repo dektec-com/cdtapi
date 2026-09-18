@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.21)
 # every property request, see Source/DtPcie/DtPcieCmd.c.
 project(CDTAPI
     VERSION 6.13.1
-    DESCRIPTION "Native open-source C API for DekTec SDI and SMPTE ST 2110 interfaces"
+    DESCRIPTION "Native open-source C API for DekTec SDI, DVB-ASI and SMPTE ST 2110 interfaces"
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)
 

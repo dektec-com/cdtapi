@@ -3,7 +3,7 @@ libdir=${prefix}/@CDTAPI_LIB_DIR@
 includedir=${prefix}/@CDTAPI_INCLUDE_DIR@
 
 Name: CDTAPI
-Description: Native open-source C API for DekTec SDI and SMPTE ST 2110 interfaces
+Description: Native open-source C API for DekTec SDI, DVB-ASI and SMPTE ST 2110 interfaces
 Version: @PROJECT_VERSION@
 URL: https://www.dektec.com
 Libs: -L"${libdir}" -l@CDTAPI_LINK_NAME@
