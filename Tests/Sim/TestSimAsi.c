@@ -605,13 +605,17 @@ DT_TEST(SourceFollowsTheClock)
     OsDmaBuffer Buf;
     uint32_t Offset;
     DT_ASSERT(StartRx(&Fix, &Buf));
+
+    // The source starts counting during the first read and stops during the second.
+    const uint64_t T0 = OsTime_MonotonicMs();
     DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
-    const uint64_t Start = OsTime_MonotonicMs();
+    const uint64_t T1 = OsTime_MonotonicMs();
     OsTime_SleepMs(50);
+    const uint64_t T2 = OsTime_MonotonicMs();
     DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
-    const uint64_t Elapsed = OsTime_MonotonicMs() - Start;
+    const uint64_t T3 = OsTime_MonotonicMs();
     const uint64_t Packets = Offset / 216;
-    DT_ASSERT(Packets + 20 >= Elapsed * 10 && Packets <= (Elapsed + 1) * 10);
+    DT_ASSERT(Packets + 10 >= (T2 - T1) * 10 && Packets <= (T3 - T0) * 10 + 10);
 
     Stop(&Fix, RX, Fix.RxCdmac, &Buf);
     FINISH(Fix);
