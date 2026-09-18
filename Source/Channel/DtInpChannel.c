@@ -418,17 +418,59 @@ DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags, int* Lat
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// DtInpChannel::GetIoConfig: -1 in every output first, the group checked, and then what
+// DtDevice_GetIoConfig checks and reads of the channel's port.
+//
+DtapiResult DtInpChannel_GetIoConfig(DtInpChannel* InpChannel, int Group, int* Value,
+                                     int* SubValue, int64_t* ParXtra0, int64_t* ParXtra1)
+{
+    DtIoConfig Config = {0, Group, -1, -1, {-1, -1}};
+    DtapiResult Result = DTAPI_OK;
+
+    if (Value != NULL)
+        *Value = -1;
+    if (SubValue != NULL)
+        *SubValue = -1;
+    if (ParXtra0 != NULL)
+        *ParXtra0 = -1;
+    if (ParXtra1 != NULL)
+        *ParXtra1 = -1;
+    if (InpChannel == NULL || Value == NULL)
+        return DTAPI_E_INVALID_ARG;
+    Result = DtIoConfig_CheckGroup(Group);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    Config.Port = InpChannel->Port.Port;
+    Result = DtDevice_GetIoConfig(&InpChannel->Device, &Config, 1);
+    OsMutex_Unlock(InpChannel->Lock);
+    *Value = Config.Value;
+    if (SubValue != NULL)
+        *SubValue = Config.SubValue;
+    if (ParXtra0 != NULL)
+        *ParXtra0 = Config.ParXtra[0];
+    if (ParXtra1 != NULL)
+        *ParXtra1 = Config.ParXtra[1];
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtInpChannel::SetIoConfig's checks, then AsiSdiInpChannel_Bb2::SetIoConfig's. DTAPI
 // also refuses a configuration the port lacks a capability for; here the driver does.
+// Unlike DTAPI a direction is not applied, once DTAPI's checks of it have passed
+// (0007).
 //
 // A standard that crosses between SDI and ASI releases the one side, sets the
 // configuration and attaches the other, with its default receive mode. When that fails
 // the channel is left detached, where DTAPI leaves it without a side.
 //
 DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Value,
-                                     int SubValue)
+                                     int SubValue, int64_t ParXtra0, int64_t ParXtra1)
 {
     if (InpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -446,6 +488,12 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
     }
     else if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_OUTPUT)
         Result = DTAPI_E_INVALID_ARG;
+    else if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_INPUT &&
+             SubValue == DTAPI_IOCONFIG_SHAREDANT &&
+             (ParXtra0 < 1 || ParXtra0 > InpChannel->Device.NumPorts))
+    {
+        Result = DTAPI_E_INVALID_ARG;
+    }
     else if (Group == DTAPI_IOCONFIG_IODIR)
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (InpChannel->Rx->RxControl != DTAPI_RXCTRL_IDLE)
@@ -457,7 +505,8 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Config.Group = Group;
         Config.Value = Value;
         Config.SubValue = SubValue;
-        Config.ParXtra[0] = Config.ParXtra[1] = -1;
+        Config.ParXtra[0] = ParXtra0;
+        Config.ParXtra[1] = ParXtra1;
         const bool IsAsi = InpChannel->Rx->Ops->Take != NULL;
         const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
 

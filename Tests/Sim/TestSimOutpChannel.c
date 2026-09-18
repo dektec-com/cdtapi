@@ -362,7 +362,8 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtOutpChannel_GetMaxFifoSize(Fix.Channel, NULL), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_GetFlags(Fix.Channel, &Value, NULL), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(NULL, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
+                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                           -1, -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_SetTxControl(NULL, DTAPI_TXCTRL_HOLD),
                  DTAPI_E_INVALID_ARG);
@@ -376,8 +377,9 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, -4), DTAPI_E_INVALID_SIZE);
     DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, 0x10 | DTAPI_TXMODE_SDI_FULL, 0),
                  DTAPI_E_INVALID_MODE);
-    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD, 12345, -1),
-                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(
+        DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD, 12345, -1, -1, -1),
+        DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, 8), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Data, 8, 10),
                  DTAPI_E_NOT_ATTACHED);
@@ -566,20 +568,40 @@ DT_TEST(IoConfiguration)
         Fix.Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_16B, 0));
 
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
-                                           DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT),
+                                           DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT, -1,
+                                           -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
-                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF),
+                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF,
+                                           -1, -1),
                  DTAPI_E_INVALID_ARG);
+
+    // An output that names another port in ParXtra0 is set, and reads back.
+    DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF,
+                                           3, -1));
+    int Dir = 0;
+    int SubDir = 0;
+    int64_t Buddy = 0;
+    int64_t Unused = 0;
+    DT_ASSERT_OK(DtOutpChannel_GetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR, &Dir,
+                                           &SubDir, &Buddy, &Unused));
+    DT_ASSERT_EQ(Dir, DTAPI_IOCONFIG_OUTPUT);
+    DT_ASSERT_EQ(SubDir, DTAPI_IOCONFIG_DBLBUF);
+    DT_ASSERT_EQ(Buddy, 3);
+    DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT,
+                                           -1, -1));
 
     // ASI switches the channel over, with its own settings, and SDI back.
     DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_ASI, -1));
+                                           DTAPI_IOCONFIG_ASI, -1, -1, -1));
     int Rate = 0;
     DT_ASSERT_OK(DtOutpChannel_GetTsRateBps(Fix.Channel, &Rate));
     DT_ASSERT_EQ(Rate, 10000000);
     DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50));
+                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                           -1, -1));
     DT_ASSERT_EQ(DtOutpChannel_GetTsRateBps(Fix.Channel, &Rate), DTAPI_E_NOT_SUPPORTED);
 
     // The switch back gave SDI's default transmit mode, 10-bit; 16-bit is set again.
@@ -588,13 +610,15 @@ DT_TEST(IoConfiguration)
 
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
     DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94),
+                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94,
+                                           -1, -1),
                  DTAPI_E_NOT_IDLE);
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
 
     // 525i59.94: 1,801,800 bytes per 16-bit frame, 1,134,032 per coded frame, 128 MB.
     DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94));
+                                           DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_525I59_94,
+                                           -1, -1));
     SimTxState State;
     SimDtPcie_GetTxState(PORT - 1, &State);
     DT_ASSERT(State.BufferRegistered);

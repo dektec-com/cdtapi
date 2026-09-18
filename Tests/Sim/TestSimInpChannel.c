@@ -236,7 +236,8 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtInpChannel_GetFlags(Fix.Channel, NULL, &B), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtInpChannel_GetFlags(Fix.Channel, &A, NULL), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(NULL, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtInpChannel_SetRxControl(NULL, DTAPI_RXCTRL_RCV), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtInpChannel_SetRxMode(NULL, DTAPI_RXMODE_SDI_FULL),
@@ -254,7 +255,8 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtInpChannel_GetMaxFifoSize(Fix.Channel, &A), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtInpChannel_GetFlags(Fix.Channel, &A, &B), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1),
                  DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
                  DTAPI_E_NOT_ATTACHED);
@@ -1078,23 +1080,50 @@ DT_TEST(IoConfiguration)
     if (!Start(&Fix, DtFailures))
         return;
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_625I50),
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_625I50, -1,
+                                          -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50),
+                                          DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50,
+                                          -1, -1),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
-                                          DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT),
+                                          DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT,
+                                          -1, -1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
-                                          DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT),
+                                          DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT, -1,
+                                          -1),
                  DTAPI_E_NOT_SUPPORTED);
+
+    // An input sharing another port's antenna needs that port, before the direction is
+    // refused.
+    DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                          DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_SHAREDANT,
+                                          0, -1),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
+                                          DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_SHAREDANT,
+                                          2, -1),
+                 DTAPI_E_NOT_SUPPORTED);
+
+    // Reading: the direction, and a group that is none.
+    int64_t ParXtra0 = 0;
+    DT_ASSERT_OK(DtInpChannel_GetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR, &Value,
+                                          &SubValue, &ParXtra0, NULL));
+    DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_INPUT);
+    DT_ASSERT_EQ(SubValue, DTAPI_IOCONFIG_INPUT);
+    DT_ASSERT_EQ(ParXtra0, -1);
+    DT_ASSERT_EQ(DtInpChannel_GetIoConfig(Fix.Channel, DTAPI_IOCONFIG_INPUT, &Value, NULL,
+                                          NULL, NULL),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(Value, -1);
 
     // ASI switches the channel over, and a new SDI standard back.
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_ASI, -1));
+                                          DTAPI_IOCONFIG_ASI, -1, -1, -1));
     {
         int Size = BUFFER_SIZE;
         DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
@@ -1103,14 +1132,16 @@ DT_TEST(IoConfiguration)
 
     // A new standard reconfigures the channel.
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_625I50));
+                                          DTAPI_IOCONFIG_SDI, DTAPI_IOCONFIG_625I50, -1,
+                                          -1));
     SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_625I50);
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
                                         DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50),
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1),
                  DTAPI_E_NOT_IDLE);
 
     // Clearing the FIFO stops receiving.
@@ -1118,7 +1149,8 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Value));
     DT_ASSERT_EQ(Value, 0);
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_720P50));
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_720P50, -1,
+                                          -1));
     SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_720P50);
     SimRxState State;
     SimDtPcie_GetRxState(PORT - 1, &State);

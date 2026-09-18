@@ -226,7 +226,7 @@ DT_TEST(InputChannelCalls)
     int SubValue = 0;
     DT_ASSERT_OK(DtapiVidStd2IoStd(DTAPI_VIDSTD_1080I50, -1, &Value, &SubValue));
     DT_ASSERT_OK(
-        DtInpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value, SubValue));
+        DtInpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value, SubValue, -1, -1));
     DT_ASSERT_OK(
         DtInpChannel_SetRxMode(Channel, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV));
@@ -247,6 +247,24 @@ DT_TEST(InputChannelCalls)
 
     DT_ASSERT(IsOneOf(DtInpChannel_DetectIoStd(Channel, &Value, &SubValue), DTAPI_OK,
                       DTAPI_E_INVALID_VIDSTD));
+    int64_t ParXtra0 = 0;
+    int64_t ParXtra1 = 0;
+    DT_ASSERT_OK(DtInpChannel_GetIoConfig(Channel, DTAPI_IOCONFIG_IODIR, &Value,
+                                          &SubValue, &ParXtra0, &ParXtra1));
+    DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_INPUT);
+
+    // The functions of ASI, which an SDI channel does not have.
+    int NumInv = 0, ClkDet = 0, AsiLock = 0, RateOk = 0, AsiInv = 0, Count = 0;
+    static uint32_t Packets[47];
+    DT_ASSERT_EQ(DtInpChannel_Read(Channel, Packets, (int)sizeof(Packets), 20),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtInpChannel_GetStatus(Channel, &Value, &NumInv, &ClkDet, &AsiLock,
+                                        &RateOk, &AsiInv),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtInpChannel_GetTsRateBps(Channel, &Count), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtInpChannel_GetViolCount(Channel, &Count), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtInpChannel_PolarityControl(Channel, DTAPI_POLARITY_AUTO),
+                 DTAPI_E_NOT_SUPPORTED);
 
     // Room for a whole 1080-line frame of 10-bit symbols, which is what the channel is
     // configured for; a smaller buffer is refused rather than filled.
@@ -289,7 +307,8 @@ DT_TEST(OutputChannelCalls)
     DT_ASSERT(Channel != NULL);
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Channel, Device, Port.Port));
     DT_ASSERT_OK(DtOutpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IODIR,
-                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT));
+                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT,
+                                           -1, -1));
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(
         Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_IDLE));
@@ -310,6 +329,21 @@ DT_TEST(OutputChannelCalls)
     int Status = 0;
     int Latched = 0;
     DT_ASSERT_OK(DtOutpChannel_GetFlags(Channel, &Status, &Latched));
+    DT_ASSERT_OK(DtOutpChannel_ClearFlags(Channel, Latched));
+
+    int Value = 0;
+    int SubValue = 0;
+    int64_t ParXtra0 = 0;
+    int64_t ParXtra1 = 0;
+    DT_ASSERT_OK(DtOutpChannel_GetIoConfig(Channel, DTAPI_IOCONFIG_IODIR, &Value,
+                                           &SubValue, &ParXtra0, &ParXtra1));
+    DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_OUTPUT);
+
+    // The functions of ASI: SDI takes the normal polarity and has no rate.
+    DT_ASSERT_OK(DtOutpChannel_SetTxPolarity(Channel, DTAPI_TXPOL_NORMAL));
+    int Rate = 0;
+    DT_ASSERT_EQ(DtOutpChannel_GetTsRateBps(Channel, &Rate), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtOutpChannel_SetTsRateBps(Channel, 10000000), DTAPI_E_NOT_SUPPORTED);
 
     // A channel that is idle refuses what is written to it, and a frame of the wrong
     // size is refused whatever the channel does: answer enough that both writes are

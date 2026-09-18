@@ -97,12 +97,12 @@ static void MakePackets(uint8_t* Out, uint32_t First, int Count, int Size)
         SimAsi_MakePacket(First + (uint32_t)i, Size, Out + (size_t)i * (size_t)Size);
 }
 
-// Takes what the sink decoded until Size bytes are there, or two seconds have passed.
+// Takes what the sink decoded until Size bytes are there, or five seconds have passed.
 static size_t TakeSent(uint8_t* Out, size_t Size)
 {
     size_t Got = 0;
     const uint64_t Start = OsTime_MonotonicMs();
-    while (Got < Size && OsTime_MonotonicMs() - Start < 2000)
+    while (Got < Size && OsTime_MonotonicMs() - Start < 5000)
     {
         Got += SimDtPcie_TakeAsiTxBytes(PORT - 1, Out + Got, Size - Got);
         if (Got < Size)
@@ -259,7 +259,9 @@ DT_TEST(SendsAtTheRate)
         Fixture Fix;
         if (!Start(&Fix, DtFailures, true))
             return;
-        const int N = MAX_PACKETS;
+        // A fifth of a second of the stream, which the sink decodes symbol by symbol.
+        const int N =
+            Rates[r] / 5 / 1504 < MAX_PACKETS ? Rates[r] / 5 / 1504 : MAX_PACKETS;
         DT_ASSERT_OK(DtOutpChannel_SetTsRateBps(Fix.Channel, Rates[r]));
         MakePackets(Fix.Data, 0, N, 188);
         DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));

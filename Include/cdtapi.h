@@ -430,14 +430,27 @@ CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flag
                                              int* Latched);
 
 // Sets an I/O configuration of the channel's port, while not receiving
-// (DTAPI_E_NOT_IDLE). A new SDI standard reconfigures the channel for it. A standard that
-// crosses between SDI and ASI switches the channel to the other, with that side's default
-// receive mode, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_ST188; when
-// the switch fails the channel is left detached. Returns DTAPI_E_INVALID_ARG for a
-// combination that is no configuration and for an output direction, and
-// DTAPI_E_NOT_SUPPORTED for 6G, 12G and any other direction.
+// (DTAPI_E_NOT_IDLE), with DTAPI's ParXtra0 and ParXtra1, -1 where the configuration
+// takes none. A new SDI standard reconfigures the channel for it. A standard that
+// crosses between SDI and ASI switches the channel to the other, with that side's
+// default receive mode, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B or
+// DTAPI_RXMODE_ST188; when the switch fails the channel is left detached. Returns
+// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an output
+// direction and for an input that shares the antenna of a port ParXtra0 does not name,
+// and DTAPI_E_NOT_SUPPORTED for 6G, 12G and any other direction, which DTAPI would
+// apply.
 CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
-                                                int Value, int SubValue);
+                                                int Value, int SubValue, int64_t ParXtra0,
+                                                int64_t ParXtra1);
+
+// Reads the I/O configuration of group Group of the channel's port, as
+// DtDevice_GetIoConfig reads it: *Value, and *SubValue, *ParXtra0 and *ParXtra1 where
+// they are not NULL, which are -1 after a failure. Returns DTAPI_E_INVALID_ARG for a
+// group that is none, before DTAPI_E_NOT_ATTACHED, and DTAPI_E_NOT_SUPPORTED for a group
+// the port does not have.
+CDTAPI_API DtapiResult DtInpChannel_GetIoConfig(DtInpChannel* InpChannel, int Group,
+                                                int* Value, int* SubValue,
+                                                int64_t* ParXtra0, int64_t* ParXtra1);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
 // Receiving in the 8-bit mode, or on a port configured for 4K, fails with
@@ -605,14 +618,23 @@ CDTAPI_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
 CDTAPI_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status,
                                               int* Latched);
 
-// Sets an I/O configuration of the channel's port, while idle (DTAPI_E_NOT_IDLE). A new
-// SDI standard reconfigures the channel for it; the transmit mode is kept. A standard
-// that crosses between SDI and ASI switches the channel to the other, with that side's
+// Sets an I/O configuration of the channel's port, while idle (DTAPI_E_NOT_IDLE), with
+// DTAPI's ParXtra0 and ParXtra1, -1 where the configuration takes none. A new SDI
+// standard reconfigures the channel for it; the transmit mode is kept. A standard that
+// crosses between SDI and ASI switches the channel to the other, with that side's
 // default transmit mode; when the switch fails the channel is left detached. Returns
-// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an input direction
-// and for an output that names another port.
+// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an input
+// direction, and for an output that names another port, DTAPI_IOCONFIG_DBLBUF,
+// LOOPS2L3, LOOPS2TS or LOOPTHR, when ParXtra0 is no port.
 CDTAPI_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group,
-                                                 int Value, int SubValue);
+                                                 int Value, int SubValue,
+                                                 int64_t ParXtra0, int64_t ParXtra1);
+
+// Reads the I/O configuration of group Group of the channel's port, as
+// DtInpChannel_GetIoConfig does.
+CDTAPI_API DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int Group,
+                                                 int* Value, int* SubValue,
+                                                 int64_t* ParXtra0, int64_t* ParXtra1);
 
 // DTAPI_TXCTRL_HOLD starts the card's pipeline without sending, so that what is written
 // is kept; DTAPI_TXCTRL_SEND sends, and needs a frame written (DTAPI_E_INSUF_LOAD), also

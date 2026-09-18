@@ -382,6 +382,46 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// DtOutpChannel::GetIoConfig: -1 in every output first, the group checked, and then what
+// DtDevice_GetIoConfig checks and reads of the channel's port.
+//
+DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int Group, int* Value,
+                                      int* SubValue, int64_t* ParXtra0, int64_t* ParXtra1)
+{
+    DtIoConfig Config = {0, Group, -1, -1, {-1, -1}};
+    DtapiResult Result = DTAPI_OK;
+
+    if (Value != NULL)
+        *Value = -1;
+    if (SubValue != NULL)
+        *SubValue = -1;
+    if (ParXtra0 != NULL)
+        *ParXtra0 = -1;
+    if (ParXtra1 != NULL)
+        *ParXtra1 = -1;
+    if (OutpChannel == NULL || Value == NULL)
+        return DTAPI_E_INVALID_ARG;
+    Result = DtIoConfig_CheckGroup(Group);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    Config.Port = OutpChannel->Port.Port;
+    Result = DtDevice_GetIoConfig(&OutpChannel->Device, &Config, 1);
+    OsMutex_Unlock(OutpChannel->Lock);
+    *Value = Config.Value;
+    if (SubValue != NULL)
+        *SubValue = Config.SubValue;
+    if (ParXtra0 != NULL)
+        *ParXtra0 = Config.ParXtra[0];
+    if (ParXtra1 != NULL)
+        *ParXtra1 = Config.ParXtra[1];
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // DtOutpChannel::SetIoConfig's checks, then AsiSdiOutpChannel_Bb2::SetIoConfig's. DTAPI
@@ -392,7 +432,7 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
 // side.
 //
 DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int Value,
-                                      int SubValue)
+                                      int SubValue, int64_t ParXtra0, int64_t ParXtra1)
 {
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -403,13 +443,15 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    // An output that names another port needs that port in ParXtra, which the channel's
-    // function has no way to give.
-    if (Group == DTAPI_IOCONFIG_IODIR &&
-        (Value == DTAPI_IOCONFIG_INPUT ||
-         (Value == DTAPI_IOCONFIG_OUTPUT &&
-          (SubValue == DTAPI_IOCONFIG_DBLBUF || SubValue == DTAPI_IOCONFIG_LOOPS2L3 ||
-           SubValue == DTAPI_IOCONFIG_LOOPS2TS || SubValue == DTAPI_IOCONFIG_LOOPTHR))))
+    // An input direction is refused, and an output that names another port needs that
+    // port in ParXtra0.
+    if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_INPUT)
+        Result = DTAPI_E_INVALID_ARG;
+    else if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_OUTPUT &&
+             (SubValue == DTAPI_IOCONFIG_DBLBUF || SubValue == DTAPI_IOCONFIG_LOOPS2L3 ||
+              SubValue == DTAPI_IOCONFIG_LOOPS2TS ||
+              SubValue == DTAPI_IOCONFIG_LOOPTHR) &&
+             (ParXtra0 < 1 || ParXtra0 > OutpChannel->Device.NumPorts))
     {
         Result = DTAPI_E_INVALID_ARG;
     }
@@ -422,7 +464,8 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
         Config.Group = Group;
         Config.Value = Value;
         Config.SubValue = SubValue;
-        Config.ParXtra[0] = Config.ParXtra[1] = -1;
+        Config.ParXtra[0] = ParXtra0;
+        Config.ParXtra[1] = ParXtra1;
         DtTx* Tx = OutpChannel->Tx;
         const bool IsAsi = Tx->Ops->SetTsRateBps != NULL;
         const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;

@@ -603,8 +603,8 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
         if (Result == DTAPI_OK)
         {
             What = "DtOutpChannel_SetIoConfig";
-            Result =
-                DtOutpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
+            Result = DtOutpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value,
+                                               SubValue, -1, -1);
         }
     }
     if (Result == DTAPI_OK)

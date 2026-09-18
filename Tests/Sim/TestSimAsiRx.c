@@ -424,7 +424,8 @@ DT_TEST(SwitchesBetweenAsiAndSdi)
 
     DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel, DTAPI_RXMODE_STRAW));
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50));
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1));
     DT_ASSERT_EQ(DtInpChannel_Read(Fix.Channel, Fix.Buffer, 188, 10),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtInpChannel_GetTsRateBps(Fix.Channel, &Rate), DTAPI_E_NOT_SUPPORTED);
@@ -435,7 +436,7 @@ DT_TEST(SwitchesBetweenAsiAndSdi)
                  DTAPI_E_BUF_TOO_SMALL);
 
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_ASI, -1));
+                                          DTAPI_IOCONFIG_ASI, -1, -1, -1));
     SimAsiState State;
     SimDtPcie_GetAsiState(PORT - 1, &State);
     DT_ASSERT_EQ(State.RxPacketMode, DT_ASIRX_PCKMODE_AUTO); // ST188 again
@@ -444,7 +445,7 @@ DT_TEST(SwitchesBetweenAsiAndSdi)
     DT_ASSERT_OK(DtInpChannel_Read(Fix.Channel, Fix.Buffer, 10 * 188, 1000));
     DT_ASSERT(ArePackets(Fix.Buffer, 10, 0, 188, 188, 0));
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_ASI, -1),
+                                          DTAPI_IOCONFIG_ASI, -1, -1, -1),
                  DTAPI_E_NOT_IDLE);
     FINISH(Fix);
 }
