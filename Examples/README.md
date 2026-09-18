@@ -52,14 +52,34 @@ the `SimAvFifo` test suite is where transmission and reception meet.
 A legal frame `DtTransmitFrames` sends through a cable to an input arrives with the hash
 it printed, so the two programs' lines show whether it arrived bit for bit.
 
+### What ST 2110 needs first
+
+The two 2110 programs ask more of the machine than the SDI ones, because the port they
+use is a network interface of the card rather than a cable:
+
+- **An IP port with an address.** The address belongs to the card's own network
+  interface, not to the host's, and is set with DekTec's tools before a program runs.
+  `AvFifo_*_Start` gives `DTAPI_E_NW_DRIVER` when the port has no network interface,
+  `DTAPI_E_DISABLED` when it is disabled, and `DTAPI_E_NO_ADAPTER_IP_ADDR` when it has no
+  address of the IP version asked for.
+- **DekTec's service running**, which is what runs a PTP slave on the port and keeps the
+  card's clock locked.
+- **A PTP grandmaster on the network** for that slave to lock to. Without it the card's
+  clock free-runs: frames still go out, but their times of day are the card's own, which
+  is not ST 2110 timing and is not what a receiver expects.
+- **The network in between** carrying the multicast group. `AvFifo_RxFifo_Start` gives
+  `DTAPI_E_MULTICASTJOIN` when joining fails, and a transmit FIFO gives
+  `DTAPI_E_DST_MAC_ADDR` when the destination does not answer.
+
+None of this applies to the emulator, which has no network and no clock to lock.
+
 On a card with an IP port, one machine sending and another receiving:
 
     DtTransmit2110 --ip 239.1.2.3 --udp 5004 --count 250
     DtReceive2110 --ip 239.1.2.3 --udp 5004 --count 250 --format 10b
 
-The port's IP address, and its PTP clock, belong to the card: ST 2110 output is on time
-only when DekTec's service runs a PTP slave on the port, and the frames a program sends
-are timed by the card's clock.
+Each frame is given a time of day a little after the card's clock, and the card's
+scheduler sends it at that time.
 
 ## Output and exit codes
 
