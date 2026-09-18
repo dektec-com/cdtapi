@@ -390,6 +390,26 @@ DT_TEST(DetachEndsAWaitingWrite)
     FINISH(Fix);
 }
 
+// A detach that waits until everything is sent waits for the burst FIFO as well, which
+// DTAPI's wait leaves out once the buffer is empty: the last packet reaches the sink.
+DT_TEST(DetachWaitsForTheLastPacket)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures, true))
+        return;
+    SimDtPcie_SetTxRealTime(true);
+    const int N = 500;
+    MakePackets(Fix.Data, 0, N, 188);
+    DT_ASSERT_OK(DtOutpChannel_SetTsRateBps(Fix.Channel, 20000000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Fix.Data, N * 188));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, DTAPI_WAIT_UNTIL_SENT));
+    DT_ASSERT_EQ(TakeSent(Fix.Got, (size_t)N * 188), (size_t)N * 188);
+    DT_ASSERT(memcmp(Fix.Got, Fix.Data, (size_t)N * 188) == 0);
+    FINISH(Fix);
+}
+
 // A double-buffered output naming the port as its master is taken with it, set to ASI,
 // its PHY run and stopped with the master's; one another user holds refuses the attach.
 DT_TEST(DrivesItsSlave)
@@ -431,4 +451,5 @@ DT_TEST(DrivesItsSlave)
 DT_TEST_MAIN("SimAsiTx", DT_RUN(AttachesAndSendsK28), DT_RUN(ModeAndRateChecks),
              DT_RUN(SendsEveryMode), DT_RUN(SendsAtTheRate), DT_RUN(LoopsToAnInput188),
              DT_RUN(LoopsToAnInput204), DT_RUN(StuffsNullPackets),
-             DT_RUN(DetachEndsAWaitingWrite), DT_RUN(DrivesItsSlave))
+             DT_RUN(DetachEndsAWaitingWrite), DT_RUN(DetachWaitsForTheLastPacket),
+             DT_RUN(DrivesItsSlave))

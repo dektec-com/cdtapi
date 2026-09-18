@@ -980,8 +980,10 @@ static void Wake(DtTx* Base)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitUntilSent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // OutpChannel::WaitUntilSend: until the load is a data word or less, looking every
-// 10 ms without the lock. Unlike DTAPI it gives up when the load has not gone down for a
-// second.
+// 10 ms without the lock. The load leaves out the burst FIFO once the buffer is empty, so
+// DTAPI stops there with up to half a megabyte of symbols, some 10 ms of the line, still
+// to go, which its detach then discards; this waits for the burst FIFO to empty as well.
+// Unlike DTAPI it gives up when the load has not gone down for a second.
 //
 static void WaitUntilSent(DtTx* Base)
 {
@@ -990,9 +992,22 @@ static void WaitUntilSent(DtTx* Base)
     uint64_t Since = OsTime_MonotonicMs();
 
     OsEvent_Set(Tx->Wake);
-    while (FifoLoadOf(Tx, &Load) == DTAPI_OK && Load > DT_ASITX_EXIT_LOAD &&
-           Base->TxControl == DTAPI_TXCTRL_SEND)
+    for (bool Burst = false; Base->TxControl == DTAPI_TXCTRL_SEND;)
     {
+        DtBurstFifoStatus Status;
+        if (!Burst && (FifoLoadOf(Tx, &Load) != DTAPI_OK || Load <= DT_ASITX_EXIT_LOAD))
+        {
+            Burst = true;
+            Lowest = SIZE_MAX;
+        }
+        if (Burst)
+        {
+            if (DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, &Status) != DTAPI_OK ||
+                Status.CurLoad <= DT_ASITX_EXIT_LOAD)
+                break;
+            Load = (size_t)Status.CurLoad;
+        }
+
         if (Load < Lowest)
         {
             Lowest = Load;
