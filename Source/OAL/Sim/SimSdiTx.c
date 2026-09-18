@@ -101,6 +101,7 @@ typedef struct SimTxPort
     uint16_t* Symbols; // The frame being received
     int Starve;
     int FramesSent;
+    int FrameLimit; // Stop after this many frames; 0 for no limit
     int HeaderErrors;
     SimTxKept Kept[SIM_TX_KEPT_FRAMES];
     int NumKept;
@@ -379,6 +380,8 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
     Advance(Port);
     if (!IsSending(Port))
+        return false;
+    if (Port->FrameLimit > 0 && Port->FramesSent >= Port->FrameLimit)
         return false;
     if (Port->Starve > 0)
     {
@@ -1205,6 +1208,17 @@ void SimDtPcie_StarveTx(int PortIndex, int Events)
     EnsureTx();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
         g_Tx.Ports[PortIndex].Starve = Events;
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetTxFrameLimit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_SetTxFrameLimit(int PortIndex, int Count)
+{
+    SimDtPcie_Lock();
+    EnsureTx();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+        g_Tx.Ports[PortIndex].FrameLimit = Count;
     SimDtPcie_Unlock();
 }
 

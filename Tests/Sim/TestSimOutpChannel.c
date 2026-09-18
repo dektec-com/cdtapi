@@ -212,10 +212,13 @@ static bool WaitForFrames(int Count)
     }
 }
 
-// Waits until the card has sent Count frames and holds, so that the frames the emulator
-// keeps are not replaced by black frames while a slow test compares them.
+// Waits until the card has sent Count frames and holds. The emulator is told to stop
+// after those frames as well: it keeps the last few, and on a loaded machine a test can
+// be away long enough for the black frames that follow to push the frames it is about to
+// compare out of that store.
 static bool SentAndHeld(DtOutpChannel* Channel, int Count)
 {
+    SimDtPcie_SetTxFrameLimit(PORT - 1, Count);
     return WaitForFrames(Count) &&
            DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD) == DTAPI_OK;
 }

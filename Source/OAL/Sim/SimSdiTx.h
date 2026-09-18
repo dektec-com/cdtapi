@@ -104,6 +104,12 @@ void SimDtPcie_StarveTx(int PortIndex, int Events);
 // waits come when false.
 void SimDtPcie_SetTxRealTime(bool RealTime);
 
+// Makes the port at PortIndex send Count frames and no more, so that the frames it keeps
+// are still there when a test compares them, however long the test takes to get to them.
+// A count of 0, as after a reset, sends without a limit. The port counts every frame it
+// sends, the black ones the library writes included.
+void SimDtPcie_SetTxFrameLimit(int PortIndex, int Count);
+
 // Makes the next Reads reads of the read offset of the port at PortIndex answer Offset,
 // as a DTA-2178 answered an offset of an earlier run right after its DMA controller was
 // set running.
