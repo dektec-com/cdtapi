@@ -24,6 +24,11 @@ option(CDTAPI_BUILD_TESTS "Build the test suites" ON)
 option(CDTAPI_BUILD_EXAMPLES "Build the example programs" ON)
 option(CDTAPI_BUILD_SHARED "Build a shared library instead of a static one" OFF)
 
+# The SDK ships one set of files per platform, named as DekTec names them and installed
+# in Include, Lib and Bin. A build of the library on its own installs as libraries on the
+# platform usually do, which is what a distribution, vcpkg or a developer expects.
+option(CDTAPI_SDK_LAYOUT "Install with the SDK's file names and directories" OFF)
+
 # Leaves out the platform driver backends so that the library builds and runs on a
 # machine with no DekTec driver installed. The emulated device is always compiled in.
 option(CDTAPI_SIM_ONLY "Build without the real driver backends" OFF)
@@ -158,9 +163,12 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${CDTAPI_TREE})
 if(CDTAPI_BUILD_SHARED)
     add_library(cdtapi SHARED ${CDTAPI_BUILT} ${CDTAPI_SHOWN_ONLY})
     target_compile_definitions(cdtapi PRIVATE CDTAPI_EXPORTS)
+
+    # A program that links the DLL through CMake calls straight through the import table.
+    # One that links it by hand does not have to define anything; see cdtapi.h.
+    target_compile_definitions(cdtapi INTERFACE CDTAPI_DLL)
 else()
     add_library(cdtapi STATIC ${CDTAPI_BUILT} ${CDTAPI_SHOWN_ONLY})
-    target_compile_definitions(cdtapi PUBLIC CDTAPI_STATIC)
 endif()
 
 add_library(cdtapi::cdtapi ALIAS cdtapi)
@@ -250,18 +258,76 @@ endif()
 
 include(GNUInstallDirs)
 
+# Where things land. The SDK's layout is Include, Lib and Bin, as its other libraries
+# have it and as an application that builds against the SDK already looks for them.
+if(CDTAPI_SDK_LAYOUT)
+    set(CDTAPI_INCLUDE_DIR "Include")
+    set(CDTAPI_LIB_DIR "Lib")
+    set(CDTAPI_BIN_DIR "Bin")
+    set(CDTAPI_PKGCONFIG_DIR "Lib/pkgconfig")
+else()
+    set(CDTAPI_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(CDTAPI_LIB_DIR "${CMAKE_INSTALL_LIBDIR}")
+    set(CDTAPI_BIN_DIR "${CMAKE_INSTALL_BINDIR}")
+    set(CDTAPI_PKGCONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+endif()
+
+# What the file is called. On Windows a static library fixes which C runtime it calls, so
+# the SDK ships one per runtime and configuration, named as DTAPI's own are: cdtapi64mt,
+# cdtapi64mtd, cdtapi64md and cdtapi64mdd. The DLL and its import library are cdtapi64,
+# built against the dynamic runtime, and serve an application of any runtime. Elsewhere
+# the name is plain cdtapi, which is what -lcdtapi asks for.
+if(CDTAPI_SDK_LAYOUT AND WIN32)
+    if(CDTAPI_BUILD_SHARED)
+        set_target_properties(cdtapi PROPERTIES OUTPUT_NAME "cdtapi64")
+    else()
+        # The dynamic runtime is MSVC's default, and every spelling of the static one
+        # leaves out DLL: MultiThreaded, and MultiThreaded$<$<CONFIG:Debug>:Debug>.
+        set(CDTAPI_RUNTIME_SUFFIX "md")
+        if(CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
+            set(CDTAPI_RUNTIME_SUFFIX "mt")
+        endif()
+        set_target_properties(cdtapi PROPERTIES
+            OUTPUT_NAME "cdtapi64${CDTAPI_RUNTIME_SUFFIX}"
+            DEBUG_POSTFIX "d")
+    endif()
+endif()
+
 install(TARGETS cdtapi
     EXPORT cdtapiTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    ARCHIVE DESTINATION ${CDTAPI_LIB_DIR}
+    LIBRARY DESTINATION ${CDTAPI_LIB_DIR}
+    RUNTIME DESTINATION ${CDTAPI_BIN_DIR})
+
+# The DLL's symbols, for a customer who debugs into it. A static library's symbols are in
+# the archive itself.
+if(CDTAPI_SDK_LAYOUT AND WIN32 AND CDTAPI_BUILD_SHARED)
+    install(FILES "$<TARGET_PDB_FILE:cdtapi>" DESTINATION ${CDTAPI_BIN_DIR} OPTIONAL)
+endif()
 
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_constants.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_avfifo.h"
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/cdtapi_version.h"
-    DESTINATION Include)
+    DESTINATION ${CDTAPI_INCLUDE_DIR})
+
+# What a static consumer outside CMake has to link beside the library itself. A shared
+# build carries them, so the .pc names them as private either way.
+if(WIN32)
+    set(CDTAPI_SYSTEM_LIBS "-lsetupapi -lws2_32 -liphlpapi")
+else()
+    set(CDTAPI_SYSTEM_LIBS "-lpthread")
+endif()
+
+# The name to link, which is the target's file name: the SDK's DLL is cdtapi64, and
+# everything else is plain cdtapi. A static consumer of the SDK picks the archive of its
+# own runtime, which the documentation names.
+if(CDTAPI_SDK_LAYOUT AND WIN32)
+    set(CDTAPI_LINK_NAME "cdtapi64")
+else()
+    set(CDTAPI_LINK_NAME "cdtapi")
+endif()
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cdtapi.pc.in"
@@ -269,4 +335,4 @@ configure_file(
     @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+    DESTINATION ${CDTAPI_PKGCONFIG_DIR})

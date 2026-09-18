@@ -1,10 +1,11 @@
 prefix=${pcfiledir}/../..
-libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
-includedir=${prefix}/Include
+libdir=${prefix}/@CDTAPI_LIB_DIR@
+includedir=${prefix}/@CDTAPI_INCLUDE_DIR@
 
 Name: CDTAPI
 Description: Native open-source C API for DekTec SDI and SMPTE ST 2110 interfaces
 Version: @PROJECT_VERSION@
 URL: https://www.dektec.com
-Libs: -L"${libdir}" -lcdtapi
+Libs: -L"${libdir}" -l@CDTAPI_LINK_NAME@
+Libs.private: @CDTAPI_SYSTEM_LIBS@
 Cflags: -I"${includedir}"

@@ -22,18 +22,22 @@ extern "C"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbol export +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// A consumer that links the shared library on Windows needs the import declaration, so
-// the default here is "importing"; the library build itself defines CDTAPI_EXPORTS.
-// A static build defines CDTAPI_STATIC and gets neither.
+// Nothing has to be defined to use this header: a program that links one of the static
+// libraries, which is what the SDK ships for an application to link, compiles as it is.
+//
+// CDTAPI_DLL says the program links the DLL's import library instead, which lets the
+// compiler call straight through the import table. Without it a DLL still links and
+// runs, through a thunk the linker writes. The library's own build defines
+// CDTAPI_EXPORTS.
 //
 
-#if defined(CDTAPI_STATIC)
-    #define CDTAPI_API
-#elif defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32) || defined(_WIN64)
     #if defined(CDTAPI_EXPORTS)
         #define CDTAPI_API __declspec(dllexport)
-    #else
+    #elif defined(CDTAPI_DLL)
         #define CDTAPI_API __declspec(dllimport)
+    #else
+        #define CDTAPI_API
     #endif
 #else
     #define CDTAPI_API __attribute__((visibility("default")))
