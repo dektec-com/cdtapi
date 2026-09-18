@@ -92,6 +92,8 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimNet.c
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
+    Source/Ts/DtAsiEnc.c
+    Source/Ts/DtTsTrp.c
     Source/Video/DtFrameProps.c
     Source/Video/DtSdiFrame.c
     Source/Video/DtSmpte352.c

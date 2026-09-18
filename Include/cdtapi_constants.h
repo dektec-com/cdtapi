@@ -586,6 +586,85 @@
 #define DTAPI_RXMODE_SDI_10B_NBO    0x00010000
 #define DTAPI_RXMODE_SDI_STAT       0x00020000
 
+// Receive mode for Transport Streams - Modes
+#define DTAPI_RXMODE_TS             0x10
+#define DTAPI_RXMODE_TS_MODE_BITS   0x0F
+#define DTAPI_RXMODE_ST188          (DTAPI_RXMODE_TS | 0x01)
+#define DTAPI_RXMODE_ST204          (DTAPI_RXMODE_TS | 0x02)
+#define DTAPI_RXMODE_STMP2          (DTAPI_RXMODE_TS | 0x03)
+#define DTAPI_RXMODE_STRAW          (DTAPI_RXMODE_TS | 0x04)
+#define DTAPI_RXMODE_STL3           (DTAPI_RXMODE_TS | 0x05)
+#define DTAPI_RXMODE_STL3FULL       (DTAPI_RXMODE_TS | 0x06)
+#define DTAPI_RXMODE_IPRAW          (DTAPI_RXMODE_TS | 0x07)
+#define DTAPI_RXMODE_RAWASI         (DTAPI_RXMODE_TS | 0x08)
+#define DTAPI_RXMODE_STTRP          (DTAPI_RXMODE_TS | 0x09)
+#define DTAPI_RXMODE_STL3ALL        (DTAPI_RXMODE_TS | 0x0A)
+#define DTAPI_RXMODE_GSE_RAW        (DTAPI_RXMODE_TS | 0x0B)
+#define DTAPI_RXMODE_TS_MASK        (DTAPI_RXMODE_TS | DTAPI_RXMODE_TS_MODE_BITS)
+
+// Receive mode for SDI and Transport Streams - Common flags
+#define DTAPI_RXMODE_TIMESTAMP32    0x01000000
+#define DTAPI_RXMODE_TIMESTAMP64    0x02000000
+#define DTAPI_RXMODE_TIMESTAMP_TOD  0x04000000
+
+// Transmit mode for Transport Streams - Modes
+#define DTAPI_TXMODE_TS             0x10
+#define DTAPI_TXMODE_TS_MODE_BITS   0x0F
+#define DTAPI_TXMODE_188            (DTAPI_TXMODE_TS | 0x01)
+#define DTAPI_TXMODE_192            (DTAPI_TXMODE_TS | 0x02)
+#define DTAPI_TXMODE_204            (DTAPI_TXMODE_TS | 0x03)
+#define DTAPI_TXMODE_ADD16          (DTAPI_TXMODE_TS | 0x04)
+#define DTAPI_TXMODE_MIN16          (DTAPI_TXMODE_TS | 0x05)
+#define DTAPI_TXMODE_IPRAW          (DTAPI_TXMODE_TS | 0x06)
+#define DTAPI_TXMODE_RAW            (DTAPI_TXMODE_TS | 0x07)
+#define DTAPI_TXMODE_RAWASI         (DTAPI_TXMODE_TS | 0x08)
+#define DTAPI_TXMODE_TS_MASK        (DTAPI_TXMODE_TS | DTAPI_TXMODE_TS_MODE_BITS)
+// Transmit mode for Transport Streams - DVB-ASI flags
+#define DTAPI_TXMODE_BURST          0x20
+#define DTAPI_TXMODE_TXONTIME       0x40
+
+// Stuff mode - TS : Null-packet stuffing on/off; SDI: Black-frame stuffing on/off
+#define DTAPI_TXSTUFF_MODE_OFF      0
+#define DTAPI_TXSTUFF_MODE_ON       1
+
+// Transmit polarity
+#define DTAPI_TXPOL_NORMAL          0
+#define DTAPI_TXPOL_INVERTED        1
+
+// Polarity control
+#define DTAPI_POLARITY_AUTO         0
+#define DTAPI_POLARITY_NORMAL       2
+#define DTAPI_POLARITY_INVERT       3
+
+// Feature not supported
+#define DTAPI_NOT_SUPPORTED         -1
+
+// ASI Polarity-Control Status
+#define DTAPI_ASIINV_NORMAL         0
+#define DTAPI_ASIINV_INVERT         1
+
+// ASI Input-Clock Lock
+#define DTAPI_ASI_NOLOCK            0
+#define DTAPI_ASI_INLOCK            1
+
+// Clock Detector
+#define DTAPI_CLKDET_FAIL           0
+#define DTAPI_CLKDET_OK             1
+
+// Input Rate Ok
+#define DTAPI_INPRATE_LOW           0
+#define DTAPI_INPRATE_OK            1
+
+// #Invalid bytes per packet
+#define DTAPI_NUMINV_NONE           0
+#define DTAPI_NUMINV_16             1
+#define DTAPI_NUMINV_OTHER          2
+
+// Packet Size
+#define DTAPI_PCKSIZE_INV           0
+#define DTAPI_PCKSIZE_188           2
+#define DTAPI_PCKSIZE_204           3
+
 // Receiver status flags
 #define DTAPI_RX_FIFO_OVF           0x0002
 #define DTAPI_RX_SYNC_ERR           0x0004
