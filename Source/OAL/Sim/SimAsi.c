@@ -10,25 +10,87 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "DtPcieAbi.h" // The driver ABI the emulator answers in.
-#include "SimAsi.h"    // Interface being implemented.
-#include "SimDtPcie.h" // Port counts and the lock.
+#include "Core/DtAlloc.h" // Allocation seam.
+#include "DtPcieAbi.h"    // The driver ABI the emulator answers in.
+#include "OAL/OsThread.h" // The clock the ports follow.
+#include "SimAsi.h"       // Interface being implemented.
+#include "SimDtPcie.h"    // Port counts and the lock.
+#include "SimNw.h"        // The card's time of day.
+#include "SimSdiTx.h"     // The DMA of the ports.
+#include "Ts/DtAsiEnc.h"  // The code the sink decodes.
+#include "Ts/DtTsTrp.h"   // The packets the card receives into.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// A decoded symbol that is K28.5, and one that is no code.
+#define SIM_ASI_K28_5 0x100
+#define SIM_ASI_NO_CODE (-1)
+
+// The bytes the output takes from its buffer a millisecond: 27 M symbols of 16 bits.
+#define SIM_ASI_BYTES_PER_MS 54000
+
+// The symbols the sink measures the rate over.
+#define SIM_ASI_RATE_WINDOW 270000
+
+// What the input of a loop finds packets in: three sync bytes of the larger packets.
+#define SIM_ASI_FIND_BYTES (2 * 204 + 1)
+#define SIM_ASI_LOOP_BUFFER 1024
+
+typedef struct SimAsiRx
+{
+    bool HasSource;
+    SimAsiSource Source;
+    uint32_t Number;   // Of the next packet
+    int Unsynced;      // Pieces without sync still to come
+    double Due;        // Packets due in real time, not yet received
+    uint64_t LastMs;   // When the packets due were last counted
+    bool Receiving;    // At the last count
+    uint16_t Sequence; // Of the next transparent packet
+    int Fault;         // SIM_ASI_FAULT_ for the next packet
+} SimAsiRx;
+
+typedef struct SimAsiTx
+{
+    bool Running; // At the last drain
+    bool Sent;    // Something went out since ASITXG started
+    uint64_t LastMs;
+    int Rd;
+    bool RdKnown;
+    SimAsiTxStats Stats;
+    int64_t WindowSyms, WindowData;
+    uint8_t* Kept; // SIM_ASI_KEPT_BYTES once a data byte came
+    size_t KeptHead, KeptLen;
+} SimAsiTx;
 
 typedef struct SimAsiPort
 {
     SimAsiState State;
     SimAsiSignal Signal;
+    SimAsiRx Rx;
+    SimAsiTx Tx;
 } SimAsiPort;
+
+// The input of a loop, finding packets in the bytes the output sends.
+typedef struct SimAsiLoop
+{
+    int TxIndex, RxIndex; // -1 without a loop
+    uint8_t Buf[SIM_ASI_LOOP_BUFFER];
+    size_t Len;
+    int PacketSize; // 0 while no packets are found
+} SimAsiLoop;
 
 static struct
 {
     bool Initialised;
     SimAsiPort Ports[SIM_SDI_PORT_COUNT];
+    SimAsiLoop Loop;
     int FailFunctionCode;
     int FailCmd;
     uint32_t FailStatus;
+    bool HaveTables;
+    int16_t Decode[2][1024]; // Per running disparity; SIM_ASI_NO_CODE for none
+    uint8_t NextRd[2][1024];
+    uint8_t Scratch[65536]; // What a drain takes from the card at a time
 } g_Asi;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureAsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -288,6 +350,392 @@ uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int
                 : AsiTxGCmd(Port, Cmd, In, Out, OutSize);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Receiving +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsReceiving -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static bool IsReceiving(int PortIndex)
+{
+    const SimAsiPort* Port = &g_Asi.Ports[PortIndex];
+    return Port->State.RxMode == DT_FUNC_OPMODE_RUN && Port->Signal.CarrierDetect &&
+           SimSdiTx_RxOpen(PortIndex);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The card receives Valid bytes of Payload, zeros for NULL, with Sync the first byte of
+// the trailer, OffsetNs after the time of day now. A packet it has no room for is an
+// overflow.
+//
+static void Receive(int PortIndex, const uint8_t* Payload, int Valid, uint8_t Sync,
+                    uint64_t OffsetNs)
+{
+    SimAsiRx* Rx = &g_Asi.Ports[PortIndex].Rx;
+    uint8_t P[DT_TRP_SIZE];
+    const uint64_t Tod = SimNw_Now() + OffsetNs;
+    const uint32_t Seconds = (uint32_t)(Tod / 1000000000u);
+    const uint32_t Nanoseconds = (uint32_t)(Tod % 1000000000u);
+
+    memset(P, 0, sizeof(P));
+    for (int i = 0; i < 4; i++)
+    {
+        P[i] = (uint8_t)(Seconds >> (8 * i));
+        P[4 + i] = (uint8_t)(Nanoseconds >> (8 * i));
+    }
+    if (Payload != NULL)
+        memcpy(P + 8, Payload, (size_t)Valid);
+    P[212] = Sync;
+    P[213] = (uint8_t)Valid;
+    P[214] = (uint8_t)Rx->Sequence;
+    P[215] = (uint8_t)(Rx->Sequence >> 8);
+    Rx->Sequence++;
+
+    if (SimSdiTx_RxFree(PortIndex) < DT_TRP_SIZE)
+        SimSdiTx_CountOverflow(PortIndex);
+    else
+        SimSdiTx_RxWrite(PortIndex, P, DT_TRP_SIZE);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendFromSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The next piece or packet of a port's source, OffsetNs from now.
+//
+static void SendFromSource(int PortIndex, uint64_t OffsetNs)
+{
+    SimAsiRx* Rx = &g_Asi.Ports[PortIndex].Rx;
+    uint8_t Packet[204];
+
+    if (Rx->Unsynced > 0)
+    {
+        // What a DTA-2178 wrote first: 204 bytes and no packet sync.
+        Rx->Unsynced--;
+        Receive(PortIndex, NULL, 204, 0x50, OffsetNs);
+        return;
+    }
+
+    const int Size = Rx->Source.PacketSize;
+    uint8_t Sync = 0x58;
+    int Valid = Size;
+    SimAsi_MakePacket(Rx->Number++, Size, Packet);
+    switch (Rx->Fault)
+    {
+    case SIM_ASI_FAULT_NIBBLE:
+        Sync = 0x08;
+        break;
+    case SIM_ASI_FAULT_VALID:
+        Valid = 100;
+        break;
+    case SIM_ASI_FAULT_SEQUENCE:
+        Rx->Sequence++;
+        break;
+    case SIM_ASI_FAULT_NOSYNC:
+        Sync = 0x50;
+        break;
+    default:
+        break;
+    }
+    Rx->Fault = 0;
+    Receive(PortIndex, Packet, Valid, Sync, OffsetNs);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Produce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A receiver that starts receiving begins with the source's pieces without sync, and in
+// real time with no packets due.
+//
+void SimAsi_Produce(int PortIndex)
+{
+    EnsureAsi();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return;
+    SimAsiRx* Rx = &g_Asi.Ports[PortIndex].Rx;
+    if (!Rx->HasSource)
+        return;
+
+    const uint64_t NowMs = OsTime_MonotonicMs();
+    if (!IsReceiving(PortIndex))
+    {
+        Rx->Receiving = false;
+        return;
+    }
+    if (!Rx->Receiving)
+    {
+        Rx->Receiving = true;
+        Rx->Unsynced = Rx->Source.UnsyncedAtStart;
+        Rx->Due = 0;
+        Rx->LastMs = NowMs;
+    }
+
+    const double PacketNs =
+        (double)Rx->Source.PacketSize * 8 * 1e9 / (double)Rx->Source.Rate;
+    int64_t Count;
+    if (SimSdiTx_RealTime())
+    {
+        Rx->Due += (double)(NowMs - Rx->LastMs) * 1e6 / PacketNs;
+        Rx->LastMs = NowMs;
+        Count = (int64_t)Rx->Due;
+        Rx->Due -= (double)Count;
+    }
+    else
+    {
+        Count = Rx->Source.PacketsPerRead;
+    }
+    for (int64_t i = 0; i < Count; i++)
+        SendFromSource(PortIndex, (uint64_t)((double)i * PacketNs));
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Loop +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Dropped -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static void Dropped(SimAsiLoop* Loop, size_t Count)
+{
+    memmove(Loop->Buf, Loop->Buf + Count, Loop->Len - Count);
+    Loop->Len -= Count;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Finds and receives the packets in what the loop holds. Packets are found where three
+// sync bytes follow each other at 188 or 204 bytes, and lost where one is missing.
+//
+static void FindPackets(SimAsiLoop* Loop)
+{
+    const bool Receiving = IsReceiving(Loop->RxIndex);
+    for (;;)
+    {
+        if (Loop->PacketSize == 0)
+        {
+            if (Loop->Len < SIM_ASI_FIND_BYTES)
+                return;
+            const uint8_t* B = Loop->Buf;
+            if (B[0] == 0x47 && B[188] == 0x47 && B[376] == 0x47)
+                Loop->PacketSize = 188;
+            else if (B[0] == 0x47 && B[204] == 0x47 && B[408] == 0x47)
+                Loop->PacketSize = 204;
+            else
+                Dropped(Loop, 1);
+            continue;
+        }
+        if (Loop->Len < (size_t)Loop->PacketSize)
+            return;
+        if (Loop->Buf[0] != 0x47)
+        {
+            Loop->PacketSize = 0;
+            continue;
+        }
+        if (Receiving)
+            Receive(Loop->RxIndex, Loop->Buf, Loop->PacketSize, 0x58, 0);
+        Dropped(Loop, (size_t)Loop->PacketSize);
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoopByte -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void LoopByte(uint8_t Byte)
+{
+    SimAsiLoop* Loop = &g_Asi.Loop;
+    if (Loop->Len == SIM_ASI_LOOP_BUFFER)
+        FindPackets(Loop);
+    if (Loop->Len == SIM_ASI_LOOP_BUFFER)
+        Dropped(Loop, 1);
+    Loop->Buf[Loop->Len++] = Byte;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoopSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// What the input of the loop sees of the output.
+//
+static void LoopSignal(void)
+{
+    const SimAsiLoop* Loop = &g_Asi.Loop;
+    const SimAsiPort* Tx = &g_Asi.Ports[Loop->TxIndex];
+    SimAsiSignal* Signal = &g_Asi.Ports[Loop->RxIndex].Signal;
+
+    NoSignal(Signal);
+    if (!Tx->Tx.Running)
+        return;
+    Signal->CarrierDetect = true;
+    Signal->AsiLock = Loop->PacketSize != 0;
+    Signal->PacketSize = Loop->PacketSize == 188   ? DT_ASIRX_PCKSIZE_188
+                         : Loop->PacketSize == 204 ? DT_ASIRX_PCKSIZE_204
+                                                   : DT_ASIRX_PCKSIZE_UNKNOWN;
+    Signal->Polarity = Tx->State.TxgPolarity == DT_ASITXG_POL_INVERT
+                           ? DT_ASIRX_POLARITY_INVERT
+                           : DT_ASIRX_POLARITY_NORMAL;
+    Signal->TsBitrate = (int)Tx->Tx.Stats.TsBitrate;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sending +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureTables -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The decoder, from the encoder's code.
+//
+static void EnsureTables(void)
+{
+    if (g_Asi.HaveTables)
+        return;
+    for (int Rd = 0; Rd < 2; Rd++)
+    {
+        for (int s = 0; s < 1024; s++)
+            g_Asi.Decode[Rd][s] = SIM_ASI_NO_CODE;
+        for (int b = 0; b < 256; b++)
+        {
+            int Next;
+            uint16_t Code = DtAsiEnc_Code((uint8_t)b, Rd, &Next);
+            g_Asi.Decode[Rd][Code] = (int16_t)b;
+            g_Asi.NextRd[Rd][Code] = (uint8_t)Next;
+        }
+    }
+    g_Asi.Decode[0][DT_ASI_K28_5_RDNEG] = SIM_ASI_K28_5;
+    g_Asi.NextRd[0][DT_ASI_K28_5_RDNEG] = 1;
+    g_Asi.Decode[1][DT_ASI_K28_5_RDPOS] = SIM_ASI_K28_5;
+    g_Asi.NextRd[1][DT_ASI_K28_5_RDPOS] = 0;
+    g_Asi.HaveTables = true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Keep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void Keep(SimAsiTx* Tx, uint8_t Byte)
+{
+    if (Tx->Kept == NULL)
+    {
+        Tx->Kept = (uint8_t*)DtAlloc_Malloc(SIM_ASI_KEPT_BYTES);
+        if (Tx->Kept == NULL)
+            return;
+    }
+    Tx->Kept[(Tx->KeptHead + Tx->KeptLen) % SIM_ASI_KEPT_BYTES] = Byte;
+    if (Tx->KeptLen < SIM_ASI_KEPT_BYTES)
+        Tx->KeptLen++;
+    else
+        Tx->KeptHead = (Tx->KeptHead + 1) % SIM_ASI_KEPT_BYTES;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DecodeSym -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Decodes one symbol for the running disparity; the first after the output starts sets
+// it.
+//
+static void DecodeSym(SimAsiTx* Tx, uint16_t Sym, bool Looped)
+{
+    int Rd = Tx->Rd;
+    int Value = g_Asi.Decode[Rd][Sym];
+
+    Tx->Stats.Symbols++;
+    Tx->WindowSyms++;
+    if (Value == SIM_ASI_NO_CODE)
+    {
+        Rd = 1 - Rd;
+        Value = g_Asi.Decode[Rd][Sym];
+        if (Value == SIM_ASI_NO_CODE)
+        {
+            Tx->Stats.CodeErrors++;
+            return;
+        }
+        if (Tx->RdKnown)
+            Tx->Stats.DisparityErrors++;
+    }
+    Tx->Rd = g_Asi.NextRd[Rd][Sym];
+    Tx->RdKnown = true;
+
+    if (Value == SIM_ASI_K28_5)
+    {
+        Tx->Stats.K28++;
+        return;
+    }
+    Tx->Stats.DataBytes++;
+    Tx->WindowData++;
+    Keep(Tx, (uint8_t)Value);
+    if (Looped)
+        LoopByte((uint8_t)Value);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Drain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimAsi_Drain(int PortIndex)
+{
+    EnsureAsi();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return;
+    SimAsiPort* Port = &g_Asi.Ports[PortIndex];
+    SimAsiTx* Tx = &Port->Tx;
+    const bool Looped = g_Asi.Loop.TxIndex == PortIndex;
+    const uint64_t NowMs = OsTime_MonotonicMs();
+
+    const bool Running =
+        Port->State.TxgMode == DT_BLOCK_OPMODE_RUN && SimSdiTx_PhyRuns(PortIndex);
+    if (!Running)
+    {
+        Tx->Running = Tx->Sent = Tx->RdKnown = false;
+        if (Looped)
+            LoopSignal();
+        return;
+    }
+    if (!Tx->Running)
+    {
+        Tx->Running = true;
+        Tx->LastMs = NowMs;
+    }
+    if (Looped)
+        LoopSignal(); // The carrier comes before the first byte
+
+    EnsureTables();
+    const bool RealTime = SimSdiTx_RealTime();
+    uint64_t Allowed =
+        RealTime ? (NowMs - Tx->LastMs) * SIM_ASI_BYTES_PER_MS : UINT64_MAX;
+    Tx->LastMs = NowMs;
+    while (Allowed > 0)
+    {
+        size_t Chunk = sizeof(g_Asi.Scratch);
+        if (Allowed < Chunk)
+            Chunk = (size_t)Allowed & ~(size_t)1;
+        if (Chunk == 0)
+            break;
+        const size_t Taken = SimSdiTx_TxTake(PortIndex, g_Asi.Scratch, Chunk);
+        for (size_t i = 0; i + 1 < Taken; i += 2)
+        {
+            DecodeSym(Tx,
+                      (uint16_t)((g_Asi.Scratch[i] | g_Asi.Scratch[i + 1] << 8) & 0x3FF),
+                      Looped);
+        }
+        Allowed -= Taken;
+        if (Taken > 0)
+            Tx->Sent = true;
+        if (Taken < Chunk)
+        {
+            if (RealTime && Tx->Sent)
+                SimSdiTx_CountOverflow(PortIndex); // An underflow, on the same count
+            break;
+        }
+    }
+
+    if (Tx->WindowSyms >= SIM_ASI_RATE_WINDOW)
+    {
+        Tx->Stats.TsBitrate = Tx->WindowData * 8 * DT_ASI_SYMBOL_RATE / Tx->WindowSyms;
+        Tx->WindowSyms = Tx->WindowData = 0;
+    }
+    if (Looped)
+    {
+        FindPackets(&g_Asi.Loop);
+        LoopSignal();
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_MakePacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimAsi_MakePacket(uint32_t Number, int Size, uint8_t* Out)
+{
+    Out[0] = 0x47;
+    Out[1] = 0x01;
+    Out[2] = 0x00;
+    Out[3] = (uint8_t)(0x10 | (Number & 0xF));
+    for (int i = 0; i < 4; i++)
+        Out[4 + i] = (uint8_t)(Number >> (24 - 8 * i));
+    for (int i = 8; i < Size; i++)
+        Out[i] = (uint8_t)(Number + (uint32_t)i);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void SimAsi_Reset(void)
@@ -295,6 +743,8 @@ void SimAsi_Reset(void)
     for (int i = 0; i < SIM_SDI_PORT_COUNT; i++)
     {
         SimAsiPort* Port = &g_Asi.Ports[i];
+        if (g_Asi.Initialised)
+            DtAlloc_Free(Port->Tx.Kept);
         memset(Port, 0, sizeof(*Port));
         Port->State.RxMode = DT_FUNC_OPMODE_IDLE;
         Port->State.RxPacketMode = DT_ASIRX_PCKMODE_AUTO;
@@ -304,6 +754,8 @@ void SimAsi_Reset(void)
         Port->State.TxgPolarity = DT_ASITXG_POL_NORMAL;
         NoSignal(&Port->Signal);
     }
+    memset(&g_Asi.Loop, 0, sizeof(g_Asi.Loop));
+    g_Asi.Loop.TxIndex = g_Asi.Loop.RxIndex = -1;
     g_Asi.FailFunctionCode = -1;
     g_Asi.FailCmd = -1;
     g_Asi.FailStatus = 0;
@@ -351,4 +803,108 @@ void SimDtPcie_FailAsiCmd(int FunctionCode, int Cmd, uint32_t Status)
     g_Asi.FailCmd = Status != 0 ? Cmd : -1;
     g_Asi.FailStatus = Status;
     SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_DefaultSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimAsi_DefaultSource(SimAsiSource* Source)
+{
+    Source->PacketSize = 188;
+    Source->Rate = 10000000;
+    Source->PacketsPerRead = 8;
+    Source->UnsyncedAtStart = 3;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetAsiSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_SetAsiSource(int PortIndex, const SimAsiSource* Source)
+{
+    SimDtPcie_Lock();
+    EnsureAsi();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+    {
+        SimAsiPort* Port = &g_Asi.Ports[PortIndex];
+        memset(&Port->Rx, 0, sizeof(Port->Rx));
+        NoSignal(&Port->Signal);
+        if (Source != NULL && (Source->PacketSize == 188 || Source->PacketSize == 204) &&
+            Source->Rate > 0)
+        {
+            Port->Rx.HasSource = true;
+            Port->Rx.Source = *Source;
+            Port->Signal.CarrierDetect = true;
+            Port->Signal.AsiLock = true;
+            Port->Signal.PacketSize =
+                Source->PacketSize == 188 ? DT_ASIRX_PCKSIZE_188 : DT_ASIRX_PCKSIZE_204;
+            Port->Signal.Polarity = DT_ASIRX_POLARITY_NORMAL;
+            Port->Signal.TsBitrate = (int)Source->Rate;
+        }
+    }
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_AsiRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_AsiRxFault(int PortIndex, int Fault)
+{
+    SimDtPcie_Lock();
+    EnsureAsi();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+        g_Asi.Ports[PortIndex].Rx.Fault = Fault;
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetAsiLoopback -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_SetAsiLoopback(int TxIndex, int RxIndex)
+{
+    SimDtPcie_Lock();
+    EnsureAsi();
+    SimAsiLoop* Loop = &g_Asi.Loop;
+    if (Loop->RxIndex >= 0)
+        NoSignal(&g_Asi.Ports[Loop->RxIndex].Signal);
+    memset(Loop, 0, sizeof(*Loop));
+    Loop->TxIndex = Loop->RxIndex = -1;
+    if (TxIndex >= 0 && TxIndex < SIM_SDI_PORT_COUNT && RxIndex >= 0 &&
+        RxIndex < SIM_SDI_PORT_COUNT && TxIndex != RxIndex)
+    {
+        Loop->TxIndex = TxIndex;
+        Loop->RxIndex = RxIndex;
+        memset(&g_Asi.Ports[RxIndex].Rx, 0, sizeof(g_Asi.Ports[RxIndex].Rx));
+        LoopSignal();
+    }
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_GetAsiTxStats -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimDtPcie_GetAsiTxStats(int PortIndex, SimAsiTxStats* Stats)
+{
+    SimDtPcie_Lock();
+    EnsureAsi();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+        *Stats = g_Asi.Ports[PortIndex].Tx.Stats;
+    else
+        memset(Stats, 0, sizeof(*Stats));
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_TakeAsiTxBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+size_t SimDtPcie_TakeAsiTxBytes(int PortIndex, uint8_t* Out, size_t Max)
+{
+    size_t Taken = 0;
+    SimDtPcie_Lock();
+    EnsureAsi();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+    {
+        SimAsiTx* Tx = &g_Asi.Ports[PortIndex].Tx;
+        while (Taken < Max && Tx->KeptLen > 0)
+        {
+            Out[Taken++] = Tx->Kept[Tx->KeptHead];
+            Tx->KeptHead = (Tx->KeptHead + 1) % SIM_ASI_KEPT_BYTES;
+            Tx->KeptLen--;
+        }
+    }
+    SimDtPcie_Unlock();
+    return Taken;
 }

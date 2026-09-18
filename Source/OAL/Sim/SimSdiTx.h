@@ -81,6 +81,36 @@ void SimSdiTx_CloseHandle(void* Handle);
 // Frees everything and restores the power-on state of every port and control below.
 void SimSdiTx_Reset(void);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For the ASI blocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// What SimAsi.c does with the DMA of a port, with the emulator's lock held.
+//
+
+// Whether the port's DMA receives: a buffer registered for receiving, CDMAC and the burst
+// FIFO running.
+bool SimSdiTx_RxOpen(int PortIndex);
+
+// The bytes the card may still write into the receive buffer, 0 when it does not
+// receive.
+size_t SimSdiTx_RxFree(int PortIndex);
+
+// Writes Size bytes at the receive buffer's write offset and moves it on; nothing when
+// they do not fit.
+void SimSdiTx_RxWrite(int PortIndex, const uint8_t* Data, size_t Size);
+
+// Counts an overflow of the burst FIFO, as data the card could not write.
+void SimSdiTx_CountOverflow(int PortIndex);
+
+// Takes up to Max bytes of what the card has read from the transmit buffer, in the order
+// it read them.
+size_t SimSdiTx_TxTake(int PortIndex, uint8_t* Out, size_t Max);
+
+// Whether the port's SDITXPHY runs, which an ASI output needs as an SDI output does.
+bool SimSdiTx_PhyRuns(int PortIndex);
+
+// Whether output follows the clock, as SimDtPcie_SetTxRealTime sets it.
+bool SimSdiTx_RealTime(void);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Makes CDMAC take a buffer as the Linux driver does, from the address in the input, when

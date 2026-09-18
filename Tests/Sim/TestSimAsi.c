@@ -21,8 +21,12 @@
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 #include "OAL/OsDmaBuffer.h"        // Buffers to register.
+#include "OAL/OsThread.h"           // The clock.
 #include "OAL/Sim/SimAsi.h"         // The emulated ASI blocks and their controls.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "OAL/Sim/SimNw.h"          // The card's time of day.
+#include "OAL/Sim/SimSdiTx.h"       // Real time.
+#include "Ts/DtAsiEnc.h"            // Symbols to send.
 #include "cdtapi.h"                 // Results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -37,7 +41,8 @@ typedef struct Fixture
     DtFuncInstance Rx;    // AF_ASISDIRX of RX
     DtFuncInstance RxDma; // AF_DMA of RX
     DtFuncInstance Tx;    // AF_ASISDITX of TX
-    int AsiRx, RxCdmac, AsiTxG;
+    DtFuncInstance TxDma; // AF_DMA of TX
+    int AsiRx, RxCdmac, RxBurst, AsiTxG, TxPhy, TxCdmac, TxBurst;
     int Live;
 } Fixture;
 
@@ -59,6 +64,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     DtVec_Init(&Fix->Rx.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Fix->RxDma.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Fix->Tx.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Fix->TxDma.Parts, sizeof(DtFuncPart));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         Configure(Fix->Drv, RX, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
                   DTAPI_IOCONFIG_INPUT) != DTAPI_OK ||
@@ -70,19 +76,25 @@ static bool Open(Fixture* Fix, int* DtFailures)
             DTAPI_OK ||
         DtFunc_Find(Fix->Drv, RX, "AF_ASISDIRX", "", &Fix->Rx) != DTAPI_OK ||
         DtFunc_Find(Fix->Drv, RX, "AF_DMA", "", &Fix->RxDma) != DTAPI_OK ||
-        DtFunc_Find(Fix->Drv, TX, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK)
+        DtFunc_Find(Fix->Drv, TX, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
+        DtFunc_Find(Fix->Drv, TX, "AF_DMA", "", &Fix->TxDma) != DTAPI_OK)
     {
         printf("    FAIL: no emulated ASI ports; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         DtFunc_Release(&Fix->Rx);
         DtFunc_Release(&Fix->RxDma);
         DtFunc_Release(&Fix->Tx);
+        DtFunc_Release(&Fix->TxDma);
         OsDrv_Close(Fix->Drv);
         return false;
     }
     Fix->AsiRx = DtFunc_Get(&Fix->Rx, true, DT_FUNC_TYPE_ASIRX, "")->Uuid;
     Fix->RxCdmac = DtFunc_Get(&Fix->RxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Uuid;
+    Fix->RxBurst = DtFunc_Get(&Fix->RxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Uuid;
     Fix->AsiTxG = DtFunc_Get(&Fix->Tx, false, DT_BLOCK_TYPE_ASITXG, "")->Uuid;
+    Fix->TxPhy = DtFunc_Get(&Fix->Tx, true, DT_FUNC_TYPE_SDITXPHY, "")->Uuid;
+    Fix->TxCdmac = DtFunc_Get(&Fix->TxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Uuid;
+    Fix->TxBurst = DtFunc_Get(&Fix->TxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Uuid;
     return true;
 }
 
@@ -94,6 +106,8 @@ static bool Acquire(Fixture* Fix)
            DtFunc_ExclAccess(Fix->Drv, &Fix->RxDma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) ==
                DTAPI_OK &&
            DtFunc_ExclAccess(Fix->Drv, &Fix->Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) ==
+               DTAPI_OK &&
+           DtFunc_ExclAccess(Fix->Drv, &Fix->TxDma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) ==
                DTAPI_OK;
 }
 
@@ -104,6 +118,7 @@ static bool Acquire(Fixture* Fix)
         DtFunc_Release(&(Fix).Rx);                                                       \
         DtFunc_Release(&(Fix).RxDma);                                                    \
         DtFunc_Release(&(Fix).Tx);                                                       \
+        DtFunc_Release(&(Fix).TxDma);                                                    \
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
@@ -415,8 +430,308 @@ DT_TEST(ReceiveOffsets)
     FINISH(Fix);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Data path +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+#define RX_BUFFER (2 * 1024 * 1024)
+#define TX_BUFFER (1024 * 1024)
+
+// Makes RX receive into Buf: a buffer registered for receiving, CDMAC, the burst FIFO
+// and ASIRX running.
+static bool StartRx(Fixture* Fix, OsDmaBuffer* Buf)
+{
+    return OsDmaBuffer_Alloc(RX_BUFFER, Buf) == 0 &&
+           DtPcieCmd_CdmacAllocateBuffer(Fix->Drv, Fix->RxCdmac, RX, DT_CDMAC_DIR_RX,
+                                         Buf) == DTAPI_OK &&
+           DtPcieCmd_CdmacSetOpMode(Fix->Drv, Fix->RxCdmac, RX, DT_BLOCK_OPMODE_RUN) ==
+               DTAPI_OK &&
+           DtPcieCmd_BurstFifoSetOpMode(Fix->Drv, Fix->RxBurst, RX,
+                                        DT_BLOCK_OPMODE_RUN) == DTAPI_OK &&
+           DtPcieCmd_AsiRxSetOpMode(Fix->Drv, Fix->AsiRx, RX, DT_FUNC_OPMODE_RUN) ==
+               DTAPI_OK;
+}
+
+// Makes TX send from Buf: a buffer registered for sending, CDMAC, the burst FIFO,
+// SDITXPHY and ASITXG running.
+static bool StartTx(Fixture* Fix, OsDmaBuffer* Buf)
+{
+    return OsDmaBuffer_Alloc(TX_BUFFER, Buf) == 0 &&
+           DtPcieCmd_CdmacAllocateBuffer(Fix->Drv, Fix->TxCdmac, TX, DT_CDMAC_DIR_TX,
+                                         Buf) == DTAPI_OK &&
+           DtPcieCmd_CdmacSetTxWriteOffset(Fix->Drv, Fix->TxCdmac, TX, 0) == DTAPI_OK &&
+           DtPcieCmd_CdmacSetOpMode(Fix->Drv, Fix->TxCdmac, TX, DT_BLOCK_OPMODE_RUN) ==
+               DTAPI_OK &&
+           DtPcieCmd_BurstFifoSetOpMode(Fix->Drv, Fix->TxBurst, TX,
+                                        DT_BLOCK_OPMODE_RUN) == DTAPI_OK &&
+           DtPcieCmd_SdiTxPhySetOpMode(Fix->Drv, Fix->TxPhy, TX, DT_FUNC_OPMODE_RUN) ==
+               DTAPI_OK &&
+           DtPcieCmd_AsiTxGSetOpMode(Fix->Drv, Fix->AsiTxG, TX, DT_BLOCK_OPMODE_RUN) ==
+               DTAPI_OK;
+}
+
+// Stops the DMA of the port at Index and frees its buffer.
+static void Stop(Fixture* Fix, int Index, int Cdmac, OsDmaBuffer* Buf)
+{
+    DtPcieCmd_CdmacSetOpMode(Fix->Drv, Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+    DtPcieCmd_CdmacFreeBuffer(Fix->Drv, Cdmac, Index);
+    OsDmaBuffer_Free(Buf);
+}
+
+// Codes Count numbered packets of Size bytes from First as the card sends them, padded
+// to whole data words, into Buf at *Offset, and hands them to TX.
+static bool Send(Fixture* Fix, OsDmaBuffer* Buf, DtAsiEnc* Enc, uint32_t First, int Count,
+                 int Size, uint32_t* Offset)
+{
+    uint8_t Packet[204];
+    uint16_t Syms[16384];
+    size_t n = 0;
+
+    for (int i = 0; i < Count; i++)
+    {
+        SimAsi_MakePacket(First + (uint32_t)i, Size, Packet);
+        size_t Taken, Written;
+        DtAsiEnc_Convert(Enc, Packet, (size_t)Size, Syms + n,
+                         sizeof(Syms) / sizeof(Syms[0]) - n, &Taken, &Written);
+        if (Taken != (size_t)Size)
+            return false;
+        n += Written;
+    }
+    const size_t Word = 16; // Symbols in a data word of 256 bits
+    size_t Padding = (Word - n % Word) % Word;
+    DtAsiEnc_Pad(Enc, Syms + n, Padding);
+    n += Padding;
+    for (size_t i = 0; i < n; i++)
+    {
+        Buf->Data[(*Offset + 2 * i) % TX_BUFFER] = (uint8_t)Syms[i];
+        Buf->Data[(*Offset + 2 * i + 1) % TX_BUFFER] = (uint8_t)(Syms[i] >> 8);
+    }
+    *Offset = (uint32_t)((*Offset + 2 * n) % TX_BUFFER);
+    return DtPcieCmd_CdmacSetTxWriteOffset(Fix->Drv, Fix->TxCdmac, TX, *Offset) ==
+           DTAPI_OK;
+}
+
+// Whether the transparent packet at P is a synchronised one with packet Number of Size
+// bytes and sequence number Sequence.
+static bool IsPacket(const uint8_t* P, uint32_t Number, int Size, int Sequence)
+{
+    uint8_t Want[204];
+    SimAsi_MakePacket(Number, Size, Want);
+    return memcmp(P + 8, Want, (size_t)Size) == 0 && P[212] == 0x58 && P[213] == Size &&
+           (P[214] | P[215] << 8) == Sequence;
+}
+
+// A source writes transparent packets while the port receives: pieces without sync
+// first, then the numbered packets, each with the card's time and the next sequence
+// number.
+DT_TEST(SourceWritesTransparentPackets)
+{
+    Fixture Fix;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT(Acquire(&Fix));
+    SimDtPcie_SetTxRealTime(false);
+    SimAsiSource Source;
+    SimAsi_DefaultSource(&Source);
+    SimDtPcie_SetAsiSource(RX, &Source);
+    uint32_t Offset = 1;
+
+    // Nothing while the DMA does not receive.
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Offset, 0u);
+
+    OsDmaBuffer Buf;
+    DT_ASSERT(StartRx(&Fix, &Buf));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Offset, 8u * 216);
+    for (int i = 0; i < 3; i++)
+    {
+        const uint8_t* P = Buf.Data + 216 * i;
+        DT_ASSERT_EQ(P[212], 0x50);
+        DT_ASSERT_EQ(P[213], 204);
+        DT_ASSERT_EQ(P[214] | P[215] << 8, i);
+    }
+    for (int i = 3; i < 8; i++)
+        DT_ASSERT(IsPacket(Buf.Data + 216 * i, (uint32_t)(i - 3), 188, i));
+    const uint8_t* P = Buf.Data + 216 * 3;
+    const uint64_t Seconds = (uint64_t)P[0] | (uint64_t)P[1] << 8 | (uint64_t)P[2] << 16 |
+                             (uint64_t)P[3] << 24;
+    DT_ASSERT(Seconds > 0 && Seconds <= SimNw_Now() / 1000000000u);
+
+    // A fault in the next packet.
+    SimDtPcie_AsiRxFault(RX, SIM_ASI_FAULT_SEQUENCE);
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Offset, 16u * 216);
+    DT_ASSERT(IsPacket(Buf.Data + 216 * 8, 5, 188, 9));
+    DT_ASSERT(IsPacket(Buf.Data + 216 * 9, 6, 188, 10));
+    SimDtPcie_AsiRxFault(RX, SIM_ASI_FAULT_NOSYNC);
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Buf.Data[216 * 16 + 212], 0x50);
+    DT_ASSERT_EQ(Buf.Data[216 * 17 + 212], 0x58);
+
+    // Packets the buffer has no room for are overflows.
+    uint32_t Count = 1;
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetOvfUflCount(Fix.Drv, Fix.RxBurst, RX, &Count));
+    DT_ASSERT_EQ(Count, 0u);
+    Source.PacketsPerRead = RX_BUFFER / 216 + 10;
+    SimDtPcie_SetAsiSource(RX, &Source);
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_BurstFifoGetOvfUflCount(Fix.Drv, Fix.RxBurst, RX, &Count));
+    DT_ASSERT(Count > 0);
+
+    // The write offset restarts at 0 when CDMAC goes idle.
+    DT_ASSERT_OK(
+        DtPcieCmd_CdmacSetOpMode(Fix.Drv, Fix.RxCdmac, RX, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Offset, 0u);
+
+    Stop(&Fix, RX, Fix.RxCdmac, &Buf);
+    FINISH(Fix);
+}
+
+// In real time a source brings the packets its rate makes.
+DT_TEST(SourceFollowsTheClock)
+{
+    Fixture Fix;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT(Acquire(&Fix));
+    SimAsiSource Source;
+    SimAsi_DefaultSource(&Source);
+    Source.UnsyncedAtStart = 0;
+    Source.Rate = 15040000; // 10,000 packets a second
+    SimDtPcie_SetAsiSource(RX, &Source);
+
+    OsDmaBuffer Buf;
+    uint32_t Offset;
+    DT_ASSERT(StartRx(&Fix, &Buf));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    const uint64_t Start = OsTime_MonotonicMs();
+    OsTime_SleepMs(50);
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    const uint64_t Elapsed = OsTime_MonotonicMs() - Start;
+    const uint64_t Packets = Offset / 216;
+    DT_ASSERT(Packets + 20 >= Elapsed * 10 && Packets <= (Elapsed + 1) * 10);
+
+    Stop(&Fix, RX, Fix.RxCdmac, &Buf);
+    FINISH(Fix);
+}
+
+// The sink decodes what TX sends: the data bytes in order, K28.5 between them, and no
+// errors in what the encoder made.
+DT_TEST(SinkDecodesTheSymbols)
+{
+    Fixture Fix;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT(Acquire(&Fix));
+    SimDtPcie_SetTxRealTime(false);
+    OsDmaBuffer Buf;
+    DT_ASSERT(StartTx(&Fix, &Buf));
+
+    DtAsiEnc Enc;
+    DtAsiEnc_Init(&Enc);
+    DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 100000000));
+    DT_ASSERT_OK(DtAsiEnc_Start(&Enc));
+    uint32_t Write = 0, Read = 0;
+    DT_ASSERT(Send(&Fix, &Buf, &Enc, 0, 10, 188, &Write));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, Fix.TxCdmac, TX, &Read));
+    DT_ASSERT_EQ(Read, Write);
+
+    uint8_t Got[10 * 188 + 1];
+    DT_ASSERT_EQ(SimDtPcie_TakeAsiTxBytes(TX, Got, sizeof(Got)), (size_t)10 * 188);
+    for (int i = 0; i < 10; i++)
+    {
+        uint8_t Want[188];
+        SimAsi_MakePacket((uint32_t)i, 188, Want);
+        DT_ASSERT(memcmp(Got + 188 * i, Want, 188) == 0);
+    }
+    SimAsiTxStats Stats;
+    SimDtPcie_GetAsiTxStats(TX, &Stats);
+    DT_ASSERT_EQ(Stats.DataBytes, 10 * 188);
+    DT_ASSERT_EQ(Stats.Symbols, (int64_t)Write / 2);
+    DT_ASSERT_EQ(Stats.K28 + Stats.DataBytes, Stats.Symbols);
+    DT_ASSERT_EQ(Stats.CodeErrors, 0);
+    DT_ASSERT_EQ(Stats.DisparityErrors, 0);
+
+    // A symbol that is no code, then K28.5 of one disparity only.
+    Buf.Data[Write] = 0xFF;
+    Buf.Data[Write + 1] = 0x03;
+    for (uint32_t i = 2; i < 32; i += 2)
+    {
+        Buf.Data[Write + i] = (uint8_t)(DT_ASI_K28_5_RDNEG & 0xFF);
+        Buf.Data[Write + i + 1] = (uint8_t)(DT_ASI_K28_5_RDNEG >> 8);
+    }
+    Write += 32;
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetTxWriteOffset(Fix.Drv, Fix.TxCdmac, TX, Write));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, Fix.TxCdmac, TX, &Read));
+    SimDtPcie_GetAsiTxStats(TX, &Stats);
+    DT_ASSERT_EQ(Stats.CodeErrors, 1);
+    DT_ASSERT(Stats.DisparityErrors > 0);
+
+    // Nothing goes out while ASITXG does not run.
+    DT_ASSERT_OK(
+        DtPcieCmd_AsiTxGSetOpMode(Fix.Drv, Fix.AsiTxG, TX, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT(Send(&Fix, &Buf, &Enc, 10, 2, 188, &Write));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, Fix.TxCdmac, TX, &Read));
+    DT_ASSERT_EQ(SimDtPcie_TakeAsiTxBytes(TX, Got, sizeof(Got)), (size_t)0);
+
+    Stop(&Fix, TX, Fix.TxCdmac, &Buf);
+    FINISH(Fix);
+}
+
+// A loop from TX to RX: the input finds the 204-byte packets TX sends and receives
+// them, with a carrier, lock and the packet size.
+DT_TEST(LoopbackReceivesWhatIsSent)
+{
+    Fixture Fix;
+
+    if (!Open(&Fix, DtFailures))
+        return;
+    DT_ASSERT(Acquire(&Fix));
+    SimDtPcie_SetTxRealTime(false);
+    SimDtPcie_SetAsiLoopback(TX, RX);
+    OsDmaBuffer RxBuf, TxBuf;
+    DT_ASSERT(StartTx(&Fix, &TxBuf));
+    DT_ASSERT(StartRx(&Fix, &RxBuf));
+
+    DtAsiEnc Enc;
+    DtAsiEnc_Init(&Enc);
+    DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_204 | DTAPI_TXMODE_BURST));
+    DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 100000000));
+    DT_ASSERT_OK(DtAsiEnc_Start(&Enc));
+    uint32_t Write = 0, Read, Offset;
+    DT_ASSERT(Send(&Fix, &TxBuf, &Enc, 0, 12, 204, &Write));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, Fix.TxCdmac, TX, &Read));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, RX, &Offset));
+    DT_ASSERT_EQ(Offset, 12u * 216);
+    for (int i = 0; i < 12; i++)
+        DT_ASSERT(IsPacket(RxBuf.Data + 216 * i, (uint32_t)i, 204, i));
+
+    DtAsiRxStatus Status;
+    DT_ASSERT_OK(DtPcieCmd_AsiRxGetStatus(Fix.Drv, Fix.AsiRx, RX, &Status));
+    DT_ASSERT(Status.CarrierDetect);
+    DT_ASSERT(Status.AsiLock);
+    DT_ASSERT_EQ(Status.PacketSize, DT_ASIRX_PCKSIZE_204);
+
+    // Without the output running, no carrier.
+    DT_ASSERT_OK(
+        DtPcieCmd_AsiTxGSetOpMode(Fix.Drv, Fix.AsiTxG, TX, DT_BLOCK_OPMODE_IDLE));
+    DT_ASSERT_OK(DtPcieCmd_CdmacGetTxReadOffset(Fix.Drv, Fix.TxCdmac, TX, &Read));
+    DT_ASSERT_OK(DtPcieCmd_AsiRxGetStatus(Fix.Drv, Fix.AsiRx, RX, &Status));
+    DT_ASSERT(!Status.CarrierDetect);
+
+    SimDtPcie_SetAsiLoopback(-1, -1);
+    Stop(&Fix, RX, Fix.RxCdmac, &RxBuf);
+    Stop(&Fix, TX, Fix.TxCdmac, &TxBuf);
+    FINISH(Fix);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST_MAIN("SimAsi", DT_RUN(RequestsCarryTheirFields), DT_RUN(InvalidValuesSendNothing),
              DT_RUN(PartsCheckAccessAndPort), DT_RUN(StatusComesFromTheSignal),
-             DT_RUN(ReceiveOffsets))
+             DT_RUN(ReceiveOffsets), DT_RUN(SourceWritesTransparentPackets),
+             DT_RUN(SourceFollowsTheClock), DT_RUN(SinkDecodesTheSymbols),
+             DT_RUN(LoopbackReceivesWhatIsSent))

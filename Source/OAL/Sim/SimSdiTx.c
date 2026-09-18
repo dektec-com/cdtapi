@@ -14,6 +14,7 @@
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "OAL/OsThread.h"       // The clock the output follows.
+#include "SimAsi.h"             // What an ASI port receives and sends.
 #include "SimDtPcie.h"          // Port counts and the lock.
 #include "SimSdiTx.h"           // Interface being implemented.
 #include "Video/DtFrameProps.h" // Frame periods.
@@ -152,6 +153,8 @@ static void StopPipeline(SimTxPort* Port)
     Port->PipeHead = 0;
     Port->PipeLoad = 0;
     Port->ReadOffset = 0;
+    if (Port->Direction == DT_CDMAC_DIR_RX)
+        Port->WriteOffset = 0; // Where a DTA-2178 writes from again (0011, step A)
     ClearFrame(Port);
 }
 
@@ -712,6 +715,7 @@ static uint32_t CdmacCmd(SimTxPort* Port, void* Handle, int Cmd, const void* In,
         return DT_STATUS_OK;
     }
     case DT_CDMAC_CMD_GET_TX_READ_OFFSET:
+        SimAsi_Drain((int)(Port - g_Tx.Ports));
         Advance(Port);
         ((DtIoctlCDmaCCmdGetTxRdOffsetOutput*)Out)->m_TxReadOffset =
             Port->StaleReads > 0 ? Port->StaleReadOffset : Port->ReadOffset;
@@ -732,6 +736,7 @@ static uint32_t CdmacCmd(SimTxPort* Port, void* Handle, int Cmd, const void* In,
         return DT_STATUS_OK;
     }
     case DT_CDMAC_CMD_GET_RX_WRITE_OFFSET:
+        SimAsi_Produce((int)(Port - g_Tx.Ports));
         // A DTA-2178 answers 0 without a receive buffer, and takes a read offset of 0.
         ((DtIoctlCDmaCCmdGetRxWrOffsetOutput*)Out)->m_RxWriteOffset =
             Port->Registered && Port->Direction == DT_CDMAC_DIR_RX ? Port->WriteOffset
@@ -1020,6 +1025,95 @@ static uint32_t SdiTxPhyCmd(SimTxPort* Port, int Cmd, const void* In, void* Out,
     }
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For the ASI blocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RxOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool SimSdiTx_RxOpen(int PortIndex)
+{
+    EnsureTx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return false;
+    const SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    return Port->Registered && Port->Direction == DT_CDMAC_DIR_RX &&
+           Port->CdmacMode == DT_BLOCK_OPMODE_RUN &&
+           Port->BurstMode == DT_BLOCK_OPMODE_RUN;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RxFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The driver keeps one data word of the buffer free to tell full from empty.
+//
+size_t SimSdiTx_RxFree(int PortIndex)
+{
+    if (!SimSdiTx_RxOpen(PortIndex))
+        return 0;
+    const SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    size_t Load = ((size_t)Port->WriteOffset + Port->BufferSize - Port->ReadOffset) %
+                  Port->BufferSize;
+    return Port->BufferSize - SIM_TX_WORD - Load;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RxWrite -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimSdiTx_RxWrite(int PortIndex, const uint8_t* Data, size_t Size)
+{
+    if (SimSdiTx_RxFree(PortIndex) < Size)
+        return;
+    SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    for (size_t i = 0; i < Size; i++)
+        Port->Buffer[(Port->WriteOffset + i) % Port->BufferSize] = Data[i];
+    Port->WriteOffset = (uint32_t)((Port->WriteOffset + Size) % Port->BufferSize);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_CountOverflow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimSdiTx_CountOverflow(int PortIndex)
+{
+    EnsureTx();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+        g_Tx.Ports[PortIndex].OvfUflCount++;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_TxTake -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+size_t SimSdiTx_TxTake(int PortIndex, uint8_t* Out, size_t Max)
+{
+    EnsureTx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return 0;
+    SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    size_t Taken = 0;
+    for (;;)
+    {
+        Advance(Port);
+        if (Port->Pipeline == NULL || Port->PipeLoad == 0 || Taken == Max)
+            return Taken;
+        size_t Now = Port->PipeLoad < Max - Taken ? Port->PipeLoad : Max - Taken;
+        for (size_t i = 0; i < Now; i++)
+            Out[Taken + i] = Peek(Port, i);
+        Consume(Port, Now);
+        Taken += Now;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_PhyRuns -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimSdiTx_PhyRuns(int PortIndex)
+{
+    EnsureTx();
+    return PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT &&
+           g_Tx.Ports[PortIndex].PhyMode == DT_FUNC_OPMODE_RUN;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool SimSdiTx_RealTime(void)
+{
+    EnsureTx();
+    return g_Tx.RealTime;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_Takes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 bool SimSdiTx_Takes(int FunctionCode)
@@ -1232,7 +1326,7 @@ void SimDtPcie_StarveTx(int PortIndex, int Events)
     SimDtPcie_Unlock();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetTxFrameLimit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetTxFrameLimit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void SimDtPcie_SetTxFrameLimit(int PortIndex, int Count)
 {
