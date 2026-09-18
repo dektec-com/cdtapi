@@ -45,7 +45,7 @@
 typedef struct DtSdiRx
 {
     DtRx Base;
-    int Uuid; // The receive channel's UUID
+    DtPartRef Ch; // The receive channel
     bool Scale12GTo3G;
 
     int IoStdValue; // The port's I/O standard
@@ -136,9 +136,8 @@ static void ReleaseChannel(DtSdiRx* Sdi)
 
     if (Sdi->ChannelAttached)
     {
-        DtPcieCmd_ChSdiRxSetOpMode(DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex,
-                                   DT_FUNC_OPMODE_IDLE);
-        DtPcieCmd_ChSdiRxDetach(DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex);
+        DtPcieCmd_ChSdiRxSetOpMode(DrvOf(Sdi), Sdi->Ch, DT_FUNC_OPMODE_IDLE);
+        DtPcieCmd_ChSdiRxDetach(DrvOf(Sdi), Sdi->Ch);
     }
     Sdi->ChannelAttached = false;
 }
@@ -186,12 +185,12 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     memcpy(Name, Full, sizeof(Name) - 1);
     Name[sizeof(Name) - 1] = '\0';
 
-    DtapiResult Result = DtPcieCmd_ChSdiRxAttach(Drv, Sdi->Uuid, PortIndex, true, Name);
+    DtapiResult Result = DtPcieCmd_ChSdiRxAttach(Drv, Sdi->Ch, true, Name);
     if (Result != DTAPI_OK)
         return Result;
     Sdi->ChannelAttached = true;
 
-    Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Uuid, PortIndex, DT_FUNC_OPMODE_IDLE);
+    Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
 
     // A 4K standard, which DTAPI's raw row does not take, attaches without a ring; see
     // SetRxControl.
@@ -203,7 +202,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     }
 
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_ChSdiRxGetProps(Drv, Sdi->Uuid, PortIndex, &Props);
+        Result = DtPcieCmd_ChSdiRxGetProps(Drv, Sdi->Ch, &Props);
     if (Result == DTAPI_OK &&
         !DtSdiFrame_LayoutInit(&Sdi->Layout, Sdi->IoStdSubValue, Props.StreamAlignment))
     {
@@ -232,10 +231,10 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Config.AssumeInterlaced = DtFrameProps_IsInterlaced(&Frame);
     Config.Scale12GTo3G = Sdi->Scale12GTo3G;
 
-    Result = DtPcieCmd_ChSdiRxConfigure(Drv, Sdi->Uuid, PortIndex, &Config);
+    Result = DtPcieCmd_ChSdiRxConfigure(Drv, Sdi->Ch, &Config);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->Uuid, PortIndex, &Base, &BufSize,
-                                            &MaxLoad, &Mapped);
+        Result =
+            DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->Ch, &Base, &BufSize, &MaxLoad, &Mapped);
 
     // The driver keeps a data word of the ring free; a maximum load that keeps nothing
     // free, or leaves no room, describes no ring that can be read.
@@ -273,7 +272,7 @@ static DtapiResult Advance(DtSdiRx* Sdi, size_t Bytes)
 {
     if (DtRing_Skip(&Sdi->Ring, Bytes) != 0)
         return DTAPI_E_INTERNAL;
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex,
+    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Ch,
                                           (uint32_t)DtRing_ReadOffset(&Sdi->Ring));
 }
 
@@ -293,8 +292,7 @@ static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
     {
         return DTAPI_E_DEV_DRIVER;
     }
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex,
-                                          (uint32_t)Aligned);
+    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Ch, (uint32_t)Aligned);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -306,8 +304,8 @@ static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
 static DtapiResult ReadWriteOffset(DtSdiRx* Sdi)
 {
     uint32_t WriteOffset = 0;
-    DtapiResult Result = DtPcieCmd_ChSdiRxGetWriteOffset(
-        DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex, &WriteOffset);
+    DtapiResult Result =
+        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->Ch, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -325,8 +323,8 @@ static DtapiResult ReadWriteOffset(DtSdiRx* Sdi)
 static DtapiResult DiscardAll(DtSdiRx* Sdi)
 {
     uint32_t WriteOffset = 0;
-    DtapiResult Result = DtPcieCmd_ChSdiRxGetWriteOffset(
-        DrvOf(Sdi), Sdi->Uuid, Sdi->Base.Port.PortIndex, &WriteOffset);
+    DtapiResult Result =
+        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->Ch, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -379,25 +377,22 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    const int PortIndex = Sdi->Base.Port.PortIndex;
 
     if (Sdi->Base.RxControl == RxControl)
         return DTAPI_OK;
 
     DtapiResult Result;
     if (RxControl == DTAPI_RXCTRL_IDLE)
-        Result =
-            DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Uuid, PortIndex, DT_FUNC_OPMODE_IDLE);
+        Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
     else if (Sdi->SymbolBits == 8 || Sdi->Ring.Base == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
         DtRing_Restart(&Sdi->Ring, 0);
         Sdi->InSync = false;
-        Result = DtPcieCmd_ChSdiRxSetReadOffset(Drv, Sdi->Uuid, PortIndex, 0);
+        Result = DtPcieCmd_ChSdiRxSetReadOffset(Drv, Sdi->Ch, 0);
         if (Result == DTAPI_OK)
-            Result =
-                DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Uuid, PortIndex, DT_FUNC_OPMODE_RUN);
+            Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_RUN);
     }
     if (Result != DTAPI_OK)
         return Result;
@@ -683,8 +678,7 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
     memset(Wait, 0, sizeof(*Wait));
     Wait->Ops = Rx->Ops;
     Wait->Drv = DrvOf(Sdi);
-    Wait->Uuid = Sdi->Uuid;
-    Wait->PortIndex = Rx->Port.PortIndex;
+    Wait->Part = Sdi->Ch;
     Wait->MaxMs = Sdi->QuarterMs;
 }
 
@@ -696,8 +690,8 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
 static DtapiResult Wait(DtRxWait* Wait, int Ms)
 {
     DtChSdiRxEvent Event;
-    DtapiResult Result = DtPcieCmd_ChSdiRxWaitForFmtEvent(Wait->Drv, Wait->Uuid,
-                                                          Wait->PortIndex, Ms, &Event);
+    DtapiResult Result =
+        DtPcieCmd_ChSdiRxWaitForFmtEvent(Wait->Drv, Wait->Part, Ms, &Event);
 
     Wait->OutOfSync = Result == DTAPI_OK && !Event.InSync;
     return Result == DTAPI_E_TIMEOUT ? DTAPI_OK : Result;
@@ -767,7 +761,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
         Result = DtFunc_CheckDriverVersion(&Port->Device->DriverVersion, true,
                                            DT_FUNC_TYPE_CHSDIRX);
     if (Result == DTAPI_OK)
-        Sdi->Uuid = ChSdiRx->Uuid;
+        Sdi->Ch = ChSdiRx->Ref;
     DtFunc_Release(&Instance);
     if (Result != DTAPI_OK)
     {

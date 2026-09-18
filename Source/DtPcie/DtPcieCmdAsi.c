@@ -56,15 +56,14 @@ ONE_INT_OUTPUT(DtIoctlCDmaCCmdGetRxWrOffsetOutput);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetInt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult SetInt(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int PortIndex,
-                          Int Value)
+static DtapiResult SetInt(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part, Int Value)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     IntInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, Cmd, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, Cmd, Part);
     In.m_Value = Value;
     return DtPcieCmd_Issue(Drv, Code, &In, sizeof(In), NULL, 0);
 }
@@ -73,13 +72,12 @@ static DtapiResult SetInt(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int Port
 //
 // Reads one Int into *Value, which is 0 after a failure.
 //
-static DtapiResult GetInt(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int PortIndex,
-                          Int* Value)
+static DtapiResult GetInt(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part, Int* Value)
 {
     if (Value == NULL)
         return DTAPI_E_INVALID_ARG;
     *Value = 0;
-    return DtPcieCmd_IssuePlain(Drv, Code, Cmd, Uuid, PortIndex, Value, sizeof(*Value));
+    return DtPcieCmd_IssuePlain(Drv, Code, Cmd, Part, Value, sizeof(*Value));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetOneOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -87,14 +85,14 @@ static DtapiResult GetInt(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int Port
 // Reads one Int that must be one of the Count values in Allowed, as DTAPI's proxy
 // converts it; any other answer is DTAPI_E_DEV_DRIVER, and *Value is then 0.
 //
-static DtapiResult GetOneOf(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid, int PortIndex,
+static DtapiResult GetOneOf(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part,
                             int* Value, const int* Allowed, int Count)
 {
     if (Value == NULL)
         return DTAPI_E_INVALID_ARG;
 
     Int Got;
-    DtapiResult Result = GetInt(Drv, Code, Cmd, Uuid, PortIndex, &Got);
+    DtapiResult Result = GetInt(Drv, Code, Cmd, Part, &Got);
     *Value = 0;
     if (!DT_SUCCEEDED(Result))
         return Result;
@@ -142,72 +140,70 @@ static const int TxPolarities[] = {DT_ASITXG_POL_NORMAL, DT_ASITXG_POL_INVERT};
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+DtapiResult DtPcieCmd_AsiRxSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode)
 {
     if (!IsOneOf(OpMode, AsiRxModes, COUNT(AsiRxModes)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex, OpMode);
+    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_OPERATIONAL_MODE, Part, OpMode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetOpStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxGetOpStatus(OsDrv* Drv, int Uuid, int PortIndex, int* OpStatus)
+DtapiResult DtPcieCmd_AsiRxGetOpStatus(OsDrv* Drv, DtPartRef Part, int* OpStatus)
 {
-    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_OPERATIONAL_STATUS, Uuid, PortIndex,
-                    OpStatus, AsiRxOpStatuses, COUNT(AsiRxOpStatuses));
+    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_OPERATIONAL_STATUS, Part, OpStatus,
+                    AsiRxOpStatuses, COUNT(AsiRxOpStatuses));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxSetPacketMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxSetPacketMode(OsDrv* Drv, int Uuid, int PortIndex, int Mode)
+DtapiResult DtPcieCmd_AsiRxSetPacketMode(OsDrv* Drv, DtPartRef Part, int Mode)
 {
     if (!IsOneOf(Mode, PacketModes, COUNT(PacketModes)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_PACKET_MODE, Uuid, PortIndex, Mode);
+    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_PACKET_MODE, Part, Mode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetPacketMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxGetPacketMode(OsDrv* Drv, int Uuid, int PortIndex, int* Mode)
+DtapiResult DtPcieCmd_AsiRxGetPacketMode(OsDrv* Drv, DtPartRef Part, int* Mode)
 {
-    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_PACKET_MODE, Uuid, PortIndex, Mode,
-                    PacketModes, COUNT(PacketModes));
+    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_PACKET_MODE, Part, Mode, PacketModes,
+                    COUNT(PacketModes));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxSetPolarityCtrl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxSetPolarityCtrl(OsDrv* Drv, int Uuid, int PortIndex,
-                                           int Polarity)
+DtapiResult DtPcieCmd_AsiRxSetPolarityCtrl(OsDrv* Drv, DtPartRef Part, int Polarity)
 {
     if (!IsOneOf(Polarity, PolarityCtrls, COUNT(PolarityCtrls)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_POLARITY_CTRL, Uuid, PortIndex, Polarity);
+    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_POLARITY_CTRL, Part, Polarity);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetPolarityCtrl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxGetPolarityCtrl(OsDrv* Drv, int Uuid, int PortIndex,
-                                           int* Polarity)
+DtapiResult DtPcieCmd_AsiRxGetPolarityCtrl(OsDrv* Drv, DtPartRef Part, int* Polarity)
 {
-    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_POLARITY_CTRL, Uuid, PortIndex, Polarity,
+    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_POLARITY_CTRL, Part, Polarity,
                     PolarityCtrls, COUNT(PolarityCtrls));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxSetSyncMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxSetSyncMode(OsDrv* Drv, int Uuid, int PortIndex, int Mode)
+DtapiResult DtPcieCmd_AsiRxSetSyncMode(OsDrv* Drv, DtPartRef Part, int Mode)
 {
     if (!IsOneOf(Mode, SyncModes, COUNT(SyncModes)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_SYNC_MODE, Uuid, PortIndex, Mode);
+    return SetInt(Drv, ASIRX, DT_ASIRX_CMD_SET_SYNC_MODE, Part, Mode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetSyncMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, int Uuid, int PortIndex, int* Mode)
+DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, DtPartRef Part, int* Mode)
 {
-    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_SYNC_MODE, Uuid, PortIndex, Mode,
-                    SyncModes, COUNT(SyncModes));
+    return GetOneOf(Drv, ASIRX, DT_ASIRX_CMD_GET_SYNC_MODE, Part, Mode, SyncModes,
+                    COUNT(SyncModes));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -215,16 +211,15 @@ DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, int Uuid, int PortIndex, int*
 // DtProxyASIRX::GetStatus: a packet size or polarity the proxy does not know is the
 // driver's fault. The status is cleared after a failure.
 //
-DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
-                                     DtAsiRxStatus* Status)
+DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtAsiRxStatus* Status)
 {
     if (Status == NULL)
         return DTAPI_E_INVALID_ARG;
     memset(Status, 0, sizeof(*Status));
 
     DtIoctlAsiRxCmdGetStatusOutput Out;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, ASIRX, DT_ASIRX_CMD_GET_STATUS, Uuid,
-                                              PortIndex, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, ASIRX, DT_ASIRX_CMD_GET_STATUS, Part,
+                                              &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -247,106 +242,101 @@ DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetTsBitrate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, int Uuid, int PortIndex, int* Bitrate)
+DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, DtPartRef Part, int* Bitrate)
 {
-    return GetInt(Drv, ASIRX, DT_ASIRX_CMD_GET_TS_BITRATE, Uuid, PortIndex, Bitrate);
+    return GetInt(Drv, ASIRX, DT_ASIRX_CMD_GET_TS_BITRATE, Part, Bitrate);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetViolCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiRxGetViolCount(OsDrv* Drv, int Uuid, int PortIndex, int* Count)
+DtapiResult DtPcieCmd_AsiRxGetViolCount(OsDrv* Drv, DtPartRef Part, int* Count)
 {
-    return GetInt(Drv, ASIRX, DT_ASIRX_CMD_GET_VIOL_COUNT, Uuid, PortIndex, Count);
+    return GetInt(Drv, ASIRX, DT_ASIRX_CMD_GET_VIOL_COUNT, Part, Count);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ASITXG and ASITXSER +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxGSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxGSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+DtapiResult DtPcieCmd_AsiTxGSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode)
 {
     if (!IsOneOf(OpMode, BlockModes, COUNT(BlockModes)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASITXG, DT_ASITXG_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex,
-                  OpMode);
+    return SetInt(Drv, ASITXG, DT_ASITXG_CMD_SET_OPERATIONAL_MODE, Part, OpMode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxGGetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxGGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode)
+DtapiResult DtPcieCmd_AsiTxGGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode)
 {
-    return GetOneOf(Drv, ASITXG, DT_ASITXG_CMD_GET_OPERATIONAL_MODE, Uuid, PortIndex,
-                    OpMode, BlockModes, COUNT(BlockModes));
+    return GetOneOf(Drv, ASITXG, DT_ASITXG_CMD_GET_OPERATIONAL_MODE, Part, OpMode,
+                    BlockModes, COUNT(BlockModes));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxGSetPolarity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxGSetPolarity(OsDrv* Drv, int Uuid, int PortIndex, int Polarity)
+DtapiResult DtPcieCmd_AsiTxGSetPolarity(OsDrv* Drv, DtPartRef Part, int Polarity)
 {
     if (!IsOneOf(Polarity, TxPolarities, COUNT(TxPolarities)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASITXG, DT_ASITXG_CMD_SET_ASI_POLARITY, Uuid, PortIndex, Polarity);
+    return SetInt(Drv, ASITXG, DT_ASITXG_CMD_SET_ASI_POLARITY, Part, Polarity);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxGGetPolarity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxGGetPolarity(OsDrv* Drv, int Uuid, int PortIndex,
-                                        int* Polarity)
+DtapiResult DtPcieCmd_AsiTxGGetPolarity(OsDrv* Drv, DtPartRef Part, int* Polarity)
 {
-    return GetOneOf(Drv, ASITXG, DT_ASITXG_CMD_GET_ASI_POLARITY, Uuid, PortIndex,
-                    Polarity, TxPolarities, COUNT(TxPolarities));
+    return GetOneOf(Drv, ASITXG, DT_ASITXG_CMD_GET_ASI_POLARITY, Part, Polarity,
+                    TxPolarities, COUNT(TxPolarities));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxGClearInputState -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxGClearInputState(OsDrv* Drv, int Uuid, int PortIndex)
+DtapiResult DtPcieCmd_AsiTxGClearInputState(OsDrv* Drv, DtPartRef Part)
 {
-    return DtPcieCmd_IssuePlain(Drv, ASITXG, DT_ASITXG_CMD_CLEAR_INPUT_STATE, Uuid,
-                                PortIndex, NULL, 0);
+    return DtPcieCmd_IssuePlain(Drv, ASITXG, DT_ASITXG_CMD_CLEAR_INPUT_STATE, Part, NULL,
+                                0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxSerSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxSerSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+DtapiResult DtPcieCmd_AsiTxSerSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode)
 {
     if (!IsOneOf(OpMode, BlockModes, COUNT(BlockModes)))
         return DTAPI_E_INVALID_ARG;
-    return SetInt(Drv, ASITXSER, DT_ASITXSER_CMD_SET_OPERATIONAL_MODE, Uuid, PortIndex,
-                  OpMode);
+    return SetInt(Drv, ASITXSER, DT_ASITXSER_CMD_SET_OPERATIONAL_MODE, Part, OpMode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiTxSerGetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_AsiTxSerGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode)
+DtapiResult DtPcieCmd_AsiTxSerGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode)
 {
-    return GetOneOf(Drv, ASITXSER, DT_ASITXSER_CMD_GET_OPERATIONAL_MODE, Uuid, PortIndex,
-                    OpMode, BlockModes, COUNT(BlockModes));
+    return GetOneOf(Drv, ASITXSER, DT_ASITXSER_CMD_GET_OPERATIONAL_MODE, Part, OpMode,
+                    BlockModes, COUNT(BlockModes));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= CDMAC, receiving +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacGetRxWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_CdmacGetRxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                            uint32_t* Offset)
+DtapiResult DtPcieCmd_CdmacGetRxWriteOffset(OsDrv* Drv, DtPartRef Part, uint32_t* Offset)
 {
     if (Offset == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlCDmaCCmdGetRxWrOffsetOutput Out;
     memset(&Out, 0, sizeof(Out));
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                                              DT_CDMAC_CMD_GET_RX_WRITE_OFFSET, Uuid,
-                                              PortIndex, &Out, sizeof(Out));
+    DtapiResult Result =
+        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                             DT_CDMAC_CMD_GET_RX_WRITE_OFFSET, Part, &Out, sizeof(Out));
     *Offset = DT_SUCCEEDED(Result) ? Out.m_RxWriteOffset : 0;
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacSetRxReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                           uint32_t Offset)
+DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t Offset)
 {
     return SetInt(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), DT_CDMAC_CMD_SET_RX_READ_OFFSET,
-                  Uuid, PortIndex, (Int)Offset);
+                  Part, (Int)Offset);
 }

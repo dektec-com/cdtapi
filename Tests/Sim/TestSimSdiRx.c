@@ -490,7 +490,7 @@ DT_TEST(UnknownUuidHasNoIoStub)
     {
         DtSdiRxStatus S;
 
-        DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, 12345, 0, &S),
+        DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){12345, 0}, &S),
                      DTAPI_E_NOT_IMPLEMENTED);
     }
 
@@ -556,9 +556,11 @@ DT_TEST(UuidAlonePicksTheFunction)
 
     SimDtPcie_SetSdiSignal(2, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 2), 4, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 2), 4}, &S));
     DT_ASSERT(S.CarrierDetect);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 4), 2, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 4), 2}, &S));
     DT_ASSERT(!S.CarrierDetect);
 
     OsDrv_Close(Drv);
@@ -576,7 +578,7 @@ DT_TEST(StatusRequestIsAHeaderForTheFunction)
 
     int Uuid = UuidOf(Drv, "DF_SDIRX#1", 6);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 6, &S));
+    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){Uuid, 6}, &S));
     DtIoctlInputDataHdr Hdr;
     int FunctionCode;
     DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr)), sizeof(Hdr));
@@ -599,7 +601,8 @@ DT_TEST(InputWithoutSignalReportsNothing)
 
     DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
@@ -627,7 +630,8 @@ DT_TEST(StatusFollowsTheSignal)
 
     SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
     DT_ASSERT(S.LineLock);
@@ -648,7 +652,8 @@ DT_TEST(StatusFollowsTheSignal)
     Signal.IsLevelB = 1;
     Signal.NumLinesF2 = 7;
     SimDtPcie_SetSdiSignal(0, &Signal);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(S.LineLock);
@@ -662,7 +667,8 @@ DT_TEST(StatusFollowsTheSignal)
     Signal.Valid = 1;
     Signal.CarrierDetect = 1;
     SimDtPcie_SetSdiSignal(0, &Signal);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
@@ -689,7 +695,8 @@ DT_TEST(AnyNonZeroFlagIsTrue)
     Signal.IsLevelB = 4;
     SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(S.SdiLock);
     DT_ASSERT(S.LineLock);
@@ -724,7 +731,8 @@ DT_TEST(FramePeriodBecomesARate)
     {
         Signal.FramePeriod = Cases[i].Period;
         SimDtPcie_SetSdiSignal(0, &Signal);
-        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(
+            Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
         if (S.FrameRate != Cases[i].Rate)
             DT_FAIL("period %d: rate %f", Cases[i].Period, S.FrameRate);
     }
@@ -750,7 +758,8 @@ DT_TEST(RateOutsideTheDriverValuesIsUnknown)
 
         Signal.SdiRate = Rate;
         SimDtPcie_SetSdiSignal(0, &Signal);
-        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+        DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(
+            Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
         if (S.SdiRate != Expected)
             DT_FAIL("driver rate %d gave %d", Rate, S.SdiRate);
     }
@@ -771,8 +780,9 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
     SimDtPcie_SetSdiSignal(1, &Signal);
     DtSdiRxStatus S;
     memset(&S, 0x5A, sizeof(S));
-    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S),
-                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 1), 1}, &S),
+        DTAPI_E_INVALID_MODE);
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.NumLinesF1, 0);
 
@@ -785,7 +795,8 @@ DT_TEST(OutputPortReceiverIsNotEnabled)
     Cfg.ParXtra[0] = -1;
     Cfg.ParXtra[1] = -1;
     DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 1), 1, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 1), 1}, &S));
     DT_ASSERT_EQ(S.NumLinesF1, 563);
 
     OsDrv_Close(Drv);
@@ -811,7 +822,8 @@ DT_TEST(AsiReportsTheCarrierOnly)
 
     SimDtPcie_SetSdiSignal(0, &Signal);
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(S.CarrierDetect);
     DT_ASSERT(!S.SdiLock);
     DT_ASSERT(!S.LineLock);
@@ -875,16 +887,20 @@ DT_TEST(StatusFailuresBecomeResults)
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_SDIRX_CMD, DT_STATUS_TIMEOUT);
     DtSdiRxStatus S;
-    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_TIMEOUT);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){Uuid, 0}, &S),
+                 DTAPI_E_TIMEOUT);
 
     SimDtPcie_Reset();
     SimDtPcie_SetSdiSignal(0, &Signal);
     SimDtPcie_AnswerShort(DT_FUNC_CODE_SDIRX_CMD);
-    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, &S), DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){Uuid, 0}, &S),
+                 DTAPI_E_DEV_DRIVER);
     DT_ASSERT(!S.CarrierDetect);
 
-    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(NULL, Uuid, 0, &S), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, Uuid, 0, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(NULL, (DtPartRef){Uuid, 0}, &S),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){Uuid, 0}, NULL),
+                 DTAPI_E_INVALID_ARG);
 
     OsDrv_Close(Drv);
 }
@@ -901,21 +917,25 @@ DT_TEST(SignalsAreResetAndPerSdiPort)
     SimDtPcie_SetSdiSignal(0, &Signal);
     SimDtPcie_Reset();
     DtSdiRxStatus S;
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
     // Nothing lands on a port of the card.
     SimDtPcie_SetSdiSignal(-1, &Signal);
     SimDtPcie_SetSdiSignal(SIM_SDI_PORT_COUNT, &Signal);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(!S.CarrierDetect);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 6), 6, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 6), 6}, &S));
     DT_ASSERT(!S.CarrierDetect);
 
     SimDtPcie_SetSdiSignal(0, &Signal);
     SimDtPcie_SetSdiSignal(0, NULL);
-    DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(Drv, UuidOf(Drv, "DF_SDIRX#1", 0), 0, &S));
+    DT_ASSERT_OK(
+        DtPcieCmd_SdiRxGetStatus(Drv, (DtPartRef){UuidOf(Drv, "DF_SDIRX#1", 0), 0}, &S));
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
 

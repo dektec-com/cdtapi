@@ -51,7 +51,7 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
     if (Result == DTAPI_OK && Part == NULL)
         Result = DTAPI_E_NOT_FOUND;
     if (Result == DTAPI_OK)
-        Port->NwUuid = Part->Uuid;
+        Port->Nw = Part->Ref;
     DtFunc_Release(&Af);
     if (Result != DTAPI_OK)
     {
@@ -81,14 +81,13 @@ DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
 {
     int Speed = 0;
     OsDrv* Drv = Port->Device.Drv;
-    DtapiResult Result =
-        DtPcieCmd_NwGetPhySpeed(Drv, Port->NwUuid, Port->PortIndex, &Speed);
+    DtapiResult Result = DtPcieCmd_NwGetPhySpeed(Drv, Port->Nw, &Speed);
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where,
                              "Failed to get the network operational status");
     if (Speed == DT_PHY_SPEED_NO_LINK)
         return DtAvError_Set(DTAPI_E_NO_LINK, Where, "Network cable is disconnected");
-    Result = DtPcieCmd_NwGetMacAddress(Drv, Port->NwUuid, Port->PortIndex, Port->Mac);
+    Result = DtPcieCmd_NwGetMacAddress(Drv, Port->Nw, Port->Mac);
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Retrieving the MAC address failed");
 
@@ -143,8 +142,7 @@ DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool Receive,
     default:
         break;
     }
-    DtapiResult Result = DtAvPipe_Open(Pipe, Port->Device.Drv, Port->NwUuid,
-                                       Port->PortIndex, Type, Fallback);
+    DtapiResult Result = DtAvPipe_Open(Pipe, Port->Device.Drv, Port->Nw, Type, Fallback);
     if (Result == DTAPI_E_IN_USE && Fallback == -1 && Type == Hardware)
         return DtAvError_Set(DTAPI_E_OUT_OF_RESOURCES, Where,
                              "The requested hardware pipe is not available");

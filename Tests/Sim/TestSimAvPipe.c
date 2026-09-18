@@ -38,21 +38,22 @@
 #define ROW (WIDTH * 2)
 
 // Opens the DTA-2110 with its clock stopped and the loopback on; gives the network
-// function's UUID, or 0.
-static OsDrv* OpenDevice(int* NwUuid)
+// function, with UUID 0 when there is none.
+static OsDrv* OpenDevice(DtPartRef* Nw)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     SimDtPcie_SetNwLoopback(true);
     OsDrv* Drv = OsDrv_Open(INDEX);
-    *NwUuid = 0;
+    memset(Nw, 0, sizeof(*Nw));
     DtFuncInstance Af;
     DtVec_Init(&Af.Parts, sizeof(DtFuncPart));
     if (Drv != NULL && DtFunc_Find(Drv, PORT, "AF_NW", "", &Af) == DTAPI_OK)
     {
         const DtFuncPart* Part = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
-        *NwUuid = Part != NULL ? Part->Uuid : 0;
+        if (Part != NULL)
+            *Nw = Part->Ref;
     }
     DtFunc_Release(&Af);
     return Drv;
@@ -95,12 +96,12 @@ static void ParsePacket(void* Context, const uint8_t* Packet, int Size)
 DT_TEST(OpenBufferClose)
 {
     int Live = DtAlloc_Live();
-    int Nw = 0;
+    DtPartRef Nw;
     OsDrv* Drv = OpenDevice(&Nw);
-    DT_ASSERT(Drv != NULL && Nw != 0);
+    DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
     DtAvPipe Pipe;
 
-    DT_ASSERT_OK(DtAvPipe_Open(&Pipe, Drv, Nw, PORT, DT_PIPE_RX_RT_HWP, -1));
+    DT_ASSERT_OK(DtAvPipe_Open(&Pipe, Drv, Nw, DT_PIPE_RX_RT_HWP, -1));
     DT_ASSERT(DtAvPipe_IsHardware(&Pipe));
     DT_ASSERT_EQ(DtAvPipe_Alignment(&Pipe), SIM_DTA2110_PACKET_ALIGNMENT);
     DT_ASSERT_OK(DtAvPipe_SetBuffer(&Pipe, 100000));
@@ -108,10 +109,10 @@ DT_TEST(OpenBufferClose)
     DT_ASSERT(Pipe.Size >= 100000);
     DT_ASSERT_EQ(DtAvPipe_MaxLoad(&Pipe), Pipe.Size - 8);
     SimNwPipeState State;
-    SimDtPcie_GetNwPipeState(Pipe.Uuid >> 20, &State);
+    SimDtPcie_GetNwPipeState(Pipe.Ref.Uuid >> 20, &State);
     DT_ASSERT(State.InUse && State.BufferSet && State.BufferSize == Pipe.Size);
     DT_ASSERT_EQ(DtAvPipe_SetBuffer(&Pipe, 100000), DTAPI_E_INVALID_ARG);
-    int Id = Pipe.Uuid >> 20;
+    int Id = Pipe.Ref.Uuid >> 20;
     DtAvPipe_Close(&Pipe);
     SimDtPcie_GetNwPipeState(Id, &State);
     DT_ASSERT(!State.InUse && !State.BufferSet);
@@ -120,12 +121,10 @@ DT_TEST(OpenBufferClose)
     // Three hardware receive pipes, then the fallback, then none.
     DtAvPipe Hw[3];
     for (int i = 0; i < 3; i++)
-        DT_ASSERT_OK(DtAvPipe_Open(&Hw[i], Drv, Nw, PORT, DT_PIPE_RX_RT_HWP, -1));
-    DT_ASSERT_EQ(DtAvPipe_Open(&Pipe, Drv, Nw, PORT, DT_PIPE_RX_RT_HWP, -1),
-                 DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(Pipe.Uuid, 0);
-    DT_ASSERT_OK(
-        DtAvPipe_Open(&Pipe, Drv, Nw, PORT, DT_PIPE_RX_RT_HWP, DT_PIPE_RX_RT_SWP));
+        DT_ASSERT_OK(DtAvPipe_Open(&Hw[i], Drv, Nw, DT_PIPE_RX_RT_HWP, -1));
+    DT_ASSERT_EQ(DtAvPipe_Open(&Pipe, Drv, Nw, DT_PIPE_RX_RT_HWP, -1), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(Pipe.Ref.Uuid, 0);
+    DT_ASSERT_OK(DtAvPipe_Open(&Pipe, Drv, Nw, DT_PIPE_RX_RT_HWP, DT_PIPE_RX_RT_SWP));
     DT_ASSERT(!DtAvPipe_IsHardware(&Pipe));
     DtAvPipe_Close(&Pipe);
     for (int i = 0; i < 3; i++)
@@ -141,15 +140,15 @@ DT_TEST(OpenBufferClose)
 DT_TEST(FramesAroundTheBuffers)
 {
     int Live = DtAlloc_Live();
-    int Nw = 0;
+    DtPartRef Nw;
     OsDrv* Drv = OpenDevice(&Nw);
-    DT_ASSERT(Drv != NULL && Nw != 0);
+    DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
     static DtAvWriter Writer;
     static DtAvReader Reader;
     DtAvPipe Tx;
     DtAvPipe Rx;
-    DT_ASSERT_OK(DtAvPipe_Open(&Tx, Drv, Nw, PORT, DT_PIPE_TX_RT_HWP, -1));
-    DT_ASSERT_OK(DtAvPipe_Open(&Rx, Drv, Nw, PORT, DT_PIPE_RX_RT_HWP, -1));
+    DT_ASSERT_OK(DtAvPipe_Open(&Tx, Drv, Nw, DT_PIPE_TX_RT_HWP, -1));
+    DT_ASSERT_OK(DtAvPipe_Open(&Rx, Drv, Nw, DT_PIPE_RX_RT_HWP, -1));
 
     // The stream.
     DtAvTxStream S;
@@ -188,11 +187,11 @@ DT_TEST(FramesAroundTheBuffers)
     Filter.DstPort[0] = 5004;
     Filter.Flags = DT_PIPE_IPFLT_FLAG_EN_FILT | DT_PIPE_IPFLT_FLAG_EN_DSTIP_IPV4 |
                    DT_PIPE_IPFLT_FLAG_EN_DSTPORT0;
-    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Drv, Rx.Uuid, PORT, &Filter));
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Drv, Tx.Uuid, PORT));
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Drv, Rx.Uuid, PORT));
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Drv, Rx.Uuid, PORT, DT_PIPE_OPMODE_RUN));
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Drv, Tx.Uuid, PORT, DT_PIPE_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Drv, Rx.Ref, &Filter));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Drv, Tx.Ref));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Drv, Rx.Ref));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Drv, Rx.Ref, DT_PIPE_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Drv, Tx.Ref, DT_PIPE_OPMODE_RUN));
     DtAvWriter_Init(&Writer, &Tx);
     DtAvReader_Init(&Reader, &Rx);
 
@@ -270,7 +269,7 @@ DT_TEST(FramesAroundTheBuffers)
     DT_ASSERT(Lost);
     DT_ASSERT_EQ(Packets, 0);
     SimNwPipeState State;
-    SimDtPcie_GetNwPipeState(Rx.Uuid >> 20, &State);
+    SimDtPcie_GetNwPipeState(Rx.Ref.Uuid >> 20, &State);
     DT_ASSERT_EQ(State.ReadOffset, State.WriteOffset);
     DT_ASSERT_EQ(Rx.Offset, State.WriteOffset);
 

@@ -13,7 +13,7 @@
 
 // CDTAPI includes
 #include "Core/DtVec.h" // The parts found.
-#include "DtPcieCmd.h"  // Properties and the driver version.
+#include "DtPcieCmd.h"  // Properties, the driver version and DtPartRef.
 #include "cdtapi.h"     // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -26,7 +26,7 @@
 // these and make a proxy of each part; DtAf::GetPal then asks for the proxy of a type and
 // role.
 //
-// Here a part is plain data, and the proxy is the UUID a driver command takes. What
+// Here a part is plain data, and the proxy is the DtPartRef a driver command takes. What
 // DTAPI's PALs do with a proxy is done by the device layer that needs it.
 //
 
@@ -36,7 +36,7 @@ typedef struct DtFuncPart
     char Role[DT_PROPERTY_STR_SIZE]; // Empty for the part's plain role
     bool IsDf;                       // A driver function, otherwise a building block
     int Type;                        // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value
-    int Uuid;
+    DtPartRef Ref;                   // What commands to the part go to
 } DtFuncPart;
 
 typedef struct DtFuncInstance

@@ -28,8 +28,8 @@ typedef struct DtAvInput
 {
     DtDevice* Device;
     int PortIndex;
-    uint64_t Caps; // DT_CAP_ flags of the port
-    int SdiRxUuid; // The UUID of the port's SDI receiver
+    uint64_t Caps;   // DT_CAP_ flags of the port
+    DtPartRef SdiRx; // The port's SDI receiver
 } DtAvInput;
 
 // Attaches Input to a port of an attached Device, numbered from 1, with the checks of

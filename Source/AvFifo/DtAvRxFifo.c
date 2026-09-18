@@ -153,8 +153,7 @@ static DtapiResult SetFilter(AvFifo_RxFifo* Fifo, bool Enable)
         }
         Filter.VlanId[0] = Pars->Vlan.Id;
     }
-    return DtPcieCmd_PipeSetIpFilter(Fifo->Port.Device.Drv, Fifo->Pipe.Uuid,
-                                     Fifo->Port.PortIndex, &Filter);
+    return DtPcieCmd_PipeSetIpFilter(Fifo->Port.Device.Drv, Fifo->Pipe.Ref, &Filter);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Teardown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -177,7 +176,7 @@ static void Teardown(AvFifo_RxFifo* Fifo)
                     NumSources);
         Fifo->Joined = false;
     }
-    if (Fifo->Pipe.Uuid != 0)
+    if (Fifo->Pipe.Ref.Uuid != 0)
         SetFilter(Fifo, false);
     DtAvPipe_Close(&Fifo->Pipe);
     OsNetSocket_Close(Fifo->Socket);
@@ -231,12 +230,10 @@ static DtapiResult Start(AvFifo_RxFifo* Fifo)
         DtSt2110AudioRx_Init(&Fifo->AudioRx, &Fifo->Audio, &Target);
 
     OsDrv* Drv = Fifo->Port.Device.Drv;
-    int PortIndex = Fifo->Port.PortIndex;
-    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Uuid, PortIndex);
+    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Ref);
     DtAvReader_Init(&Fifo->Reader, &Fifo->Pipe);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Uuid, PortIndex, DT_PIPE_OPMODE_RUN);
+        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Ref, DT_PIPE_OPMODE_RUN);
     if (Result == DTAPI_OK)
         Result = SetFilter(Fifo, true);
     if (Result != DTAPI_OK)

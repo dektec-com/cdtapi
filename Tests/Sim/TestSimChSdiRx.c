@@ -35,11 +35,11 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
-    int Uuid;
+    DtPartRef Ch; // The receive channel
     int Live;
 } Fixture;
 
-// Opens the emulated device in its power-on state and finds the channel's UUID. Returns
+// Opens the emulated device in its power-on state and finds the channel. Returns
 // false, having recorded a failure, when that is not possible.
 static bool Open(Fixture* Fix, int* DtFailures)
 {
@@ -49,7 +49,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_Live();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
-    Fix->Uuid = 0;
+    memset(&Fix->Ch, 0, sizeof(Fix->Ch));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         DtFunc_Find(Fix->Drv, PORT, "AF_ASISDIRX", "", &Instance) != DTAPI_OK)
     {
@@ -59,7 +59,8 @@ static bool Open(Fixture* Fix, int* DtFailures)
         return false;
     }
     Part = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
-    Fix->Uuid = Part != NULL ? Part->Uuid : 0;
+    if (Part != NULL)
+        Fix->Ch = Part->Ref;
     DtFunc_Release(&Instance);
     return Part != NULL;
 }
@@ -104,13 +105,12 @@ static uint8_t* Run(Fixture* Fix, int VidStd, int RingSize, int* Size, int* MaxL
     uint8_t* Ring = NULL;
     bool Mapped = false;
 
-    if (DtPcieCmd_ChSdiRxAttach(Fix->Drv, Fix->Uuid, PORT, true, "test:1") != DTAPI_OK ||
-        DtPcieCmd_ChSdiRxConfigure(Fix->Drv, Fix->Uuid, PORT, &Config) != DTAPI_OK ||
-        DtPcieCmd_ChSdiRxMapDmaBuf(Fix->Drv, Fix->Uuid, PORT, &Ring, Size, MaxLoad,
-                                   &Mapped) != DTAPI_OK ||
-        DtPcieCmd_ChSdiRxSetReadOffset(Fix->Drv, Fix->Uuid, PORT, 0) != DTAPI_OK ||
-        DtPcieCmd_ChSdiRxSetOpMode(Fix->Drv, Fix->Uuid, PORT, DT_FUNC_OPMODE_RUN) !=
-            DTAPI_OK)
+    if (DtPcieCmd_ChSdiRxAttach(Fix->Drv, Fix->Ch, true, "test:1") != DTAPI_OK ||
+        DtPcieCmd_ChSdiRxConfigure(Fix->Drv, Fix->Ch, &Config) != DTAPI_OK ||
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix->Drv, Fix->Ch, &Ring, Size, MaxLoad, &Mapped) !=
+            DTAPI_OK ||
+        DtPcieCmd_ChSdiRxSetReadOffset(Fix->Drv, Fix->Ch, 0) != DTAPI_OK ||
+        DtPcieCmd_ChSdiRxSetOpMode(Fix->Drv, Fix->Ch, DT_FUNC_OPMODE_RUN) != DTAPI_OK)
     {
         printf("    FAIL: cannot start the channel\n");
         (*DtFailures)++;
@@ -153,7 +153,7 @@ DT_TEST(ReportsTheCardsProperties)
     if (!Open(&Fix, DtFailures))
         return;
     DtChSdiRxProps Props;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Ch, &Props));
     DT_ASSERT_EQ(Props.DmaCaps, DT_CDMAC_CAP_RX | DT_CDMAC_CAP_TX);
     DT_ASSERT_EQ(Props.PrefetchSize, 16);
     DT_ASSERT_EQ(Props.PcieDataWidth, 256);
@@ -161,7 +161,7 @@ DT_TEST(ReportsTheCardsProperties)
     DT_ASSERT_EQ(Props.StreamAlignment, 128);
 
     SimDtPcie_SetRxAlignment(32);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Ch, &Props));
     DT_ASSERT_EQ(Props.StreamAlignment, 32);
     FINISH(Fix);
 }
@@ -176,27 +176,24 @@ DT_TEST(AttachesUsers)
         return;
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
 
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Uuid, PORT, &OpMode),
-                 DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, ""),
-                 DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Ch, &OpMode), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, ""), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Uuid, PORT, true, "other:2"),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, true, "other:2"), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"),
-                 DTAPI_E_IN_USE);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Uuid, PORT, &OpMode));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Ch, &OpMode));
     DT_ASSERT_EQ(OpMode, DT_FUNC_OPMODE_IDLE);
 
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Uuid, PORT));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Uuid, PORT), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Ch));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Ch), DTAPI_E_NOT_FOUND);
 
     // Shared users go together, but not with an exclusive one.
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, false, "test:1"));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Uuid, PORT, false, "other:2"),
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, false, "test:1"));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"),
                  DTAPI_E_IN_USE);
 
     OsDrv_Close(Other);
@@ -211,8 +208,8 @@ DT_TEST(ClosingDetaches)
 
     if (!Open(&Fix, DtFailures))
         return;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
     SimRxState State;
     SimDtPcie_GetRxState(PORT, &State);
     DT_ASSERT(State.Configured);
@@ -238,44 +235,44 @@ DT_TEST(ConfiguresTheRing)
 
     if (!Open(&Fix, DtFailures))
         return;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
 
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size,
-                                            &MaxLoad, &Mapped),
-                 DTAPI_E_NOT_INITIALIZED);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size,
-                                            &MaxLoad, &Mapped));
+    DT_ASSERT_EQ(
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Ch, &Ring, &Size, &MaxLoad, &Mapped),
+        DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
+    DT_ASSERT_OK(
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Ch, &Ring, &Size, &MaxLoad, &Mapped));
     DT_ASSERT(Ring != NULL);
     DT_ASSERT(!Mapped);
     DT_ASSERT_EQ(Size, 2 * SMALL_RING);
     DT_ASSERT_EQ(MaxLoad, 2 * SMALL_RING - 32);
 
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Again, &Size,
-                                            &MaxLoad, &Mapped));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
+    DT_ASSERT_OK(
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Ch, &Again, &Size, &MaxLoad, &Mapped));
     DT_ASSERT(Again == Ring);
 
     Config.DmaMinSize = SMALL_RING - 1;
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config),
                  DTAPI_E_INVALID_ARG);
     SimRxState State;
     SimDtPcie_GetRxState(PORT, &State);
     DT_ASSERT(!State.Configured);
 
     Config.DmaMinSize = 256 * 1024 * 1024 + 1;
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config),
                  DTAPI_E_INVALID_ARG);
 
     // A test limit shrinks the ring to a multiple of 64 KB.
     SimDtPcie_LimitRxRing(3 * SMALL_RING + 5);
     Config.DmaMinSize = 8 * 1024 * 1024;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
     SimDtPcie_GetRxState(PORT, &State);
     DT_ASSERT_EQ(State.RingSize, 3 * SMALL_RING);
 
     Config.NumPorts = 4;
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config),
                  DTAPI_E_NOT_SUPPORTED);
     FINISH(Fix);
 }
@@ -294,16 +291,16 @@ DT_TEST(MapsAsLinux)
     if (!Open(&Fix, DtFailures))
         return;
     SimDtPcie_MapRxRingAsLinux(true);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Ring, &Size,
-                                            &MaxLoad, &Mapped));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
+    DT_ASSERT_OK(
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Ch, &Ring, &Size, &MaxLoad, &Mapped));
     DT_ASSERT(Ring != NULL);
     DT_ASSERT(Mapped);
 
     // Once mapped, the driver returns the address.
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Uuid, PORT, &Again, &Size,
-                                            &MaxLoad, &Mapped));
+    DT_ASSERT_OK(
+        DtPcieCmd_ChSdiRxMapDmaBuf(Fix.Drv, Fix.Ch, &Again, &Size, &MaxLoad, &Mapped));
     DT_ASSERT(Again == Ring);
     DT_ASSERT(!Mapped);
     DtPcieCmd_ChSdiRxUnmapDmaBuf(Fix.Drv, Ring, Size, true);
@@ -325,25 +322,23 @@ DT_TEST(RunsWhenConfigured)
 
     if (!Open(&Fix, DtFailures))
         return;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Uuid, PORT, true, "test:1"));
-    DT_ASSERT_OK(
-        DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_IDLE));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_RUN),
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Ch, DT_FUNC_OPMODE_IDLE));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Ch, DT_FUNC_OPMODE_RUN),
                  DTAPI_E_NOT_INITIALIZED);
     DtChSdiRxEvent Event;
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 0, &Event),
                  DTAPI_E_NOT_INITIALIZED);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset),
                  DTAPI_E_NOT_INITIALIZED);
 
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Uuid, PORT, &Config));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event),
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxConfigure(Fix.Drv, Fix.Ch, &Config));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 0, &Event),
                  DTAPI_E_TIMEOUT);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, 7),
-                 DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Uuid, PORT, DT_FUNC_OPMODE_RUN));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 0, &Event));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Ch, 7), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetOpMode(Fix.Drv, Fix.Ch, DT_FUNC_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 0, &Event));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     DT_ASSERT_EQ(Offset, 0);
     FINISH(Fix);
 }
@@ -366,13 +361,12 @@ DT_TEST(EventsWithoutSource)
     DtChSdiRxEvent Event;
     for (int i = 0; i < 8; i++)
     {
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
         DT_ASSERT_EQ(Event.FrameId, i / 4);
         DT_ASSERT_EQ(Event.SeqNumber, i % 4);
         DT_ASSERT(!Event.InSync);
     }
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     DT_ASSERT_EQ(Offset, 0);
     FINISH(Fix);
 }
@@ -400,12 +394,11 @@ DT_TEST(WritesFramesInQuarters)
     {
         int Lines = (625 * (Quarter + 1) + 3) / 4;
 
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
         DT_ASSERT_EQ(Event.FrameId, 0);
         DT_ASSERT_EQ(Event.SeqNumber, Quarter);
         DT_ASSERT(Event.InSync);
-        DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
         DT_ASSERT_EQ(Offset, 16 + Lines * Layout.Stride);
     }
 
@@ -418,7 +411,7 @@ DT_TEST(WritesFramesInQuarters)
     DT_ASSERT(LineAt(Ring, 16 + 624 * (size_t)Layout.Stride, &Layout, 0, 625));
 
     // The next frame follows directly.
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 1);
     DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
     DT_ASSERT_OK(DtSdiFrame_CheckHeader(&Layout, &Header, 1));
@@ -442,11 +435,10 @@ DT_TEST(MismatchedSourceIsOutOfSync)
     DtChSdiRxEvent Event;
     for (int i = 0; i < 4; i++)
     {
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
         DT_ASSERT(!Event.InSync);
     }
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     DT_ASSERT_EQ(Offset, 0);
     FINISH(Fix);
 }
@@ -474,36 +466,33 @@ DT_TEST(InjectsFaults)
     DtChSdiRxEvent Event;
     int i;
     for (i = 0; i < 4; i++)
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 1);
     DtSdiFrameHeader Header;
     DtSdiFrame_DecodeHeader(Ring, &Header);
     DT_ASSERT_EQ(DtSdiFrame_CheckHeader(&Layout, &Header, 1), DTAPI_E_OUT_OF_SYNC);
 
     SimDtPcie_InjectRxFault(PORT, SIM_RX_FAULT_FORMAT);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     for (i = 0; i < 4; i++)
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 2);
     DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
     DT_ASSERT_EQ(DtSdiFrame_CheckHeader(&Layout, &Header, 2), DTAPI_E_INVALID_FORMAT);
 
     SimDtPcie_InjectRxFault(PORT, SIM_RX_FAULT_OUT_OF_SYNC);
     uint32_t Before;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Before));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Before));
     for (i = 0; i < 4; i++)
     {
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
         DT_ASSERT(!Event.InSync);
     }
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     DT_ASSERT_EQ(Offset, Before);
 
     // And the frame after them is whole again.
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(Event.InSync);
     DT_ASSERT_EQ(Event.FrameId, 4);
     DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
@@ -537,26 +526,23 @@ DT_TEST(FullRingDropsAndWraps)
     DtChSdiRxEvent Event;
     int i;
     for (i = 0; i < 4; i++)
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(Event.InSync);
     for (i = 0; i < 4; i++)
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(!Event.InSync);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     DT_ASSERT((size_t)Offset <= (size_t)MaxLoad);
 
     // Read everything, and the third frame wraps around the end.
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetReadOffset(Fix.Drv, Fix.Uuid, PORT, Offset));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetReadOffset(Fix.Drv, Fix.Ch, Offset));
     for (i = 0; i < 4; i++)
-        DT_ASSERT_OK(
-            DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Uuid, PORT, 1, &Event));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(Event.InSync);
     DT_ASSERT_EQ(Event.FrameId, 2);
     {
         uint32_t End = 0;
-        DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Uuid, PORT, &End));
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &End));
         DT_ASSERT_EQ(End, (Offset + Frame) % (size_t)Size);
         DT_ASSERT(End < Offset);
     }
@@ -572,10 +558,10 @@ DT_TEST(RefusesAndReportsStatus)
         return;
     SimDtPcie_FailRxCmd(DT_CHSDIRX_CMD_GET_PROPS, DT_STATUS_NOT_SUPPORTED);
     DtChSdiRxProps Props;
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Ch, &Props),
                  DTAPI_E_NOT_SUPPORTED);
     SimDtPcie_FailRxCmd(DT_CHSDIRX_CMD_GET_PROPS, 0);
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Uuid, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetProps(Fix.Drv, Fix.Ch, &Props));
 
     SimSdiSignal Signal;
     memset(&Signal, 0, sizeof(Signal));
@@ -586,7 +572,7 @@ DT_TEST(RefusesAndReportsStatus)
     Signal.SdiRate = DT_DRV_SDIRATE_SD;
     SimDtPcie_SetSdiSignal(PORT, &Signal);
     DtSdiRxStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetSdiStatus(Fix.Drv, Fix.Uuid, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetSdiStatus(Fix.Drv, Fix.Ch, &Status));
     DT_ASSERT(!Status.CarrierDetect);
     DT_ASSERT(Status.SdiLock);
     DT_ASSERT(Status.Valid);

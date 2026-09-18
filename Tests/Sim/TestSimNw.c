@@ -41,7 +41,7 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
-    int Nw; // The network function's UUID
+    DtPartRef Nw; // The network function
     int Live;
 } Fixture;
 
@@ -54,7 +54,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     Fix->Drv = OsDrv_Open(INDEX);
-    Fix->Nw = 0;
+    memset(&Fix->Nw, 0, sizeof(Fix->Nw));
 
     DtFuncInstance Af;
     DtVec_Init(&Af.Parts, sizeof(DtFuncPart));
@@ -67,7 +67,8 @@ static bool Open(Fixture* Fix, int* DtFailures)
         return false;
     }
     const DtFuncPart* Part = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
-    Fix->Nw = Part != NULL ? Part->Uuid : 0;
+    if (Part != NULL)
+        Fix->Nw = Part->Ref;
     DtFunc_Release(&Af);
     return true;
 }
@@ -83,14 +84,14 @@ static bool Open(Fixture* Fix, int* DtFailures)
     } while (0)
 
 // The number in a pipe's UUID.
-static int IdOf(int PipeUuid)
+static int IdOf(DtPartRef Pipe)
 {
-    return (int)((uint32_t)PipeUuid >> 20);
+    return (int)((uint32_t)Pipe.Uuid >> 20);
 }
 
-// Whether the last command was Cmd of FunctionCode for Uuid on the port, with an input
-// of Size bytes, which are copied to Input when it is not NULL.
-static bool LastWas(int FunctionCode, int Uuid, int Cmd, size_t Size, void* Input)
+// Whether the last command was Cmd of FunctionCode for Part, with an input of Size bytes,
+// which are copied to Input when it is not NULL.
+static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size, void* Input)
 {
     DtIoctlInputDataHdr Hdr;
     int Code = -1;
@@ -100,8 +101,9 @@ static bool LastWas(int FunctionCode, int Uuid, int Cmd, size_t Size, void* Inpu
     memcpy(&Hdr, In, sizeof(Hdr));
     if (Input != NULL)
         memcpy(Input, In, Size);
-    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Uuid &&
-           Hdr.m_PortIndex == PORT && Hdr.m_Cmd == Cmd && Hdr.m_CmdEx == DT_IOCTL_CMD_NOP;
+    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Part.Uuid &&
+           Hdr.m_PortIndex == Part.PortIndex && Hdr.m_Cmd == Cmd &&
+           Hdr.m_CmdEx == DT_IOCTL_CMD_NOP;
 }
 
 // Builds an Ethernet frame of an IPv4 UDP datagram from 192.168.1.10:SrcPort to
@@ -161,21 +163,22 @@ static size_t PutPacket(OsDmaBuffer* Buf, size_t Offset, const uint8_t* Frame,
 }
 
 // Opens a pipe of Type, gives it a buffer of Size bytes as this platform's driver takes
-// it, flushes it and sets it running. Returns the pipe's UUID, 0 after a failure.
-static int StartPipe(Fixture* Fix, int Type, size_t Size, OsDmaBuffer* Buf)
+// it, flushes it and sets it running. Returns the pipe, with UUID 0 after a failure.
+static DtPartRef StartPipe(Fixture* Fix, int Type, size_t Size, OsDmaBuffer* Buf)
 {
-    int Uuid = 0;
+    DtPartRef Uuid = {0, PORT};
+    const DtPartRef None = {0, PORT};
 
-    if (DtPcieCmd_NwOpenPipe(Fix->Drv, Fix->Nw, PORT, Type, -1, &Uuid) != DTAPI_OK ||
+    if (DtPcieCmd_NwOpenPipe(Fix->Drv, Fix->Nw, Type, -1, &Uuid) != DTAPI_OK ||
         OsDmaBuffer_Alloc(Size, Buf) != 0)
     {
-        return 0;
+        return None;
     }
-    if (DtPcieCmd_PipeSetSharedBuffer(Fix->Drv, Uuid, PORT, Buf) != DTAPI_OK ||
-        DtPcieCmd_PipeFlush(Fix->Drv, Uuid, PORT) != DTAPI_OK ||
-        DtPcieCmd_PipeSetOpMode(Fix->Drv, Uuid, PORT, DT_PIPE_OPMODE_RUN) != DTAPI_OK)
+    if (DtPcieCmd_PipeSetSharedBuffer(Fix->Drv, Uuid, Buf) != DTAPI_OK ||
+        DtPcieCmd_PipeFlush(Fix->Drv, Uuid) != DTAPI_OK ||
+        DtPcieCmd_PipeSetOpMode(Fix->Drv, Uuid, DT_PIPE_OPMODE_RUN) != DTAPI_OK)
     {
-        return 0;
+        return None;
     }
     return Uuid;
 }
@@ -240,7 +243,7 @@ DT_TEST(PortAndFunction)
     DT_ASSERT_OK(
         DtPcieCmd_GetPropertyInt(Fix.Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, &Ports));
     DT_ASSERT_EQ(Ports, 1);
-    DT_ASSERT_EQ(Fix.Nw, DT_UUID_DF_FLAG | 1);
+    DT_ASSERT_EQ(Fix.Nw.Uuid, DT_UUID_DF_FLAG | 1);
 
     DtIoConfig Config = {1, DTAPI_IOCONFIG_IODIR, -1, -1, {-1, -1}};
     DT_ASSERT_EQ(DtPcieCmd_GetIoConfig(Fix.Drv, &Config), DTAPI_E_NOT_SUPPORTED);
@@ -255,10 +258,8 @@ DT_TEST(PortAndFunction)
     DT_ASSERT_EQ(Seconds, T0 / 1000000000u);
     DT_ASSERT_EQ(Nanoseconds, 0);
 
-    DT_ASSERT_OK(
-        DtPcieCmd_ExclAccess(Fix.Drv, Fix.Nw, PORT, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_OK(
-        DtPcieCmd_ExclAccess(Fix.Drv, Fix.Nw, PORT, DT_EXCLUSIVE_ACCESS_CMD_CHECK));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, Fix.Nw, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, Fix.Nw, DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     FINISH(Fix);
 }
 
@@ -272,24 +273,22 @@ DT_TEST(MacAddressAndPhySpeed)
 
     static const uint8_t Expected[6] = SIM_DTA2110_MAC_ADDRESS;
     uint8_t Mac[6];
-    DT_ASSERT_OK(DtPcieCmd_NwGetMacAddress(Fix.Drv, Fix.Nw, PORT, Mac));
+    DT_ASSERT_OK(DtPcieCmd_NwGetMacAddress(Fix.Drv, Fix.Nw, Mac));
     DT_ASSERT_MEM(Mac, Expected, 6);
     DT_ASSERT(LastWas(DT_FUNC_CODE_EMAC_CMD, Fix.Nw, DT_EMAC_CMD_GET_MACADDRESS,
                       sizeof(DtIoctlInputDataHdr), NULL));
 
     int Speed = -1;
-    DT_ASSERT_OK(DtPcieCmd_NwGetPhySpeed(Fix.Drv, Fix.Nw, PORT, &Speed));
+    DT_ASSERT_OK(DtPcieCmd_NwGetPhySpeed(Fix.Drv, Fix.Nw, &Speed));
     DT_ASSERT_EQ(Speed, DT_PHY_SPEED_10000);
     DT_ASSERT(LastWas(DT_FUNC_CODE_EMAC_CMD, Fix.Nw, DT_EMAC_CMD_GET_PHY_SPEED,
                       sizeof(DtIoctlInputDataHdr), NULL));
     SimDtPcie_SetNwLink(false);
-    DT_ASSERT_OK(DtPcieCmd_NwGetPhySpeed(Fix.Drv, Fix.Nw, PORT, &Speed));
+    DT_ASSERT_OK(DtPcieCmd_NwGetPhySpeed(Fix.Drv, Fix.Nw, &Speed));
     DT_ASSERT_EQ(Speed, DT_PHY_SPEED_NO_LINK);
 
-    DT_ASSERT_EQ(DtPcieCmd_NwGetMacAddress(Fix.Drv, Fix.Nw, PORT, NULL),
-                 DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_NwGetPhySpeed(NULL, Fix.Nw, PORT, &Speed),
-                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_NwGetMacAddress(Fix.Drv, Fix.Nw, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_NwGetPhySpeed(NULL, Fix.Nw, &Speed), DTAPI_E_INVALID_ARG);
     FINISH(Fix);
 }
 
@@ -303,43 +302,39 @@ DT_TEST(OpenPipesByType)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Uuid = 0;
+    DtPartRef Uuid = {0, PORT};
     for (int i = 0; i < SIM_DTA2110_HW_PIPES; i++)
     {
-        DT_ASSERT_OK(
-            DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP, -1, &Uuid));
-        DT_ASSERT_EQ(Uuid, Fix.Nw | (SIM_NW_FIRST_TX_HWP + i) << 20);
+        DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &Uuid));
+        DT_ASSERT_EQ(Uuid.Uuid, Fix.Nw.Uuid | (SIM_NW_FIRST_TX_HWP + i) << 20);
     }
     DtIoctlNwCmdPipeOpenInput In;
     DT_ASSERT(LastWas(DT_FUNC_CODE_NW_CMD, Fix.Nw, DT_NW_CMD_PIPE_OPEN, sizeof(In), &In));
     DT_ASSERT_EQ(In.m_PipeType, DT_PIPE_TX_RT_HWP);
     DT_ASSERT_EQ(In.m_PipeTypeFallback, -1);
 
-    DT_ASSERT_EQ(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP, -1, &Uuid),
-        DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(Uuid, 0);
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP,
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &Uuid),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(Uuid.Uuid, 0);
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_HWP,
                                       DT_PIPE_TX_RT_SWP, &Uuid));
     DT_ASSERT_EQ(IdOf(Uuid), SIM_NW_FIRST_SWP);
     DT_ASSERT(LastWas(DT_FUNC_CODE_NW_CMD, Fix.Nw, DT_NW_CMD_PIPE_OPEN, sizeof(In), &In));
     DT_ASSERT_EQ(In.m_PipeTypeFallback, DT_PIPE_TX_RT_SWP);
 
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_HWP, -1, &Uuid));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_HWP, -1, &Uuid));
     DT_ASSERT_EQ(IdOf(Uuid), SIM_NW_FIRST_RX_HWP);
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP,
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP,
                                       DT_PIPE_TX_RT_SWP, &Uuid));
     DT_ASSERT_EQ(IdOf(Uuid), SIM_NW_FIRST_SWP + 1);
 
-    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_HWQ, -1, &Uuid),
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_HWQ, -1, &Uuid),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_NRT, -1, &Uuid),
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_NRT, -1, &Uuid),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, 99, DT_PIPE_RX_RT_SWP, &Uuid),
-        DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, NULL),
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, 99, DT_PIPE_RX_RT_SWP, &Uuid),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, NULL),
                  DTAPI_E_INVALID_ARG);
     FINISH(Fix);
 }
@@ -351,11 +346,11 @@ DT_TEST(SoftwarePipesRunOut)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Uuid = 0;
-    int Last = 0;
+    DtPartRef Uuid = {0, PORT};
+    DtPartRef Last = {0, PORT};
     for (int Id = SIM_NW_FIRST_SWP; Id <= SIM_NW_MAX_PIPES; Id++)
     {
-        if (DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, &Uuid) !=
+        if (DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Uuid) !=
                 DTAPI_OK ||
             IdOf(Uuid) != Id)
         {
@@ -364,12 +359,10 @@ DT_TEST(SoftwarePipesRunOut)
         if (Id == 100)
             Last = Uuid;
     }
-    DT_ASSERT_EQ(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_SWP, -1, &Uuid),
-        DTAPI_E_OUT_OF_RESOURCES);
-    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Last, PORT));
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_SWP, -1, &Uuid));
+    DT_ASSERT_EQ(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_SWP, -1, &Uuid),
+                 DTAPI_E_OUT_OF_RESOURCES);
+    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Last));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_SWP, -1, &Uuid));
     DT_ASSERT_EQ(IdOf(Uuid), 100);
     FINISH(Fix);
 }
@@ -382,31 +375,28 @@ DT_TEST(ClosingPipes)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Hwp = 0;
-    int Swp = 0;
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_HWP, -1, &Hwp));
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_SWP, -1, &Swp));
+    DtPartRef Hwp = {0, PORT};
+    DtPartRef Swp = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_HWP, -1, &Hwp));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_SWP, -1, &Swp));
 
     OsDrv* Other = OsDrv_Open(INDEX);
     DT_ASSERT(Other != NULL);
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Other, Hwp, PORT), DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Fix.Nw, PORT), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Fix.Nw | 3 << 20, PORT),
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Other, Hwp), DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Fix.Nw), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, (DtPartRef){Fix.Nw.Uuid | 3 << 20, PORT}),
                  DTAPI_E_NOT_FOUND);
 
-    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Hwp, PORT));
+    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Hwp));
     DT_ASSERT(LastWas(DT_FUNC_CODE_NW_CMD, Hwp, DT_NW_CMD_PIPE_CLOSE,
                       sizeof(DtIoctlNwCmdPipeCloseInput), NULL));
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Hwp, PORT), DTAPI_E_NOT_INITIALIZED);
-    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Swp, PORT));
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Swp, PORT), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Hwp), DTAPI_E_NOT_INITIALIZED);
+    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Swp));
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Swp), DTAPI_E_INVALID_ARG);
 
-    int OtherPipe = 0;
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Other, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP, -1, &OtherPipe));
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Other, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, &Swp));
+    DtPartRef OtherPipe = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Other, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &OtherPipe));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Other, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Swp));
     OsDrv_Close(Other);
     SimNwPipeState State;
     SimDtPcie_GetNwPipeState(IdOf(OtherPipe), &State);
@@ -425,33 +415,33 @@ DT_TEST(PipeCommandsOnTheWire)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Rx = 0;
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, &Rx));
+    DtPartRef Rx = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Rx));
 
     OsDmaBuffer Buf;
     DT_ASSERT_EQ(OsDmaBuffer_Alloc(65536, &Buf), 0);
     SimDtPcie_RegisterPipeBufferAsLinux(true);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Rx, PORT, &Buf, false));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Rx, &Buf, false));
     DtIoctlPipeCmdSetSharedBufferInput Shared;
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_SET_SHARED_BUFFER,
                       sizeof(Shared), &Shared));
     DT_ASSERT(Shared.m_BufferAddr == (uint64_t)(uintptr_t)Buf.Data);
     DT_ASSERT_EQ(Shared.m_BufferSize, 65536);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Rx, PORT, DT_PIPE_OPMODE_STANDBY));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Rx, DT_PIPE_OPMODE_STANDBY));
     DtIoctlPipeCmdSetOpModeInput Mode;
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_SET_OPERATIONAL_MODE,
                       sizeof(Mode), &Mode));
     DT_ASSERT_EQ(Mode.m_OpMode, DT_PIPE_OPMODE_STANDBY);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Rx, PORT, 4096));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Rx, 4096));
     DtIoctlPipeCmdSetRxReadOffsetInput Read;
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_SET_RX_READ_OFFSET,
                       sizeof(Read), &Read));
     DT_ASSERT_EQ(Read.m_RxReadOffset, 4096);
 
     uint32_t Offset = 1;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Offset));
     DT_ASSERT_EQ(Offset, 0);
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_GET_RX_WRITE_OFFSET,
                       sizeof(DtIoctlInputDataHdr), NULL));
@@ -465,7 +455,7 @@ DT_TEST(PipeCommandsOnTheWire)
     Filter.VlanId[0] = 7;
     Filter.VlanId[1] = 9;
     Filter.Flags |= DT_PIPE_IPFLT_FLAG_EN_SRCIP_IPV6;
-    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, PORT, &Filter));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, &Filter));
     DtIoctlPipeCmdSetIpFilterInput Sent;
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_SET_IPFILTER, sizeof(Sent),
                       &Sent));
@@ -478,34 +468,34 @@ DT_TEST(PipeCommandsOnTheWire)
     DT_ASSERT_EQ(Sent.m_VlanId[1], 9);
     DT_ASSERT_EQ(Sent.m_Flags, (int)Filter.Flags);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Rx, PORT));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Rx));
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_ISSUE_PIPE_FLUSH,
                       sizeof(DtIoctlPipeCmdIssuePipeFlushInput), NULL));
-    DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Rx, PORT));
+    DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Rx));
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Rx, DT_PIPE_CMD_RELEASE_SHARED_BUFFER,
                       sizeof(DtIoctlPipeCmdReleaseSharedBufferInput), NULL));
 
-    int Tx = 0;
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_SWP, -1, &Tx));
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, 8));
+    DtPartRef Tx = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_SWP, -1, &Tx));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, 8));
     DtIoctlPipeCmdSetTxWriteOffsetInput Write;
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Tx, DT_PIPE_CMD_SET_TX_WRITE_OFFSET,
                       sizeof(Write), &Write));
     DT_ASSERT_EQ(Write.m_TxWriteOffset, 8);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Offset));
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Tx, DT_PIPE_CMD_GET_TX_READ_OFFSET,
                       sizeof(DtIoctlInputDataHdr), NULL));
 
     DtPipeProps Props;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Tx, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Tx, &Props));
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Tx, DT_PIPE_CMD_GET_PROPERTIES,
                       sizeof(DtIoctlInputDataHdr), NULL));
     DtPipeStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Tx, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Tx, &Status));
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Tx, DT_PIPE_CMD_GET_STATUS,
                       sizeof(DtIoctlInputDataHdr), NULL));
 
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, PORT, 3), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, 3), DTAPI_E_INVALID_ARG);
     DT_ASSERT(LastWas(DT_FUNC_CODE_PIPE_CMD, Tx, DT_PIPE_CMD_GET_STATUS,
                       sizeof(DtIoctlInputDataHdr), NULL));
     OsDmaBuffer_Free(&Buf);
@@ -520,12 +510,10 @@ DT_TEST(SharedBuffers)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Hwp = 0;
-    int Swp = 0;
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP, -1, &Hwp));
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, &Swp));
+    DtPartRef Hwp = {0, PORT};
+    DtPartRef Swp = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &Hwp));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Swp));
 
     OsDmaBuffer Small;
     OsDmaBuffer Large;
@@ -534,16 +522,12 @@ DT_TEST(SharedBuffers)
     for (int AsLinux = 0; AsLinux < 2; AsLinux++)
     {
         SimDtPcie_RegisterPipeBufferAsLinux(AsLinux != 0);
-        DT_ASSERT_EQ(
-            DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, PORT, &Small, !AsLinux),
-            DTAPI_E_INVALID_ARG);
-        DT_ASSERT_OK(
-            DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, PORT, &Large, !AsLinux));
-        DT_ASSERT_EQ(
-            DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, PORT, &Large, !AsLinux),
-            DTAPI_E_IN_USE);
-        DT_ASSERT_OK(
-            DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Swp, PORT, &Small, !AsLinux));
+        DT_ASSERT_EQ(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, &Small, !AsLinux),
+                     DTAPI_E_INVALID_ARG);
+        DT_ASSERT_OK(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, &Large, !AsLinux));
+        DT_ASSERT_EQ(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Hwp, &Large, !AsLinux),
+                     DTAPI_E_IN_USE);
+        DT_ASSERT_OK(DtPcieCmd_PipeSetSharedBufferAs(Fix.Drv, Swp, &Small, !AsLinux));
 
         SimNwPipeState State;
         SimDtPcie_GetNwPipeState(IdOf(Hwp), &State);
@@ -552,12 +536,11 @@ DT_TEST(SharedBuffers)
         SimDtPcie_GetNwPipeState(IdOf(Swp), &State);
         DT_ASSERT_EQ(State.BufferSize, 4096);
 
-        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Hwp, PORT));
-        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Hwp, PORT));
-        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Swp, PORT));
+        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Hwp));
+        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Hwp));
+        DT_ASSERT_OK(DtPcieCmd_PipeReleaseSharedBuffer(Fix.Drv, Swp));
     }
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetSharedBuffer(Fix.Drv, Swp, PORT, NULL),
-                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetSharedBuffer(Fix.Drv, Swp, NULL), DTAPI_E_INVALID_ARG);
     OsDmaBuffer_Free(&Small);
     OsDmaBuffer_Free(&Large);
     FINISH(Fix);
@@ -571,58 +554,52 @@ DT_TEST(PropertiesStatusAndDirections)
     if (!Open(&Fix, DtFailures))
         return;
 
-    int Hwp = 0;
-    int Swp = 0;
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_TX_RT_HWP, -1, &Hwp));
-    DT_ASSERT_OK(
-        DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, PORT, DT_PIPE_RX_RT_SWP, -1, &Swp));
+    DtPartRef Hwp = {0, PORT};
+    DtPartRef Swp = {0, PORT};
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &Hwp));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Swp));
 
     DtPipeProps Props;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Hwp, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Hwp, &Props));
     DT_ASSERT_EQ(Props.Caps,
                  DT_PIPE_CAP_TX | DT_PIPE_CAP_HWP | DT_PIPE_CAP_RT | DT_PIPE_CAP_JFRAME);
     DT_ASSERT_EQ(Props.PrefetchSize, SIM_NW_HWP_PREFETCH_PAGES);
     DT_ASSERT_EQ(Props.DataWidth, 64);
     DT_ASSERT_EQ(Props.Type, DT_PIPE_TX_RT_HWP);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Swp, PORT, &Props));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetProps(Fix.Drv, Swp, &Props));
     DT_ASSERT_EQ(Props.Caps,
                  DT_PIPE_CAP_RX | DT_PIPE_CAP_SWP | DT_PIPE_CAP_RT | DT_PIPE_CAP_JFRAME);
     DT_ASSERT_EQ(Props.PrefetchSize, 1);
     DT_ASSERT_EQ(Props.Type, DT_PIPE_RX_RT_SWP);
 
     DtPipeStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, &Status));
     DT_ASSERT_EQ(Status.OpStatus, DT_BLOCK_OPSTATUS_IDLE);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Swp, PORT, DT_PIPE_OPMODE_RUN));
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Swp, DT_PIPE_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, &Status));
     DT_ASSERT_EQ(Status.OpStatus, DT_BLOCK_OPSTATUS_RUN);
     DT_ASSERT_EQ(Status.StatusFlags, 0);
     DT_ASSERT_EQ(Status.ErrorFlags, 0);
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetOpMode(Fix.Drv, Hwp, PORT, DT_PIPE_OPMODE_STANDBY),
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetOpMode(Fix.Drv, Hwp, DT_PIPE_OPMODE_STANDBY),
                  DTAPI_E_NOT_INITIALIZED);
 
     uint32_t Offset = 0;
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Swp, PORT, 0),
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Swp, 0), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Swp, &Offset),
                  DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Swp, PORT, &Offset),
-                 DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Hwp, PORT, 0),
-                 DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Hwp, PORT, &Offset),
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Hwp, 0), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Hwp, &Offset),
                  DTAPI_E_NOT_SUPPORTED);
     DtIpFilter Filter = FilterOn(5004);
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Hwp, PORT, &Filter),
-                 DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Hwp, PORT, 0),
-                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Hwp, &Filter), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Hwp, 0), DTAPI_E_INVALID_ARG);
 
-    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, Fix.Nw, PORT), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, Fix.Nw | 2 << 20, PORT),
+    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, Fix.Nw), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, (DtPartRef){Fix.Nw.Uuid | 2 << 20, PORT}),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, Fix.Nw | 500 << 20, PORT),
+    DT_ASSERT_EQ(DtPcieCmd_PipeFlush(Fix.Drv, (DtPartRef){Fix.Nw.Uuid | 500 << 20, PORT}),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Fix.Nw | 10 << 20, PORT));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, (DtPartRef){Fix.Nw.Uuid | 10 << 20, PORT}));
     FINISH(Fix);
 }
 
@@ -637,20 +614,20 @@ DT_TEST(SoftwarePipeSendsAtIntervals)
         return;
 
     OsDmaBuffer Buf;
-    int Tx = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Buf);
-    DT_ASSERT(Tx != 0);
+    DtPartRef Tx = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Buf);
+    DT_ASSERT(Tx.Uuid != 0);
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 1200, 3);
     size_t Packet = PutPacket(&Buf, 0, Frame, Size, T0 + 50 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, (uint32_t)Packet));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, (uint32_t)Packet));
 
     uint32_t Read = 1;
     SimDtPcie_AdvanceNwTime(30 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, 0);
     SimDtPcie_AdvanceNwTime(10 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, Packet);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 0);
 
@@ -665,7 +642,7 @@ DT_TEST(SoftwarePipeSendsAtIntervals)
     DT_ASSERT_EQ(Sent.Size, Size);
     DT_ASSERT_MEM(Sent.Frame, Frame, Size);
 
-    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Tx, PORT));
+    DT_ASSERT_OK(DtPcieCmd_NwClosePipe(Fix.Drv, Tx));
     OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
 }
@@ -680,18 +657,18 @@ DT_TEST(EarliestFirstAndLateAtOnce)
 
     OsDmaBuffer BufA;
     OsDmaBuffer BufB;
-    int A = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &BufA);
-    int B = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &BufB);
-    DT_ASSERT(A != 0 && B != 0);
+    DtPartRef A = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &BufA);
+    DtPartRef B = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &BufB);
+    DT_ASSERT(A.Uuid != 0 && B.Uuid != 0);
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 100, 0);
     size_t Offset = PutPacket(&BufA, 0, Frame, Size, T0 + 4 * MS);
     Offset += PutPacket(&BufA, Offset, Frame, Size, T0 + 8 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, A, PORT, (uint32_t)Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, A, (uint32_t)Offset));
     Offset = PutPacket(&BufB, 0, Frame, Size, T0 + 2 * MS);
     Offset += PutPacket(&BufB, Offset, Frame, Size, T0 + 6 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, B, PORT, (uint32_t)Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, B, (uint32_t)Offset));
 
     SimDtPcie_AdvanceNwTime(20 * MS);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 4);
@@ -718,37 +695,37 @@ DT_TEST(InvalidTimeStopsUntilFlush)
 
     OsDmaBuffer Swb;
     OsDmaBuffer Hwb;
-    int Swp = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Swb);
-    int Hwp = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Hwb);
-    DT_ASSERT(Swp != 0 && Hwp != 0);
+    DtPartRef Swp = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Swb);
+    DtPartRef Hwp = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Hwb);
+    DT_ASSERT(Swp.Uuid != 0 && Hwp.Uuid != 0);
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 100, 0);
     size_t Packet = PutPacket(&Swb, 0, Frame, Size, T0 + 11000 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Swp, PORT, (uint32_t)Packet));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Swp, (uint32_t)Packet));
     Packet = PutPacket(&Hwb, 0, Frame, Size, T0 - 10001 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Hwp, PORT, (uint32_t)Packet));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Hwp, (uint32_t)Packet));
 
     DtPipeStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Hwp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Hwp, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, DT_PIPE_ERROR_INVALID_TIME);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, 0);
     SimDtPcie_AdvanceNwTime(10 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, DT_PIPE_ERROR_INVALID_TIME);
 
     SimDtPcie_AdvanceNwTime(12000 * MS);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 0);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Swp, PORT));
-    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Hwp, PORT));
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Swp));
+    DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Hwp));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Swp, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, 0);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Hwp, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Hwp, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, 0);
     uint32_t Read = 1;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Swp, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Swp, &Read));
     DT_ASSERT_EQ(Read, 0);
     OsDmaBuffer_Free(&Swb);
     OsDmaBuffer_Free(&Hwb);
@@ -764,18 +741,18 @@ DT_TEST(HardwarePipeSendsAtItsTime)
         return;
 
     OsDmaBuffer Buf;
-    int Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Buf);
-    DT_ASSERT(Tx != 0);
+    DtPartRef Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Buf);
+    DT_ASSERT(Tx.Uuid != 0);
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 200, 9);
     size_t Offset = PutPacket(&Buf, 0, Frame, Size, T0 + 3 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, (uint32_t)Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, (uint32_t)Offset));
     uint32_t Read = 0;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, Offset);
     DtPipeStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Tx, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Tx, &Status));
     DT_ASSERT_EQ(Status.StatusFlags, DT_PIPE_STATUS_PACKET_WAITING);
 
     SimDtPcie_AdvanceNwTime(3 * MS - 1);
@@ -783,13 +760,13 @@ DT_TEST(HardwarePipeSendsAtItsTime)
     SimDtPcie_AdvanceNwTime(1);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 1);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, PORT, DT_PIPE_OPMODE_STANDBY));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, DT_PIPE_OPMODE_STANDBY));
     size_t Next = Offset + PutPacket(&Buf, Offset, Frame, Size, T0 - 5000 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, (uint32_t)Next));
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, (uint32_t)Next));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, Offset);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, PORT, DT_PIPE_OPMODE_RUN));
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Tx, DT_PIPE_OPMODE_RUN));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, Next);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 2);
     SimNwPacket Sent;
@@ -807,12 +784,12 @@ DT_TEST(BadHeaderIsSkipped)
         return;
 
     OsDmaBuffer Buf;
-    int Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Buf);
-    DT_ASSERT(Tx != 0);
+    DtPartRef Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &Buf);
+    DT_ASSERT(Tx.Uuid != 0);
     memset(Buf.Data, 0x5A, 64);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, 64));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, 64));
     uint32_t Read = 0;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, PORT, &Read));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetTxReadOffset(Fix.Drv, Tx, &Read));
     DT_ASSERT_EQ(Read, 64);
     SimNwCounters Counters;
     SimDtPcie_GetNwCounters(&Counters);
@@ -857,13 +834,13 @@ DT_TEST(LoopbackToHardwarePipe)
 
     OsDmaBuffer TxBuf;
     OsDmaBuffer RxBuf;
-    int Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &TxBuf);
-    int Rx = StartPipe(&Fix, DT_PIPE_RX_RT_HWP, 65536, &RxBuf);
-    DT_ASSERT(Tx != 0 && Rx != 0);
+    DtPartRef Tx = StartPipe(&Fix, DT_PIPE_TX_RT_HWP, 65536, &TxBuf);
+    DtPartRef Rx = StartPipe(&Fix, DT_PIPE_RX_RT_HWP, 65536, &RxBuf);
+    DT_ASSERT(Tx.Uuid != 0 && Rx.Uuid != 0);
     DtIpFilter Filter = FilterOn(6000);
     Filter.DstPort[1] = 5004;
     Filter.Flags |= DT_PIPE_IPFLT_FLAG_EN_DSTPORT1;
-    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, PORT, &Filter));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, &Filter));
     SimDtPcie_SetNwLoopback(true);
 
     uint8_t Frame[1600];
@@ -872,13 +849,13 @@ DT_TEST(LoopbackToHardwarePipe)
     size_t OtherSize = MakeFrame(Other, 1000, 5005, 10, 2);
     size_t Offset = PutPacket(&TxBuf, 0, Frame, Size, T0 + 1 * MS);
     Offset += PutPacket(&TxBuf, Offset, Other, OtherSize, T0 + 2 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, (uint32_t)Offset));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, (uint32_t)Offset));
 
     uint32_t Write = 1;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     DT_ASSERT_EQ(Write, 0);
     SimDtPcie_AdvanceNwTime(1 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     size_t Got = CheckPacket(&RxBuf, 0, Frame, Size, T0 + 1 * MS, 1);
     DT_ASSERT(Got != 0);
     DT_ASSERT_EQ(Write, Got);
@@ -890,7 +867,7 @@ DT_TEST(LoopbackToHardwarePipe)
     SimDtPcie_AdvanceNwTime(1 * MS);
     SimDtPcie_GetNwCounters(&Counters);
     DT_ASSERT_EQ(Counters.ToOperatingSystem, 1);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     DT_ASSERT_EQ(Write, Got);
     OsDmaBuffer_Free(&TxBuf);
     OsDmaBuffer_Free(&RxBuf);
@@ -905,25 +882,25 @@ DT_TEST(SoftwarePipeReceivesAtIntervals)
         return;
 
     OsDmaBuffer Buf;
-    int Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 65536, &Buf);
-    DT_ASSERT(Rx != 0);
+    DtPartRef Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 65536, &Buf);
+    DT_ASSERT(Rx.Uuid != 0);
     DtIpFilter Filter = FilterOn(5004);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, PORT, &Filter));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, &Filter));
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 500, 4);
     DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, Size, T0 + 13 * MS));
     SimDtPcie_AdvanceNwTime(19 * MS);
     uint32_t Write = 1;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     DT_ASSERT_EQ(Write, 0);
     SimDtPcie_AdvanceNwTime(1 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     size_t Got = CheckPacket(&Buf, 0, Frame, Size, T0 + 13 * MS, 0);
     DT_ASSERT(Got != 0);
     DT_ASSERT_EQ(Write, Got);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Rx, PORT, DT_PIPE_OPMODE_IDLE));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetOpMode(Fix.Drv, Rx, DT_PIPE_OPMODE_IDLE));
     DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, Size, T0 + 21 * MS));
     SimDtPcie_AdvanceNwTime(10 * MS);
     SimNwCounters Counters;
@@ -942,10 +919,10 @@ DT_TEST(OverflowLosesAndClears)
         return;
 
     OsDmaBuffer Buf;
-    int Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 4096, &Buf);
-    DT_ASSERT(Rx != 0);
+    DtPartRef Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 4096, &Buf);
+    DT_ASSERT(Rx.Uuid != 0);
     DtIpFilter Filter = FilterOn(5004);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, PORT, &Filter));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, &Filter));
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 1468, 0);
@@ -953,21 +930,21 @@ DT_TEST(OverflowLosesAndClears)
         DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, Size, T0 + 1 * MS));
     SimDtPcie_AdvanceNwTime(10 * MS);
     DtPipeStatus Status;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Rx, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Rx, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, DT_PIPE_ERROR_OVERFLOW);
     SimNwCounters Counters;
     SimDtPcie_GetNwCounters(&Counters);
     DT_ASSERT_EQ(Counters.Lost, 1);
     uint32_t Write = 0;
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     DT_ASSERT_EQ(Write, 2 * 1528);
 
-    DT_ASSERT_OK(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Rx, PORT, Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetRxReadOffset(Fix.Drv, Rx, Write));
     DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, Size, T0 + 11 * MS));
     SimDtPcie_AdvanceNwTime(10 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Rx, PORT, &Status));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetStatus(Fix.Drv, Rx, &Status));
     DT_ASSERT_EQ(Status.ErrorFlags, 0);
-    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+    DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
     DT_ASSERT_EQ(Write, (3 * 1528) % 4096);
     OsDmaBuffer_Free(&Buf);
     FINISH(Fix);
@@ -982,8 +959,8 @@ DT_TEST(SoftwareFilter)
         return;
 
     OsDmaBuffer Buf;
-    int Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 65536, &Buf);
-    DT_ASSERT(Rx != 0);
+    DtPartRef Rx = StartPipe(&Fix, DT_PIPE_RX_RT_SWP, 65536, &Buf);
+    DT_ASSERT(Rx.Uuid != 0);
 
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 100, 0);
@@ -1011,13 +988,13 @@ DT_TEST(SoftwareFilter)
         Filter.SrcIp[3] = Cases[i].SrcIp3;
         Filter.SrcPort[0] = Cases[i].SrcPort;
         Filter.Flags |= Cases[i].AddFlags;
-        DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, PORT, &Filter));
-        DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Rx, PORT));
+        DT_ASSERT_OK(DtPcieCmd_PipeSetIpFilter(Fix.Drv, Rx, &Filter));
+        DT_ASSERT_OK(DtPcieCmd_PipeFlush(Fix.Drv, Rx));
 
         DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, Size, T0 + (10 * i + 1) * MS));
         SimDtPcie_AdvanceNwTime(10 * MS);
         uint32_t Write = 0;
-        DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, PORT, &Write));
+        DT_ASSERT_OK(DtPcieCmd_PipeGetRxWriteOffset(Fix.Drv, Rx, &Write));
         if ((Write != 0) != Cases[i].Taken)
             DT_FAIL("case %zu", i);
     }
@@ -1039,8 +1016,8 @@ DT_TEST(RealTimeClock)
     DT_ASSERT(Fix.Drv != NULL);
 
     OsDmaBuffer Buf;
-    int Tx = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Buf);
-    DT_ASSERT(Tx != 0);
+    DtPartRef Tx = StartPipe(&Fix, DT_PIPE_TX_RT_SWP, 65536, &Buf);
+    DT_ASSERT(Tx.Uuid != 0);
     uint32_t Seconds = 0;
     uint32_t Nanoseconds = 0;
     DT_ASSERT_OK(DtPcieCmd_GetTimeOfDay(Fix.Drv, &Seconds, &Nanoseconds));
@@ -1049,7 +1026,7 @@ DT_TEST(RealTimeClock)
     uint8_t Frame[1600];
     size_t Size = MakeFrame(Frame, 1000, 5004, 100, 0);
     size_t Packet = PutPacket(&Buf, 0, Frame, Size, Now + 100 * MS);
-    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, PORT, (uint32_t)Packet));
+    DT_ASSERT_OK(DtPcieCmd_PipeSetTxWriteOffset(Fix.Drv, Tx, (uint32_t)Packet));
     for (int i = 0; i < 200 && SimDtPcie_NwSentCount() == 0; i++)
         OsTime_SleepMs(5);
     DT_ASSERT_EQ(SimDtPcie_NwSentCount(), 1);

@@ -72,13 +72,13 @@ typedef struct DtSdiTx
 
     // The transmit blocks, held exclusively while attached.
     DtFuncInstance AfTx, AfDma;
-    int Cdmac, Burst, Txf, Txp, Phy; // UUIDs
+    DtPartRef Cdmac, Burst, Txf, Txp, Phy;
 
     // The demultiplexer and its switches of a port with DT_CAP_QUADLINK, and the switch
     // from a quad-link master where the port has it; their UUIDs are 0 otherwise.
     bool QuadLink;
-    int SwitchIn, SwitchOut, Dmx;
-    int FromMaster;
+    DtPartRef SwitchIn, SwitchOut, Dmx;
+    DtPartRef FromMaster;
 
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
@@ -203,8 +203,8 @@ static void PutHeader(DtSdiTx* Sdi, size_t Offset, int FrameId)
 static DtapiResult ReadLoad(DtSdiTx* Sdi, size_t* Load)
 {
     uint32_t ReadOffset = 0;
-    DtapiResult Result = DtPcieCmd_CdmacGetTxReadOffset(
-        DrvOf(Sdi), Sdi->Cdmac, Sdi->Base.Port.PortIndex, &ReadOffset);
+    DtapiResult Result =
+        DtPcieCmd_CdmacGetTxReadOffset(DrvOf(Sdi), Sdi->Cdmac, &ReadOffset);
 
     *Load = 0;
     if (Result != DTAPI_OK)
@@ -253,8 +253,8 @@ static void ResetFrame(DtSdiTx* Sdi)
 static DtapiResult CommitFrame(DtSdiTx* Sdi)
 {
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + Sdi->CodedSize);
-    DtapiResult Result = DtPcieCmd_CdmacSetTxWriteOffset(
-        DrvOf(Sdi), Sdi->Cdmac, Sdi->Base.Port.PortIndex, (uint32_t)Offset);
+    DtapiResult Result =
+        DtPcieCmd_CdmacSetTxWriteOffset(DrvOf(Sdi), Sdi->Cdmac, (uint32_t)Offset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -324,8 +324,7 @@ static void Keeper(void* Context)
     OsThread_RaisePriority();
     OsMutex_Lock(Sdi->Base.Port.Lock);
     OsDrv* Drv = DrvOf(Sdi);
-    int Txf = Sdi->Txf;
-    int PortIndex = Sdi->Base.Port.PortIndex;
+    DtPartRef Txf = Sdi->Txf;
     int WaitMs = Sdi->QuarterMs < 1000 ? Sdi->QuarterMs : 1000;
     OsMutex_Unlock(Sdi->Base.Port.Lock);
 
@@ -334,8 +333,7 @@ static void Keeper(void* Context)
         DtSdiTxFEvent Event;
         bool Failed = false;
 
-        DtapiResult Result =
-            DtPcieCmd_SdiTxFWaitForFmtEvent(Drv, Txf, PortIndex, WaitMs, &Event);
+        DtapiResult Result = DtPcieCmd_SdiTxFWaitForFmtEvent(Drv, Txf, WaitMs, &Event);
 
         OsMutex_Lock(Sdi->Base.Port.Lock);
         if (Sdi->StopThread)
@@ -361,14 +359,13 @@ static void Keeper(void* Context)
         {
             bool Underflow = false;
 
-            if (DtPcieCmd_SdiTxPhyGetUnderflowFlag(Drv, Sdi->Phy, PortIndex,
-                                                   &Underflow) == DTAPI_OK)
+            if (DtPcieCmd_SdiTxPhyGetUnderflowFlag(Drv, Sdi->Phy, &Underflow) == DTAPI_OK)
             {
                 Sdi->DmaUfl = Underflow;
                 if (Underflow)
                 {
                     Sdi->DmaUflLatched = true;
-                    DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Sdi->Phy, PortIndex);
+                    DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Sdi->Phy);
                 }
             }
         }
@@ -417,28 +414,23 @@ static void StopKeeper(DtSdiTx* Sdi)
 static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    int Index = Sdi->Base.Port.PortIndex;
     DtapiResult Results[9] = {DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK,
                               DTAPI_OK, DTAPI_OK, DTAPI_OK, DTAPI_OK};
 
-    Results[0] = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, Index, DT_FUNC_OPMODE_IDLE);
-    Results[1] = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, Index, DT_BLOCK_OPMODE_IDLE);
-    if (Sdi->FromMaster != 0)
+    Results[0] = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_IDLE);
+    Results[1] = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, DT_BLOCK_OPMODE_IDLE);
+    if (Sdi->FromMaster.Uuid != 0)
         Results[2] =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, Index, DT_BLOCK_OPMODE_IDLE);
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, DT_BLOCK_OPMODE_IDLE);
     if (Sdi->QuadLink)
     {
-        Results[3] =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, Index, DT_BLOCK_OPMODE_IDLE);
-        Results[4] =
-            DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, Index, DT_BLOCK_OPMODE_IDLE);
-        Results[5] =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, Index, DT_BLOCK_OPMODE_IDLE);
+        Results[3] = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, DT_BLOCK_OPMODE_IDLE);
+        Results[4] = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, DT_BLOCK_OPMODE_IDLE);
+        Results[5] = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, DT_BLOCK_OPMODE_IDLE);
     }
-    Results[6] = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[7] =
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[8] = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+    Results[6] = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, DT_BLOCK_OPMODE_IDLE);
+    Results[7] = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, DT_BLOCK_OPMODE_IDLE);
+    Results[8] = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
 
     for (size_t i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
     {
@@ -458,37 +450,31 @@ static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 static DtapiResult IdleToHold(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    int Index = Sdi->Base.Port.PortIndex;
 
     if (!Sdi->Registered)
         return DTAPI_E_CONFIG_RAW_SDI;
 
-    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Sdi->Cdmac, Index);
+    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Sdi->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetTxWriteOffset(Drv, Sdi->Cdmac, Index, 0);
+        Result = DtPcieCmd_CdmacSetTxWriteOffset(Drv, Sdi->Cdmac, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, Index, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK && Sdi->FromMaster != 0)
-        Result =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Sdi->FromMaster.Uuid != 0)
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, Index, DT_BLOCK_OPMODE_IDLE);
+        Result = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, Index, DT_FUNC_OPMODE_STANDBY);
+        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_STANDBY);
     if (Result != DTAPI_OK)
     {
         BlocksToIdle(Sdi);
@@ -516,7 +502,6 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
 static DtapiResult HoldToSend(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    int Index = Sdi->Base.Port.PortIndex;
     DtBurstFifoStatus Status = {0};
 
     if (UnsentFrames(Sdi) < 1)
@@ -527,20 +512,20 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
     DtapiResult Result;
     for (int Poll = 0; Poll < DT_BURST_POLLS; Poll++)
     {
-        Result = DtPcieCmd_BurstFifoGetStatus(Drv, Sdi->Burst, Index, &Status);
+        Result = DtPcieCmd_BurstFifoGetStatus(Drv, Sdi->Burst, &Status);
         if (Result != DTAPI_OK)
             return Result;
         if (Status.CurLoad >= Sdi->BurstFifoSize * 3 / 4)
             break;
     }
 
-    Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Sdi->Cdmac, Index);
+    Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Sdi->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoClearMax(Drv, Sdi->Burst, Index, true, true);
+        Result = DtPcieCmd_BurstFifoClearMax(Drv, Sdi->Burst, true, true);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Sdi->Phy, Index);
+        Result = DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Sdi->Phy);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, Index, DT_FUNC_OPMODE_RUN);
+        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_RUN);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -549,7 +534,7 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
     Sdi->Thread = OsThread_Start(Keeper, Sdi);
     if (Sdi->Thread == NULL)
     {
-        DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, Index, DT_FUNC_OPMODE_STANDBY);
+        DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_STANDBY);
         return DTAPI_E_OUT_OF_MEM;
     }
     Sdi->Base.TxControl = DTAPI_TXCTRL_SEND;
@@ -564,8 +549,8 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
 static DtapiResult SendToHold(DtSdiTx* Sdi)
 {
     StopKeeper(Sdi);
-    DtapiResult Result = DtPcieCmd_SdiTxPhySetOpMode(
-        DrvOf(Sdi), Sdi->Phy, Sdi->Base.Port.PortIndex, DT_FUNC_OPMODE_STANDBY);
+    DtapiResult Result =
+        DtPcieCmd_SdiTxPhySetOpMode(DrvOf(Sdi), Sdi->Phy, DT_FUNC_OPMODE_STANDBY);
     Sdi->FifoUfl = false;
     Sdi->Base.TxControl = DTAPI_TXCTRL_HOLD;
     return Result;
@@ -656,9 +641,8 @@ static void FreeBuffer(DtSdiTx* Sdi)
 {
     if (Sdi->Registered)
     {
-        DtPcieCmd_CdmacSetOpMode(DrvOf(Sdi), Sdi->Cdmac, Sdi->Base.Port.PortIndex,
-                                 DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacFreeBuffer(DrvOf(Sdi), Sdi->Cdmac, Sdi->Base.Port.PortIndex);
+        DtPcieCmd_CdmacSetOpMode(DrvOf(Sdi), Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacFreeBuffer(DrvOf(Sdi), Sdi->Cdmac);
     }
     Sdi->Registered = false;
     OsDmaBuffer_Free(&Sdi->Buf);
@@ -683,7 +667,6 @@ static void FreeBuffer(DtSdiTx* Sdi)
 static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    int Index = Sdi->Base.Port.PortIndex;
     DtCdmacProps Props = {0};
     DtBurstFifoProps Burst = {0};
     DtSdiFrameLayout Layout = {0};
@@ -702,8 +685,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         return DTAPI_E_INVALID_VIDSTD;
     }
 
-    DtapiResult Result =
-        DtPcieCmd_SdiTxFGetStreamAlignment(Drv, Sdi->Txf, Index, &Alignment);
+    DtapiResult Result = DtPcieCmd_SdiTxFGetStreamAlignment(Drv, Sdi->Txf, &Alignment);
     if (Result == DTAPI_OK &&
         !DtSdiFrame_LayoutInit(&Layout, Sdi->IoStdSubValue, Alignment))
         Result = DTAPI_E_INTERNAL;
@@ -711,19 +693,19 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         Result = DTAPI_E_INTERNAL;
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
-            Drv, Sdi->Txf, Index,
+            Drv, Sdi->Txf,
             (Layout.NumLines + DT_FMT_EVENTS_PER_FRAME - 1) / DT_FMT_EVENTS_PER_FRAME + 1,
             1);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Drv, Sdi->Phy, Index, 0);
+        Result = DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Drv, Sdi->Phy, 0);
     if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchIn, Index, 0, 0);
+        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchIn, 0, 0);
     if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchOut, Index, 0, 0);
+        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchOut, 0, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacGetProps(Drv, Sdi->Cdmac, Index, &Props);
+        Result = DtPcieCmd_CdmacGetProps(Drv, Sdi->Cdmac, &Props);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoGetProps(Drv, Sdi->Burst, Index, &Burst);
+        Result = DtPcieCmd_BurstFifoGetProps(Drv, Sdi->Burst, &Burst);
     if (Result != DTAPI_OK)
     {
         FreeBuffer(Sdi);
@@ -764,20 +746,20 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         Size = BufferSizeFor(Sdi, Props.PrefetchSize);
         if (Sdi->Registered)
         {
-            DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
-            DtPcieCmd_CdmacFreeBuffer(Drv, Sdi->Cdmac, Index);
+            DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
+            DtPcieCmd_CdmacFreeBuffer(Drv, Sdi->Cdmac);
             Sdi->Registered = false;
         }
         OsDmaBuffer_Free(&Sdi->Buf);
 
         Result = OsDmaBuffer_Alloc(Size, &Sdi->Buf) == 0 ? DTAPI_OK : DTAPI_E_OUT_OF_MEM;
         if (Result == DTAPI_OK)
-            Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Sdi->Cdmac, Index,
-                                                   DT_CDMAC_DIR_TX, &Sdi->Buf);
+            Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Sdi->Cdmac, DT_CDMAC_DIR_TX,
+                                                   &Sdi->Buf);
         Sdi->Registered = Result == DTAPI_OK;
         if (Result == DTAPI_OK)
-            Result = DtPcieCmd_CdmacSetTestMode(Drv, Sdi->Cdmac, Index,
-                                                DT_CDMAC_TESTMODE_NORMAL);
+            Result =
+                DtPcieCmd_CdmacSetTestMode(Drv, Sdi->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
         if (Result != DTAPI_OK)
         {
             FreeBuffer(Sdi);
@@ -1190,8 +1172,8 @@ static void PadToWord(DtSdiTx* Sdi)
         return;
     }
     PutAt(Sdi, Sdi->WriteOffset, Zeros, Pad);
-    if (DtPcieCmd_CdmacSetTxWriteOffset(DrvOf(Sdi), Sdi->Cdmac, Sdi->Base.Port.PortIndex,
-                                        (uint32_t)Offset) == DTAPI_OK)
+    if (DtPcieCmd_CdmacSetTxWriteOffset(DrvOf(Sdi), Sdi->Cdmac, (uint32_t)Offset) ==
+        DTAPI_OK)
     {
         Sdi->WriteOffset = Offset;
         Sdi->Committed += Pad;
@@ -1214,7 +1196,7 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
         bool IsDf;
         int Type;
         const char* Role;
-        int* Uuid;
+        DtPartRef* Ref;
         bool Needed;
     } Wanted;
     const bool QuadLink = (Sdi->Base.Port.Caps & DT_CAP_QUADLINK) != 0;
@@ -1240,7 +1222,7 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
             DtFunc_Find(DrvOf(Sdi), Sdi->Base.Port.PortIndex, "AF_DMA", "", &Sdi->AfDma);
     for (size_t i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
     {
-        const bool Optional = Parts[i].Uuid == &Sdi->FromMaster;
+        const bool Optional = Parts[i].Ref == &Sdi->FromMaster;
         if (!Parts[i].Needed && !Optional)
             continue;
         const DtFuncPart* Part =
@@ -1250,7 +1232,7 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
             Result = DTAPI_E_NOT_FOUND;
         else if (Part != NULL)
         {
-            *Parts[i].Uuid = Part->Uuid;
+            *Parts[i].Ref = Part->Ref;
             Result = DtFunc_CheckDriverVersion(&Sdi->Base.Port.Device->DriverVersion,
                                                Parts[i].IsDf, Parts[i].Type);
         }
@@ -1487,13 +1469,11 @@ static void WaitUntilSent(DtTx* Tx)
         }
 
         OsDrv* Drv = DrvOf(Sdi);
-        int Txf = Sdi->Txf;
-        int Index = Tx->Port.PortIndex;
+        DtPartRef Txf = Sdi->Txf;
 
         OsMutex_Unlock(Tx->Port.Lock);
         DtSdiTxFEvent Event;
-        DtapiResult Result =
-            DtPcieCmd_SdiTxFWaitForFmtEvent(Drv, Txf, Index, WaitMs, &Event);
+        DtapiResult Result = DtPcieCmd_SdiTxFWaitForFmtEvent(Drv, Txf, WaitMs, &Event);
         OsMutex_Lock(Tx->Port.Lock);
 
         if (Result == DTAPI_OK)
@@ -1576,12 +1556,11 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
 
     // MxChannelMemlessTx::InitChannel: the data comes from the channel, not from a
     // quad-link master, where the port has that switch.
-    if (Result == DTAPI_OK && Sdi->FromMaster != 0)
-        Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->FromMaster, Port->PortIndex,
-                                             0, 0);
+    if (Result == DTAPI_OK && Sdi->FromMaster.Uuid != 0)
+        Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->FromMaster, 0, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_SdiTxPSetGenerationMode(DrvOf(Sdi), Sdi->Txp, Port->PortIndex,
-                                                   true, true, true);
+        Result =
+            DtPcieCmd_SdiTxPSetGenerationMode(DrvOf(Sdi), Sdi->Txp, true, true, true);
     if (Result == DTAPI_OK)
         Result = ConfigureChannel(Sdi);
     if (Result != DTAPI_OK)

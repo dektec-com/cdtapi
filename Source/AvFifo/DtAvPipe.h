@@ -33,9 +33,8 @@
 typedef struct DtAvPipe
 {
     OsDrv* Drv;
-    int NwUuid;    // The network function
-    int PortIndex; // From 0
-    int Uuid;      // The pipe's; 0 while none is open
+    DtPartRef Nw;  // The network function
+    DtPartRef Ref; // The pipe; its UUID 0 while none is open
     DtPipeProps Props;
     OsDmaBuffer Buf;
     bool BufferSet; // The driver has the buffer
@@ -43,9 +42,9 @@ typedef struct DtAvPipe
     uint32_t Offset;
 } DtAvPipe;
 
-// Opens a pipe of Type, a DT_PIPE_ value, or of Fallback, -1 for none, when every pipe of
-// Type is in use, and reads its properties.
-DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, int NwUuid, int PortIndex, int Type,
+// Opens a pipe of network function Nw, of Type, a DT_PIPE_ value, or of Fallback, -1 for
+// none, when every pipe of Type is in use, and reads its properties.
+DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtPartRef Nw, int Type,
                           int Fallback);
 
 // Idles the pipe and gives it a buffer of at least Size bytes, rounded up to whole

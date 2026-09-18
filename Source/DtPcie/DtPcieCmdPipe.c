@@ -43,30 +43,28 @@ _Static_assert(sizeof(UInt) == sizeof(DtIoctlPipeCmdGetRxWriteOffsetOutput) &&
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult SetOffset(OsDrv* Drv, int Cmd, int PipeUuid, int PortIndex,
-                             uint32_t Offset)
+static DtapiResult SetOffset(OsDrv* Drv, int Cmd, DtPartRef Pipe, uint32_t Offset)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     OffsetInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, Cmd, PipeUuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, Cmd, Pipe);
     In.m_Offset = Offset;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult GetOffset(OsDrv* Drv, int Cmd, int PipeUuid, int PortIndex,
-                             uint32_t* Offset)
+static DtapiResult GetOffset(OsDrv* Drv, int Cmd, DtPartRef Pipe, uint32_t* Offset)
 {
     if (Offset == NULL)
         return DTAPI_E_INVALID_ARG;
 
     UInt Out = 0;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), Cmd,
-                                              PipeUuid, PortIndex, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), Cmd, Pipe,
+                                              &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -78,7 +76,7 @@ static DtapiResult GetOffset(OsDrv* Drv, int Cmd, int PipeUuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_NwGetMacAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, int Uuid, int PortIndex, uint8_t* Mac)
+DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, DtPartRef Part, uint8_t* Mac)
 {
     if (Mac == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -86,7 +84,7 @@ DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, int Uuid, int PortIndex, uint8
     DtIoctlEMACCmdGetMacAddressOutput Out;
     DtapiResult Result =
         DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_EMAC_CMD), DT_EMAC_CMD_GET_MACADDRESS,
-                             Uuid, PortIndex, &Out, sizeof(Out));
+                             Part, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -96,7 +94,7 @@ DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, int Uuid, int PortIndex, uint8
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_NwGetPhySpeed -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, int Uuid, int PortIndex, int* Speed)
+DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtPartRef Part, int* Speed)
 {
     if (Speed == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -104,7 +102,7 @@ DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, int Uuid, int PortIndex, int* Sp
     DtIoctlEMACCmdGetPhySpeedOutput Out;
     DtapiResult Result =
         DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_EMAC_CMD), DT_EMAC_CMD_GET_PHY_SPEED,
-                             Uuid, PortIndex, &Out, sizeof(Out));
+                             Part, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -116,17 +114,20 @@ DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, int Uuid, int PortIndex, int* Sp
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_NwOpenPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, int Uuid, int PortIndex, int Type,
-                                 int Fallback, int* PipeUuid)
+DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtPartRef Part, int Type, int Fallback,
+                                 DtPartRef* Pipe)
 {
-    if (PipeUuid != NULL)
-        *PipeUuid = 0;
-    if (Drv == NULL || PipeUuid == NULL)
+    if (Pipe != NULL)
+    {
+        Pipe->Uuid = 0;
+        Pipe->PortIndex = Part.PortIndex;
+    }
+    if (Drv == NULL || Pipe == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlNwCmdPipeOpenInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_NW_CMD_PIPE_OPEN, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_NW_CMD_PIPE_OPEN, Part);
     In.m_PipeType = Type;
     In.m_PipeTypeFallback = Fallback;
     DtIoctlNwCmdPipeOpenOutput Out;
@@ -136,7 +137,7 @@ DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, int Uuid, int PortIndex, int Type,
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    *PipeUuid = (int)Out.m_PipeUuid;
+    Pipe->Uuid = (int)Out.m_PipeUuid;
     return DTAPI_OK;
 }
 
@@ -144,18 +145,17 @@ DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, int Uuid, int PortIndex, int Type,
 //
 // DtProxyNw::ClosePipe addresses the command to the pipe rather than to the function.
 //
-DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, int PipeUuid, int PortIndex)
+DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, DtPartRef Pipe)
 {
     return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_NW_CMD), DT_NW_CMD_PIPE_CLOSE,
-                                PipeUuid, PortIndex, NULL, 0);
+                                Pipe, NULL, 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= PIPE +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                   DtPipeProps* Props)
+DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, DtPartRef Pipe, DtPipeProps* Props)
 {
     if (Props != NULL)
         memset(Props, 0, sizeof(*Props));
@@ -165,7 +165,7 @@ DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, int PipeUuid, int PortIndex,
     DtIoctlPipeCmdGetPropertiesOutput Out;
     DtapiResult Result =
         DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), DT_PIPE_CMD_GET_PROPERTIES,
-                             PipeUuid, PortIndex, &Out, sizeof(Out));
+                             Pipe, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -178,8 +178,7 @@ DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, int PipeUuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                    DtPipeStatus* Status)
+DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, DtPartRef Pipe, DtPipeStatus* Status)
 {
     if (Status != NULL)
         memset(Status, 0, sizeof(*Status));
@@ -189,7 +188,7 @@ DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, int PipeUuid, int PortIndex,
     DtIoctlPipeCmdGetStatusOutput Out;
     DtapiResult Result =
         DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), DT_PIPE_CMD_GET_STATUS,
-                             PipeUuid, PortIndex, &Out, sizeof(Out));
+                             Pipe, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -204,7 +203,7 @@ DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, int PipeUuid, int PortIndex,
 // DtPalPipe_Nw::AllocateSharedBuffer. The answer must hold at least the command's fixed
 // output structure, as for CDMAC's buffer.
 //
-DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, int PipeUuid, int PortIndex,
+DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtPartRef Pipe,
                                             const OsDmaBuffer* Buf, bool BufferIsOutput)
 {
     uint32_t Status = 0;
@@ -217,8 +216,7 @@ DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, int PipeUuid, int PortIn
 
     DtIoctlPipeCmdSetSharedBufferInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_SHARED_BUFFER, PipeUuid,
-                         PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_SHARED_BUFFER, Pipe);
     In.m_BufferSize = (Int)Buf->Size;
     DtIoctlPipeCmdSetSharedBufferOutput Fixed;
     memset(&Fixed, 0, sizeof(Fixed));
@@ -238,39 +236,37 @@ DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, int PipeUuid, int PortIn
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetSharedBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeSetSharedBuffer(OsDrv* Drv, int PipeUuid, int PortIndex,
+DtapiResult DtPcieCmd_PipeSetSharedBuffer(OsDrv* Drv, DtPartRef Pipe,
                                           const OsDmaBuffer* Buf)
 {
 #if defined(_WIN32) || defined(_WIN64)
-    return DtPcieCmd_PipeSetSharedBufferAs(Drv, PipeUuid, PortIndex, Buf, true);
+    return DtPcieCmd_PipeSetSharedBufferAs(Drv, Pipe, Buf, true);
 #else
-    return DtPcieCmd_PipeSetSharedBufferAs(Drv, PipeUuid, PortIndex, Buf, false);
+    return DtPcieCmd_PipeSetSharedBufferAs(Drv, Pipe, Buf, false);
 #endif
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeReleaseSharedBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, int PipeUuid, int PortIndex)
+DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, DtPartRef Pipe)
 {
     return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD),
-                                DT_PIPE_CMD_RELEASE_SHARED_BUFFER, PipeUuid, PortIndex,
-                                NULL, 0);
+                                DT_PIPE_CMD_RELEASE_SHARED_BUFFER, Pipe, NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeFlush -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, int PipeUuid, int PortIndex)
+DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, DtPartRef Pipe)
 {
     return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD),
-                                DT_PIPE_CMD_ISSUE_PIPE_FLUSH, PipeUuid, PortIndex, NULL,
-                                0);
+                                DT_PIPE_CMD_ISSUE_PIPE_FLUSH, Pipe, NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // DtPalPipe_Nw::SetOperationalMode refuses a mode it cannot convert; so does this.
 //
-DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, int PipeUuid, int PortIndex, int OpMode)
+DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, DtPartRef Pipe, int OpMode)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -282,47 +278,42 @@ DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, int PipeUuid, int PortIndex, int
 
     DtIoctlPipeCmdSetOpModeInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_OPERATIONAL_MODE, PipeUuid,
-                         PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_OPERATIONAL_MODE, Pipe);
     In.m_OpMode = OpMode;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetRxReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeSetRxReadOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                          uint32_t Offset)
+DtapiResult DtPcieCmd_PipeSetRxReadOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t Offset)
 {
-    return SetOffset(Drv, DT_PIPE_CMD_SET_RX_READ_OFFSET, PipeUuid, PortIndex, Offset);
+    return SetOffset(Drv, DT_PIPE_CMD_SET_RX_READ_OFFSET, Pipe, Offset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeGetRxWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_PipeGetRxWriteOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                           uint32_t* Offset)
+DtapiResult DtPcieCmd_PipeGetRxWriteOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t* Offset)
 {
-    return GetOffset(Drv, DT_PIPE_CMD_GET_RX_WRITE_OFFSET, PipeUuid, PortIndex, Offset);
+    return GetOffset(Drv, DT_PIPE_CMD_GET_RX_WRITE_OFFSET, Pipe, Offset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetTxWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                           uint32_t Offset)
+DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t Offset)
 {
-    return SetOffset(Drv, DT_PIPE_CMD_SET_TX_WRITE_OFFSET, PipeUuid, PortIndex, Offset);
+    return SetOffset(Drv, DT_PIPE_CMD_SET_TX_WRITE_OFFSET, Pipe, Offset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeGetTxReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, int PipeUuid, int PortIndex,
-                                          uint32_t* Offset)
+DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t* Offset)
 {
-    return GetOffset(Drv, DT_PIPE_CMD_GET_TX_READ_OFFSET, PipeUuid, PortIndex, Offset);
+    return GetOffset(Drv, DT_PIPE_CMD_GET_TX_READ_OFFSET, Pipe, Offset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetIpFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, int PipeUuid, int PortIndex,
+DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtPartRef Pipe,
                                       const DtIpFilter* Filter)
 {
     if (Drv == NULL || Filter == NULL)
@@ -330,7 +321,7 @@ DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, int PipeUuid, int PortIndex,
 
     DtIoctlPipeCmdSetIpFilterInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_IPFILTER, PipeUuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_PIPE_CMD_SET_IPFILTER, Pipe);
     memcpy(In.m_DstIp, Filter->DstIp, sizeof(In.m_DstIp));
     memcpy(In.m_SrcIp, Filter->SrcIp, sizeof(In.m_SrcIp));
     for (int i = 0; i < 3; i++)

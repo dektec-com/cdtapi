@@ -105,7 +105,7 @@ DT_TEST(PartsOfTheReceiverFunction)
         char Key[PROPERTY_NAME_MAX_SIZE];
         snprintf(Key, sizeof(Key), "%s_UUID", g_Parts[i].Name);
         DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, 5, &Uuid));
-        DT_ASSERT_EQ(Part->Uuid, Uuid);
+        DT_ASSERT_EQ(Part->Ref.Uuid, Uuid);
     }
     DtFunc_Release(&Func);
     DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
@@ -163,7 +163,7 @@ DT_TEST(PartsOfTheTransmitFunctions)
             DT_ASSERT_STR(Part->Role, Expected[i].Role);
             DT_ASSERT_EQ(Part->IsDf, Expected[i].IsDf);
             DT_ASSERT_EQ(Part->Type, Expected[i].Type);
-            DT_ASSERT_EQ(Part->Uuid & DT_UUID_FLAG_MASK,
+            DT_ASSERT_EQ(Part->Ref.Uuid & DT_UUID_FLAG_MASK,
                          Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
         }
         DtFunc_Release(&Tx);
@@ -205,7 +205,7 @@ DT_TEST(UuidsAreUnique)
                         Count < (int)(sizeof(Uuids) / sizeof(Uuids[0]));
                  i++)
             {
-                int Uuid = PartAt(&Func, i)->Uuid;
+                int Uuid = PartAt(&Func, i)->Ref.Uuid;
 
                 for (j = 0; j < Count; j++)
                 {

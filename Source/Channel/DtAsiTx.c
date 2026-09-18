@@ -62,8 +62,8 @@ typedef struct DtAsiTxSlave
     int SubValue; // Of its I/O direction
     DtFuncInstance Af;
     bool Held;
-    int Phy; // UUID
-    int Txp; // UUID, 0 when the function has none
+    DtPartRef Phy;
+    DtPartRef Txp; // Its UUID 0 when the function has none
 } DtAsiTxSlave;
 
 typedef struct DtAsiTx
@@ -73,7 +73,7 @@ typedef struct DtAsiTx
     int PortIndex;
     DtFuncInstance AfTx, AfDma;
     bool Held;
-    int AsiTxG, Phy, Ser, Cdmac, Burst; // UUIDs; Phy or Ser is 0 when absent
+    DtPartRef AsiTxG, Phy, Ser, Cdmac, Burst; // The UUID of Phy or Ser 0 when absent
     int BurstFifoSize;
     DtVec Slaves; // DtAsiTxSlave
 
@@ -121,8 +121,7 @@ static DtapiResult DmaLoad(DtAsiTx* Tx, size_t* Load)
         return DTAPI_OK;
 
     uint32_t ReadOffset = 0;
-    DtapiResult Result =
-        DtPcieCmd_CdmacGetTxReadOffset(Tx->Drv, Tx->Cdmac, Tx->PortIndex, &ReadOffset);
+    DtapiResult Result = DtPcieCmd_CdmacGetTxReadOffset(Tx->Drv, Tx->Cdmac, &ReadOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (ReadOffset >= Tx->Buf.Size)
@@ -145,8 +144,8 @@ static DtapiResult Commit(DtAsiTx* Tx, size_t Bytes)
     if (Bytes == 0)
         return DTAPI_OK;
     const size_t Offset = (Tx->WriteOffset + Bytes) % Tx->Buf.Size;
-    DtapiResult Result = DtPcieCmd_CdmacSetTxWriteOffset(Tx->Drv, Tx->Cdmac,
-                                                         Tx->PortIndex, (uint32_t)Offset);
+    DtapiResult Result =
+        DtPcieCmd_CdmacSetTxWriteOffset(Tx->Drv, Tx->Cdmac, (uint32_t)Offset);
     if (Result == DTAPI_OK)
     {
         Tx->WriteOffset = Offset;
@@ -340,18 +339,19 @@ static DtapiResult SlavesToMode(DtAsiTx* Tx, int OpMode)
     for (size_t i = 0; i < DtVec_Count(&Tx->Slaves); i++)
     {
         const DtAsiTxSlave* S = SlaveAt(Tx, i);
-        const bool Encoder = S->Txp != 0 && (S->SubValue == DTAPI_IOCONFIG_OUTPUT ||
-                                             S->SubValue == DTAPI_IOCONFIG_INTOUTPUT);
+        const bool Encoder =
+            S->Txp.Uuid != 0 && (S->SubValue == DTAPI_IOCONFIG_OUTPUT ||
+                                 S->SubValue == DTAPI_IOCONFIG_INTOUTPUT);
         const int TxpMode =
             OpMode == DT_FUNC_OPMODE_IDLE ? DT_BLOCK_OPMODE_IDLE : DT_BLOCK_OPMODE_RUN;
 
         DtapiResult Result = DTAPI_OK;
         if (Encoder && OpMode == DT_FUNC_OPMODE_RUN)
-            Result = DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, S->Port - 1, TxpMode);
+            Result = DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, TxpMode);
         if (Result == DTAPI_OK)
-            Result = DtPcieCmd_SdiTxPhySetOpMode(Tx->Drv, S->Phy, S->Port - 1, OpMode);
+            Result = DtPcieCmd_SdiTxPhySetOpMode(Tx->Drv, S->Phy, OpMode);
         if (Result == DTAPI_OK && Encoder && OpMode != DT_FUNC_OPMODE_RUN)
-            Result = DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, S->Port - 1, TxpMode);
+            Result = DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, TxpMode);
         if (Result != DTAPI_OK)
             return Result;
     }
@@ -367,11 +367,10 @@ static void ReleaseSlaves(DtAsiTx* Tx)
     for (size_t i = 0; i < DtVec_Count(&Tx->Slaves); i++)
     {
         DtAsiTxSlave* S = SlaveAt(Tx, i);
-        if (S->Phy != 0)
-            DtPcieCmd_SdiTxPhySetOpMode(Tx->Drv, S->Phy, S->Port - 1,
-                                        DT_FUNC_OPMODE_IDLE);
-        if (S->Txp != 0)
-            DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, S->Port - 1, DT_BLOCK_OPMODE_IDLE);
+        if (S->Phy.Uuid != 0)
+            DtPcieCmd_SdiTxPhySetOpMode(Tx->Drv, S->Phy, DT_FUNC_OPMODE_IDLE);
+        if (S->Txp.Uuid != 0)
+            DtPcieCmd_SdiTxPSetOpMode(Tx->Drv, S->Txp, DT_BLOCK_OPMODE_IDLE);
         if (S->Held)
             DtFunc_ExclAccess(Tx->Drv, &S->Af, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         DtFunc_Release(&S->Af);
@@ -423,8 +422,10 @@ static DtapiResult FindSlaves(DtAsiTx* Tx)
             const DtFuncPart* Phy = DtFunc_Get(&S.Af, true, DT_FUNC_TYPE_SDITXPHY, "");
             const DtFuncPart* Txp = DtFunc_Get(&S.Af, false, DT_BLOCK_TYPE_SDITXP, "");
             Result = Phy == NULL ? DTAPI_E_NOT_FOUND : DTAPI_OK;
-            S.Phy = Phy != NULL ? Phy->Uuid : 0;
-            S.Txp = Txp != NULL ? Txp->Uuid : 0;
+            if (Phy != NULL)
+                S.Phy = Phy->Ref;
+            if (Txp != NULL)
+                S.Txp = Txp->Ref;
         }
         if (DtVec_Push(&Tx->Slaves, &S) != 0)
         {
@@ -472,8 +473,7 @@ static DtapiResult SlavesToAsi(DtAsiTx* Tx)
 static DtapiResult UpdateUfl(DtAsiTx* Tx)
 {
     uint32_t Count = 0;
-    DtapiResult Result =
-        DtPcieCmd_BurstFifoGetOvfUflCount(Tx->Drv, Tx->Burst, Tx->PortIndex, &Count);
+    DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(Tx->Drv, Tx->Burst, &Count);
     if (Result != DTAPI_OK)
         return Result;
     Tx->Ufl = Count != Tx->UflCount;
@@ -493,8 +493,8 @@ static DtapiResult ClearFlags(DtTx* Base, int Flags)
 
     if ((Flags & DTAPI_TX_FIFO_UFL) != 0)
     {
-        DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(
-            Tx->Drv, Tx->Burst, Tx->PortIndex, &Tx->UflCount);
+        DtapiResult Result =
+            DtPcieCmd_BurstFifoGetOvfUflCount(Tx->Drv, Tx->Burst, &Tx->UflCount);
         if (Result != DTAPI_OK)
             return Result;
         Tx->Ufl = Tx->UflLatched = false;
@@ -593,24 +593,22 @@ static DtapiResult GetFifoSize(DtTx* Base, int* FifoSize)
 static DtapiResult IdleToHold(DtAsiTx* Tx)
 {
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
 
-    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac, Index);
+    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG, Index);
+        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetTxWriteOffset(Drv, Tx->Cdmac, Index, 0);
+        Result = DtPcieCmd_CdmacSetTxWriteOffset(Drv, Tx->Cdmac, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_STANDBY);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_STANDBY);
     if (Result == DTAPI_OK)
         Result = DtAsiEnc_Start(&Tx->Enc);
     if (Result != DTAPI_OK)
     {
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, DT_BLOCK_OPMODE_IDLE);
         return Result;
     }
     Tx->WriteOffset = 0;
@@ -637,13 +635,13 @@ static DtapiResult WaitForBurstFifo(DtAsiTx* Tx)
 
     DtBurstFifoStatus Status;
     memset(&Status, 0, sizeof(Status));
-    Result = DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, Tx->PortIndex, &Status);
+    Result = DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, &Status);
     for (int Poll = 0; Result == DTAPI_OK && (size_t)Status.CurLoad < Target &&
                        Poll < DT_ASITX_BURST_POLLS;
          Poll++)
     {
         OsTime_SleepMs(1);
-        Result = DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, Tx->PortIndex, &Status);
+        Result = DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, &Status);
     }
     if (Result == DTAPI_OK && (size_t)Status.CurLoad < Target)
         Result = DTAPI_E_TIMEOUT;
@@ -659,7 +657,6 @@ static DtapiResult WaitForBurstFifo(DtAsiTx* Tx)
 static DtapiResult HoldToSend(DtAsiTx* Tx)
 {
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
 
     Tx->StopThread = false;
     Tx->Thread = OsThread_Start(Converter, Tx);
@@ -668,19 +665,19 @@ static DtapiResult HoldToSend(DtAsiTx* Tx)
 
     DtapiResult Result = WaitForBurstFifo(Tx);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoClearMax(Drv, Tx->Burst, Index, true, true);
+        Result = DtPcieCmd_BurstFifoClearMax(Drv, Tx->Burst, true, true);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoGetOvfUflCount(Drv, Tx->Burst, Index, &Tx->UflCount);
+        Result = DtPcieCmd_BurstFifoGetOvfUflCount(Drv, Tx->Burst, &Tx->UflCount);
     if (Result == DTAPI_OK)
         Tx->Ufl = Tx->UflLatched = false;
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Tx->Cdmac, Index);
-    if (Result == DTAPI_OK && Tx->Phy != 0)
-        Result = DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Tx->Phy, Index);
+        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Tx->Cdmac);
+    if (Result == DTAPI_OK && Tx->Phy.Uuid != 0)
+        Result = DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Tx->Phy);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, DT_BLOCK_OPMODE_RUN);
     if (Result != DTAPI_OK)
     {
         StopThread(Tx);
@@ -697,11 +694,11 @@ static DtapiResult HoldToSend(DtAsiTx* Tx)
 //
 static DtapiResult SendToHold(DtAsiTx* Tx)
 {
-    DtapiResult Result = DtPcieCmd_AsiTxGSetOpMode(Tx->Drv, Tx->AsiTxG, Tx->PortIndex,
-                                                   DT_BLOCK_OPMODE_STANDBY);
+    DtapiResult Result =
+        DtPcieCmd_AsiTxGSetOpMode(Tx->Drv, Tx->AsiTxG, DT_BLOCK_OPMODE_STANDBY);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Tx->Drv, Tx->Burst, Tx->PortIndex,
-                                              DT_BLOCK_OPMODE_STANDBY);
+        Result =
+            DtPcieCmd_BurstFifoSetOpMode(Tx->Drv, Tx->Burst, DT_BLOCK_OPMODE_STANDBY);
     if (Result == DTAPI_OK)
         Result = FifoLoadOf(Tx, &Tx->LoadInHold);
     if (Result != DTAPI_OK)
@@ -719,16 +716,15 @@ static DtapiResult SendToHold(DtAsiTx* Tx)
 static DtapiResult HoldToIdle(DtAsiTx* Tx)
 {
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
 
     DtapiResult Result =
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+        Result = DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac, Index);
+        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG, Index);
+        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG);
     Tx->FifoRead = Tx->FifoLoad = 0;
     if (Result == DTAPI_OK)
         Result = ClearFlags(&Tx->Base, DTAPI_TX_FIFO_UFL);
@@ -827,7 +823,7 @@ static DtapiResult GetTsRateBps(DtTx* Base, int* TsRate)
 static DtapiResult SetTxPolarity(DtTx* Base, int TxPolarity)
 {
     DtAsiTx* Tx = (DtAsiTx*)Base;
-    return DtPcieCmd_AsiTxGSetPolarity(Tx->Drv, Tx->AsiTxG, Tx->PortIndex, TxPolarity);
+    return DtPcieCmd_AsiTxGSetPolarity(Tx->Drv, Tx->AsiTxG, TxPolarity);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForceBlocksToIdle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -838,36 +834,32 @@ static DtapiResult SetTxPolarity(DtTx* Base, int TxPolarity)
 static DtapiResult ForceBlocksToIdle(DtAsiTx* Tx, bool ToIdle)
 {
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
     DtapiResult Result = DTAPI_OK;
 
     if (ToIdle)
     {
-        if (Tx->Ser != 0)
-            Result =
-                DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, Index, DT_BLOCK_OPMODE_IDLE);
-        if (Result == DTAPI_OK && Tx->Phy != 0)
-            Result =
-                DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, Index, DT_FUNC_OPMODE_IDLE);
+        if (Tx->Ser.Uuid != 0)
+            Result = DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, DT_BLOCK_OPMODE_IDLE);
+        if (Result == DTAPI_OK && Tx->Phy.Uuid != 0)
+            Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, DT_FUNC_OPMODE_IDLE);
         if (Result == DTAPI_OK)
             Result = SlavesToMode(Tx, DT_FUNC_OPMODE_IDLE);
         if (Result == DTAPI_OK)
-            Result =
-                DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, Index, DT_BLOCK_OPMODE_IDLE);
+            Result = DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, DT_BLOCK_OPMODE_IDLE);
         return Result;
     }
 
-    Result = DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, Index, DT_BLOCK_OPMODE_STANDBY);
+    Result = DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, DT_BLOCK_OPMODE_STANDBY);
     if (Result == DTAPI_OK)
         Result = SlavesToMode(Tx, DT_FUNC_OPMODE_STANDBY);
-    if (Result == DTAPI_OK && Tx->Phy != 0)
-        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, Index, DT_FUNC_OPMODE_STANDBY);
+    if (Result == DTAPI_OK && Tx->Phy.Uuid != 0)
+        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, DT_FUNC_OPMODE_STANDBY);
     if (Result == DTAPI_OK)
         Result = SlavesToMode(Tx, DT_FUNC_OPMODE_RUN);
-    if (Result == DTAPI_OK && Tx->Phy != 0)
-        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, Index, DT_FUNC_OPMODE_RUN);
-    if (Result == DTAPI_OK && Tx->Ser != 0)
-        Result = DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, Index, DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Tx->Phy.Uuid != 0)
+        Result = DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, DT_FUNC_OPMODE_RUN);
+    if (Result == DTAPI_OK && Tx->Ser.Uuid != 0)
+        Result = DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, DT_BLOCK_OPMODE_RUN);
     return Result;
 }
 
@@ -1025,25 +1017,24 @@ static void Release(DtTx* Base)
 {
     DtAsiTx* Tx = (DtAsiTx*)Base;
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
 
     if (Tx->Held)
         SetTxControl(Base, DTAPI_TXCTRL_IDLE);
     StopThread(Tx);
     if (Tx->Registered)
     {
-        DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacFreeBuffer(Drv, Tx->Cdmac, Index);
+        DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacFreeBuffer(Drv, Tx->Cdmac);
     }
     OsDmaBuffer_Free(&Tx->Buf);
     if (Tx->Held)
     {
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-        if (Tx->Ser != 0)
-            DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, Index, DT_BLOCK_OPMODE_IDLE);
-        if (Tx->Phy != 0)
-            DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, Index, DT_FUNC_OPMODE_IDLE);
-        DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, Index, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_IDLE);
+        if (Tx->Ser.Uuid != 0)
+            DtPcieCmd_AsiTxSerSetOpMode(Drv, Tx->Ser, DT_BLOCK_OPMODE_IDLE);
+        if (Tx->Phy.Uuid != 0)
+            DtPcieCmd_SdiTxPhySetOpMode(Drv, Tx->Phy, DT_FUNC_OPMODE_IDLE);
+        DtPcieCmd_AsiTxGSetOpMode(Drv, Tx->AsiTxG, DT_BLOCK_OPMODE_IDLE);
         DtFunc_ExclAccess(Drv, &Tx->AfTx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         DtFunc_ExclAccess(Drv, &Tx->AfDma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
     }
@@ -1079,11 +1070,13 @@ static DtapiResult FindParts(DtAsiTx* Tx)
     const DtFuncPart* Ser = DtFunc_Get(&Tx->AfTx, false, DT_BLOCK_TYPE_ASITXSER, "");
     if (Cdmac == NULL || Burst == NULL || Gate == NULL || (Phy == NULL && Ser == NULL))
         return DTAPI_E_NOT_FOUND;
-    Tx->Cdmac = Cdmac->Uuid;
-    Tx->Burst = Burst->Uuid;
-    Tx->AsiTxG = Gate->Uuid;
-    Tx->Phy = Phy != NULL ? Phy->Uuid : 0;
-    Tx->Ser = Ser != NULL ? Ser->Uuid : 0;
+    Tx->Cdmac = Cdmac->Ref;
+    Tx->Burst = Burst->Ref;
+    Tx->AsiTxG = Gate->Ref;
+    if (Phy != NULL)
+        Tx->Phy = Phy->Ref;
+    if (Ser != NULL)
+        Tx->Ser = Ser->Ref;
 
     Result = DtFunc_CheckDriverVersion(Version, false, DT_BLOCK_TYPE_CDMAC);
     if (Result == DTAPI_OK)
@@ -1105,14 +1098,12 @@ static DtapiResult FindParts(DtAsiTx* Tx)
 static DtapiResult RegisterBuffer(DtAsiTx* Tx)
 {
     OsDrv* Drv = Tx->Drv;
-    const int Index = Tx->PortIndex;
     DtCdmacProps Props;
 
     memset(&Props, 0, sizeof(Props));
-    DtapiResult Result =
-        DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+    DtapiResult Result = DtPcieCmd_CdmacSetOpMode(Drv, Tx->Cdmac, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacGetProps(Drv, Tx->Cdmac, Index, &Props);
+        Result = DtPcieCmd_CdmacGetProps(Drv, Tx->Cdmac, &Props);
     if (Result == DTAPI_OK && (Props.Caps & DT_CDMAC_CAP_TX) == 0)
         Result = DTAPI_E_NOT_SUPPORTED;
     if (Result == DTAPI_OK && (Props.PrefetchSize <= 0 || Props.PcieDataWidth <= 0 ||
@@ -1125,12 +1116,10 @@ static DtapiResult RegisterBuffer(DtAsiTx* Tx)
     const size_t Size = (DT_ASITX_BUF_SIZE + Unit - 1) / Unit * Unit;
     if (OsDmaBuffer_Alloc(Size, &Tx->Buf) != 0)
         return DTAPI_E_OUT_OF_MEM;
-    Result =
-        DtPcieCmd_CdmacAllocateBuffer(Drv, Tx->Cdmac, Index, DT_CDMAC_DIR_TX, &Tx->Buf);
+    Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Tx->Cdmac, DT_CDMAC_DIR_TX, &Tx->Buf);
     Tx->Registered = Result == DTAPI_OK;
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_CdmacSetTestMode(Drv, Tx->Cdmac, Index, DT_CDMAC_TESTMODE_NORMAL);
+        Result = DtPcieCmd_CdmacSetTestMode(Drv, Tx->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
     Tx->MaxLoad = Tx->Buf.Size - (size_t)Props.PcieDataWidth / 8;
     return Result;
 }
@@ -1168,7 +1157,7 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     Tx->Base.Port = *Port;
     Tx->Base.TxControl = DTAPI_TXCTRL_IDLE;
     OsDrv* Drv = Tx->Drv = Port->Device->Drv;
-    const int Index = Tx->PortIndex = Port->PortIndex;
+    Tx->PortIndex = Port->PortIndex;
     DtVec_Init(&Tx->AfTx.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Tx->AfDma.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Tx->Slaves, sizeof(DtAsiTxSlave));
@@ -1193,7 +1182,7 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     DtBurstFifoProps Burst;
     memset(&Burst, 0, sizeof(Burst));
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoGetProps(Drv, Tx->Burst, Index, &Burst);
+        Result = DtPcieCmd_BurstFifoGetProps(Drv, Tx->Burst, &Burst);
     Tx->BurstFifoSize = Burst.FifoSize;
     if (Result == DTAPI_OK)
         Result = RegisterBuffer(Tx);
@@ -1205,12 +1194,11 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     // K28.5 from here on: the pipeline idle and flushed, the gate in standby and the
     // PHYs running.
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac, Index);
+        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Tx->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG, Index);
+        Result = DtPcieCmd_AsiTxGClearInputState(Drv, Tx->AsiTxG);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Tx->Burst, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
         Result = ForceBlocksToIdle(Tx, false);
 

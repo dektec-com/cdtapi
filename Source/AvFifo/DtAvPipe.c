@@ -24,17 +24,15 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, int NwUuid, int PortIndex, int Type,
+DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtPartRef Nw, int Type,
                           int Fallback)
 {
     memset(Pipe, 0, sizeof(*Pipe));
     Pipe->Drv = Drv;
-    Pipe->NwUuid = NwUuid;
-    Pipe->PortIndex = PortIndex;
-    DtapiResult Result =
-        DtPcieCmd_NwOpenPipe(Drv, NwUuid, PortIndex, Type, Fallback, &Pipe->Uuid);
+    Pipe->Nw = Nw;
+    DtapiResult Result = DtPcieCmd_NwOpenPipe(Drv, Nw, Type, Fallback, &Pipe->Ref);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_PipeGetProps(Drv, Pipe->Uuid, PortIndex, &Pipe->Props);
+        Result = DtPcieCmd_PipeGetProps(Drv, Pipe->Ref, &Pipe->Props);
     if (Result == DTAPI_OK &&
         (Pipe->Props.DataWidth < 8 || Pipe->Props.DataWidth % 32 != 0 ||
          Pipe->Props.PrefetchSize < 1))
@@ -53,10 +51,11 @@ DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, int NwUuid, int PortIndex,
 //
 DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
 {
-    if (Pipe->Uuid == 0 || Pipe->Buf.Data != NULL || Size == 0 || Size > INT32_MAX / 2)
+    if (Pipe->Ref.Uuid == 0 || Pipe->Buf.Data != NULL || Size == 0 ||
+        Size > INT32_MAX / 2)
         return DTAPI_E_INVALID_ARG;
-    DtapiResult Result = DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex,
-                                                 DT_PIPE_OPMODE_IDLE);
+    DtapiResult Result =
+        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Ref, DT_PIPE_OPMODE_IDLE);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -64,8 +63,7 @@ DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
     size_t Rounded = (Size + Unit - 1) / Unit * Unit;
     if (OsDmaBuffer_Alloc(Rounded, &Pipe->Buf) != 0)
         return DTAPI_E_OUT_OF_MEM;
-    Result =
-        DtPcieCmd_PipeSetSharedBuffer(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex, &Pipe->Buf);
+    Result = DtPcieCmd_PipeSetSharedBuffer(Pipe->Drv, Pipe->Ref, &Pipe->Buf);
     if (Result != DTAPI_OK)
     {
         OsDmaBuffer_Free(&Pipe->Buf);
@@ -81,17 +79,16 @@ DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
 //
 void DtAvPipe_Close(DtAvPipe* Pipe)
 {
-    if (Pipe->Uuid != 0)
+    if (Pipe->Ref.Uuid != 0)
     {
-        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex,
-                                DT_PIPE_OPMODE_IDLE);
+        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Ref, DT_PIPE_OPMODE_IDLE);
         if (Pipe->BufferSet)
-            DtPcieCmd_PipeReleaseSharedBuffer(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex);
-        DtPcieCmd_NwClosePipe(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex);
+            DtPcieCmd_PipeReleaseSharedBuffer(Pipe->Drv, Pipe->Ref);
+        DtPcieCmd_NwClosePipe(Pipe->Drv, Pipe->Ref);
     }
     OsDmaBuffer_Free(&Pipe->Buf);
     Pipe->BufferSet = false;
-    Pipe->Uuid = 0;
+    Pipe->Ref.Uuid = 0;
     Pipe->Size = 0;
     Pipe->Offset = 0;
 }
@@ -182,8 +179,7 @@ DtapiResult DtAvWriter_Free(DtAvWriter* Writer, uint32_t* Free)
     uint32_t ReadOffset = 0;
 
     *Free = 0;
-    DtapiResult Result = DtPcieCmd_PipeGetTxReadOffset(Pipe->Drv, Pipe->Uuid,
-                                                       Pipe->PortIndex, &ReadOffset);
+    DtapiResult Result = DtPcieCmd_PipeGetTxReadOffset(Pipe->Drv, Pipe->Ref, &ReadOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (ReadOffset >= Pipe->Size)
@@ -203,8 +199,7 @@ DtapiResult DtAvWriter_Flush(DtAvWriter* Writer)
     if (Writer->Unflushed == 0)
         return Result;
     Writer->Unflushed = 0;
-    DtapiResult Set = DtPcieCmd_PipeSetTxWriteOffset(Pipe->Drv, Pipe->Uuid,
-                                                     Pipe->PortIndex, Pipe->Offset);
+    DtapiResult Set = DtPcieCmd_PipeSetTxWriteOffset(Pipe->Drv, Pipe->Ref, Pipe->Offset);
     return Result != DTAPI_OK ? Result : Set;
 }
 
@@ -243,8 +238,8 @@ DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Conte
 
     *Packets = 0;
     *LostSync = false;
-    DtapiResult Result = DtPcieCmd_PipeGetRxWriteOffset(Pipe->Drv, Pipe->Uuid,
-                                                        Pipe->PortIndex, &WriteOffset);
+    DtapiResult Result =
+        DtPcieCmd_PipeGetRxWriteOffset(Pipe->Drv, Pipe->Ref, &WriteOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (WriteOffset >= Pipe->Size)
@@ -274,5 +269,5 @@ DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Conte
     if (Offset == Pipe->Offset)
         return DTAPI_OK;
     Pipe->Offset = Offset;
-    return DtPcieCmd_PipeSetRxReadOffset(Pipe->Drv, Pipe->Uuid, Pipe->PortIndex, Offset);
+    return DtPcieCmd_PipeSetRxReadOffset(Pipe->Drv, Pipe->Ref, Offset);
 }

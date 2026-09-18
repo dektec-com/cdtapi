@@ -59,7 +59,7 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
         Input->Device = Device;
         Input->PortIndex = Port - 1;
         Input->Caps = Caps;
-        Input->SdiRxUuid = SdiRx->Uuid;
+        Input->SdiRx = SdiRx->Ref;
     }
     DtFunc_Release(&Func);
     return SdiRx != NULL ? DTAPI_OK : DTAPI_E_NOT_FOUND;
@@ -115,7 +115,7 @@ DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         return Result;
 
     DtSdiRxStatus Status;
-    Result = DtPcieCmd_SdiRxGetStatus(Drv, Input->SdiRxUuid, Input->PortIndex, &Status);
+    Result = DtPcieCmd_SdiRxGetStatus(Drv, Input->SdiRx, &Status);
     if (Result != DTAPI_OK)
         return Result;
 

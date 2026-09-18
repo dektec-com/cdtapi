@@ -69,10 +69,11 @@ static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
         return false;
 
     if (snprintf(Key, sizeof(Key), "%s_UUID", Part->Name) >= (int)sizeof(Key) ||
-        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Uuid) != DTAPI_OK)
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Ref.Uuid) != DTAPI_OK)
     {
         return false;
     }
+    Part->Ref.PortIndex = PortIndex;
     return true;
 }
 
@@ -156,8 +157,7 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
          i < Count && (Result == DTAPI_OK || Cmd == DT_EXCLUSIVE_ACCESS_CMD_RELEASE); i++)
     {
         const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
-        DtapiResult PartResult =
-            DtPcieCmd_ExclAccess(Drv, Part->Uuid, Instance->PortIndex, Cmd);
+        DtapiResult PartResult = DtPcieCmd_ExclAccess(Drv, Part->Ref, Cmd);
 
         if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
             Result = PartResult;
@@ -171,8 +171,7 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
         {
             const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
 
-            DtPcieCmd_ExclAccess(Drv, Part->Uuid, Instance->PortIndex,
-                                 DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+            DtPcieCmd_ExclAccess(Drv, Part->Ref, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         }
     }
     return Result;

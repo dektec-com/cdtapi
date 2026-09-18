@@ -251,7 +251,7 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
     Stream->Net.SrcPort = OsNetSocket_Port(Fifo->Socket);
     Stream->Net.DstPort = (uint16_t)Pars->Port;
     Stream->PayloadType = Pars->RtpPayloadType;
-    Stream->Ssrc = ByteSwapped((uint32_t)Fifo->Pipe.Uuid);
+    Stream->Ssrc = ByteSwapped((uint32_t)Fifo->Pipe.Ref.Uuid);
     Stream->OutputDelayNs = DT_AV_OUTPUT_DELAY_NS;
     if (Video)
     {
@@ -272,12 +272,10 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
     DtAvFrameFifo_Clear(&Fifo->Fifo, &Fifo->Pool);
     DtAtomic_Store(&Fifo->FramesOk, 0);
     OsDrv* Drv = Fifo->Port.Device.Drv;
-    int PortIndex = Fifo->Port.PortIndex;
-    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Uuid, PortIndex);
+    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Ref);
     DtAvWriter_Init(&Fifo->Writer, &Fifo->Pipe);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Uuid, PortIndex, DT_PIPE_OPMODE_RUN);
+        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Ref, DT_PIPE_OPMODE_RUN);
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Starting the pipe failed");
 

@@ -44,23 +44,24 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, int Uuid, int PortIndex)
+void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtPartRef Part)
 {
     memset(Hdr, 0, sizeof(*Hdr));
-    Hdr->m_Uuid = Uuid;
-    Hdr->m_PortIndex = PortIndex;
+    Hdr->m_Uuid = Part.Uuid;
+    Hdr->m_PortIndex = Part.PortIndex;
     Hdr->m_Cmd = Cmd;
     Hdr->m_CmdEx = DT_IOCTL_CMD_NOP;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The header of a device-level command. That addresses no function, so Uuid is zero and
-// PortIndex is -1, which the driver reads as "the device itself".
+// The header of a device-level command. That addresses no function, so the UUID is zero
+// and the port index -1, which the driver reads as "the device itself".
 //
 static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {
-    DtPcieCmd_InitHeader(Hdr, Cmd, 0, -1);
+    const DtPartRef Device = {0, -1};
+    DtPcieCmd_InitHeader(Hdr, Cmd, Device);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_Issue -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -83,14 +84,14 @@ DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t In
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_IssuePlain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, int Uuid,
-                                 int PortIndex, void* Out, size_t OutSize)
+DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part,
+                                 void* Out, size_t OutSize)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlInputDataHdr In;
-    DtPcieCmd_InitHeader(&In, Cmd, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, Cmd, Part);
     if (Out != NULL)
         memset(Out, 0, OutSize);
     return DtPcieCmd_Issue(Drv, Code, &In, sizeof(In), Out, OutSize);
@@ -593,8 +594,7 @@ static int SdiRateFromDriver(int Rate)
 // to booleans, the frame period in nanoseconds to a rate, and an SDI rate the driver does
 // not define to unknown.
 //
-DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
-                                     DtSdiRxStatus* Status)
+DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtSdiRxStatus* Status)
 {
     if (Status != NULL)
         memset(Status, 0, sizeof(*Status));
@@ -603,7 +603,7 @@ DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlSdiRxCmdGetSdiStatusInput In;
-    DtPcieCmd_InitHeader(&In, DT_SDIRX_CMD_GET_SDI_STATUS2, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_SDIRX_CMD_GET_SDI_STATUS2, Part);
     DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
     memset(&Out, 0, sizeof(Out));
 
@@ -631,7 +631,7 @@ DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxAttach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, int Uuid, int PortIndex, bool Exclusive,
+DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, DtPartRef Part, bool Exclusive,
                                     const char* FriendlyName)
 {
     if (Drv == NULL || FriendlyName == NULL)
@@ -643,7 +643,7 @@ DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, int Uuid, int PortIndex, bool Ex
 
     DtIoctlChSdiRxCmdAttachInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_ATTACH, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_ATTACH, Part);
     In.m_ReqExclusiveAccess = Exclusive ? 1 : 0;
     memcpy(In.m_FriendlyName, FriendlyName, Length);
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
@@ -651,13 +651,13 @@ DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, int Uuid, int PortIndex, bool Ex
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxDetach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, int Uuid, int PortIndex)
+DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtPartRef Part)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdDetachInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_DETACH, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_DETACH, Part);
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
@@ -666,7 +666,7 @@ DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, int Uuid, int PortIndex)
 // DtProxyCHSDIRX::Configure refuses an SDI rate it cannot convert with
 // DTAPI_E_INVALID_RATE before sending anything; so does this.
 //
-DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
+DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtPartRef Part,
                                        const DtChSdiRxConfig* Config)
 {
     if (Drv == NULL || Config == NULL || Config->NumPorts < 1 || Config->NumPorts > 4)
@@ -686,7 +686,7 @@ DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
 
     DtIoctlChSdiRxCmdConfigureInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_CONFIGURE, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_CONFIGURE, Part);
     In.m_NumPhysicalPorts = Config->NumPorts;
     for (int i = 0; i < Config->NumPorts; i++)
         In.m_PhysicalPorts[i] = Config->PortIndices[i];
@@ -705,13 +705,13 @@ DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, int Uuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxGetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_ChSdiRxGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode)
+DtapiResult DtPcieCmd_ChSdiRxGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode)
 {
     if (Drv == NULL || OpMode == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdGetOpModeInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_OPERATIONAL_MODE, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_OPERATIONAL_MODE, Part);
     DtIoctlChSdiRxCmdGetOpModeOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In,
@@ -725,31 +725,29 @@ DtapiResult DtPcieCmd_ChSdiRxGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int*
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_ChSdiRxSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode)
+DtapiResult DtPcieCmd_ChSdiRxSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdSetOpModeInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_OPERATIONAL_MODE, Uuid,
-                         PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_OPERATIONAL_MODE, Part);
     In.m_OpMode = OpMode;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxWaitForFmtEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_ChSdiRxWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex,
-                                             int TimeoutMs, DtChSdiRxEvent* Event)
+DtapiResult DtPcieCmd_ChSdiRxWaitForFmtEvent(OsDrv* Drv, DtPartRef Part, int TimeoutMs,
+                                             DtChSdiRxEvent* Event)
 {
     if (Drv == NULL || Event == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdWaitForFmtEventInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, Uuid,
-                         PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_WAIT_FOR_FMT_EVENT, Part);
     In.m_Timeout = TimeoutMs;
     DtIoctlChSdiRxCmdWaitForFmtEventOutput Out;
     memset(&Out, 0, sizeof(Out));
@@ -766,14 +764,13 @@ DtapiResult DtPcieCmd_ChSdiRxWaitForFmtEvent(OsDrv* Drv, int Uuid, int PortIndex
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxGetWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_ChSdiRxGetWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                            uint32_t* Offset)
+DtapiResult DtPcieCmd_ChSdiRxGetWriteOffset(OsDrv* Drv, DtPartRef Part, uint32_t* Offset)
 {
     if (Drv == NULL || Offset == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdGetWrOffsetInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_WRITE_OFFSET, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_WRITE_OFFSET, Part);
     DtIoctlChSdiRxCmdGetWrOffsetOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In,
@@ -787,23 +784,21 @@ DtapiResult DtPcieCmd_ChSdiRxGetWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxSetReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_ChSdiRxSetReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
-                                           uint32_t Offset)
+DtapiResult DtPcieCmd_ChSdiRxSetReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t Offset)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdSetRdOffsetInput In;
     memset(&In, 0, sizeof(In));
-    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_READ_OFFSET, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CHSDIRX_CMD_SET_READ_OFFSET, Part);
     In.m_ReadOffset = Offset;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In, sizeof(In), NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, int Uuid, int PortIndex,
-                                      DtChSdiRxProps* Props)
+DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtPartRef Part, DtChSdiRxProps* Props)
 {
     if (Props != NULL)
         memset(Props, 0, sizeof(*Props));
@@ -811,7 +806,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdGetPropsInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_PROPS, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_PROPS, Part);
     DtIoctlChSdiRxCmdGetPropsOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In,
@@ -832,7 +827,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, int Uuid, int PortIndex,
 // DtProxyCHSDIRX::GetSdiStatus converts the answer as the SDIRX proxy does, except that
 // it leaves the carrier out; so does this.
 //
-DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, int Uuid, int PortIndex,
+DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtPartRef Part,
                                           DtSdiRxStatus* Status)
 {
     if (Status != NULL)
@@ -841,7 +836,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, int Uuid, int PortIndex,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlChSdiRxCmdGetSdiStatusInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_SDI_STATUS, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_GET_SDI_STATUS, Part);
     DtIoctlChSdiRxCmdGetSdiStatusOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In,
@@ -865,9 +860,8 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, int Uuid, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxMapDmaBuf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex,
-                                       uint8_t** Buffer, int* BufSize, int* MaxLoad,
-                                       bool* Mapped)
+DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtPartRef Part, uint8_t** Buffer,
+                                       int* BufSize, int* MaxLoad, bool* Mapped)
 {
     if (Buffer != NULL)
         *Buffer = NULL;
@@ -884,7 +878,7 @@ DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex,
     }
 
     DtIoctlChSdiRxCmdMapDmaBufToUserInput In;
-    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_MAP_DMA_BUF_TO_USER, Uuid, PortIndex);
+    DtPcieCmd_InitHeader(&In, DT_CHSDIRX_CMD_MAP_DMA_BUF_TO_USER, Part);
     DtIoctlChSdiRxCmdMapDmaBufToUserOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_CHSDIRX_CMD), &In,
@@ -898,8 +892,9 @@ DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, int Uuid, int PortIndex,
     void* Address = (void*)(uintptr_t)Out.m_BufferAddr;
     if (Address == NULL)
     {
-        uint64_t Offset = (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE * (uint64_t)PortIndex +
-                          (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE;
+        uint64_t Offset =
+            (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE * (uint64_t)Part.PortIndex +
+            (uint64_t)DT_MMAP_PORT_MEM_SEGMENT_SIZE;
 
         Address = OsDrv_MapMemory(Drv, Offset, (size_t)Out.m_BufSize);
         if (Address == NULL)

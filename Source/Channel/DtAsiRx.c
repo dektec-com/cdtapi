@@ -45,8 +45,8 @@ typedef struct DtAsiRx
     OsDrv* Drv;
     int PortIndex;
     DtFuncInstance AfRx, AfDma;
-    bool Held;               // Exclusive access to both
-    int AsiRx, Cdmac, Burst; // UUIDs
+    bool Held; // Exclusive access to both
+    DtPartRef AsiRx, Cdmac, Burst;
     OsDmaBuffer Buf;
     bool Registered;
     DtRing Ring;
@@ -123,7 +123,7 @@ static DtapiResult Advance(DtAsiRx* Rx, size_t Bytes)
         DtVec_Clear(&Rx->Skips);
         Rx->SkipHead = 0;
     }
-    return DtPcieCmd_CdmacSetRxReadOffset(Rx->Drv, Rx->Cdmac, Rx->PortIndex,
+    return DtPcieCmd_CdmacSetRxReadOffset(Rx->Drv, Rx->Cdmac,
                                           (uint32_t)DtRing_ReadOffset(&Rx->Ring));
 }
 
@@ -157,8 +157,7 @@ static DtapiResult Skip(DtAsiRx* Rx, size_t Bytes)
 static DtapiResult UpdateBurst(DtAsiRx* Rx)
 {
     uint32_t Count = 0;
-    DtapiResult Result =
-        DtPcieCmd_BurstFifoGetOvfUflCount(Rx->Drv, Rx->Burst, Rx->PortIndex, &Count);
+    DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(Rx->Drv, Rx->Burst, &Count);
     if (Result != DTAPI_OK)
         return Result;
     Rx->BurstOvf = Count != Rx->OvfCount;
@@ -183,7 +182,7 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
 
     uint32_t WriteOffset = 0;
     DtapiResult Result =
-        DtPcieCmd_CdmacGetRxWriteOffset(Rx->Drv, Rx->Cdmac, Rx->PortIndex, &WriteOffset);
+        DtPcieCmd_CdmacGetRxWriteOffset(Rx->Drv, Rx->Cdmac, &WriteOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (WriteOffset >= Rx->Ring.Size ||
@@ -252,8 +251,8 @@ static DtapiResult ClearFlags(DtRx* Base, int Flags)
     DtAsiRx* Rx = (DtAsiRx*)Base;
     if ((Flags & DTAPI_RX_FIFO_OVF) != 0)
     {
-        DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(
-            Rx->Drv, Rx->Burst, Rx->PortIndex, &Rx->OvfCount);
+        DtapiResult Result =
+            DtPcieCmd_BurstFifoGetOvfUflCount(Rx->Drv, Rx->Burst, &Rx->OvfCount);
         if (Result != DTAPI_OK)
             return Result;
         Rx->BurstOvf = Rx->BurstOvfLatched = false;
@@ -271,7 +270,6 @@ static DtapiResult ClearFlags(DtRx* Base, int Flags)
 static DtapiResult Start(DtAsiRx* Rx)
 {
     OsDrv* Drv = Rx->Drv;
-    const int Index = Rx->PortIndex;
 
     Empty(Rx);
     DtapiResult Result = ClearFlags(&Rx->Base, DTAPI_RX_FIFO_OVF);
@@ -280,22 +278,22 @@ static DtapiResult Start(DtAsiRx* Rx)
     DtTsTrp_Start(&Rx->Scan, Rx->Base.RxMode);
     DtTsTrp_Start(&Rx->Take, Rx->Base.RxMode);
 
-    Result = DtPcieCmd_CdmacSetRxReadOffset(Drv, Rx->Cdmac, Index, 0);
+    Result = DtPcieCmd_CdmacSetRxReadOffset(Drv, Rx->Cdmac, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Rx->Cdmac, Index);
+        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Rx->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, Index, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoClearMax(Drv, Rx->Burst, Index, true, true);
+        Result = DtPcieCmd_BurstFifoClearMax(Drv, Rx->Burst, true, true);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, Index, DT_FUNC_OPMODE_RUN);
+        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_RUN);
     if (Result != DTAPI_OK)
     {
-        DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, Index, DT_FUNC_OPMODE_IDLE);
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
+        DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
         return Result;
     }
     Rx->Receiving = true;
@@ -311,14 +309,12 @@ static DtapiResult Start(DtAsiRx* Rx)
 static DtapiResult Stop(DtAsiRx* Rx)
 {
     OsDrv* Drv = Rx->Drv;
-    const int Index = Rx->PortIndex;
     DtapiResult Results[5];
 
-    Results[0] = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, Index, DT_FUNC_OPMODE_IDLE);
-    Results[1] =
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[2] = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
-    Results[3] = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac, Index);
+    Results[0] = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
+    Results[1] = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
+    Results[2] = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
+    Results[3] = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac);
     Rx->Receiving = false;
     Empty(Rx);
     Results[4] = ClearFlags(&Rx->Base, DTAPI_RX_FIFO_OVF);
@@ -371,7 +367,7 @@ static DtapiResult SetRxMode(DtRx* Base, int RxMode)
     const int PacketMode = (RxMode & DTAPI_RXMODE_TS_MASK) == DTAPI_RXMODE_STRAW
                                ? DT_ASIRX_PCKMODE_RAW
                                : DT_ASIRX_PCKMODE_AUTO;
-    Result = DtPcieCmd_AsiRxSetPacketMode(Rx->Drv, Rx->AsiRx, Rx->PortIndex, PacketMode);
+    Result = DtPcieCmd_AsiRxSetPacketMode(Rx->Drv, Rx->AsiRx, PacketMode);
     if (Result == DTAPI_OK)
         Base->RxMode = RxMode;
     return Result;
@@ -561,14 +557,13 @@ static DtapiResult GetTsRateBps(DtRx* Base, int* TsRate)
 
     *TsRate = 0;
     int Rate = 0;
-    DtapiResult Result =
-        DtPcieCmd_AsiRxGetTsBitrate(Rx->Drv, Rx->AsiRx, Rx->PortIndex, &Rate);
+    DtapiResult Result = DtPcieCmd_AsiRxGetTsBitrate(Rx->Drv, Rx->AsiRx, &Rate);
     if (Result != DTAPI_OK)
         return Result;
     if ((Base->RxMode & DTAPI_RXMODE_TS_MASK) != DTAPI_RXMODE_STRAW)
     {
         DtAsiRxStatus Status;
-        Result = DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, Rx->PortIndex, &Status);
+        Result = DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, &Status);
         if (Result != DTAPI_OK)
             return Result;
         if (Status.PacketSize == DT_ASIRX_PCKSIZE_204)
@@ -594,8 +589,7 @@ static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkD
     *AsiLock = 0;
     *RateOk = DTAPI_INPRATE_LOW;
     *AsiInv = DTAPI_NOT_SUPPORTED;
-    DtapiResult Result =
-        DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, Rx->PortIndex, &Status);
+    DtapiResult Result = DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, &Status);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -620,7 +614,7 @@ static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkD
 static DtapiResult GetViolCount(DtRx* Base, int* ViolCount)
 {
     DtAsiRx* Rx = (DtAsiRx*)Base;
-    return DtPcieCmd_AsiRxGetViolCount(Rx->Drv, Rx->AsiRx, Rx->PortIndex, ViolCount);
+    return DtPcieCmd_AsiRxGetViolCount(Rx->Drv, Rx->AsiRx, ViolCount);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PolarityControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -630,7 +624,7 @@ static DtapiResult GetViolCount(DtRx* Base, int* ViolCount)
 static DtapiResult PolarityControl(DtRx* Base, int Polarity)
 {
     DtAsiRx* Rx = (DtAsiRx*)Base;
-    return DtPcieCmd_AsiRxSetPolarityCtrl(Rx->Drv, Rx->AsiRx, Rx->PortIndex, Polarity);
+    return DtPcieCmd_AsiRxSetPolarityCtrl(Rx->Drv, Rx->AsiRx, Polarity);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -645,8 +639,8 @@ static void Release(DtRx* Base)
         Stop(Rx);
     if (Rx->Registered)
     {
-        DtPcieCmd_CdmacSetOpMode(Rx->Drv, Rx->Cdmac, Rx->PortIndex, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacFreeBuffer(Rx->Drv, Rx->Cdmac, Rx->PortIndex);
+        DtPcieCmd_CdmacSetOpMode(Rx->Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacFreeBuffer(Rx->Drv, Rx->Cdmac);
     }
     OsDmaBuffer_Free(&Rx->Buf);
     if (Rx->Held)
@@ -673,7 +667,7 @@ static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
         DtFuncInstance* Instance;
         bool IsDf;
         int Type;
-        int* Uuid;
+        DtPartRef* Ref;
     } Wanted;
     const Wanted Parts[] = {
         {&Rx->AfRx, true, DT_FUNC_TYPE_ASIRX, &Rx->AsiRx},
@@ -693,7 +687,7 @@ static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
             Result = DTAPI_E_NOT_FOUND;
         else
         {
-            *Parts[i].Uuid = Part->Uuid;
+            *Parts[i].Ref = Part->Ref;
             Result = DtFunc_CheckDriverVersion(Version, Parts[i].IsDf, Parts[i].Type);
         }
     }
@@ -708,14 +702,12 @@ static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
 static DtapiResult RegisterBuffer(DtAsiRx* Rx)
 {
     OsDrv* Drv = Rx->Drv;
-    const int Index = Rx->PortIndex;
     DtCdmacProps Props;
 
     memset(&Props, 0, sizeof(Props));
-    DtapiResult Result =
-        DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, Index, DT_BLOCK_OPMODE_IDLE);
+    DtapiResult Result = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacGetProps(Drv, Rx->Cdmac, Index, &Props);
+        Result = DtPcieCmd_CdmacGetProps(Drv, Rx->Cdmac, &Props);
     if (Result == DTAPI_OK && (Props.Caps & DT_CDMAC_CAP_RX) == 0)
         Result = DTAPI_E_NOT_SUPPORTED;
     if (Result == DTAPI_OK && (Props.PrefetchSize <= 0 || Props.PcieDataWidth <= 0 ||
@@ -728,12 +720,10 @@ static DtapiResult RegisterBuffer(DtAsiRx* Rx)
     const size_t Size = (DT_ASIRX_RING_SIZE + Unit - 1) / Unit * Unit;
     if (OsDmaBuffer_Alloc(Size, &Rx->Buf) != 0)
         return DTAPI_E_OUT_OF_MEM;
-    Result =
-        DtPcieCmd_CdmacAllocateBuffer(Drv, Rx->Cdmac, Index, DT_CDMAC_DIR_RX, &Rx->Buf);
+    Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Rx->Cdmac, DT_CDMAC_DIR_RX, &Rx->Buf);
     Rx->Registered = Result == DTAPI_OK;
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_CdmacSetTestMode(Drv, Rx->Cdmac, Index, DT_CDMAC_TESTMODE_NORMAL);
+        Result = DtPcieCmd_CdmacSetTestMode(Drv, Rx->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
     if (Result == DTAPI_OK &&
         DtRing_Init(&Rx->Ring, Rx->Buf.Data, Size, (size_t)Props.PcieDataWidth / 8) != 0)
         Result = DTAPI_E_INTERNAL;
@@ -775,7 +765,7 @@ DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
     Rx->Base.RxMode = DTAPI_RXMODE_ST188;
     Rx->Base.RxControl = DTAPI_RXCTRL_IDLE;
     OsDrv* Drv = Rx->Drv = Port->Device->Drv;
-    const int Index = Rx->PortIndex = Port->PortIndex;
+    Rx->PortIndex = Port->PortIndex;
     DtVec_Init(&Rx->AfRx.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Rx->AfDma.Parts, sizeof(DtFuncPart));
     DtVec_Init(&Rx->Skips, sizeof(DtAsiRxSkip));
@@ -793,12 +783,11 @@ DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
 
     // Everything idle and CDMAC flushed, before the buffer is registered.
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, Index, DT_FUNC_OPMODE_IDLE);
+        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, Index, DT_BLOCK_OPMODE_IDLE);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac, Index);
+        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac);
     if (Result == DTAPI_OK)
         Result = RegisterBuffer(Rx);
     if (Result == DTAPI_OK)
@@ -810,14 +799,11 @@ DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
 
     // The receiver's defaults and cleared flags.
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_AsiRxSetPolarityCtrl(Drv, Rx->AsiRx, Index, DT_ASIRX_POLARITY_AUTO);
+        Result = DtPcieCmd_AsiRxSetPolarityCtrl(Drv, Rx->AsiRx, DT_ASIRX_POLARITY_AUTO);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_AsiRxSetSyncMode(Drv, Rx->AsiRx, Index, DT_ASIRX_SYNCMODE_AUTO);
+        Result = DtPcieCmd_AsiRxSetSyncMode(Drv, Rx->AsiRx, DT_ASIRX_SYNCMODE_AUTO);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_AsiRxSetPacketMode(Drv, Rx->AsiRx, Index, DT_ASIRX_PCKMODE_AUTO);
+        Result = DtPcieCmd_AsiRxSetPacketMode(Drv, Rx->AsiRx, DT_ASIRX_PCKMODE_AUTO);
     if (Result == DTAPI_OK)
         Result = ClearFlags(&Rx->Base, -1);
 

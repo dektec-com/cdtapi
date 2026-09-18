@@ -15,7 +15,7 @@
 
 // CDTAPI includes
 #include "Device/DtDevice.h" // The device and its port capabilities.
-#include "DtPcieCmd.h"       // DtIoConfig.
+#include "DtPcieCmd.h"       // DtIoConfig and DtPartRef.
 #include "cdtapi.h"          // Results and DtTimeOfDay.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -59,8 +59,7 @@ typedef struct DtRxWait
 {
     const DtRxBackend* Ops; // Of the side that prepared the wait
     OsDrv* Drv;
-    int Uuid;
-    int PortIndex;
+    DtPartRef Part; // What the side waits on
     int MaxMs;      // The longest a wait lasts
     bool OutOfSync; // Set by Wait for AfterWait
 } DtRxWait;
