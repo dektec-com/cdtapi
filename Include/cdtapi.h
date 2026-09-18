@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* cdtapi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Public C API for DekTec SDI interfaces
+// CDTAPI - Public C API for DekTec SDI and DVB-ASI interfaces
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -107,6 +107,7 @@ typedef struct DtHwFuncDesc
     int IsAvFifo; // 1 when the port has an AV FIFO
     int IsInput;  // 1 when the port can be an input
     int IsOutput; // 1 when the port can be an output
+    int IsAsi;    // 1 when the port can carry DVB-ASI
 } DtHwFuncDesc;
 
 // Describes the public ports of every device, in the order the driver numbers the

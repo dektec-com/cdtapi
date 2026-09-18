@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Prints one line per port: the device name the scan gives it, serial number and port
-// number; its description; and what it is: SDI, AVFIFO, INPUT, OUTPUT. Then the number
-// of ports found.
+// number; its description; and what it is: SDI, ASI, AVFIFO, INPUT, OUTPUT. Then the
+// number of ports found.
 //
-//     9217800001:1  DTA-2178 port 1  SDI,INPUT,OUTPUT
+//     9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT
 //     ...
 //     10 ports
 //
@@ -51,6 +51,7 @@ static void PrintKinds(const DtHwFuncDesc* Port)
     int Printed = 0;
 
     PrintKind(Port->IsSdi, "SDI", &Printed);
+    PrintKind(Port->IsAsi, "ASI", &Printed);
     PrintKind(Port->IsAvFifo, "AVFIFO", &Printed);
     PrintKind(Port->IsInput, "INPUT", &Printed);
     PrintKind(Port->IsOutput, "OUTPUT", &Printed);

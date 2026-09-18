@@ -82,7 +82,7 @@ function(cdtapi_example_test Name Program Expected)
 endfunction()
 
 cdtapi_example_test(ListDevices DtListDevices
-    "9217800001:1  DTA-2178 port 1  SDI,INPUT,OUTPUT.*9217800001:9  DTA-2178 port 9  SDI\n.*10 ports")
+    "9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT.*9217800001:9  DTA-2178 port 9  SDI\n.*10 ports")
 cdtapi_example_test(ListDevicesOfNoDevice DtListDevices "^0 ports" --serial 1)
 cdtapi_example_test(ListDevicesHelp DtListDevices "^Usage: .*--serial" --help)
 

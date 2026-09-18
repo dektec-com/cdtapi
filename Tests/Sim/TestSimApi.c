@@ -142,6 +142,7 @@ DT_TEST(ScanDescribesEveryPort)
         DT_ASSERT_EQ(Func->IsAvFifo, 0);
         DT_ASSERT_EQ(Func->IsInput, Sdi ? 1 : 0);
         DT_ASSERT_EQ(Func->IsOutput, Sdi ? 1 : 0);
+        DT_ASSERT_EQ(Func->IsAsi, Sdi ? 1 : 0);
     }
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
@@ -462,6 +463,11 @@ DT_TEST(UnreadableCapabilityIsAbsent)
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
     DT_ASSERT_EQ(Funcs[2].IsAvFifo, 1);
     DT_ASSERT_EQ(Funcs[1].IsAvFifo, 0);
+
+    SimDtPcie_OverrideProperty("CAP_ASI", 3, false, 0);
+    DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
+    DT_ASSERT_EQ(Funcs[3].IsAsi, 0);
+    DT_ASSERT_EQ(Funcs[4].IsAsi, 1);
 }
 
 // Each of the SDI rates alone makes a port an SDI port.

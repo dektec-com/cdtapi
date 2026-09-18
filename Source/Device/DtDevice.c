@@ -230,6 +230,7 @@ void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
     Desc->IsAvFifo = (Caps & DT_CAP_AVFIFO) != 0;
     Desc->IsInput = (Caps & DT_CAP_INPUT) != 0;
     Desc->IsOutput = (Caps & DT_CAP_OUTPUT) != 0;
+    Desc->IsAsi = (Caps & DT_CAP_ASI) != 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHwFuncScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
