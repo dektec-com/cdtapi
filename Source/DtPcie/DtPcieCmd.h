@@ -443,6 +443,82 @@ DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, int Uuid, int PortI
 DtapiResult DtPcieCmd_SdiTxPhySetStartOfFrameOffset(OsDrv* Drv, int Uuid, int PortIndex,
                                                     int OffsetNs);
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ASI blocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// An ASI port is driven as an SDI transmit port is: the process drives the parts of the
+// port's AF_ASISDIRX or AF_ASISDITX and AF_DMA itself. Receiving uses the driver function
+// ASIRX and CDMAC in its receive direction, transmitting the gate ASITXG and the PHY or
+// the serialiser ASITXSER. The values these functions take and give are the driver's,
+// DT_ASIRX_, DT_ASITXG_ and the operational modes; one DTAPI's proxy would not send gives
+// DTAPI_E_INVALID_ARG without a command, and an answer it would not accept gives
+// DTAPI_E_DEV_DRIVER.
+//
+
+// What ASIRX reports of its input: DT_ASIRX_PCKSIZE_ and DT_ASIRX_POLARITY_ values.
+typedef struct DtAsiRxStatus
+{
+    int PacketSize;
+    bool CarrierDetect;
+    bool AsiLock;
+    int Polarity; // NORMAL, INVERT or UNKNOWN
+} DtAsiRxStatus;
+
+// ASIRX's operational mode: DT_FUNC_OPMODE_IDLE or RUN; and its status, which is
+// DT_FUNC_OPSTATUS_IDLE or RUN.
+DtapiResult DtPcieCmd_AsiRxSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+DtapiResult DtPcieCmd_AsiRxGetOpStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                       int* OpStatus);
+
+// Packetisation, DT_ASIRX_PCKMODE_AUTO or RAW.
+DtapiResult DtPcieCmd_AsiRxSetPacketMode(OsDrv* Drv, int Uuid, int PortIndex, int Mode);
+DtapiResult DtPcieCmd_AsiRxGetPacketMode(OsDrv* Drv, int Uuid, int PortIndex, int* Mode);
+
+// Polarity control, DT_ASIRX_POLARITY_AUTO, NORMAL or INVERT.
+DtapiResult DtPcieCmd_AsiRxSetPolarityCtrl(OsDrv* Drv, int Uuid, int PortIndex,
+                                           int Polarity);
+DtapiResult DtPcieCmd_AsiRxGetPolarityCtrl(OsDrv* Drv, int Uuid, int PortIndex,
+                                           int* Polarity);
+
+// Packet synchronisation, DT_ASIRX_SYNCMODE_AUTO, 188 or 204.
+DtapiResult DtPcieCmd_AsiRxSetSyncMode(OsDrv* Drv, int Uuid, int PortIndex, int Mode);
+DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, int Uuid, int PortIndex, int* Mode);
+
+DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, int Uuid, int PortIndex,
+                                     DtAsiRxStatus* Status);
+
+// The rate of the stream on the wire, in bits a second: of 204-byte packets when those
+// come, which DTAPI converts to 188-byte packets; 0 while no packets come.
+DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int* Bitrate);
+
+// The count of 8b/10b code violations since the receiver started.
+DtapiResult DtPcieCmd_AsiRxGetViolCount(OsDrv* Drv, int Uuid, int PortIndex, int* Count);
+
+// ASITXG's operational mode, a DT_BLOCK_OPMODE_ value: STANDBY sends K28.5 only, RUN
+// what the buffer holds.
+DtapiResult DtPcieCmd_AsiTxGSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+DtapiResult DtPcieCmd_AsiTxGGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode);
+
+// The polarity of what ASITXG sends, DT_ASITXG_POL_NORMAL or INVERT.
+DtapiResult DtPcieCmd_AsiTxGSetPolarity(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int Polarity);
+DtapiResult DtPcieCmd_AsiTxGGetPolarity(OsDrv* Drv, int Uuid, int PortIndex,
+                                        int* Polarity);
+
+// Forgets the part of a symbol stream the gate had taken in.
+DtapiResult DtPcieCmd_AsiTxGClearInputState(OsDrv* Drv, int Uuid, int PortIndex);
+
+// ASITXSER's operational mode, a DT_BLOCK_OPMODE_ value, on a port that has one.
+DtapiResult DtPcieCmd_AsiTxSerSetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int OpMode);
+DtapiResult DtPcieCmd_AsiTxSerGetOpMode(OsDrv* Drv, int Uuid, int PortIndex, int* OpMode);
+
+// How far the card has written the receive buffer, and how far the process has read it,
+// as offsets from its start.
+DtapiResult DtPcieCmd_CdmacGetRxWriteOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                            uint32_t* Offset);
+DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, int Uuid, int PortIndex,
+                                           uint32_t Offset);
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Network port -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The NW driver function of an IP port: its Ethernet MAC through the EMAC commands, its

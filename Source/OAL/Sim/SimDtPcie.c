@@ -21,6 +21,7 @@
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
 #include "OAL/OsThread.h"           // Pacing format events.
+#include "SimAsi.h"                 // The ASI blocks.
 #include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
 #include "SimDta2110.h"             // What the emulated DTA-2110 is.
@@ -759,7 +760,8 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A command for a transmit block of the port at PortIndex. The blocks are enabled while
-// the port is an output with an SDI I/O standard.
+// the port is an output with an SDI I/O standard, but for the PHY, which an ASI output
+// uses too (DtPtAsiSdiRxTx).
 //
 static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int Type,
                     const char* Role, int Cmd, const void* In, size_t InSize, void* Out,
@@ -767,11 +769,35 @@ static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, i
 {
     const SimConfig* Config = g_Sim.Config[PortIndex];
     bool Enabled = Config[DTAPI_IOCONFIG_IODIR].Value == DTAPI_IOCONFIG_OUTPUT &&
-                   Config[DTAPI_IOCONFIG_IOSTD].Value != DTAPI_IOCONFIG_ASI;
+                   (Config[DTAPI_IOCONFIG_IOSTD].Value != DTAPI_IOCONFIG_ASI ||
+                    FunctionCode == DT_FUNC_CODE_SDITXPHY_CMD);
     uint32_t Access = SimDtPcie_CheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
     uint32_t Status = SimSdiTx_Cmd(Dev, PortIndex, FunctionCode, Type, Role, Cmd, Access,
                                    Enabled, Config[DTAPI_IOCONFIG_IOSTD].SubValue, In,
                                    InSize, Out, OutSize, &Dev->SleepMs);
+
+    if (Status != DT_STATUS_OK)
+        return SimFail(Dev, Status, DrvStatus);
+    return OS_IOCTL_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AsiCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A command for ASIRX or ASITXG of the port at PortIndex, enabled while the port is an
+// ASI input or an ASI output.
+//
+static int AsiCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int Type,
+                  int Cmd, const void* In, size_t InSize, void* Out, size_t* OutSize,
+                  uint32_t* DrvStatus)
+{
+    const SimConfig* Config = g_Sim.Config[PortIndex];
+    int Direction = FunctionCode == DT_FUNC_CODE_ASIRX_CMD ? DTAPI_IOCONFIG_INPUT
+                                                           : DTAPI_IOCONFIG_OUTPUT;
+    bool Enabled = Config[DTAPI_IOCONFIG_IODIR].Value == Direction &&
+                   Config[DTAPI_IOCONFIG_IOSTD].Value == DTAPI_IOCONFIG_ASI;
+    uint32_t Access = SimDtPcie_CheckAccess(Dev, (Uuid & DT_UUID_INDEX_MASK) - 1);
+    uint32_t Status = SimAsi_Cmd(Dev, PortIndex, FunctionCode, Type, Cmd, Access, Enabled,
+                                 In, InSize, Out, OutSize);
 
     if (Status != DT_STATUS_OK)
         return SimFail(Dev, Status, DrvStatus);
@@ -914,6 +940,9 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
                 return SimFail(Dev, Status, DrvStatus);
             return OS_IOCTL_OK;
         }
+        if (SimAsi_Takes(FunctionCode))
+            return AsiCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Cmd, In,
+                          InSize, Out, OutSize, DrvStatus);
         if (SimSdiTx_Takes(FunctionCode))
             return SdiTxCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Role, Cmd,
                             In, InSize, Out, OutSize, DrvStatus);
@@ -1052,6 +1081,7 @@ void SimDtPcie_Reset(void)
 
     SimChSdiRx_Reset();
     SimSdiTx_Reset();
+    SimAsi_Reset();
     SimNw_Reset();
     SimNet_Reset();
 

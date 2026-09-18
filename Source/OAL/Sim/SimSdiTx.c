@@ -506,6 +506,10 @@ static const SimTxCmdProps g_Cmds[] = {
      sizeof(DtIoctlCDmaCCmdGetTxRdOffsetOutput), false, true},
     {DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_SET_TX_WRITE_OFFSET,
      sizeof(DtIoctlCDmaCCmdSetTxWrOffsetInput), 0, true, true},
+    {DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_GET_RX_WRITE_OFFSET, HDR,
+     sizeof(DtIoctlCDmaCCmdGetRxWrOffsetOutput), false, true},
+    {DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_SET_RX_READ_OFFSET,
+     sizeof(DtIoctlCDmaCCmdSetRxRdOffsetInput), 0, true, true},
     {DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_GET_REORDER_BUF_STATUS, HDR,
      sizeof(DtIoctlCDmaCCmdGetReorderBufStatusOutput), false, true},
     {DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_CLEAR_REORDER_BUF_MIN_MAX, HDR, 0, true, true},
@@ -725,6 +729,23 @@ static uint32_t CdmacCmd(SimTxPort* Port, void* Handle, int Cmd, const void* In,
             return DT_STATUS_NOT_SUPPORTED;
         Port->WriteOffset = Offset;
         Advance(Port);
+        return DT_STATUS_OK;
+    }
+    case DT_CDMAC_CMD_GET_RX_WRITE_OFFSET:
+        // A DTA-2178 answers 0 without a receive buffer, and takes a read offset of 0.
+        ((DtIoctlCDmaCCmdGetRxWrOffsetOutput*)Out)->m_RxWriteOffset =
+            Port->Registered && Port->Direction == DT_CDMAC_DIR_RX ? Port->WriteOffset
+                                                                   : 0;
+        *OutSize = sizeof(DtIoctlCDmaCCmdGetRxWrOffsetOutput);
+        return DT_STATUS_OK;
+    case DT_CDMAC_CMD_SET_RX_READ_OFFSET:
+    {
+        UInt Offset = ((const DtIoctlCDmaCCmdSetRxRdOffsetInput*)In)->m_RxReadOffset;
+
+        if (Offset != 0 && Offset >= Port->BufferSize)
+            return DT_STATUS_INVALID_PARAMETER;
+        if (Port->Registered && Port->Direction == DT_CDMAC_DIR_RX)
+            Port->ReadOffset = Offset;
         return DT_STATUS_OK;
     }
     case DT_CDMAC_CMD_GET_REORDER_BUF_STATUS:
