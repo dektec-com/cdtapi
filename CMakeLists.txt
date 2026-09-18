@@ -364,11 +364,11 @@ if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
         "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config.cmake"
         INSTALL_DESTINATION ${CDTAPI_CMAKE_DIR})
 
-    # The minor number, not only the major one: it is the version of the DTAPI whose
-    # behaviour this library reproduces, so 6.14 does not answer a request for 6.13.
+    # A later minor number answers a request for an earlier one: an application that asks
+    # for 6.13 is served by the 6.14 that is installed, as it is by any 6.x.
     write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config-version.cmake"
-        COMPATIBILITY SameMinorVersion)
+        COMPATIBILITY SameMajorVersion)
 
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/cdtapi-config.cmake"
