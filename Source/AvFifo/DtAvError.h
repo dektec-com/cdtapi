@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvError.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The text of a thread's last failure in the AV FIFO
+// CDTAPI - The text of a thread's last failure in the AV FIFO
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -8,8 +8,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
+// CDTAPI includes
+#include "cdtapi.h" // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Failures +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

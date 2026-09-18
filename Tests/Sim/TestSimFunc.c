@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSimFunc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Finding the parts of an API function against the emulator
+// CDTAPI - Finding the parts of an API function against the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state, and ends with no handle to it and no allocation left open.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -12,7 +12,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations and allocation failures.
 #include "DtFunc.h"                 // Functions under test.
 #include "DtPcieAbi.h"              // Types, UUID flags and driver statuses.
@@ -54,7 +54,7 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
     Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
         return NULL;

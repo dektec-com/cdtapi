@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* DtResultList.inc *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Every result code DtapiResult2Str names, as an X-macro list
+// CDTAPI - Every result code DtapiResult2Str names, as an X-macro list
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

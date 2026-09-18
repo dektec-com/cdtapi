@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# OsBackend.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Interface every OS abstraction backend implements
+// CDTAPI - Interface every OS abstraction backend implements
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -40,7 +40,7 @@ typedef struct OsBackend
 // The emulated device. Always present, so that a build can be tested anywhere.
 const OsBackend* OsSim_Backend(void);
 
-// True when CDTAPILITE_SIM asks for the emulator. Read once and remembered, so that
+// True when CDTAPI_SIM asks for the emulator. Read once and remembered, so that
 // changing the variable half way through a run cannot leave some handles emulated and
 // others real.
 bool OsSim_IsRequested(void);

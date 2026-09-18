@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* AbiSizes.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Compiles the vendored driver ABI standalone and checks every struct size
+// CDTAPI - Compiles the vendored driver ABI standalone and checks every struct size
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <stdio.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieAbi.h" // Vendored DtPcie driver ABI plus its base types.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Test +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

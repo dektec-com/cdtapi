@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSmpte352.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for decoding the fields of a SMPTE ST 352 payload identifier
+// CDTAPI - Unit tests for decoding the fields of a SMPTE ST 352 payload identifier
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtTest.h"           // Test framework.
 #include "Video/DtSmpte352.h" // Functions under test.
 

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# TestDtPcieStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the translation of driver statuses to DTAPI results
+// CDTAPI - Unit tests for the translation of driver statuses to DTAPI results
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -9,12 +9,12 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DTAPI result codes.
+// CDTAPI includes
 #include "DtPcieAbi.h"              // The DT_STATUS_ codes.
 #include "DtPcieStatus.h"           // Interface under test.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
+#include "cdtapi.h"                 // DTAPI result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# OsNet.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The operating system's network: interfaces, addresses, routes, neighbours
+// CDTAPI - The operating system's network: interfaces, addresses, routes, neighbours
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -21,7 +21,7 @@
 // An address is 16 bytes in network byte order; an IPv4 address fills the first 4 and
 // leaves the rest zero. A MAC address is 6 bytes.
 //
-// When CDTAPILITE_SIM asks for the emulator, the emulated network answers, whose
+// When CDTAPI_SIM asks for the emulator, the emulated network answers, whose
 // interfaces and neighbours the tests set; otherwise the host's.
 //
 

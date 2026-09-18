@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestAvPacket.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the headers of transmitted and received packets
+// CDTAPI - Unit tests for the headers of transmitted and received packets
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -9,7 +9,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvPacket.h" // Functions under test.
 #include "DtPcie/DtEthIp.h"    // The packet header.
 #include "DtTest.h"            // Test framework.

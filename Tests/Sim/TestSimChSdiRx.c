@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestSimChSdiRx.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The receive channel commands against the emulated channel and its source
+// CDTAPI - The receive channel commands against the emulated channel and its source
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state, and ends with no handle to it and no allocation left open.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -12,8 +12,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DTAPI_VIDSTD_ codes and results.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
 #include "DtFunc.h"                 // Finding the channel's UUID.
 #include "DtPcieAbi.h"              // Types, commands and driver statuses.
@@ -23,6 +22,7 @@
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "Video/DtFrameProps.h"     // Geometry for configurations.
 #include "Video/DtSdiFrame.h"       // The frame format in the ring.
+#include "cdtapi.h"                 // DTAPI_VIDSTD_ codes and results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -53,7 +53,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         DtFunc_Find(Fix->Drv, PORT, "AF_ASISDIRX", "", &Instance) != DTAPI_OK)
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Fix->Drv);
         return false;

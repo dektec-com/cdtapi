@@ -1,17 +1,17 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestFrameProps.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for SDI frame geometry and deducing a frame from its counters
+// CDTAPI - Unit tests for SDI frame geometry and deducing a frame from its counters
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // DTAPI_VIDSTD_ codes.
+// CDTAPI includes
 #include "DtTest.h"             // Test framework.
 #include "SdiFormat.h"          // Line timing of every standard.
 #include "Video/DtFrameProps.h" // Functions under test.
 #include "Video/DtVidStd.h"     // 4K classification.
+#include "cdtapi.h"             // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Geometry +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*# DtapiDeviceScanRef.cpp *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - DTAPI's own device scan, printed as DtListDeviceDescs prints CDtapiLite's
+// CDTAPI - DTAPI's own device scan, printed as DtListDeviceDescs prints CDTAPI's
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -77,7 +77,7 @@ int main()
         return 1;
     }
 
-    // Only the categories CDtapiLite scans.
+    // Only the categories CDTAPI scans.
     int Number = 0;
     for (int i = 0; i < Count; i++)
     {

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvTime.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Times of day on the media clock, and RTP timestamps
+// CDTAPI - Times of day on the media clock, and RTP timestamps
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,8 +11,8 @@
 // Standard includes
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtTimeOfDay.
+// CDTAPI includes
+#include "cdtapi.h" // DtTimeOfDay.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Arithmetic +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSmpte352.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The fields of a SMPTE ST 352 payload identifier (VPID)
+// CDTAPI - The fields of a SMPTE ST 352 payload identifier (VPID)
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

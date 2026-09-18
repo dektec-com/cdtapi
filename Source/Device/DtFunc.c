@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtFunc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: the parts of an API function - Implementation
+// CDTAPI - Device layer: the parts of an API function - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtFunc.h"    // Interface being implemented.
 #include "DtPcieAbi.h" // DT_FUNC_TYPE_ values.
 

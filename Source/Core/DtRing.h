@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtRing.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Read side of the shared DMA ring buffer
+// CDTAPI - Read side of the shared DMA ring buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

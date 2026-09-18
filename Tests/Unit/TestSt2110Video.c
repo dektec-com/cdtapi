@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestSt2110Video.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for ST 2110-20 video packetizing and parsing
+// CDTAPI - Unit tests for ST 2110-20 video packetizing and parsing
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -11,7 +11,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvTime.h"      // Nanoseconds.
 #include "AvFifo/DtSt2110Video.h" // Functions under test.
 #include "Core/DtAlloc.h"         // Live allocations and failures.

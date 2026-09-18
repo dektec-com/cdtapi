@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAlloc.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Allocation seam and the shared container growth policy
+// CDTAPI - Allocation seam and the shared container growth policy
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

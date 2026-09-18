@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimDtPcie.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated DtPcie device
+// CDTAPI - The emulated DtPcie device
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,8 +13,7 @@
 #include <string.h>
 #include <time.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DTAPI_IOCONFIG_ codes.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Allocation seam.
 #include "Core/DtAtomic.h"          // The lock around commands.
 #include "DtIoConfig.h"             // I/O configuration names, codes and relation.
@@ -29,6 +28,7 @@
 #include "SimNet.h"                 // The DTA-2110's interface in the network.
 #include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
+#include "cdtapi.h"                 // DTAPI_IOCONFIG_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -1076,7 +1076,7 @@ void SimDtPcie_Reset(void)
     // A test puts the DTA-2110 there through SimDtPcie_SetDta2110Index. A program that
     // calls no test control, an example, asks for it through the environment, with the
     // device index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
-    const char* Dta2110 = getenv("CDTAPILITE_SIM_DTA2110");
+    const char* Dta2110 = getenv("CDTAPI_SIM_DTA2110");
     g_Sim.Dta2110Index = Dta2110 != NULL && Dta2110[0] != '\0' ? atoi(Dta2110) : -1;
     if (g_Sim.Dta2110Index >= 0)
     {
@@ -1268,10 +1268,10 @@ bool OsSim_IsRequested(void)
     static int Cached = -1;
 
     // Any value other than empty or "0" turns the emulator on, so that both
-    // CDTAPILITE_SIM=1 and CDTAPILITE_SIM=yes work and CDTAPILITE_SIM=0 does not.
+    // CDTAPI_SIM=1 and CDTAPI_SIM=yes work and CDTAPI_SIM=0 does not.
     if (Cached < 0)
     {
-        const char* Value = getenv("CDTAPILITE_SIM");
+        const char* Value = getenv("CDTAPI_SIM");
         Cached = (Value != NULL && Value[0] != '\0' && strcmp(Value, "0") != 0) ? 1 : 0;
     }
 

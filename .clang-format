@@ -1,7 +1,7 @@
-# DekTec house style for CDtapiLite.
+# DekTec house style for CDTAPI.
 #
 # Derived from Win/Applications/StreamXpertV3/.clang-format, which states the shared
-# house style in machine-readable form. Only the language differs: CDtapiLite is C11,
+# house style in machine-readable form. Only the language differs: CDTAPI is C11,
 # so the C++-only options are dropped and Standard is pinned to C.
 ---
 Language: Cpp
@@ -16,7 +16,7 @@ TabWidth: 4
 
 # Indent the hash of a nested preprocessor directive, which is what the surrounding
 # DekTec code does (see SDK/Common/Source/DtCommon.h). Not in the StreamXpertV3 config
-# it derives from, because that tree has little platform branching; CDtapiLite has a
+# it derives from, because that tree has little platform branching; CDTAPI has a
 # lot of it, so stating it here keeps the two trees looking the same.
 IndentPPDirectives: BeforeHash
 

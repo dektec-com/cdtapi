@@ -1,6 +1,6 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*# CDtapiLite_AvFifo.h *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# cdtapi_avfifo.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Public C API for SMPTE 2110 video and audio through the A/V FIFO
+// CDTAPI - Public C API for SMPTE 2110 video and audio through the A/V FIFO
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,8 +12,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // Results, devices and the time of day.
+// CDTAPI includes
+#include "cdtapi.h" // Results, devices and the time of day.
 
 #ifdef __cplusplus
 extern "C"
@@ -22,8 +22,7 @@ extern "C"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The names, values and layouts are those of CDTAPI_AvFifo.h, so that code written for
-// it compiles against this header unchanged.
+// The names, values and layouts are DTAPI's, as the rest of the interface is.
 //
 
 // An exact ratio.
@@ -275,8 +274,7 @@ typedef struct FrameProperties
 // subsampling, among 720x480 and 720x576 interlaced, 1920x1080 interlaced, 1280x720,
 // 1920x1080, 2048x1080 and 3840x2160 progressive, all 4:2:2 in 8, 10, 12 and 16 bits.
 // Returns 1 and fills *Properties when found, -1 otherwise.
-CDTAPILITE_API int GetFrameProperties(const AvFifo_Frame* Frame,
-                                      FrameProperties* Properties);
+CDTAPI_API int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Properties);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The FIFOs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -337,7 +335,7 @@ typedef enum HwOrSwPipe
 
 // Returns the text of the calling thread's last failure, or an empty string. The text
 // stays until the next failure on that thread.
-CDTAPILITE_API const char* GetLastException(void);
+CDTAPI_API const char* GetLastException(void);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receiving -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -345,112 +343,110 @@ typedef struct AvFifo_RxFifoC AvFifo_RxFifo;
 
 // Makes a receive FIFO, or returns NULL when there is no memory; frees it, detaching it
 // first; and frees it and sets *Fifo to NULL.
-CDTAPILITE_API AvFifo_RxFifo* AvFifo_RxFifo_Alloc(void);
-CDTAPILITE_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
-CDTAPILITE_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
+CDTAPI_API AvFifo_RxFifo* AvFifo_RxFifo_Alloc(void);
+CDTAPI_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
+CDTAPI_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
 
 // Attaches the FIFO to a port, counted from 0, with HwOrSwPipe_Auto or a pipe
 // preference. The FIFO opens its own handle to the device.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Attach(AvFifo_RxFifo* Fifo,
-                                                const DtDevice* Device, int Port);
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Attach2(AvFifo_RxFifo* Fifo,
-                                                 const DtDevice* Device, int Port,
-                                                 HwOrSwPipe Pipe);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Attach(AvFifo_RxFifo* Fifo, const DtDevice* Device,
+                                            int Port);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Attach2(AvFifo_RxFifo* Fifo, const DtDevice* Device,
+                                             int Port, HwOrSwPipe Pipe);
 
 // Stops and detaches the FIFO. Frames the application holds stay valid until Free.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
 
 // Returns the frames in the FIFO to the pool.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
 
 // Starts receiving: checks the network, opens a pipe, programs its filter and joins a
 // multicast group. The statistics start from zero.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
 
 // Stops receiving and gives up the pipe; the frames in the FIFO stay.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
 
 // Configures the FIFO for audio, with a FIFO of 400 frames unless its size was set, or
 // for video.
-CDTAPILITE_API DtapiResult
-AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo, const St2110_RxConfigAudio* Config);
-CDTAPILITE_API DtapiResult
-AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo, const St2110_RxConfigVideo* Config);
+CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo,
+                                                    const St2110_RxConfigAudio* Config);
+CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo,
+                                                    const St2110_RxConfigVideo* Config);
 
 // Sets the stream to receive. The sources are copied; at most three, of one address.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
-                                                   const AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
+                                               const AvFifo_IpPars* IpPars);
 
 // The frames in the FIFO, 0 for a NULL FIFO.
-CDTAPILITE_API int AvFifo_RxFifo_GetFifoLoad(const AvFifo_RxFifo* Fifo);
+CDTAPI_API int AvFifo_RxFifo_GetFifoLoad(const AvFifo_RxFifo* Fifo);
 
 // Takes the oldest frame, or returns NULL when there is none. The frame is the
 // application's until it returns it to the pool.
-CDTAPILITE_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
+CDTAPI_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
 
 // Returns a frame Read gave.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
-                                                         AvFifo_Frame* Frame);
+CDTAPI_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
+                                                     AvFifo_Frame* Frame);
 
 // The most frames the FIFO holds, 4 unless set, and setting it while stopped.
-CDTAPILITE_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
-CDTAPILITE_API void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size);
+CDTAPI_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
+CDTAPI_API void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size);
 
 // What the FIFO counted since Start.
-CDTAPILITE_API RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo);
+CDTAPI_API RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo);
 
 // Whether the FIFO receives through a hardware pipe: known once started, and before for
 // HwOrSwPipe_ForceHwPipe and HwOrSwPipe_UseSwPipe.
-CDTAPILITE_API DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo,
-                                                    int* UsesHwPipe);
+CDTAPI_API DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo,
+                                                int* UsesHwPipe);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 typedef struct AvFifo_TxFifoC AvFifo_TxFifo;
 
 // As for the receive FIFO.
-CDTAPILITE_API AvFifo_TxFifo* AvFifo_TxFifo_Alloc(void);
-CDTAPILITE_API void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo);
-CDTAPILITE_API void AvFifo_TxFifo_Freep(AvFifo_TxFifo** Fifo);
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Attach(AvFifo_TxFifo* Fifo,
-                                                const DtDevice* Device, int Port);
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo,
-                                                 const DtDevice* Device, int Port,
-                                                 HwOrSwPipe Pipe);
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
+CDTAPI_API AvFifo_TxFifo* AvFifo_TxFifo_Alloc(void);
+CDTAPI_API void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo);
+CDTAPI_API void AvFifo_TxFifo_Freep(AvFifo_TxFifo** Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Attach(AvFifo_TxFifo* Fifo, const DtDevice* Device,
+                                            int Port);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo, const DtDevice* Device,
+                                             int Port, HwOrSwPipe Pipe);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
 
 // Starts transmitting: checks the network, resolves the destination's MAC address and
 // opens a pipe. Frames are sent at their time of day, as the card's clock has it.
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
 
 // Stops transmitting; frames not yet sent are dropped from the pipe but stay in the FIFO.
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
 
-CDTAPILITE_API DtapiResult
-AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo, const St2110_TxConfigAudio* Config);
-CDTAPILITE_API DtapiResult
-AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo, const St2110_TxConfigVideo* Config);
+CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
+                                                    const St2110_TxConfigAudio* Config);
+CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
+                                                    const St2110_TxConfigVideo* Config);
 
 // Sets the stream to send: destination, RTP payload type from 0 to 127 and port from 0
 // to 65535. The transport protocol is not used: the streams are RTP, as in DTAPI.
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
-                                                   const AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
+                                               const AvFifo_IpPars* IpPars);
 
-CDTAPILITE_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
+CDTAPI_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
 
 // Queues a frame from GetFromMemPool for sending; once sent it returns to the pool. The
 // frame's valid bytes must be those of the configuration.
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame);
+CDTAPI_API DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame);
 
 // A frame of Size bytes to fill, or NULL before Configure or without memory.
-CDTAPILITE_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
+CDTAPI_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
 
-CDTAPILITE_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
-CDTAPILITE_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
-CDTAPILITE_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
-CDTAPILITE_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
-                                                    int* UsesHwPipe);
+CDTAPI_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
+CDTAPI_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
+CDTAPI_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
+                                                int* UsesHwPipe);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Timing helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -463,26 +459,26 @@ CDTAPILITE_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
 //
 
 // The time of day on the audio grid of SampleRate Hz nearest to *ToD.
-CDTAPILITE_API DtTimeOfDay Tod2Grid_Audio(const DtTimeOfDay* ToD, int SampleRate);
+CDTAPI_API DtTimeOfDay Tod2Grid_Audio(const DtTimeOfDay* ToD, int SampleRate);
 
 // The time of day on the video grid of *Rate frames or fields per second nearest to *ToD.
-CDTAPILITE_API DtTimeOfDay Tod2Grid_Video(const DtTimeOfDay* ToD, const FrameRate* Rate);
+CDTAPI_API DtTimeOfDay Tod2Grid_Video(const DtTimeOfDay* ToD, const FrameRate* Rate);
 
 // The time of day of an audio RTP timestamp of SampleRate Hz: the one nearest to the
 // approximate time of day *ToD, typically the current time, of the times at which the
 // 32-bit timestamp has that value.
-CDTAPILITE_API DtTimeOfDay Rtp2Tod_Audio(uint32_t RtpTime, const DtTimeOfDay* ToD,
-                                         int SampleRate);
+CDTAPI_API DtTimeOfDay Rtp2Tod_Audio(uint32_t RtpTime, const DtTimeOfDay* ToD,
+                                     int SampleRate);
 
 // The time of day of a video RTP timestamp, as Rtp2Tod_Audio at 90 kHz.
-CDTAPILITE_API DtTimeOfDay Rtp2Tod_Video(uint32_t RtpTime, const DtTimeOfDay* ToD);
+CDTAPI_API DtTimeOfDay Rtp2Tod_Video(uint32_t RtpTime, const DtTimeOfDay* ToD);
 
 // The audio RTP timestamp of SampleRate Hz of *ToD, rounded to the nearest sample.
-CDTAPILITE_API uint32_t Tod2Rtp_Audio(const DtTimeOfDay* ToD, int SampleRate);
+CDTAPI_API uint32_t Tod2Rtp_Audio(const DtTimeOfDay* ToD, int SampleRate);
 
 // The video RTP timestamp of *ToD. It truncates an eighth of a tick later than *ToD, so
 // that a time on the grid of a fractional frame rate gives its own timestamp.
-CDTAPILITE_API uint32_t Tod2Rtp_Video(const DtTimeOfDay* ToD);
+CDTAPI_API uint32_t Tod2Rtp_Video(const DtTimeOfDay* ToD);
 
 #ifdef __cplusplus
 } // extern "C"

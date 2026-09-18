@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtVec.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Growable array of fixed-size elements - Implementation
+// CDTAPI - Growable array of fixed-size elements - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAlloc.h" // Allocation seam and growth policy.
 #include "DtVec.h"   // Interface being implemented.
 

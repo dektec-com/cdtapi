@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* LinTime.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Deadline arithmetic for timed waits on Linux - Implementation
+// CDTAPI - Deadline arithmetic for timed waits on Linux - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "LinTime.h" // Interface being implemented.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTime_AddMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

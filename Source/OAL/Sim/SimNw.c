@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimNw.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated network function of an IP port, its pipes and test controls
+// CDTAPI - The emulated network function of an IP port, its pipes and test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,7 +11,7 @@
 #include <string.h>
 #include <time.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"   // Allocation seam.
 #include "Core/DtVec.h"     // Queues of packets.
 #include "DtPcie/DtEthIp.h" // The header of the packets in a pipe's buffer.
@@ -1382,7 +1382,7 @@ void SimNw_Reset(void)
 
     // As the DTA-2110 itself in SimDtPcie_Reset: a program that calls no test control
     // asks for the loopback through the environment.
-    const char* Loopback = getenv("CDTAPILITE_SIM_LOOPBACK");
+    const char* Loopback = getenv("CDTAPI_SIM_LOOPBACK");
     g_Nw.Loopback = Loopback != NULL && Loopback[0] != '\0' && strcmp(Loopback, "0") != 0;
 
     for (int i = 0; i < SIM_NW_HW_PIPES; i++)

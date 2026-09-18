@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestConformance.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Every function of the public headers, called once against the emulator
+// CDTAPI - Every function of the public headers, called once against the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -27,9 +27,9 @@
 #include <string.h>
 
 // The public interface, and the test framework.
-#include "CDtapiLite.h"
-#include "CDtapiLite_AvFifo.h"
 #include "DtTest.h"
+#include "cdtapi.h"
+#include "cdtapi_avfifo.h"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -133,7 +133,7 @@ DT_TEST(EveryPublicFunctionIsThere)
 
 DT_TEST(LibraryCalls)
 {
-    DT_ASSERT(DtapiLiteGetVersion() != NULL && DtapiLiteGetVersion()[0] != '\0');
+    DT_ASSERT(DtapiGetVersion() != NULL && DtapiGetVersion()[0] != '\0');
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_NOT_ATTACHED), "DTAPI_E_NOT_ATTACHED");
 
@@ -340,7 +340,7 @@ DT_TEST(ReceiveFifoCalls)
     DtHwFuncDesc Port;
     if (!FindPort(IsAvFifo, &Port))
     {
-        printf("    no IP port; is CDTAPILITE_SIM_DTA2110 set?\n");
+        printf("    no IP port; is CDTAPI_SIM_DTA2110 set?\n");
         (*DtFailures)++;
         return;
     }
@@ -398,7 +398,7 @@ DT_TEST(TransmitFifoCalls)
     DtHwFuncDesc Port;
     if (!FindPort(IsAvFifo, &Port))
     {
-        printf("    no IP port; is CDTAPILITE_SIM_DTA2110 set?\n");
+        printf("    no IP port; is CDTAPI_SIM_DTA2110 set?\n");
         (*DtFailures)++;
         return;
     }

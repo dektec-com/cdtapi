@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSt2110Audio.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - ST 2110-30 audio: frames into packets, and packets into frames
+// CDTAPI - ST 2110-30 audio: frames into packets, and packets into frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvTime.h"      // Nanoseconds and 128-bit arithmetic.
 #include "DtSt2110Audio.h" // Interface being implemented.
 

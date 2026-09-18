@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtRing.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Read side of the shared DMA ring buffer - Implementation
+// CDTAPI - Read side of the shared DMA ring buffer - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtRing.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

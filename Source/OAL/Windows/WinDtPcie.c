@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# WinDtPcie.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver backend for Windows
+// CDTAPI - DtPcie driver backend for Windows
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes: DtPcieAbi.h brings in windows.h and the device interface GUID.
+// CDTAPI includes: DtPcieAbi.h brings in windows.h and the device interface GUID.
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // Driver ABI and GUID_DEVINTERFACE_DTPCIE.
 #include "OAL/OsBackend.h"      // Backend interface being implemented.

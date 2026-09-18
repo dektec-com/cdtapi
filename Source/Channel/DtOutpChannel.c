@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtOutpChannel.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The SDI output channel: DtOutpChannel on the transmit blocks of a port
+// CDTAPI - The SDI output channel: DtOutpChannel on the transmit blocks of a port
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -19,8 +19,7 @@
 #include <stdint.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // Interface being implemented.
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "Device/DtDevice.h"    // The device and its port capabilities.
 #include "Device/DtFunc.h"      // Finding the transmit blocks.
@@ -31,6 +30,7 @@
 #include "Video/DtFrameProps.h" // The frame rate.
 #include "Video/DtSdiFrame.h"   // The buffer's format and the raw frame.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
+#include "cdtapi.h"             // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

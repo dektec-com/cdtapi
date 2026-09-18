@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtEthIp.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The header in front of every Ethernet frame in a pipe's shared buffer
+// CDTAPI - The header in front of every Ethernet frame in a pipe's shared buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

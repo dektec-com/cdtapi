@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvPort.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - What the receive and transmit FIFOs share: the port, its network and pipes
+// CDTAPI - What the receive and transmit FIFOs share: the port, its network and pipes
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Device/DtFunc.h" // The network function.
 #include "DtAvError.h"     // Failure texts.
 #include "DtAvPort.h"      // Interface being implemented.

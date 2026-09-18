@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# WinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events, mutexes and time on Windows
+// CDTAPI - Threads, events, mutexes and time on Windows
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,7 +13,7 @@
 #include <process.h>
 #include <windows.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "OAL/OsThread.h" // Interface being implemented.
 

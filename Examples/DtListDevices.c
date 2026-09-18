@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtListDevices.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Example: lists every port of every DekTec device
+// CDTAPI - Example: lists every port of every DekTec device
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

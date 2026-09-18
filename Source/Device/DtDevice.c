@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDevice.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: DtDevice and the hardware function scan - Implementation
+// CDTAPI - Device layer: DtDevice and the hardware function scan - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "Core/DtVec.h"   // The scan's list of hardware functions.
 #include "DtAvInput.h"    // Video standard detection.

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# SdiFormat.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The SDI line timing of every video standard, and what a receiver reports
+// CDTAPI - The SDI line timing of every video standard, and what a receiver reports
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,9 +13,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // DTAPI_VIDSTD_ codes.
+// CDTAPI includes
 #include "Video/DtFrameProps.h" // DT_SDIRATE_ codes.
+#include "cdtapi.h"             // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Formats +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

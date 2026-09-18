@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSt2110Video.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - ST 2110-20 video: frames into packets, and packets into frames
+// CDTAPI - ST 2110-20 video: frames into packets, and packets into frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvPixConv.h" // Pixel conversions.
 #include "DtAvStream.h"  // Sinks, streams and targets.
 

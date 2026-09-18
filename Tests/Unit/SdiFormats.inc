@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* SdiFormats.inc *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Every SDI video standard with its line timing, as an X-macro list for tests
+// CDTAPI - Every SDI video standard with its line timing, as an X-macro list for tests
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* OsIoctlOutcome.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - How a failed IOCTL is classified, per platform
+// CDTAPI - How a failed IOCTL is classified, per platform
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,7 +11,7 @@
 // Standard includes
 #include <stdint.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

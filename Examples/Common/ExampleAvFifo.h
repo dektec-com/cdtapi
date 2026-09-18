@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleAvFifo.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the SMPTE ST 2110 examples share: the header, the stream and frames
+// CDTAPI - What the SMPTE ST 2110 examples share: the header, the stream and frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,24 +11,13 @@
 // Example includes
 #include "Common/ExampleCommon.h" // The API and what every example shares.
 
-// The AV FIFO. As ExampleCommon.h does for the rest of the API, EXAMPLE_WITH_CDTAPI
-// selects the original header, so that the examples are a drop-in check as well.
-#ifdef EXAMPLE_WITH_CDTAPI
-    #include "CDTAPI_AvFifo.h"
-#else
-    #include "CDtapiLite_AvFifo.h"
-#endif
+// The AV FIFO.
+#include "cdtapi_avfifo.h"
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The stream +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-//
-// The help of --pipe, which is an addition of CDtapiLite: against the original header
-// the option is refused, as the choice cannot be made there.
-//
-#ifdef EXAMPLE_WITH_CDTAPI
-    #define EXAMPLE_PIPE_HELP "Not available against CDTAPI_AvFifo.h"
-#else
-    #define EXAMPLE_PIPE_HELP "auto, hw, sw or prefer; auto without it"
-#endif
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The stream +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The help of --pipe.
+#define EXAMPLE_PIPE_HELP "auto, hw, sw or prefer; auto without it"
 
 // What the examples send or receive, from the command line.
 typedef struct ExampleAvConfig
@@ -42,9 +31,7 @@ typedef struct ExampleAvConfig
     int Channels;        // Audio when above 0: channels of L24
     int SampleRate;      // Audio: samples a second
     int SamplesPerFrame; // Audio: samples of every channel in one frame
-#ifndef EXAMPLE_WITH_CDTAPI
-    HwOrSwPipe Pipe; // Which pipe to use
-#endif
+    HwOrSwPipe Pipe;     // Which pipe to use
 } ExampleAvConfig;
 
 // Fills *Config from the command line. Prints what is wrong and returns false for a
@@ -65,7 +52,7 @@ void ExampleAv_PrintStream(const DtHwFuncDesc* Port, const char* Pipe,
 // As Example_Failed, and then the failure's text from GetLastException.
 int ExampleAv_Failed(const char* What, unsigned int Result);
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The bytes of one row of video, of a whole frame of video, or of one frame of audio.
 int ExampleAv_RowBytes(const ExampleAvConfig* Config);
@@ -85,12 +72,12 @@ void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Inde
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Attaches the FIFO to the port, counted from 0, with the pipe the configuration asks
-// for; against the original header the pipe cannot be chosen.
+// for.
 unsigned int ExampleAv_AttachTx(AvFifo_TxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config);
 unsigned int ExampleAv_AttachRx(AvFifo_RxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config);
 
-// "hardware pipe", "software pipe", or "pipe" where the header does not tell.
+// "hardware pipe" or "software pipe"; "pipe" where the FIFO does not tell.
 const char* ExampleAv_TxPipeKind(const AvFifo_TxFifo* Fifo);
 const char* ExampleAv_RxPipeKind(const AvFifo_RxFifo* Fifo);

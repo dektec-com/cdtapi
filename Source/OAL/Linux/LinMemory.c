@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# LinMemory.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Page size and fork protection on Linux
+// CDTAPI - Page size and fork protection on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -14,7 +14,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "OAL/OsDmaBuffer.h" // Platform part being implemented.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_PageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

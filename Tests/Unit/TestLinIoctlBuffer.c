@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#* TestLinIoctlBuffer.c *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the Linux IOCTL in/out buffer layout
+// CDTAPI - Unit tests for the Linux IOCTL in/out buffer layout
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -10,7 +10,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtTest.h"                   // Test framework.
 #include "OAL/Linux/LinIoctlBuffer.h" // Interface under test.
 

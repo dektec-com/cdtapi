@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# DtTransmitFrames.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Example: transmits raw SDI frames on an output channel
+// CDTAPI - Example: transmits raw SDI frames on an output channel
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -38,8 +38,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// DtOutpChannel::Detach's mode that waits until what was written is sent; CDTAPI.h has no
-// name for it.
+// DtOutpChannel_Detach's mode that waits until what was written is sent, which the
+// header gives no name of its own.
 #define WAIT_UNTIL_SENT 2
 
 // The most frames --in reads.

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtIoConfig.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Translation between I/O configuration codes and driver names
+// CDTAPI - Translation between I/O configuration codes and driver names
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,8 +11,8 @@
 // Standard includes
 #include <stddef.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
+// CDTAPI includes
+#include "cdtapi.h" // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Code and name +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -42,7 +42,7 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 //
 // Which combinations of group, value and sub-value make a configuration. DTAPI checks a
 // configuration against this relation before it sends one to the driver, and so does
-// CDtapiLite. Whether a port supports the configuration is for the driver to decide.
+// CDTAPI. Whether a port supports the configuration is for the driver to decide.
 //
 
 // What a code can be in a configuration; a code can be more than one. These are the

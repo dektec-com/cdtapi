@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSt2110Audio.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - ST 2110-30 audio: frames into packets, and packets into frames
+// CDTAPI - ST 2110-30 audio: frames into packets, and packets into frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,7 +11,7 @@
 // Standard includes
 #include <stdint.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvStream.h" // Sinks, streams and targets.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

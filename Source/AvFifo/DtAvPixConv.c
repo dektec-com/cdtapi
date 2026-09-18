@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAvPixConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Pixel conversions between ST 2110-20 pixel groups and the frame formats
+// CDTAPI - Pixel conversions between ST 2110-20 pixel groups and the frame formats
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-#if defined(CDTAPILITE_HAVE_SSSE3)
+#if defined(CDTAPI_HAVE_SSSE3)
     #if defined(_MSC_VER)
         #include <intrin.h>
     #else
@@ -18,7 +18,7 @@
     #endif
 #endif
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvPixConv.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Portable C +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -73,7 +73,7 @@ static uint64_t ReadPgroup10(const uint8_t* Src)
            (uint64_t)Src[3] << 8 | Src[4];
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Samples10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Samples10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The four samples of a pixel group in the other bit order: the first sample lowest
 // rather than highest, which is what UYVY 10 packs, and the same the other way about.
@@ -171,7 +171,7 @@ const DtAvPixConv* DtAvPixConv_C(void)
 //
 // CPUID leaf 1, ECX bit 9.
 //
-#if defined(CDTAPILITE_HAVE_SSSE3)
+#if defined(CDTAPI_HAVE_SSSE3)
 static bool HasSsse3(void)
 {
     #if defined(_MSC_VER)
@@ -192,7 +192,7 @@ static bool HasSsse3(void)
 //
 const DtAvPixConv* DtAvPixConv_Ssse3(void)
 {
-#if defined(CDTAPILITE_HAVE_SSSE3)
+#if defined(CDTAPI_HAVE_SSSE3)
     return HasSsse3() ? DtAvPixConv_Ssse3Table() : NULL;
 #else
     return NULL;
@@ -204,7 +204,7 @@ const DtAvPixConv* DtAvPixConv_Ssse3(void)
 // The operating system's extended state: bits 1 and 2 are set when it saves the SSE and
 // AVX registers on a thread switch. Only to be called when CPUID reports OSXSAVE.
 //
-#if defined(CDTAPILITE_HAVE_AVX2)
+#if defined(CDTAPI_HAVE_AVX2)
     #if defined(_MSC_VER)
 static uint64_t Xgetbv0(void)
 {
@@ -257,7 +257,7 @@ static bool HasAvx2(void)
 //
 const DtAvPixConv* DtAvPixConv_Avx2(void)
 {
-#if defined(CDTAPILITE_HAVE_AVX2)
+#if defined(CDTAPI_HAVE_AVX2)
     return HasSsse3() && HasAvx2() ? DtAvPixConv_Avx2Table() : NULL;
 #else
     return NULL;

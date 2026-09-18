@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestLinTime.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the Linux timed-wait deadline arithmetic
+// CDTAPI - Unit tests for the Linux timed-wait deadline arithmetic
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtTest.h"            // Test framework.
 #include "OAL/Linux/LinTime.h" // Interface under test.
 

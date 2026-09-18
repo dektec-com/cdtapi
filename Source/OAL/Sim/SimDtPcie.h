@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimDtPcie.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated DtPcie device, the values it reports, and its test controls
+// CDTAPI - The emulated DtPcie device, the values it reports, and its test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -152,7 +152,7 @@ void SimDtPcie_SetIndex(int Index);
 // property overrides and failures, the firmware status, the driver version and the
 // faults apply to both devices.
 // The emulated DTA-2110 at device index Index, or none for a negative index. Without
-// this call the environment decides: CDTAPILITE_SIM_DTA2110 holds the device index, so
+// this call the environment decides: CDTAPI_SIM_DTA2110 holds the device index, so
 // that a program with no test controls of its own, such as an example, can use the card.
 void SimDtPcie_SetDta2110Index(int Index);
 

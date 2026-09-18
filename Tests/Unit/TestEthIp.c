@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestEthIp.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the header in front of the frames in a pipe's buffer
+// CDTAPI - Unit tests for the header in front of the frames in a pipe's buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcie/DtEthIp.h" // Functions under test.
 #include "DtTest.h"         // Test framework.
 

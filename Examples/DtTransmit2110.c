@@ -1,6 +1,6 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtTransmit2110.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#* DtTransmit2110.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Example: transmits SMPTE ST 2110 video or audio on an IP port
+// CDTAPI - Example: transmits SMPTE ST 2110 video or audio on an IP port
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -135,7 +135,7 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
     return EXAMPLE_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
                              const DtHwFuncDesc* Port, const ExampleAvConfig* Config,

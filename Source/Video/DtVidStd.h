@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtVidStd.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Video standard knowledge shared inside the library
+// CDTAPI - Video standard knowledge shared inside the library
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtFrameProps.h" // The frame of one link.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Link standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -30,7 +30,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// What CDtapiLite knows of each video standard, from the one list in
+// What CDTAPI knows of each video standard, from the one list in
 // Tables/DtVidStdList.inc: the frame rate, how the frame is built, and how it is carried.
 //
 

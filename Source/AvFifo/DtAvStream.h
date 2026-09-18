@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAvStream.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the packetizers and parsers of every substandard share
+// CDTAPI - What the packetizers and parsers of every substandard share
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvFrame.h"  // Frames and their pool.
 #include "DtAvPacket.h" // Packet headers.
 

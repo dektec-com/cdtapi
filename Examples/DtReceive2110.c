@@ -1,6 +1,6 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtReceive2110.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtReceive2110.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Example: receives SMPTE ST 2110 video or audio on an IP port
+// CDTAPI - Example: receives SMPTE ST 2110 video or audio on an IP port
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -78,7 +78,7 @@ static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Reads Count frames, waiting up to TimeoutMs for each.
 //

@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestAvFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the frame pool, the frame FIFO and the frame properties
+// CDTAPI - Unit tests for the frame pool, the frame FIFO and the frame properties
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvFrame.h" // Functions under test.
 #include "Core/DtAlloc.h"     // Live allocations and failures.
 #include "DtTest.h"           // Test framework.

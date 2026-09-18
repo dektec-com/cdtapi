@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#* IoConfigValidList.inc *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Every valid I/O configuration, as an X-macro list for the unit test
+// CDTAPI - Every valid I/O configuration, as an X-macro list for the unit test
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

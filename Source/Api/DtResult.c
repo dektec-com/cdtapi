@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtResult.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Names of result codes
+// CDTAPI - Names of result codes
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,8 +9,8 @@
 // Standard includes
 #include <stddef.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // Public API and the result codes.
+// CDTAPI includes
+#include "cdtapi.h" // Public API and the result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Names +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

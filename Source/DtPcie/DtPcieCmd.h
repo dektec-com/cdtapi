@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieCmd.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands: typed commands on top of the OS abstraction
+// CDTAPI - DtPcie driver commands: typed commands on top of the OS abstraction
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,14 +13,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DTAPI result codes.
+// CDTAPI includes
 #include "OAL/OsAbstractionLayer.h" // Device handles and IOCTL transport.
 #include "OAL/OsDmaBuffer.h"        // Buffers registered for DMA.
+#include "cdtapi.h"                 // DTAPI result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Results +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// This layer returns the public DTAPI result codes from CDtapiLite.h, so that a result
+// This layer returns the public DTAPI result codes from cdtapi.h, so that a result
 // can travel up to the API unchanged.
 //
 

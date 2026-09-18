@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAvPacket.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The packets of a pipe: Ethernet, IP, UDP, RTP and ST 2110-20 headers
+// CDTAPI - The packets of a pipe: Ethernet, IP, UDP, RTP and ST 2110-20 headers
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvPacket.h"     // Interface being implemented.
 #include "DtAvTime.h"       // Nanoseconds per second.
 #include "DtPcie/DtEthIp.h" // The packet header.

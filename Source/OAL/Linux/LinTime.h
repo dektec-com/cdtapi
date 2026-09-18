@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* LinTime.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Deadline arithmetic for timed waits on Linux
+// CDTAPI - Deadline arithmetic for timed waits on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # #*#*#*#*#*#*#*#*#*#*#*#*#*# compare_cdtapi.sh *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Runs an example on the real CDTAPI and on CDtapiLite, and compares them
+# CDTAPI - Runs an example on the real CDTAPI and on CDTAPI, and compares them
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Builds the example program against CDTAPI.h and the real CDTAPI library, which itself
 # is built from its source and DTAPI's object file from a DekTec Linux SDK. Runs that
-# build and CDtapiLite's build of the same program with the same arguments, one after the
+# build and CDTAPI's build of the same program with the same arguments, one after the
 # other, and compares their output line by line.
 #
 #   Scripts/compare_cdtapi.sh <CDTAPI directory> <LinuxSDK directory> <Program> [args]
 #
 # The CDTAPI directory holds CDTAPI.cpp and CDTAPI.h; the SDK directory holds
-# DTAPI/Include/DTAPI.h. CDtapiLite's build is taken from Build/linux-debug, or from the
-# directory CDTAPILITE_BUILD names. Exits with 0 when the outputs are identical.
+# DTAPI/Include/DTAPI.h. CDTAPI's build is taken from Build/linux-debug, or from the
+# directory CDTAPI_BUILD names. Exits with 0 when the outputs are identical.
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ Cdtapi="$(cd "$1" && pwd)"
 Sdk="$(cd "$2" && pwd)"
 Program="$3"
 shift 3
-Build="${CDTAPILITE_BUILD:-$RepoRoot/Build/linux-debug}"
+Build="${CDTAPI_BUILD:-$RepoRoot/Build/linux-debug}"
 Work="$(mktemp -d)"
 trap 'rm -rf "$Work"' EXIT
 
@@ -56,10 +56,10 @@ Status=0
 "$Work/$Program" "$@" > "$Work/cdtapi.txt" || Status=$?
 echo "exit $Status" >> "$Work/cdtapi.txt"
 Status=0
-"$Build/Examples/$Program" "$@" > "$Work/cdtapilite.txt" || Status=$?
-echo "exit $Status" >> "$Work/cdtapilite.txt"
+"$Build/Examples/$Program" "$@" > "$Work/cdtapi.txt" || Status=$?
+echo "exit $Status" >> "$Work/cdtapi.txt"
 
-if diff -u "$Work/cdtapi.txt" "$Work/cdtapilite.txt"; then
+if diff -u "$Work/cdtapi.txt" "$Work/cdtapi.txt"; then
     echo "Identical: $Program $*"
     cat "$Work/cdtapi.txt"
 else

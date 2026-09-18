@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieCmdPipe.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands: the network port, its MAC and its pipes
+// CDTAPI - DtPcie driver commands: the network port, its MAC and its pipes
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieAbi.h"      // Vendored driver structures and IOCTL codes.
 #include "DtPcieCmd.h"      // Interface being implemented.
 #include "DtPcieCmdIssue.h" // Issuing commands.

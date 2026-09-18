@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtBuf.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Reference-counted byte buffer with a release callback - Implementation
+// CDTAPI - Reference-counted byte buffer with a release callback - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtBuf.h"    // Interface being implemented.
 #include "DtAlloc.h"  // Allocation seam.
 #include "DtAtomic.h" // Atomic reference counting.

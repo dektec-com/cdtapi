@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtVidStd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Video standard classification and the video to I/O standard mapping
+// CDTAPI - Video standard classification and the video to I/O standard mapping
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,10 +9,10 @@
 // Standard includes
 #include <stddef.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // Public constants and the function being implemented.
+// CDTAPI includes
 #include "DtSmpte352.h" // VPID fields.
 #include "DtVidStd.h"   // Interface being implemented.
+#include "cdtapi.h"     // Public constants and the function being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

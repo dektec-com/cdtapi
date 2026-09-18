@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* DtPcieCmdIssue.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands: issuing a command, shared by the layer's files
+// CDTAPI - DtPcie driver commands: issuing a command, shared by the layer's files
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,10 +12,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DtapiResult.
+// CDTAPI includes
 #include "DtPcieAbi.h"              // DtIoctlInputDataHdr.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
+#include "cdtapi.h"                 // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

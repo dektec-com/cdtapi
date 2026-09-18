@@ -1,19 +1,19 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtApi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Public API entry points that belong to no single subsystem
+// CDTAPI - Public API entry points that belong to no single subsystem
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // Public API.
+// CDTAPI includes
+#include "cdtapi.h" // Public API.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiLiteGetVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiGetVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const char* DtapiLiteGetVersion(void)
+const char* DtapiGetVersion(void)
 {
-    return CDTAPILITE_VERSION;
+    return CDTAPI_VERSION;
 }

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAlloc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Allocation seam and the shared container growth policy - Implementation
+// CDTAPI - Allocation seam and the shared container growth policy - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <stdlib.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAlloc.h"  // Interface being implemented.
 #include "DtAtomic.h" // The counters.
 

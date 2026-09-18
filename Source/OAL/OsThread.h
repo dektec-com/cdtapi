@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# OsThread.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events with a timeout, mutexes, sleeping and a monotonic clock
+// CDTAPI - Threads, events with a timeout, mutexes, sleeping and a monotonic clock
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

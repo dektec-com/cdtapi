@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# build.sh *#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 #
-# CDtapiLite - Configures, builds, tests and lints the project
+# CDTAPI - Configures, builds, tests and lints the project
 #
 # SPDX-License-Identifier: BSD-3-Clause
 

@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSimApi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The public device API against the emulator
+// CDTAPI - The public device API against the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state, and ends with no handle to it left open.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -13,14 +13,14 @@
 #include <string.h>
 #include <time.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // Public API under test.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Allocation failure injection.
 #include "DtPcieAbi.h"              // Driver statuses and function codes.
 #include "DtPcieCmd.h"              // Reading back what was configured.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Direct handles for reading back.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "cdtapi.h"                 // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -32,7 +32,7 @@ static bool StartSim(int* DtFailures)
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
         return false;

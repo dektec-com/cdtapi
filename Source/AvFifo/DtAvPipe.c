@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvPipe.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - A pipe of an IP port, its shared buffer, and the packets in the buffer
+// CDTAPI - A pipe of an IP port, its shared buffer, and the packets in the buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvPipe.h"       // Interface being implemented.
 #include "DtPcie/DtEthIp.h" // Packet headers.
 #include "DtPcieAbi.h"      // Pipe types, capabilities and modes.

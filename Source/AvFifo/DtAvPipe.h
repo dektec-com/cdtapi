@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvPipe.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - A pipe of an IP port, its shared buffer, and the packets in the buffer
+// CDTAPI - A pipe of an IP port, its shared buffer, and the packets in the buffer
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,11 +13,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"       // Results.
+// CDTAPI includes
 #include "DtAvStream.h"       // The packet sink.
 #include "DtPcie/DtPcieCmd.h" // The pipe commands.
 #include "OAL/OsDmaBuffer.h"  // The shared buffer.
+#include "cdtapi.h"           // Results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipe +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

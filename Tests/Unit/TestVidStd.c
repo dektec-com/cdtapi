@@ -1,17 +1,17 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestVidStd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for video standard properties and the I/O standard mapping
+// CDTAPI - Unit tests for video standard properties and the I/O standard mapping
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h"     // Function under test and constants.
+// CDTAPI includes
 #include "DtIoConfig.h"     // Names of I/O configuration codes.
 #include "DtTest.h"         // Test framework.
 #include "SdiFormat.h"      // Line timing of every standard.
 #include "Video/DtVidStd.h" // Functions under test.
+#include "cdtapi.h"         // Function under test and constants.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Expected +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

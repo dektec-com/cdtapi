@@ -1,7 +1,7 @@
 # Vendored driver ABI headers. These are copied verbatim from SDK/Common/Source and
 # must stay byte-identical to their originals so that a diff against the SDK copy
 # stays clean and future driver-ABI updates can be taken over rather than merged.
-# The project coding rules apply to CDtapiLite's own code, not to this directory.
+# The project coding rules apply to CDTAPI's own code, not to this directory.
 ---
 DisableFormat: true
 SortIncludes: Never

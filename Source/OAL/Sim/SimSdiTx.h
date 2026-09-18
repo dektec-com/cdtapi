@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimSdiTx.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The emulated SDI transmit blocks, their sink and test controls
+// CDTAPI - The emulated SDI transmit blocks, their sink and test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimSdiRx.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - String properties, function routing and the SDI receiver in the emulator
+// CDTAPI - String properties, function routing and the SDI receiver in the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state and checks that the handle really is emulated.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -12,7 +12,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieAbi.h"              // Raw structures and statuses.
 #include "DtPcieCmd.h"              // Driver commands under test.
 #include "DtTest.h"                 // Test framework.
@@ -56,7 +56,7 @@ static OsDrv* OpenSim(int* DtFailures)
     Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
         return NULL;

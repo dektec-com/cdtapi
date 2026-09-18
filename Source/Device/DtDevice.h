@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtDevice.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: the object behind DtDevice, and its hardware functions
+// CDTAPI - Device layer: the object behind DtDevice, and its hardware functions
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,16 +12,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // DtDevice and DtHwFuncDesc.
+// CDTAPI includes
 #include "DtPcieCmd.h"              // Driver commands and DtDeviceInfo.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
+#include "cdtapi.h"                 // DtDevice and DtHwFuncDesc.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// What DTAPI's DtDevice keeps of an attached device and CDtapiLite needs: the driver
+// What DTAPI's DtDevice keeps of an attached device and CDTAPI needs: the driver
 // handle and its version, the device's identity, its port counts and, per port, the
-// capabilities CDtapiLite looks at. Everything is read once, at attach, as DTAPI does;
+// capabilities CDTAPI looks at. Everything is read once, at attach, as DTAPI does;
 // the capabilities do not depend on the I/O configuration.
 //
 // DTAPI also caches each port's channel type, which follows the I/O direction, and

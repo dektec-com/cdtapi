@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimDta2110.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the emulated DTA-2110 is: its identity, properties and functions
+// CDTAPI - What the emulated DTA-2110 is: its identity, properties and functions
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieAbi.h"  // PROPERTY_VALUE_TYPE_ values and UUID flags.
 #include "SimDta2110.h" // Interface being implemented.
 

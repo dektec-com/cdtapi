@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* OsDispatch.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Chooses between the real driver and the emulated device
+// CDTAPI - Chooses between the real driver and the emulated device
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "OsAbstractionLayer.h" // Interface being implemented.
 #include "OsBackend.h"          // Backend interface.

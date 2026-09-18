@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# install_hooks.sh *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 #
-# CDtapiLite - Points git at the hooks kept in Scripts/hooks
+# CDTAPI - Points git at the hooks kept in Scripts/hooks
 #
 # SPDX-License-Identifier: BSD-3-Clause
 

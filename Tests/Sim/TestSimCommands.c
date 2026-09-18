@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestSimCommands.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Property, I/O configuration and time-of-day commands against the emulator
+// CDTAPI - Property, I/O configuration and time-of-day commands against the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state and checks that the handle really is emulated.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -13,14 +13,14 @@
 #include <string.h>
 #include <time.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_Version.h"     // The DTAPI version requests speak for.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Allocation failure injection.
 #include "DtPcieAbi.h"              // Raw structures and statuses.
 #include "DtPcieCmd.h"              // Driver commands under test.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Raw IOCTLs.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "cdtapi_version.h"         // The DTAPI version requests speak for.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -34,7 +34,7 @@ static OsDrv* OpenSim(int* DtFailures)
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
         return NULL;
@@ -690,10 +690,10 @@ DT_TEST(PropertyRequestCarriesTheFilter)
     DT_ASSERT_EQ(In.m_FirmwareVersion, 0);
     DT_ASSERT_EQ(In.m_FirmwareVariant, -1);
     DT_ASSERT_EQ(In.m_PortIndex, 3);
-    DT_ASSERT_EQ(In.m_DtapiMaj, CDTAPILITE_VERSION_MAJOR);
-    DT_ASSERT_EQ(In.m_DtapiMin, CDTAPILITE_VERSION_MINOR);
+    DT_ASSERT_EQ(In.m_DtapiMaj, CDTAPI_VERSION_MAJOR);
+    DT_ASSERT_EQ(In.m_DtapiMin, CDTAPI_VERSION_MINOR);
     DT_ASSERT_EQ(In.m_DtapiBugfix, 0);
-    DT_ASSERT(CDTAPILITE_VERSION_MAJOR == 6 && CDTAPILITE_VERSION_MINOR == 13);
+    DT_ASSERT(CDTAPI_VERSION_MAJOR == 6 && CDTAPI_VERSION_MINOR == 13);
 
     // The name is terminated and the rest of its field is zero.
     char Name[PROPERTY_NAME_MAX_SIZE];

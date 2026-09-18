@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# OsNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The operating system's network: chooses the host's or the emulated one
+// CDTAPI - The operating system's network: chooses the host's or the emulated one
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,7 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "OsBackend.h"    // Whether the emulator is asked for.
 #include "OsNet.h"        // Interface being implemented.

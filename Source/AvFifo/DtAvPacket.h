@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAvPacket.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The packets of a pipe: Ethernet, IP, UDP, RTP and ST 2110-20 headers
+// CDTAPI - The packets of a pipe: Ethernet, IP, UDP, RTP and ST 2110-20 headers
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

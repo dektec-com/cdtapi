@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* DtReceiveFrames.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Example: receives raw SDI frames from an input channel
+// CDTAPI - Example: receives raw SDI frames from an input channel
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

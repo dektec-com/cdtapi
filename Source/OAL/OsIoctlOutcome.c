@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* OsIoctlOutcome.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - How a failed IOCTL is classified, per platform - Implementation
+// CDTAPI - How a failed IOCTL is classified, per platform - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "OsIoctlOutcome.h" // Interface being implemented.
 
 // The customer bit of a Windows error value, set for errors a driver defines itself.

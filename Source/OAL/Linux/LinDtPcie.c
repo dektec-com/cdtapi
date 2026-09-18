@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# LinDtPcie.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver backend for Linux
+// CDTAPI - DtPcie driver backend for Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -21,7 +21,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // Driver ABI; pulls in sys/ioctl.h.
 #include "LinIoctlBuffer.h"     // Layout of the shared in/out buffer.

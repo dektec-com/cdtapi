@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtNet.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - An IP port in the operating system's network: its address and neighbours
+// CDTAPI - An IP port in the operating system's network: its address and neighbours
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,9 +12,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
-#include "OAL/OsNet.h"  // Interfaces, addresses and sockets.
+// CDTAPI includes
+#include "OAL/OsNet.h" // Interfaces, addresses and sockets.
+#include "cdtapi.h"    // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Addresses +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

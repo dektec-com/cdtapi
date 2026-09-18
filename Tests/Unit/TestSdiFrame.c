@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSdiFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
+// CDTAPI - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -14,11 +14,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // DTAPI_VIDSTD_ codes and results.
+// CDTAPI includes
 #include "DtTest.h"             // Test framework.
 #include "Video/DtFrameProps.h" // Frame geometry for the expected sizes.
 #include "Video/DtSdiFrame.h"   // Module under test.
+#include "cdtapi.h"             // DTAPI_VIDSTD_ codes and results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

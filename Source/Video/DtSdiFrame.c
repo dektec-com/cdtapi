@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
+// CDTAPI - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,11 +9,11 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"   // DTAPI_VIDSTD_ codes and result codes.
+// CDTAPI includes
 #include "DtFrameProps.h" // Frame geometry.
 #include "DtSdiFrame.h"   // Interface being implemented.
 #include "DtVidStd.h"     // Which standards are 4K.
+#include "cdtapi.h"       // DTAPI_VIDSTD_ codes and result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

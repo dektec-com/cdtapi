@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtFrameProps.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The geometry of an SDI frame per video standard - Implementation
+// CDTAPI - The geometry of an SDI frame per video standard - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,10 +10,10 @@
 #include <stddef.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"   // DTAPI_VIDSTD_ codes.
+// CDTAPI includes
 #include "DtFrameProps.h" // Interface being implemented.
 #include "DtVidStd.h"     // The standards, and the VPID route of deduction.
+#include "cdtapi.h"       // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame rates +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

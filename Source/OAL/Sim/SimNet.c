@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* SimNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated network of the operating system, and its test controls
+// CDTAPI - The emulated network of the operating system, and its test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "SimDtPcie.h"    // The lock.
 #include "SimNet.h"       // Interface being implemented.

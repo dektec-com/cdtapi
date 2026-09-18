@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieStatus.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands: from a driver status to a DTAPI result
+// CDTAPI - DtPcie driver commands: from a driver status to a DTAPI result
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,13 +11,13 @@
 // Standard includes
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
+// CDTAPI includes
+#include "cdtapi.h" // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The results match DTAPI's own translation, so that a failing command reports the same
-// code through CDtapiLite as through CDTAPI.
+// code through CDTAPI as through CDTAPI.
 //
 
 // Translates a driver's DtStatus. DT_STATUS_OK becomes DTAPI_OK; a status without a

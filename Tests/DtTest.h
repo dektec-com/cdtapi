@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtTest.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Minimal assertion and test-runner header used by every test
+// CDTAPI - Minimal assertion and test-runner header used by every test
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -22,7 +22,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test framework +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// CDtapiLite has no dependencies, and a unit-test framework is not worth making an
+// CDTAPI has no dependencies, and a unit-test framework is not worth making an
 // exception for: gtest and Catch2 would each pull in C++ and a package manager. This
 // header is the whole framework.
 //
@@ -39,7 +39,7 @@
 //
 //     DT_TEST(VersionIsNotEmpty)
 //     {
-//         DT_ASSERT(DtapiLiteGetVersion()[0] != '\0');
+//         DT_ASSERT(DtapiGetVersion()[0] != '\0');
 //     }
 //
 //     DT_TEST_MAIN("Api", DT_RUN(VersionIsNotEmpty))

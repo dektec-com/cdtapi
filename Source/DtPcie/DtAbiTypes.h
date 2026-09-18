@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAbiTypes.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Base types required by the vendored driver ABI headers
+// CDTAPI - Base types required by the vendored driver ABI headers
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -16,7 +16,7 @@
 //
 // Source/DtPcie/Abi/DtCommon.h describes a binary interface to the DtPcie driver and
 // spells its fields as Int, UInt, UInt8 and friends. Those names come from a DekTec
-// header that carries no redistribution grant, so CDtapiLite defines them here instead,
+// header that carries no redistribution grant, so CDTAPI defines them here instead,
 // sized and aligned to match the driver exactly.
 //
 // The A suffix on Int64A/UInt64A means "aligned". A 64-bit field inside an ioctl struct

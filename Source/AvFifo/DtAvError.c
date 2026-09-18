@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvError.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The text of a thread's last failure in the AV FIFO
+// CDTAPI - The text of a thread's last failure in the AV FIFO
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,9 +9,9 @@
 // Standard includes
 #include <stdio.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_AvFifo.h" // GetLastException.
-#include "DtAvError.h"         // Interface being implemented.
+// CDTAPI includes
+#include "DtAvError.h"     // Interface being implemented.
+#include "cdtapi_avfifo.h" // GetLastException.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Failures +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

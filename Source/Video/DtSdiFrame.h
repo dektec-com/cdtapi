@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiFrame.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
+// CDTAPI - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -13,8 +13,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
+// CDTAPI includes
+#include "cdtapi.h" // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* OsDmaBuffer.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Memory shared with the driver for DMA, and how it is handed over
+// CDTAPI - Memory shared with the driver for DMA, and how it is handed over
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

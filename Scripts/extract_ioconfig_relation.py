@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # #*#*#*#*#*#*#*#*#*#*# extract_ioconfig_relation.py *#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Derives the I/O configuration relation from the DekTec capability XML
+# CDTAPI - Derives the I/O configuration relation from the DekTec capability XML
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #

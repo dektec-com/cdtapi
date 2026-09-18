@@ -1,16 +1,16 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimDevice.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The OS abstraction and driver layers against the emulated device
+// CDTAPI - The OS abstraction and driver layers against the emulated device
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case first checks that the handle really
+// CTest runs this with CDTAPI_SIM=1. Every case first checks that the handle really
 // is emulated, so that the suite fails instead of quietly talking to a real card when it
 // is started by hand without the variable.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieAbi.h"              // Raw structures for the wire-format cases.
 #include "DtPcieCmd.h"              // Driver commands under test.
 #include "DtTest.h"                 // Test framework.
@@ -29,7 +29,7 @@ static OsDrv* OpenSim(int* DtFailures)
 
     if (Drv == NULL)
     {
-        printf("    FAIL: no device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         return NULL;
     }

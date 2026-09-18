@@ -1,20 +1,20 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestApi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the version entry point and the build wiring
+// CDTAPI - Unit tests for the version entry point and the build wiring
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // Public API.
-#include "DtTest.h"     // Test framework.
+// CDTAPI includes
+#include "DtTest.h" // Test framework.
+#include "cdtapi.h" // Public API.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 DT_TEST(VersionStringIsPresent)
 {
-    const char* Version = DtapiLiteGetVersion();
+    const char* Version = DtapiGetVersion();
     DT_ASSERT(Version != NULL);
     DT_ASSERT(Version[0] != '\0');
 }
@@ -24,9 +24,9 @@ DT_TEST(VersionStringIsPresent)
 DT_TEST(VersionMacrosAgreeWithString)
 {
     char Expected[32];
-    snprintf(Expected, sizeof(Expected), "%d.%d.%d", CDTAPILITE_VERSION_MAJOR,
-             CDTAPILITE_VERSION_MINOR, CDTAPILITE_VERSION_PATCH);
-    DT_ASSERT_STR(DtapiLiteGetVersion(), Expected);
+    snprintf(Expected, sizeof(Expected), "%d.%d.%d", CDTAPI_VERSION_MAJOR,
+             CDTAPI_VERSION_MINOR, CDTAPI_VERSION_PATCH);
+    DT_ASSERT_STR(DtapiGetVersion(), Expected);
 }
 
 DT_TEST_MAIN("Api", DT_RUN(VersionStringIsPresent), DT_RUN(VersionMacrosAgreeWithString))

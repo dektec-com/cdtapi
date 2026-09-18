@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The frames of the A/V FIFO, their memory pool and their FIFO
+// CDTAPI - The frames of the A/V FIFO, their memory pool and their FIFO
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "DtAvFrame.h"    // Interface being implemented.
 

@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimAvPipe.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Pipes and their shared buffers against the emulated DTA-2110
+// CDTAPI - Pipes and their shared buffers against the emulated DTA-2110
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Video goes from the packetizer through a writer
+// CTest runs this with CDTAPI_SIM=1. Video goes from the packetizer through a writer
 // into a hardware transmit pipe, over the emulator's loopback into a hardware receive
 // pipe, and through a reader into the parser, with buffers small enough that every frame
 // runs around their ends.
@@ -14,7 +14,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvPipe.h"        // Functions under test.
 #include "AvFifo/DtAvTime.h"        // Times of day.
 #include "AvFifo/DtSt2110Video.h"   // The packets.

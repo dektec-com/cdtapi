@@ -1,4 +1,4 @@
-# Contributing to CDtapiLite
+# Contributing to CDTAPI
 
 ## Coding rules
 
@@ -13,7 +13,7 @@
 6. **An opening brace goes on its own line** (Allman), for functions, `if`, `for`,
    `while`, `switch` and struct definitions.
 7. **A value whose width matters has a fixed-width type** from `<stdint.h>` — `uint8_t`,
-   `int32_t`, `uint32_t`, `int64_t` and the like — also in `CDtapiLite.h`. Counters,
+   `int32_t`, `uint32_t`, `int64_t` and the like — also in `cdtapi.h`. Counters,
    indices and port numbers stay `int`; sizes stay `size_t`, text `char`. `long` and
    `unsigned long` appear only where an operating-system interface defines them, such
    as `timespec.tv_nsec`. The result code keeps CDTAPI.h's `unsigned int`, and the
@@ -39,7 +39,7 @@ which states the house style in machine-readable form.
 ```c
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtDevice.c *#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Device management - Implementation
+// CDTAPI - Device management - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 ```
@@ -87,7 +87,7 @@ driver-ABI update is a copy rather than a merge. Do not reformat them. See
 
 ## This repository will become public
 
-CDtapiLite is BSD-3-Clause and is intended to be published. The history goes with it.
+CDTAPI is BSD-3-Clause and is intended to be published. The history goes with it.
 So, from the first commit onwards: no internal documents, no customer data, and no code
 copied from DTAPI without a BSD-3-Clause header on it. Rewriting history afterwards is
 painful and is usually only done halfway.

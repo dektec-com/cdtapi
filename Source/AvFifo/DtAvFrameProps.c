@@ -1,13 +1,13 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* DtAvFrameProps.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The video format of a received frame
+// CDTAPI - The video format of a received frame
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "CDtapiLite_AvFifo.h" // Interface being implemented.
+// CDTAPI includes
+#include "cdtapi_avfifo.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Formats +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

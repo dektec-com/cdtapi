@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimAvFifo.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The receive and transmit FIFOs against the emulated DTA-2110
+// CDTAPI - The receive and transmit FIFOs against the emulated DTA-2110
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. The card's clock stands still unless a test
+// CTest runs this with CDTAPI_SIM=1. The card's clock stands still unless a test
 // advances it, so that packets leave and arrive when the test says. Every case ends with
 // no handle, pipe, socket, membership or allocation left.
 
@@ -13,12 +13,10 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvError.h"   // The failure text's size.
 #include "AvFifo/DtAvPixConv.h" // The reference conversions.
 #include "AvFifo/DtAvTime.h"    // Times of day.
-#include "CDtapiLite.h"         // Devices.
-#include "CDtapiLite_AvFifo.h"  // Functions under test.
 #include "Core/DtAlloc.h"       // Live allocations.
 #include "DtPcieAbi.h"          // Pipe modes and filter flags.
 #include "DtTest.h"             // Test framework.
@@ -27,6 +25,8 @@
 #include "OAL/Sim/SimDta2110.h" // The DTA-2110's identity.
 #include "OAL/Sim/SimNet.h"     // The emulated network.
 #include "OAL/Sim/SimNw.h"      // The network function's controls.
+#include "cdtapi.h"             // Devices.
+#include "cdtapi_avfifo.h"      // Functions under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -56,7 +56,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     if (Fix->Device == NULL ||
         DtDevice_AttachToSerial(Fix->Device, (int64_t)SIM_DTA2110_SERIAL) != DTAPI_OK)
     {
-        printf("    FAIL: no emulated DTA-2110; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated DTA-2110; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         DtDevice_Free(Fix->Device);
         return false;

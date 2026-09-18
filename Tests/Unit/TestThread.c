@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Tests for threads, events, mutexes and time on the host platform
+// CDTAPI - Tests for threads, events, mutexes and time on the host platform
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -13,7 +13,7 @@
 // Standard includes
 #include <time.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtTest.h"       // Test framework.
 #include "OAL/OsThread.h" // Interface under test.
 

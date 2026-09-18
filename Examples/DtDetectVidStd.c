@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* DtDetectVidStd.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Example: detects the video standard on an SDI input
+// CDTAPI - Example: detects the video standard on an SDI input
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

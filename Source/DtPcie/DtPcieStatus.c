@@ -1,16 +1,16 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieStatus.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands: driver statuses as DTAPI results - Implementation
+// CDTAPI - DtPcie driver commands: driver statuses as DTAPI results - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcieStatus.h"           // Interface being implemented.
-#include "CDtapiLite.h"             // DTAPI result codes.
 #include "DtPcieAbi.h"              // The DT_STATUS_ codes.
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
+#include "cdtapi.h"                 // DTAPI result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

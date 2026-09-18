@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# DtIoConfigList.inc *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Every I/O configuration code, in numeric order, as an X-macro list
+// CDTAPI - Every I/O configuration code, in numeric order, as an X-macro list
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -25,7 +25,7 @@
 //
 // The order is numeric so that the table can be indexed by code. A unit test checks
 // that every code from zero upwards appears exactly once, so a new constant added to
-// CDtapiLite.h without an entry here fails that test rather than going unnoticed.
+// cdtapi.h without an entry here fails that test rather than going unnoticed.
 //
 // The kinds and parents are what DTAPI validates a configuration against. They are
 // derived from DekTec's capability definitions by Scripts/extract_ioconfig_relation.py,

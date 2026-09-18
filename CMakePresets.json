@@ -11,8 +11,8 @@
       "hidden": true,
       "binaryDir": "${sourceDir}/Build/${presetName}",
       "cacheVariables": {
-        "CDTAPILITE_BUILD_TESTS": "ON",
-        "CDTAPILITE_WARNINGS_AS_ERRORS": "ON"
+        "CDTAPI_BUILD_TESTS": "ON",
+        "CDTAPI_WARNINGS_AS_ERRORS": "ON"
       }
     },
     {
@@ -39,7 +39,7 @@
       "description": "No driver backends. For a machine with no DekTec hardware.",
       "inherits": "windows-debug",
       "cacheVariables": {
-        "CDTAPILITE_SIM_ONLY": "ON"
+        "CDTAPI_SIM_ONLY": "ON"
       }
     },
     {
@@ -79,7 +79,7 @@
       "displayName": "Linux Debug, emulator only",
       "inherits": "linux-debug",
       "cacheVariables": {
-        "CDTAPILITE_SIM_ONLY": "ON"
+        "CDTAPI_SIM_ONLY": "ON"
       }
     },
     {

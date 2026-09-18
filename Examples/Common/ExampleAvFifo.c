@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleAvFifo.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the SMPTE ST 2110 examples share: the header, the stream and frames
+// CDTAPI - What the SMPTE ST 2110 examples share: the header, the stream and frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -20,7 +20,7 @@
 // Example includes
 #include "Common/ExampleAvFifo.h" // Interface being implemented.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The stream +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The stream +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadIp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -93,13 +93,6 @@ bool ExampleAv_Config(int Argc, char** Argv, ExampleAvConfig* Config)
     Config->Channels = (int)Channels;
 
     const char* Pipe = Example_Value(Argc, Argv, "--pipe");
-#ifdef EXAMPLE_WITH_CDTAPI
-    if (Pipe != NULL)
-    {
-        printf("Built against CDTAPI_AvFifo.h, which has no choice of pipe\n");
-        return false;
-    }
-#else
     if (Pipe == NULL || strcmp(Pipe, "auto") == 0)
         Config->Pipe = HwOrSwPipe_Auto;
     else if (strcmp(Pipe, "hw") == 0)
@@ -113,18 +106,17 @@ bool ExampleAv_Config(int Argc, char** Argv, ExampleAvConfig* Config)
         printf("Unknown pipe: %s; auto, hw, sw or prefer\n", Pipe);
         return false;
     }
-#endif
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_IsIpPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_IsIpPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 bool ExampleAv_IsIpPort(const DtHwFuncDesc* Port)
 {
     return Port->IsAvFifo;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_IpPars -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_IpPars -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void ExampleAv_IpPars(const ExampleAvConfig* Config, AvFifo_IpPars* Pars)
 {
@@ -171,16 +163,16 @@ int ExampleAv_Failed(const char* What, unsigned int Result)
     return Exit;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_RowBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_RowBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int ExampleAv_RowBytes(const ExampleAvConfig* Config)
 {
     return Config->Width / 2 * (Config->EightBit ? 4 : 5);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_FrameBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_FrameBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int ExampleAv_FrameBytes(const ExampleAvConfig* Config)
 {
@@ -189,7 +181,7 @@ int ExampleAv_FrameBytes(const ExampleAvConfig* Config)
     return ExampleAv_RowBytes(Config) * Config->Height;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_PeriodNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_PeriodNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int64_t ExampleAv_PeriodNs(const ExampleAvConfig* Config)
 {
@@ -198,7 +190,7 @@ int64_t ExampleAv_PeriodNs(const ExampleAvConfig* Config)
     return 1000000000 / Config->Rate;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_ToNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_ToNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int64_t ExampleAv_ToNs(const DtTimeOfDay* ToD)
 {
@@ -247,60 +239,40 @@ void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Inde
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_AttachTx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_AttachTx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 unsigned int ExampleAv_AttachTx(AvFifo_TxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config)
 {
-#ifdef EXAMPLE_WITH_CDTAPI
-    (void)Config;
-    return AvFifo_TxFifo_Attach(Fifo, Device, Port);
-#else
     return AvFifo_TxFifo_Attach2(Fifo, Device, Port, Config->Pipe);
-#endif
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_AttachRx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_AttachRx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 unsigned int ExampleAv_AttachRx(AvFifo_RxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config)
 {
-#ifdef EXAMPLE_WITH_CDTAPI
-    (void)Config;
-    return AvFifo_RxFifo_Attach(Fifo, Device, Port);
-#else
     return AvFifo_RxFifo_Attach2(Fifo, Device, Port, Config->Pipe);
-#endif
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_TxPipeKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const char* ExampleAv_TxPipeKind(const AvFifo_TxFifo* Fifo)
 {
-#ifdef EXAMPLE_WITH_CDTAPI
-    (void)Fifo;
-    return "pipe";
-#else
     int UsesHwPipe = 0;
 
     if (AvFifo_TxFifo_UsesHwPipe(Fifo, &UsesHwPipe) != DTAPI_OK)
         return "pipe";
     return UsesHwPipe != 0 ? "hardware pipe" : "software pipe";
-#endif
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_RxPipeKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const char* ExampleAv_RxPipeKind(const AvFifo_RxFifo* Fifo)
 {
-#ifdef EXAMPLE_WITH_CDTAPI
-    (void)Fifo;
-    return "pipe";
-#else
     int UsesHwPipe = 0;
 
     if (AvFifo_RxFifo_UsesHwPipe(Fifo, &UsesHwPipe) != DTAPI_OK)
         return "pipe";
     return UsesHwPipe != 0 ? "hardware pipe" : "software pipe";
-#endif
 }

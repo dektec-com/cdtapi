@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimDta2178.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the emulated DTA-2178 is: its properties and default configuration
+// CDTAPI - What the emulated DTA-2178 is: its properties and default configuration
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

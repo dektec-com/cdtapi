@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#* TestSimOutpChannel.c *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtOutpChannel against the emulated card
+// CDTAPI - DtOutpChannel against the emulated card
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state, whose output follows the clock, and ends with no handle to it and no allocation
 // left open. The frames written are those the emulator's receive source sends, and the
 // frames the emulated card sent are compared with them symbol by symbol.
@@ -15,8 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // Public API under test.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
 #include "Device/DtDevice.h"        // The device object, to change its firmware status.
 #include "DtPcieAbi.h"              // Operational modes, commands and statuses.
@@ -27,6 +26,7 @@
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks.
 #include "Video/DtSdiFrame.h"       // Frame sizes and black frames.
+#include "cdtapi.h"                 // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -58,7 +58,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
-        printf("    FAIL: no emulated device at index 0; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
         return false;

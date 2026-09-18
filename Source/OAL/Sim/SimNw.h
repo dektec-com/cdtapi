@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimNw.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated network function of an IP port, its pipes and test controls
+// CDTAPI - The emulated network function of an IP port, its pipes and test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -118,7 +118,7 @@ void SimDtPcie_SetNwTime(uint64_t TodNs);
 void SimDtPcie_AdvanceNwTime(uint64_t Ns);
 
 // Makes sent packets arrive at the receive side when true. After a reset it is off,
-// unless CDTAPILITE_SIM_LOOPBACK holds a value other than 0 or nothing, which is how a
+// unless CDTAPI_SIM_LOOPBACK holds a value other than 0 or nothing, which is how a
 // program with no test controls of its own, such as an example, asks for it.
 void SimDtPcie_SetNwLoopback(bool Loopback);
 

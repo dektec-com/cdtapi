@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtFunc.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: the driver functions and building blocks of an API function
+// CDTAPI - Device layer: the driver functions and building blocks of an API function
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,10 +11,10 @@
 // Standard includes
 #include <stdbool.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtapiResult.
+// CDTAPI includes
 #include "Core/DtVec.h" // The parts found.
 #include "DtPcieCmd.h"  // Properties and the driver version.
+#include "cdtapi.h"     // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -80,6 +80,6 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 // Checks that the driver is new enough for a part's proxy, as DtAf::GetPal does before
 // using it (DtProxy.cpp, PROXY_MIN_DRV_VERSIONS): DTAPI_OK, DTAPI_E_DRIVER_INCOMP when it
 // is older, and DTAPI_E_INTERNAL for a type the table does not have. The table holds the
-// types CDtapiLite uses.
+// types CDTAPI uses.
 DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
                                       int Type);

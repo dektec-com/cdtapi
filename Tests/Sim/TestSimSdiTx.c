@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimSdiTx.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Exclusive access and the transmit blocks against the emulated card
+// CDTAPI - Exclusive access and the transmit blocks against the emulated card
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state, with the output going out as fast as waits come rather than on the clock, and
 // ends with no handle to it and no allocation left open.
 
@@ -13,8 +13,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // Results.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
 #include "DtFunc.h"                 // Finding the parts.
 #include "DtPcieAbi.h"              // Types, commands and driver statuses.
@@ -26,6 +25,7 @@
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks and their controls.
 #include "Video/DtSdiFrame.h"       // The geometry of coded lines.
+#include "cdtapi.h"                 // Results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -54,7 +54,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
         DtFunc_Find(Fix->Drv, PORT, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
         DtFunc_Find(Fix->Drv, PORT, "AF_DMA", "", &Fix->Dma) != DTAPI_OK)
     {
-        printf("    FAIL: no emulated transmitter; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated transmitter; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         DtFunc_Release(&Fix->Tx);
         DtFunc_Release(&Fix->Dma);

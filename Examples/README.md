@@ -1,7 +1,7 @@
 # Examples
 
 Small command-line programs that show how an application uses the API. Each is one C
-file, built with the library unless `CDTAPILITE_BUILD_EXAMPLES` is off.
+file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 
 | Program | Does |
 |---|---|
@@ -10,7 +10,7 @@ file, built with the library unless `CDTAPILITE_BUILD_EXAMPLES` is off.
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
 | `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files |
 | `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame |
-| `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDtapiLite addition |
+| `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
 | `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
 | `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
 
@@ -19,23 +19,23 @@ first device that has a port that suits, and without `--port` the first such por
 
 ## Trying them without a card
 
-The emulated DTA-2178 answers when `CDTAPILITE_SIM=1` is set:
+The emulated DTA-2178 answers when `CDTAPI_SIM=1` is set:
 
-    CDTAPILITE_SIM=1 DtListDevices
-    CDTAPILITE_SIM=1 DtConfigPort --port 2 --input --vidstd 1080I50
-    CDTAPILITE_SIM=1 DtDetectVidStd --port 1
-    CDTAPILITE_SIM=1 DtTransmitFrames --port 2 --vidstd 1080I50 --count 3
+    CDTAPI_SIM=1 DtListDevices
+    CDTAPI_SIM=1 DtConfigPort --port 2 --input --vidstd 1080I50
+    CDTAPI_SIM=1 DtDetectVidStd --port 1
+    CDTAPI_SIM=1 DtTransmitFrames --port 2 --vidstd 1080I50 --count 3
 
 The emulator starts afresh in each process, so a configuration one program sets is gone
 for the next. On a card the configuration stays.
 
-The emulated DTA-2178 has no IP port. `CDTAPILITE_SIM_DTA2110` adds an emulated DTA-2110,
-a card with one, at the device index it holds, and `CDTAPILITE_SIM_LOOPBACK` makes the
+The emulated DTA-2178 has no IP port. `CDTAPI_SIM_DTA2110` adds an emulated DTA-2110,
+a card with one, at the device index it holds, and `CDTAPI_SIM_LOOPBACK` makes the
 packets a program sends arrive at its own receive side:
 
-    CDTAPILITE_SIM=1 CDTAPILITE_SIM_DTA2110=1 DtTransmit2110 --count 2 --width 320 \
+    CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtTransmit2110 --count 2 --width 320 \
         --height 240 --rate 25
-    CDTAPILITE_SIM=1 CDTAPILITE_SIM_DTA2110=1 DtReceive2110 --count 1 --timeout 100
+    CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtReceive2110 --count 1 --timeout 100
 
 Each program has an emulated card of its own, so one cannot receive what another sends;
 the `SimAvFifo` test suite is where transmission and reception meet.
@@ -68,16 +68,15 @@ names, so that two runs can be compared line by line. A program exits with 0 whe
 what was asked, 1 when an API call failed or the command line was wrong, and 2 when it
 found nothing, such as no ports or no signal.
 
-## Only CDTAPI.h
+## The headers they use
 
-The programs use only what the original `CDTAPI.h` declares, apart from
-`DtListDeviceDescs`, which shows a CDtapiLite addition and is built against
-`CDtapiLite.h` only. `Common/ExampleCommon.h` includes `CDtapiLite.h`, or `CDTAPI.h`
-when `EXAMPLE_WITH_CDTAPI` is defined, and where the original header is found each of
-the other programs is also built that way, as `<Program>_Cdtapi`. CTest runs every build
-of every program against the emulator.
+Every program includes `cdtapi.h`, and the two ST 2110 programs `cdtapi_avfifo.h` as
+well, through `Common/ExampleCommon.h` and `Common/ExampleAvFifo.h`. Nothing of the
+library's own headers is used, so what a program does, an application can do. CTest runs
+every program against the emulator.
 
 On a machine with DTAPI's Linux SDK, `Scripts/compare_device_scan.sh <LinuxSDK>`
 compares `DtListDeviceDescs` with DTAPI's own device scan.
-`Scripts/compare_cdtapi.sh <CDTAPI> <LinuxSDK> <Program> [args]` builds one of the other
-programs against the real CDTAPI library too, runs both builds and compares their output.
+`Scripts/compare_cdtapi.sh <CDTAPI> <LinuxSDK> <Program> [args]` builds a program
+against the C wrapper over DTAPI as well, runs both and compares their output, for as
+long as that wrapper is there to compare against.

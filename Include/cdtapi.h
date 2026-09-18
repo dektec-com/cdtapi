@@ -1,6 +1,6 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* CDtapiLite.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* cdtapi.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Public C API for DekTec SDI interfaces
+// CDTAPI - Public C API for DekTec SDI interfaces
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -11,9 +11,9 @@
 // Standard includes
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_Constants.h" // Result codes and configuration constants.
-#include "CDtapiLite_Version.h"   // Library version.
+// CDTAPI includes
+#include "cdtapi_constants.h" // Result codes and configuration constants.
+#include "cdtapi_version.h"   // Library version.
 
 #ifdef __cplusplus
 extern "C"
@@ -23,28 +23,27 @@ extern "C"
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbol export +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A consumer that links the shared library on Windows needs the import declaration, so
-// the default here is "importing"; the library build itself defines CDTAPILITE_EXPORTS.
-// A static build defines CDTAPILITE_STATIC and gets neither.
+// the default here is "importing"; the library build itself defines CDTAPI_EXPORTS.
+// A static build defines CDTAPI_STATIC and gets neither.
 //
 
-#if defined(CDTAPILITE_STATIC)
-    #define CDTAPILITE_API
+#if defined(CDTAPI_STATIC)
+    #define CDTAPI_API
 #elif defined(_WIN32) || defined(_WIN64)
-    #if defined(CDTAPILITE_EXPORTS)
-        #define CDTAPILITE_API __declspec(dllexport)
+    #if defined(CDTAPI_EXPORTS)
+        #define CDTAPI_API __declspec(dllexport)
     #else
-        #define CDTAPILITE_API __declspec(dllimport)
+        #define CDTAPI_API __declspec(dllimport)
     #endif
 #else
-    #define CDTAPILITE_API __attribute__((visibility("default")))
+    #define CDTAPI_API __attribute__((visibility("default")))
 #endif
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Results +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // What every function that can fail returns: a DTAPI_OK or DTAPI_E_ code from
-// CDtapiLite_Constants.h. Results below DTAPI_E are successes. The type is unsigned int
-// on every platform CDtapiLite supports, as DTAPI's DTAPI_RESULT and CDTAPI.h's results
-// are, so code written for CDTAPI.h keeps compiling.
+// cdtapi_constants.h. Results below DTAPI_E are successes. The type is unsigned int
+// on every platform CDTAPI supports, as DTAPI's DTAPI_RESULT is.
 //
 
 typedef uint32_t DtapiResult;
@@ -54,7 +53,7 @@ typedef uint32_t DtapiResult;
 // Returns the library version as a string, for example "6.13.0": the major and minor
 // number of the DTAPI whose behaviour the library reproduces, and a patch number of its
 // own. The returned pointer is static storage owned by the library and must not be freed.
-CDTAPILITE_API const char* DtapiLiteGetVersion(void);
+CDTAPI_API const char* DtapiGetVersion(void);
 
 // Converts a video standard to the I/O standard group value and sub-value that select it,
 // for use with SetIoConfig and DTAPI_IOCONFIG_IOSTD. LinkStandard is -1 for anything but
@@ -67,15 +66,15 @@ CDTAPILITE_API const char* DtapiLiteGetVersion(void);
 // 4K that is not on the one link of its rate, 6G up to 30 frames and 12G from 50, gives
 // the I/O standard of one of its links: HD-SDI or 3G-SDI with the 1080p standard of the
 // same rate.
-CDTAPILITE_API DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard,
-                                             int* Value, int* SubValue);
+CDTAPI_API DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
+                                         int* SubValue);
 
 // Returns the name of a result code's macro, for example "DTAPI_E_IN_USE", or "???" for a
 // value that is no result code. The names are those DTAPI gives: of each pair of names
 // for one value the first, DTAPI_E_NO_DT_INPUT and DTAPI_E_NO_DT_OUTPUT, and "???" for
 // DTAPI_E_INVALID_NUM_INPUTS, DTAPI_E_DISABLED and DTAPI_E_EXCEPTION, which DTAPI does
 // not name. The returned string is static and must not be freed.
-CDTAPILITE_API const char* DtapiResult2Str(DtapiResult Result);
+CDTAPI_API const char* DtapiResult2Str(DtapiResult Result);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time of day +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -92,7 +91,7 @@ typedef struct DtTimeOfDay
 //
 
 // The sizes of its two strings, MAX_DEVICE_NAME_SIZE and MAX_DEVICE_DESC_SIZE, are in
-// CDtapiLite_Constants.h.
+// cdtapi_constants.h.
 
 typedef struct DtHwFuncDesc
 {
@@ -117,14 +116,13 @@ typedef struct DtHwFuncDesc
 // HwFuncs untouched; with NumEntries 0 and HwFuncs NULL this asks for the count. Returns
 // DTAPI_E_INVALID_ARG for a null NumEntriesResult or a negative NumEntries,
 // DTAPI_E_INVALID_BUF for a null HwFuncs with NumEntries not 0, and DTAPI_E_OUT_OF_MEM.
-CDTAPILITE_API DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult,
-                                           DtHwFuncDesc* HwFuncs);
+CDTAPI_API DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult,
+                                       DtHwFuncDesc* HwFuncs);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDeviceDesc +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // One device, as DTAPI's DtDeviceDesc describes it, with its fields under DTAPI's names
-// without the m_ prefix. An addition of CDtapiLite: CDTAPI.h has no device scan, so a
-// program that uses it cannot be built against CDTAPI.h.
+// without the m_ prefix.
 //
 
 // Device categories.
@@ -209,8 +207,8 @@ typedef struct DtDeviceDesc
 // after filling all NumEntries; with NumEntries 0 and DvcDescArr NULL this asks for the
 // count. Returns DTAPI_E_INVALID_ARG for a null NumEntriesResult or a negative
 // NumEntries, and DTAPI_E_INVALID_BUF for a null DvcDescArr with NumEntries not 0.
-CDTAPILITE_API DtapiResult DtapiDeviceScan(int NumEntries, int* NumEntriesResult,
-                                           DtDeviceDesc* DvcDescArr);
+CDTAPI_API DtapiResult DtapiDeviceScan(int NumEntries, int* NumEntriesResult,
+                                       DtDeviceDesc* DvcDescArr);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtDevice +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -248,43 +246,42 @@ typedef struct DtDetVidStd
 typedef struct DtDeviceC DtDevice;
 
 // Allocates a detached device object. Returns NULL when memory runs out.
-CDTAPILITE_API DtDevice* DtDevice_Alloc(void);
+CDTAPI_API DtDevice* DtDevice_Alloc(void);
 
 // Detaches the device object if it is attached, and frees it. NULL is allowed.
-CDTAPILITE_API void DtDevice_Free(DtDevice* Device);
+CDTAPI_API void DtDevice_Free(DtDevice* Device);
 
 // Frees *Device as DtDevice_Free does and sets *Device to NULL. NULL is allowed.
-CDTAPILITE_API void DtDevice_Freep(DtDevice** Device);
+CDTAPI_API void DtDevice_Freep(DtDevice** Device);
 
 // Attaches to the device with this serial number. Returns DTAPI_E_ATTACHED when already
 // attached, DTAPI_E_DRIVER_INCOMP for a driver that is too old, and
 // DTAPI_E_NO_SUCH_DEVICE when no device has the serial number. Succeeds with
 // DTAPI_OK_OBSOLETE_FW or DTAPI_OK_TAINTED_FW when the device's firmware is obsolete or
 // tainted.
-CDTAPILITE_API DtapiResult DtDevice_AttachToSerial(DtDevice* Device,
-                                                   int64_t SerialNumber);
+CDTAPI_API DtapiResult DtDevice_AttachToSerial(DtDevice* Device, int64_t SerialNumber);
 
 // Detaches from the device.
-CDTAPILITE_API DtapiResult DtDevice_Detach(DtDevice* Device);
+CDTAPI_API DtapiResult DtDevice_Detach(DtDevice* Device);
 
 // Sets one I/O configuration of a port, numbered from 1. Returns DTAPI_E_OBSOLETE_FW or
 // DTAPI_E_TAINTED_FW for a device whose firmware is, DTAPI_E_NO_SUCH_PORT for a port the
 // device does not have, and DTAPI_E_INVALID_ARG for a combination of group, value and
 // sub-value that is no configuration; otherwise the driver's result.
-CDTAPILITE_API DtapiResult DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group,
-                                                int Value, int SubValue);
+CDTAPI_API DtapiResult DtDevice_SetIoConfig(DtDevice* Device, int Port, int Group,
+                                            int Value, int SubValue);
 
 // Makes a port an output: DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT.
-CDTAPILITE_API DtapiResult DtDevice_SetToOutput(DtDevice* Device, int Port);
+CDTAPI_API DtapiResult DtDevice_SetToOutput(DtDevice* Device, int Port);
 
 // Makes a port an input: DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT.
-CDTAPILITE_API DtapiResult DtDevice_SetToInput(DtDevice* Device, int Port);
+CDTAPI_API DtapiResult DtDevice_SetToInput(DtDevice* Device, int Port);
 
 // Waits until a video standard is detected on a port, numbered from 1, and returns it.
 // Detection is retried every 5 ms, without a time limit, also while it fails. Returns at
 // once with every field unknown for a null Device and for a port that detection cannot
 // be attached to; see DtDevice_DetectVidStd.
-CDTAPILITE_API DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port);
+CDTAPI_API DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port);
 
 // Detects the video standard on an input port, numbered from 1, and sets *VidStd to it:
 // a DTAPI_VIDSTD_ code, or DTAPI_VIDSTD_UNKNOWN when there is no valid, locked signal or
@@ -298,7 +295,7 @@ CDTAPILITE_API DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port);
 // DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111; and the driver's result when
 // reading the receiver fails, such as DTAPI_E_INVALID_MODE for a port that is not
 // configured as an input.
-CDTAPILITE_API DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* VidStd);
+CDTAPI_API DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* VidStd);
 
 // DtDevice_WaitForSignal with a time limit and a result. Waits up to TimeoutMs
 // milliseconds, retrying detection every 5 ms; 0 tries once, and a negative TimeoutMs
@@ -306,13 +303,12 @@ CDTAPILITE_API DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int
 // detected, DTAPI_E_TIMEOUT with every field of *Result unknown when none is within the
 // time, and DTAPI_E_INVALID_ARG for a null Device or Result. The reasons attaching can
 // fail, as DtDevice_DetectVidStd lists them, are returned at once.
-CDTAPILITE_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
-                                                         int TimeoutMs,
-                                                         DtDetVidStd* Result);
+CDTAPI_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
+                                                     int TimeoutMs, DtDetVidStd* Result);
 
 // Reads the device's time-of-day clock. *TimeOfDay is zero when this fails.
-CDTAPILITE_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
-                                                 DtTimeOfDay* TimeOfDay);
+CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
+                                             DtTimeOfDay* TimeOfDay);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtInpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -333,15 +329,15 @@ CDTAPILITE_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
 typedef struct DtInpChannelC DtInpChannel;
 
 // Allocates a detached input channel. Returns NULL when memory runs out.
-CDTAPILITE_API DtInpChannel* DtInpChannel_Alloc(void);
+CDTAPI_API DtInpChannel* DtInpChannel_Alloc(void);
 
 // Detaches the channel, discarding what it has received, and frees it. A ReadFrame
 // waiting on another thread returns DTAPI_E_CANCELLED first; this waits for that as long
 // as it takes. NULL is allowed.
-CDTAPILITE_API void DtInpChannel_Free(DtInpChannel* InpChannel);
+CDTAPI_API void DtInpChannel_Free(DtInpChannel* InpChannel);
 
 // Frees *InpChannel as DtInpChannel_Free does and sets *InpChannel to NULL.
-CDTAPILITE_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
+CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
@@ -353,65 +349,62 @@ CDTAPILITE_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 // DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a receiver the driver does not describe
 // or is too old for; DTAPI_E_IN_USE when another user has the port; and the driver's
 // result of any command.
-CDTAPILITE_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
-                                                     DtDevice* Device, int Port);
+CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
+                                                 DtDevice* Device, int Port);
 
 // Stops receiving and discards what the channel holds, and clears the overflow flag.
-CDTAPILITE_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
+CDTAPI_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
 
 // Clears the latched flags in Latched; DTAPI_RX_FIFO_OVF is the only one.
-CDTAPILITE_API DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched);
+CDTAPI_API DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched);
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel holds is discarded first; both
 // modes stop receiving. A ReadFrame waiting on another thread returns DTAPI_E_CANCELLED;
 // DTAPI_E_TIMEOUT when it has not returned after 100 ms, and the channel then stays
 // attached and usable. DTAPI_E_NOT_ATTACHED when another thread detached it meanwhile.
-CDTAPILITE_API DtapiResult DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode);
+CDTAPI_API DtapiResult DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode);
 
 // Detects the I/O standard of the signal on the port: the value and sub-value that
 // DtapiVidStd2IoStd gives for the detected video standard. Fails as that function does
 // when no standard is detected.
-CDTAPILITE_API DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value,
-                                                    int* SubValue);
+CDTAPI_API DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value,
+                                                int* SubValue);
 
 // The bytes of complete frames waiting to be read, as raw frames in the current receive
 // mode; 0 while not receiving.
-CDTAPILITE_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel,
-                                                    int* FifoLoad);
+CDTAPI_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad);
 
 // The largest load GetFifoLoad can report: the complete frames the channel's ring holds
 // when full, as raw frames in the current receive mode. At least two frames. On a 4K
 // port, where the channel does not receive, DTAPI's FIFO size of 48 MB.
-CDTAPILITE_API DtapiResult DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel,
-                                                       int* MaxFifoSize);
+CDTAPI_API DtapiResult DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel,
+                                                   int* MaxFifoSize);
 
 // The status flags and the latched flags: DTAPI_RX_FIFO_OVF when the card's ring for the
 // channel was full, which loses frames.
-CDTAPILITE_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags,
-                                                 int* Latched);
+CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags,
+                                             int* Latched);
 
 // Sets an I/O configuration of the channel's port, while not receiving
 // (DTAPI_E_NOT_IDLE). A new SDI standard reconfigures the channel for it. Returns
 // DTAPI_E_INVALID_ARG for a combination that is no configuration and for an output
 // direction, and DTAPI_E_NOT_SUPPORTED for 6G, 12G, ASI and any other direction.
-CDTAPILITE_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
-                                                    int Value, int SubValue);
+CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
+                                                int Value, int SubValue);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
 // Receiving in the 8-bit mode, or on a port configured for 4K, fails with
 // DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI.
-CDTAPILITE_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel,
-                                                     int RxControl);
+CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int RxControl);
 
 // Sets the receive mode while not receiving: DTAPI_RXMODE_SDI_FULL, optionally with
 // DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_SDI_16B, 8-bit without either. Any other mode
 // gives DTAPI_E_INVALID_MODE; receiving gives DTAPI_E_NOT_IDLE.
-CDTAPILITE_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
+CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
 // Reads one frame into FrameBuffer, which holds *FrameSize bytes, and sets *FrameSize to
 // the frame's size. Waits up to TimeOut milliseconds, or without a limit for -1. The
-// buffer is a void pointer, where CDTAPI.h has a char pointer, so that a buffer of any
-// type is passed without a cast.
+// buffer is a void pointer, so that a buffer of any type is passed without a cast.
 //
 // Returns, in DTAPI's order: DTAPI_E_BUF_TOO_SMALL for a size of 0;
 // DTAPI_E_INVALID_TIMEOUT for a time-out of 0 or below -1; DTAPI_E_INVALID_SIZE for a
@@ -420,17 +413,15 @@ CDTAPILITE_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int 
 // where DTAPI lets both wait; DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame;
 // DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is detached meanwhile.
 // *FrameSize is 0 after a failure from the buffer size check on.
-CDTAPILITE_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel,
-                                                  void* FrameBuffer, int* FrameSize,
-                                                  int TimeOut);
+CDTAPI_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
+                                              int* FrameSize, int TimeOut);
 
 // ReadFrame, and the time of day at which the frame arrived, as the card stamps it in
 // the frame's header with its time-of-day clock, which DTAPI_IOCONFIG_TODREFSEL selects.
-// ArrivalTime may be NULL; it is zero after a failure. An addition of CDtapiLite:
-// CDTAPI.h has no such function.
-CDTAPILITE_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
-                                                   void* FrameBuffer, int* FrameSize,
-                                                   int TimeOut, DtTimeOfDay* ArrivalTime);
+// ArrivalTime may be NULL; it is zero after a failure.
+CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
+                                               void* FrameBuffer, int* FrameSize,
+                                               int TimeOut, DtTimeOfDay* ArrivalTime);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtOutpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -453,15 +444,15 @@ CDTAPILITE_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 typedef struct DtOutpChannelC DtOutpChannel;
 
 // Allocates a detached output channel. Returns NULL when memory runs out.
-CDTAPILITE_API DtOutpChannel* DtOutpChannel_Alloc(void);
+CDTAPI_API DtOutpChannel* DtOutpChannel_Alloc(void);
 
 // Detaches the channel, discarding what it has not sent, and frees it. A Write or
 // WriteFrame waiting on another thread returns DTAPI_E_CANCELLED first; this waits for
 // that as long as it takes. NULL is allowed.
-CDTAPILITE_API void DtOutpChannel_Free(DtOutpChannel* OutpChannel);
+CDTAPI_API void DtOutpChannel_Free(DtOutpChannel* OutpChannel);
 
 // Frees *OutpChannel as DtOutpChannel_Free does and sets *OutpChannel to NULL.
-CDTAPILITE_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
+CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
@@ -473,11 +464,11 @@ CDTAPILITE_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 // DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a transmitter the driver does not
 // describe or is too old for; DTAPI_E_IN_USE when another user has the port; and the
 // driver's result of any command.
-CDTAPILITE_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
-                                                      DtDevice* Device, int Port);
+CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
+                                                  DtDevice* Device, int Port);
 
 // Stops transmitting, discards what the channel has not sent, and clears the flags.
-CDTAPILITE_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
+CDTAPI_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel has not sent is discarded;
 // with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this first writes a black frame after
@@ -488,37 +479,36 @@ CDTAPILITE_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 // another thread returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned
 // after 100 ms, and the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED when
 // another thread detached it meanwhile.
-CDTAPILITE_API DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel,
-                                                int DetachMode);
+CDTAPI_API DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode);
 
 // The bytes the card has yet to send, as raw frames in the current transmit mode: the
 // complete frames written and not yet taken, and what was written of the next; 0 while
 // idle. Never more than the FIFO size.
-CDTAPILITE_API DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel,
-                                                     int* FifoLoad);
+CDTAPI_API DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel,
+                                                 int* FifoLoad);
 
 // The largest load GetFifoLoad can report: the complete frames the channel's buffer holds
 // when full, as raw frames in the current transmit mode, at least two. On a 4K port,
 // where the channel does not transmit, DTAPI's FIFO size of 48 MB.
-CDTAPILITE_API DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel,
-                                                     int* FifoSize);
+CDTAPI_API DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel,
+                                                 int* FifoSize);
 
 // The same as GetFifoSize; on a 4K port DTAPI's maximum FIFO size of 64 MB.
-CDTAPILITE_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
-                                                        int* MaxFifoSize);
+CDTAPI_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
+                                                    int* MaxFifoSize);
 
 // The status flags and the latched flags: DTAPI_TX_FIFO_UFL when the channel wrote a
 // black frame or the card's formatter ran out of data, and DTAPI_TX_DMA_UFL when the
 // card's transmitter did. The latched flags stay set until ClearFifo.
-CDTAPILITE_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status,
-                                                  int* Latched);
+CDTAPI_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status,
+                                              int* Latched);
 
 // Sets an I/O configuration of the channel's port, while idle (DTAPI_E_NOT_IDLE). A new
 // SDI standard reconfigures the channel for it; the transmit mode is kept. Returns
 // DTAPI_E_INVALID_ARG for a combination that is no configuration, for an input direction
 // and for an output that names another port, and DTAPI_E_NOT_SUPPORTED for ASI.
-CDTAPILITE_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel,
-                                                     int Group, int Value, int SubValue);
+CDTAPI_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group,
+                                                 int Value, int SubValue);
 
 // DTAPI_TXCTRL_HOLD starts the card's pipeline without sending, so that what is written
 // is kept; DTAPI_TXCTRL_SEND sends, and needs a frame written (DTAPI_E_INSUF_LOAD), also
@@ -526,18 +516,18 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel,
 // written. In the 8-bit mode the channel holds and takes frames, but sending a frame
 // fails with DTAPI_E_CONFIG_RAW_SDI, as in DTAPI; holding on a port configured for 4K
 // fails with the same code.
-CDTAPILITE_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
-                                                      int TxControl);
+CDTAPI_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
+                                                  int TxControl);
 
 // Sets the transmit mode while idle: DTAPI_TXMODE_SDI_FULL, optionally with
 // DTAPI_TXMODE_SDI_10B or DTAPI_TXMODE_SDI_16B, 8-bit without either. StuffMode is not
 // used. Any other mode gives DTAPI_E_INVALID_MODE; a channel that is not idle gives
 // DTAPI_E_NOT_IDLE.
-CDTAPILITE_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
-                                                   int StuffMode);
+CDTAPI_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
+                                               int StuffMode);
 
 // Writes NumBytesToWrite bytes of raw frames from Buffer, which is a pointer to constant
-// data of any type where CDTAPI.h has a char pointer. The stream is aligned on frames: at
+// data of any type. The stream is aligned on frames: at
 // the start of each frame, bytes are skipped four at a time until they start line 1, and
 // bytes too few to tell are kept for the next Write. Waits while the card has no room,
 // for as long as that takes.
@@ -549,14 +539,13 @@ CDTAPILITE_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, i
 // DTAPI_E_IN_USE while a Write or WriteFrame on another thread has not returned, where
 // DTAPI waits for it; and DTAPI_E_CANCELLED when the channel is detached meanwhile, or
 // DTAPI_E_IDLE when it is set idle meanwhile.
-CDTAPILITE_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel,
-                                               const void* Buffer, int NumBytesToWrite);
+CDTAPI_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
+                                           int NumBytesToWrite);
 
 // Writes one raw frame, which starts at line 1 and holds FrameSize bytes, exactly the
 // size of a frame of the channel's standard in the current transmit mode. The frame goes
 // into the card's buffer whole or not at all. Waits up to TimeOut milliseconds, or
-// without a limit for -1, for room. An addition of CDtapiLite: CDTAPI.h has no such
-// function.
+// without a limit for -1, for room.
 //
 // Returns: DTAPI_E_INVALID_TIMEOUT for a time-out of 0 or below -1; DTAPI_E_INVALID_SIZE
 // for a size that is not positive or not a multiple of 4; DTAPI_E_INVALID_BUF for a null
@@ -567,9 +556,9 @@ CDTAPILITE_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel,
 // that does not start with the EAV and line number of line 1, in SD with the EAV of a
 // line in the vertical blanking of field 1; DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when
 // the channel is detached meanwhile, or DTAPI_E_IDLE when it is set idle meanwhile.
-CDTAPILITE_API DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel,
-                                                    const void* Frame, int FrameSize,
-                                                    int TimeOut);
+CDTAPI_API DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel,
+                                                const void* Frame, int FrameSize,
+                                                int TimeOut);
 
 #ifdef __cplusplus
 } // extern "C"

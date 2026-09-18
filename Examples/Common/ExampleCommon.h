@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleCommon.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the example programs share: the API header, arguments, ports, names
+// CDTAPI - What the example programs share: the API header, arguments, ports, names
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,13 +12,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The API. The examples use only what CDTAPI.h declares, so that each also builds
-// against the original header: EXAMPLE_WITH_CDTAPI selects it.
-#ifdef EXAMPLE_WITH_CDTAPI
-    #include "CDTAPI.h"
-#else
-    #include "CDtapiLite.h"
-#endif
+// The API.
+#include "cdtapi.h"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exit codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

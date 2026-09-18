@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtConfigPort.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Example: makes an SDI port an input or output, with a video standard
+// CDTAPI - Example: makes an SDI port an input or output, with a video standard
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

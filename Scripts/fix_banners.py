@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* fix_banners.py *#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Regenerates banner and separator comments at exactly 90 columns
+# CDTAPI - Regenerates banner and separator comments at exactly 90 columns
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #

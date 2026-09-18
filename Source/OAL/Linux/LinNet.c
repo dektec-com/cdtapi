@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* LinNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The host's network on Linux: rtnetlink and sockets
+// CDTAPI - The host's network on Linux: rtnetlink and sockets
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -27,7 +27,7 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "OAL/OsNet.h"    // Backend interface being implemented.
 #include "OAL/OsThread.h" // Waiting for a neighbour.

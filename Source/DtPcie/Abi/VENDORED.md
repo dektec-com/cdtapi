@@ -19,7 +19,7 @@ excluded from clang-tidy and from `Scripts/check_style.sh`.
     cp <sdk>/Common/Source/DtCommon.h Source/DtPcie/Abi/DtCommon.h
     cp <sdk>/Common/Source/DtPcieCommon.h Source/DtPcie/Abi/DtPcieCommon.h
     cp <sdk>/Common/Source/DtStatusCodes.h Source/DtPcie/Abi/DtStatusCodes.h
-    cmake --build Build/<preset> --target cdtapilite_abi_check
+    cmake --build Build/<preset> --target cdtapi_abi_check
 
 The ABI check compiles the header standalone as C11 and turns every `ASSERT_SIZE` in it
 into a `_Static_assert`. If a structure changed size, that build fails.
@@ -27,5 +27,5 @@ into a `_Static_assert`. If a structure changed size, that build fails.
 ## What is deliberately not vendored
 
 The base types (`Int`, `UInt`, `Int64A`, ...) come from `SDK/Common/Import/StandardTypes.h`,
-which is DekTec-owned but carries no redistribution grant. CDtapiLite defines them itself
+which is DekTec-owned but carries no redistribution grant. CDTAPI defines them itself
 in `Source/DtPcie/DtAbiTypes.h` under BSD-3-Clause, sized and aligned to match.

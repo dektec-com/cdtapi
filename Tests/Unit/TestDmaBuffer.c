@@ -1,12 +1,12 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestDmaBuffer.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for DMA buffer allocation and the driver hand-off
+// CDTAPI - Unit tests for DMA buffer allocation and the driver hand-off
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"    // Allocation fault injection.
 #include "DtTest.h"          // Test framework.
 #include "OAL/OsDmaBuffer.h" // Interface under test.

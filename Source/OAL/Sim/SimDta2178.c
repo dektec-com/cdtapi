@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimDta2178.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the emulated DTA-2178 is: its properties and default configuration
+// CDTAPI - What the emulated DTA-2178 is: its properties and default configuration
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,11 +9,11 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes.
+// CDTAPI includes
 #include "DtPcieAbi.h"  // PROPERTY_VALUE_TYPE_ values.
 #include "SimDtPcie.h"  // Port counts.
 #include "SimDta2178.h" // Interface being implemented.
+#include "cdtapi.h"     // DTAPI_IOCONFIG_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

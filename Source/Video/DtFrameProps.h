@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtFrameProps.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The geometry of an SDI frame per video standard, and deducing the standard
+// CDTAPI - The geometry of an SDI frame per video standard, and deducing the standard
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

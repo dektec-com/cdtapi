@@ -1,6 +1,6 @@
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#* AvTimeCases.py *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 #
-# CDtapiLite - Writes AvTimeCases.inc: DTAPI's media clock formulas in arbitrary precision
+# CDTAPI - Writes AvTimeCases.inc: DTAPI's media clock formulas in arbitrary precision
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #

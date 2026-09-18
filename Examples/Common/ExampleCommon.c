@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleCommon.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the example programs share - Implementation
+// CDTAPI - What the example programs share - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

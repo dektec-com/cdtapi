@@ -19,11 +19,11 @@ Export/
 *.VC.db
 *.obj
 
-# .-.-.- Generated at configure time from Include/CDtapiLite_Version.h.in -.-.-.-.-.-.-.-
-Include/CDtapiLite_Version.h
+# .-.-.- Generated at configure time from Include/cdtapi_version.h.in -.-.-.-.-.-.-.-
+Include/cdtapi_version.h
 
 # .-.-.- Surround SCM bookkeeping -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-# CDtapiLite lives in git, not in Surround. These patterns keep Surround's metadata out
+# CDTAPI lives in git, not in Surround. These patterns keep Surround's metadata out
 # of the repository should the directory ever be placed under Surround as well.
 .MySCMServerInfo
 *.vssscc

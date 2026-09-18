@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestIoConfig.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for I/O configuration codes and driver names
+// CDTAPI - Unit tests for I/O configuration codes and driver names
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,11 +9,11 @@
 // Standard includes
 #include <stdbool.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes and result codes.
+// CDTAPI includes
 #include "DtIoConfig.h" // Interface under test.
 #include "DtPcieAbi.h"  // IOCONFIG_NAME_MAX_SIZE, the driver's field size.
 #include "DtTest.h"     // Test framework.
+#include "cdtapi.h"     // DTAPI_IOCONFIG_ codes and result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Completeness +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

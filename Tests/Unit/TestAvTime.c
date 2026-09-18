@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestAvTime.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the 128-bit arithmetic and the media clock conversions
+// CDTAPI - Unit tests for the 128-bit arithmetic and the media clock conversions
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -9,10 +9,10 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
-#include "AvFifo/DtAvTime.h"   // Functions under test.
-#include "CDtapiLite_AvFifo.h" // The public timing helpers.
-#include "DtTest.h"            // Test framework.
+// CDTAPI includes
+#include "AvFifo/DtAvTime.h" // Functions under test.
+#include "DtTest.h"          // Test framework.
+#include "cdtapi_avfifo.h"   // The public timing helpers.
 
 // The reference values.
 #include "AvTimeCases.inc"

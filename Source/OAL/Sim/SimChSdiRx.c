@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimChSdiRx.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The emulated SDI receive channels, their frame source and test controls
+// CDTAPI - The emulated SDI receive channels, their frame source and test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,8 +9,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // DTAPI_VIDSTD_ codes.
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "SimChSdiRx.h"         // Interface being implemented.
@@ -18,6 +17,7 @@
 #include "Video/DtFrameProps.h" // Frame geometry of the source.
 #include "Video/DtSdiFrame.h"   // The format the source writes.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
+#include "cdtapi.h"             // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

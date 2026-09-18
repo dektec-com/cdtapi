@@ -1,6 +1,6 @@
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# build.ps1 *#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Configures, builds, tests and lints the project on Windows
+# CDTAPI - Configures, builds, tests and lints the project on Windows
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #

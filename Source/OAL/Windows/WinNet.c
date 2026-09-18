@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* WinNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The host's network on Windows: IP Helper and Winsock
+// CDTAPI - The host's network on Windows: IP Helper and Winsock
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "OAL/OsNet.h"    // Backend interface being implemented.
 

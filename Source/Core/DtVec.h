@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtVec.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Growable array of fixed-size elements
+// CDTAPI - Growable array of fixed-size elements
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

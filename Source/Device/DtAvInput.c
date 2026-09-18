@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvInput.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: video standard detection on an input port - Implementation
+// CDTAPI - Device layer: video standard detection on an input port - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvInput.h"        // Interface being implemented.
 #include "DtFunc.h"           // The port's ASI/SDI receiver API function.
 #include "DtPcieAbi.h"        // DT_FWSTATUS_ values and DT_FUNC_TYPE_SDIRX.

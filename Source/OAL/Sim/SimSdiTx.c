@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimSdiTx.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The emulated SDI transmit blocks, their sink and test controls
+// CDTAPI - The emulated SDI transmit blocks, their sink and test controls
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <string.h>
 #include <time.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "OAL/OsThread.h"       // The clock the output follows.

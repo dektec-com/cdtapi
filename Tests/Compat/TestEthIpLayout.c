@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestEthIpLayout.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The packet header's bytes against the bit fields of the SDK's EthPrtcls.h
+// CDTAPI - The packet header's bytes against the bit fields of the SDK's EthPrtcls.h
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -23,7 +23,7 @@ typedef uint32_t UInt32;
 typedef uint64_t UInt64;
 typedef uint32_t UInt;
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtPcie/DtEthIp.h" // Functions under test.
 #include "DtTest.h"         // Test framework.
 #include "EthPrtcls.h"      // The SDK's header.

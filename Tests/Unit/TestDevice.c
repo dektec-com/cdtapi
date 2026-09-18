@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestDevice.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the device layer that need no device
+// CDTAPI - Unit tests for the device layer that need no device
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -9,11 +9,11 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"   // Public API under test.
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation failure injection.
 #include "DtDevice.h"     // Device layer under test.
 #include "DtTest.h"       // Test framework.
+#include "cdtapi.h"       // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Description +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

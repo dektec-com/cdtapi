@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtVidStdList.inc *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Every video standard with its properties, as an X-macro list
+// CDTAPI - Every video standard with its properties, as an X-macro list
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

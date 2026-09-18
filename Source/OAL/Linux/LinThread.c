@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# LinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Threads, events, mutexes and time on Linux
+// CDTAPI - Threads, events, mutexes and time on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -21,7 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "LinTime.h"      // Deadline arithmetic.
 #include "OAL/OsThread.h" // Interface being implemented.

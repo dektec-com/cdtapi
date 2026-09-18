@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestAvPixConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for the pixel conversions, in portable C and in SSSE3
+// CDTAPI - Unit tests for the pixel conversions, in portable C and in SSSE3
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -12,7 +12,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "AvFifo/DtAvPixConv.h" // Functions under test.
 #include "DtTest.h"             // Test framework.
 

@@ -1,8 +1,8 @@
-# CDtapiLite
+# CDTAPI
 
 A native, open-source C API for DekTec SDI and SMPTE ST 2110 interfaces.
 
-CDtapiLite talks to the DekTec `DtPcie` driver directly over its documented ioctl
+CDTAPI talks to the DekTec `DtPcie` driver directly over its documented ioctl
 interface. It contains no closed-source component, so an application that links it —
 FFmpeg in particular — stays redistributable.
 
@@ -19,7 +19,7 @@ FFmpeg's `configure` places closed-source capture SDKs in
 what happens today with Blackmagic DeckLink. Wrapping a closed library in a C API does
 not change that; the closed code is still linked in.
 
-An open-source library does change it. With CDtapiLite, DekTec support can sit in
+An open-source library does change it. With CDTAPI, DekTec support can sit in
 FFmpeg's ordinary `EXTERNAL_LIBRARY_LIST`, alongside the other `--enable-lib*` options,
 and the resulting build is redistributable under the LGPL like any other.
 
@@ -47,7 +47,7 @@ do.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and
-is selected at run time with `CDTAPILITE_SIM=1`.
+is selected at run time with `CDTAPI_SIM=1`.
 
 ## Repository layout
 
@@ -66,22 +66,24 @@ is selected at run time with `CDTAPILITE_SIM=1`.
 | `Documentation/` | Numbered design documents |
 | `Scripts/` | Build and style-check entry points |
 
-## Relationship to CDTAPI
+## Relationship to DTAPI
 
-CDtapiLite follows the interface of the existing `CDTAPI` C wrapper for the `DtDevice`,
-`DtInpChannel` and `DtOutpChannel` surface, and is to replace it under the name CDTAPI;
-it installs no compatibility header. It also adds what CDTAPI.h leaves out and an
-application needs, such as `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`,
-`DtInpChannel_ReadFrame2` with each frame's time of arrival, and
-`DtOutpChannel_WriteFrame`, which writes one whole frame with a time-out. `DtInpChannel`
-receives SD, HD and 3G, and `DtOutpChannel` transmits them. `CDtapiLite_AvFifo.h`
-follows `CDTAPI_AvFifo.h` for SMPTE 2110 video and audio, with a choice between hardware
-and software pipes and a specific result code for every failure.
+CDTAPI is a C interface of its own, not a wrapper: it talks to the DtPcie driver itself
+and needs no DTAPI. Its names, values and layouts are DTAPI's, so that what an
+application knows of DTAPI it knows here, and it replaces the C wrapper that carried
+DTAPI's closed library in its archive.
+
+Beside that surface it has what an application needs and DTAPI's C wrapper left out:
+`DtapiDeviceScan` with DTAPI's `DtDeviceDesc`, `DtInpChannel_ReadFrame2` with each
+frame's time of arrival, and `DtOutpChannel_WriteFrame`, which writes one whole frame
+with a time-out. `DtInpChannel` receives SD, HD and 3G, and `DtOutpChannel` transmits
+them. `cdtapi_avfifo.h` carries SMPTE ST 2110 video and audio, with a choice between
+hardware and software pipes and a specific result code for every failure.
 
 ## Versions
 
-CDtapiLite's major and minor version number are those of the DTAPI whose behaviour it
-reproduces, now 6.13; the patch number counts CDtapiLite's own releases. The driver is
+CDTAPI's major and minor version number are those of the DTAPI whose behaviour it
+reproduces, now 6.13; the patch number counts CDTAPI's own releases. The driver is
 told that DTAPI version, with bug-fix number 0, in every property request, so that it
 answers as it answers DTAPI 6.13.0.
 

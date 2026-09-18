@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieCmd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - DtPcie driver commands - Implementation
+// CDTAPI - DtPcie driver commands - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,21 +10,21 @@
 #include <stddef.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_Version.h" // The DTAPI version a request speaks for.
-#include "DtIoConfig.h"         // I/O configuration codes to names and back.
-#include "DtPcieAbi.h"          // Vendored driver structures and IOCTL codes.
-#include "DtPcieCmd.h"          // Interface being implemented.
-#include "DtPcieCmdIssue.h"     // Issuing commands.
-#include "DtPcieStatus.h"       // Driver status to result.
+// CDTAPI includes
+#include "DtIoConfig.h"     // I/O configuration codes to names and back.
+#include "DtPcieAbi.h"      // Vendored driver structures and IOCTL codes.
+#include "DtPcieCmd.h"      // Interface being implemented.
+#include "DtPcieCmdIssue.h" // Issuing commands.
+#include "DtPcieStatus.h"   // Driver status to result.
+#include "cdtapi_version.h" // The DTAPI version a request speaks for.
 
 // The DTAPI version a property request says it speaks for. The driver can hide or change
-// properties per DTAPI version, so CDtapiLite presents itself as the DTAPI whose
+// properties per DTAPI version, so CDTAPI presents itself as the DTAPI whose
 // behaviour it reproduces: the major and minor number of its own version. The driver
 // compares the bug-fix number too (DtPropertiesFind), so that is DTAPI's, 0, and not
-// CDtapiLite's patch number, which would show properties of a later DTAPI.
-#define DT_DTAPI_MAJOR CDTAPILITE_VERSION_MAJOR
-#define DT_DTAPI_MINOR CDTAPILITE_VERSION_MINOR
+// CDTAPI's patch number, which would show properties of a later DTAPI.
+#define DT_DTAPI_MAJOR CDTAPI_VERSION_MAJOR
+#define DT_DTAPI_MINOR CDTAPI_VERSION_MINOR
 #define DT_DTAPI_BUGFIX 0
 
 // The size of the memory segment each port has for mapping on Linux. The ABI header
@@ -42,7 +42,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= I/O configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The driver's I/O configuration commands end in a flexible array, one element per
-// configuration. CDtapiLite only ever sends one, so each request is laid out here with a
+// configuration. CDTAPI only ever sends one, so each request is laid out here with a
 // single element in place of the array. The assertions hold these to exactly the bytes
 // DTAPI sends: the size of the vendored structure plus one element.
 //

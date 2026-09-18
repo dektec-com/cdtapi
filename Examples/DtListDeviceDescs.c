@@ -1,11 +1,11 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# DtListDeviceDescs.c *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Example: describes every DekTec device, one field per line
+// CDTAPI - Example: describes every DekTec device, one field per line
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Uses DtapiDeviceScan, which CDtapiLite adds and CDTAPI.h does not have, so this program
-// is built against CDtapiLite.h only. Prints one block per device, every field of its
+// Uses DtapiDeviceScan, which describes devices rather than ports, so this program
+// is built against cdtapi.h only. Prints one block per device, every field of its
 // descriptor by name, then the number of devices:
 //
 //     Device 1

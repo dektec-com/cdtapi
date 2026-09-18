@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# DtAvPixConvSsse3.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Pixel conversions between ST 2110-20 pixel groups and the frame formats
+// CDTAPI - Pixel conversions between ST 2110-20 pixel groups and the frame formats
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -13,7 +13,7 @@
 #include <string.h>
 #include <tmmintrin.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvPixConv.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SSSE3 +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

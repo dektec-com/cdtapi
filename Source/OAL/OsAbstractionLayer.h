@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#* OsAbstractionLayer.h *#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The seam between the library and the operating system
+// CDTAPI - The seam between the library and the operating system
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -38,7 +38,7 @@ typedef struct OsDrv OsDrv;
 // Opens the device at Index, or returns NULL when there is none. Index runs from zero
 // to DT_MAX_DEVICES - 1.
 //
-// When CDTAPILITE_SIM is set in the environment, the emulated device is opened instead
+// When CDTAPI_SIM is set in the environment, the emulated device is opened instead
 // and no real hardware is touched.
 OsDrv* OsDrv_Open(int Index);
 
@@ -48,7 +48,7 @@ void OsDrv_Close(OsDrv* Drv);
 // True when this handle is the emulated device rather than a card.
 //
 // It answers what actually opened, not what was asked for. A build made without the
-// emulator still accepts CDTAPILITE_SIM in the environment and then opens real hardware,
+// emulator still accepts CDTAPI_SIM in the environment and then opens real hardware,
 // and a caller that decides "no card" from its own command line rather than from this
 // would go on to read a real device with the emulator's assumptions.
 bool OsDrv_IsEmulated(const OsDrv* Drv);

@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSimNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The operating system's network and an IP port's use of it, emulated
+// CDTAPI - The operating system's network and an IP port's use of it, emulated
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state with a DTA-2110 and its interface added, and ends with no socket open and no
 // allocation left.
 
@@ -13,8 +13,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // Results.
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Live allocations.
 #include "DtTest.h"             // Test framework.
 #include "Net/DtNet.h"          // An IP port's address, neighbours and groups.
@@ -22,6 +21,7 @@
 #include "OAL/Sim/SimDtPcie.h"  // The emulator's reset.
 #include "OAL/Sim/SimDta2110.h" // The DTA-2110's MAC address.
 #include "OAL/Sim/SimNet.h"     // The emulated network and its controls.
+#include "cdtapi.h"             // Results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

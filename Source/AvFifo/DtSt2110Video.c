@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSt2110Video.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - ST 2110-20 video: frames into packets, and packets into frames
+// CDTAPI - ST 2110-20 video: frames into packets, and packets into frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,7 +10,7 @@
 #include <limits.h>
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtAvTime.h"      // Nanoseconds and 128-bit arithmetic.
 #include "DtSt2110Video.h" // Interface being implemented.
 

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvFrame.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The frames of the A/V FIFO, their memory pool and their FIFO
+// CDTAPI - The frames of the A/V FIFO, their memory pool and their FIFO
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,9 +12,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_AvFifo.h" // AvFifo_Frame.
-#include "OAL/OsThread.h"      // Mutexes.
+// CDTAPI includes
+#include "OAL/OsThread.h"  // Mutexes.
+#include "cdtapi_avfifo.h" // AvFifo_Frame.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

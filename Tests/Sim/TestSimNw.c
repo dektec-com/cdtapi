@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimNw.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The network port's commands and pipes against the emulated DTA-2110
+// CDTAPI - The network port's commands and pipes against the emulated DTA-2110
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPILITE_SIM=1. Every case starts from the emulator's power-on
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
 // state with a DTA-2110 added and its time of day set by the test, and ends with no
 // handle to it and no allocation left open.
 
@@ -13,8 +13,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"             // Results and the device scan.
+// CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
 #include "DtFunc.h"                 // Finding the network function.
 #include "DtPcie/DtEthIp.h"         // The packets in a pipe's buffer.
@@ -27,6 +26,7 @@
 #include "OAL/Sim/SimDtPcie.h"      // The emulated devices and their test controls.
 #include "OAL/Sim/SimDta2110.h"     // What the emulated DTA-2110 is.
 #include "OAL/Sim/SimNw.h"          // The network function's controls.
+#include "cdtapi.h"                 // Results and the device scan.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -61,7 +61,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         DtFunc_Find(Fix->Drv, PORT, "AF_NW", "", &Af) != DTAPI_OK)
     {
-        printf("    FAIL: no emulated DTA-2110; is CDTAPILITE_SIM=1 set?\n");
+        printf("    FAIL: no emulated DTA-2110; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Fix->Drv);
         return false;

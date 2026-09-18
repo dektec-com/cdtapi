@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtIoConfig.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Translation between I/O configuration codes and driver names
+// CDTAPI - Translation between I/O configuration codes and driver names
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -10,9 +10,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DTAPI_IOCONFIG_ codes and result codes.
+// CDTAPI includes
 #include "DtIoConfig.h" // Interface being implemented.
+#include "cdtapi.h"     // DTAPI_IOCONFIG_ codes and result codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Table +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

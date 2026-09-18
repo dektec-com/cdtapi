@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtInpChannel.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The SDI input channel: DtInpChannel on a DtPcie receive channel
+// CDTAPI - The SDI input channel: DtInpChannel on a DtPcie receive channel
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -18,8 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h"         // Interface being implemented.
+// CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "Core/DtRing.h"        // Reading the ring.
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
@@ -31,6 +30,7 @@
 #include "Video/DtFrameProps.h" // The frame rate and geometry.
 #include "Video/DtSdiFrame.h"   // The ring's format and the raw frame.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
+#include "cdtapi.h"             // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -100,7 +100,7 @@ struct DtInpChannelC
     bool ChannelAttached;
     DtSdiFrameLayout Layout;
     DtRing Ring;      // Base NULL without a ring
-    bool RingMapped;  // Mapped by CDtapiLite rather than by the driver
+    bool RingMapped;  // Mapped by CDTAPI rather than by the driver
     uint8_t* LineBuf; // A coded line that runs across the end of the ring
     int QuarterMs;    // A quarter frame period, at least 1 ms
 
@@ -213,8 +213,8 @@ static DtapiResult ConfigureChannel(DtInpChannel* Chan)
     char Process[128];
     OsProcess_Name(Process, sizeof(Process));
     char Full[160];
-    snprintf(Full, sizeof(Full), "%s:%" PRIu32,
-             Process[0] != '\0' ? Process : "CDtapiLite", OsProcess_Id());
+    snprintf(Full, sizeof(Full), "%s:%" PRIu32, Process[0] != '\0' ? Process : "CDTAPI",
+             OsProcess_Id());
     char Name[DT_CHAN_FRIENDLY_NAME_MAX_LENGTH + 1];
     memcpy(Name, Full, sizeof(Name) - 1);
     Name[sizeof(Name) - 1] = '\0';

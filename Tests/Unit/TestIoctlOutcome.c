@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*# TestIoctlOutcome.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Unit tests for classifying a failed IOCTL on Windows and on Linux
+// CDTAPI - Unit tests for classifying a failed IOCTL on Windows and on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -10,7 +10,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "DtTest.h"             // Test framework.
 #include "OAL/OsIoctlOutcome.h" // Interface under test.
 

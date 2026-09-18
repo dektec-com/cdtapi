@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtAvRxFifo.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - The receive FIFO of SMPTE 2110 audio and video
+// CDTAPI - The receive FIFO of SMPTE 2110 audio and video
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -14,17 +14,17 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_AvFifo.h" // Interface being implemented.
-#include "Core/DtAlloc.h"      // Allocation seam.
-#include "Core/DtAtomic.h"     // The thread's stop flag.
-#include "DtAvError.h"         // Failure texts.
-#include "DtAvPort.h"          // The port, its network and pipes.
-#include "DtPcieAbi.h"         // Pipe modes and filter flags.
-#include "DtSt2110Audio.h"     // Audio packets.
-#include "DtSt2110Video.h"     // Video packets.
-#include "Net/DtNet.h"         // Own address and multicast groups.
-#include "OAL/OsThread.h"      // Lock, thread, sleeping.
+// CDTAPI includes
+#include "Core/DtAlloc.h"  // Allocation seam.
+#include "Core/DtAtomic.h" // The thread's stop flag.
+#include "DtAvError.h"     // Failure texts.
+#include "DtAvPort.h"      // The port, its network and pipes.
+#include "DtPcieAbi.h"     // Pipe modes and filter flags.
+#include "DtSt2110Audio.h" // Audio packets.
+#include "DtSt2110Video.h" // Video packets.
+#include "Net/DtNet.h"     // Own address and multicast groups.
+#include "OAL/OsThread.h"  // Lock, thread, sleeping.
+#include "cdtapi_avfifo.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvPort.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - What the receive and transmit FIFOs share: the port, its network and pipes
+// CDTAPI - What the receive and transmit FIFOs share: the port, its network and pipes
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,10 +12,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite_AvFifo.h" // IP parameters and pipe preferences.
-#include "Device/DtDevice.h"   // The FIFO's own handle to the device.
-#include "DtAvPipe.h"          // Pipes.
+// CDTAPI includes
+#include "Device/DtDevice.h" // The FIFO's own handle to the device.
+#include "DtAvPipe.h"        // Pipes.
+#include "cdtapi_avfifo.h"   // IP parameters and pipe preferences.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

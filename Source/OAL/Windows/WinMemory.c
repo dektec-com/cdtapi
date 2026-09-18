@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# WinMemory.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Page size and fork protection on Windows
+// CDTAPI - Page size and fork protection on Windows
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,7 +12,7 @@
 #endif
 #include <windows.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "OAL/OsDmaBuffer.h" // Platform part being implemented.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_PageSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

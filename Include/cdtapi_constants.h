@@ -1,12 +1,12 @@
-// *#*#*#*#*#*#*#*#*#*#*#* CDtapiLite_Constants.h *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// *#*#*#*#*#*#*#*#*#*#*#* cdtapi_constants.h *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - Result codes and configuration constants shared with CDTAPI and DTAPI
+// CDTAPI - Result codes and configuration constants shared with CDTAPI and DTAPI
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Included by CDtapiLite.h; there is no need to include it directly. It is a header of
-// its own, holding macros only, so that the compatibility test can compare it with
-// CDTAPI.h in one translation unit, which the two full headers cannot share.
+// Included by cdtapi.h; there is no need to include it directly. It is a header of its
+// own, holding macros only, so that a program can take the constants without the
+// interface.
 
 #pragma once
 
@@ -313,8 +313,8 @@
 #define DTAPI_E_CONFIG_VIDEO        (DTAPI_E + 279)
 #define DTAPI_E_CONFIG_VIDEO_WEAVE  (DTAPI_E + 280)
 
-// Defined by DTAPI but not by CDTAPI.h. DTAPI_E_ALREADY_EXCL_ACCESS is what a driver
-// reports when another process holds a port exclusively.
+// DTAPI_E_ALREADY_EXCL_ACCESS is what a driver reports when another process holds a
+// port exclusively.
 #define DTAPI_E_CONFIG_VIDEO_ZEROCOPY (DTAPI_E + 281)
 #define DTAPI_E_ALREADY_EXCL_ACCESS   (DTAPI_E + 282)
 #define DTAPI_E_DISABLED              (DTAPI_E + 283)
@@ -322,7 +322,7 @@
 #define DTAPI_E_INVALID_MIMO          (DTAPI_E + 285)
 #define DTAPI_E_NO_GATEWAY            (DTAPI_E + 286)
 
-// Reported for failures inside the AV FIFO API, which CDtapiLite does not provide.
+// Reported for failures inside the AV FIFO API, which CDTAPI does not provide.
 #define DTAPI_E_EXCEPTION (DTAPI_E + 300) // For AvFifo exceptions see GetLastException
 // clang-format on
 

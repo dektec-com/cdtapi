@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* LinIoctlBuffer.h *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Layout of the single in/out buffer a Linux DekTec IOCTL uses
+// CDTAPI - Layout of the single in/out buffer a Linux DekTec IOCTL uses
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -30,7 +30,7 @@
 // The size header exists because _IOWR encodes the size of one fixed structure into the
 // IOCTL number, while several commands take variable-length input. The header tells the
 // driver the real sizes. DT_IOCTL_MAGIC_SIZE is the magic number that says it is there,
-// and every command CDtapiLite issues is built with it.
+// and every command CDTAPI issues is built with it.
 //
 // This is kept apart from the Linux backend, and free of any Linux header, so that it
 // can be tested on every platform. The layout is the part of that backend most likely to

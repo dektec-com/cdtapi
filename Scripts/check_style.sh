@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* check_style.sh *#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 #
-# CDtapiLite - Enforces the coding rules that clang-format cannot express
+# CDTAPI - Enforces the coding rules that clang-format cannot express
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -30,7 +30,7 @@ Fail()
     Failures=$((Failures + 1))
 }
 
-# Files the rules apply to: CDtapiLite's own C sources and headers.
+# Files the rules apply to: CDTAPI's own C sources and headers.
 OwnFiles()
 {
     find Examples Include Source Tests Tools -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null \

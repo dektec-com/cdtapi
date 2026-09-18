@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimDta2110.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - What the emulated DTA-2110 is: its identity, properties and functions
+// CDTAPI - What the emulated DTA-2110 is: its identity, properties and functions
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

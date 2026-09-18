@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtBuf.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Reference-counted byte buffer with a release callback
+// CDTAPI - Reference-counted byte buffer with a release callback
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

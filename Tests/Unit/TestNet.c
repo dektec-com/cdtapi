@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* TestNet.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDtapiLite - The host's network through OsNet.h: interfaces, addresses and sockets
+// CDTAPI - The host's network through OsNet.h: interfaces, addresses and sockets
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -13,7 +13,7 @@
 // Standard includes
 #include <string.h>
 
-// CDtapiLite includes
+// CDTAPI includes
 #include "Core/DtAlloc.h" // Live allocations.
 #include "DtTest.h"       // Test framework.
 #include "OAL/OsNet.h"    // Interface under test.

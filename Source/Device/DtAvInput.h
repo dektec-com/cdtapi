@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAvInput.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDtapiLite - Device layer: detecting the video standard on an input port
+// CDTAPI - Device layer: detecting the video standard on an input port
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -12,9 +12,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// CDtapiLite includes
-#include "CDtapiLite.h" // DtDetVidStd.
-#include "DtDevice.h"   // The device object.
+// CDTAPI includes
+#include "DtDevice.h" // The device object.
+#include "cdtapi.h"   // DtDetVidStd.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Input status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
