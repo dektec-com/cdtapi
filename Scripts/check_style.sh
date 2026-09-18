@@ -115,6 +115,13 @@ if [ -n "$Internal" ]; then
     Fail "Documentation/ belongs in dektec-com/cdtapi-design, not here: $(echo $Internal)"
 fi
 
+# The notes for DekTec's own tooling name internal machines and repositories. .gitignore
+# keeps them out; this catches the one that was added with -f anyway.
+Notes=$(git ls-files 'CLAUDE.md' 'CLAUDE.local.md' 2>/dev/null | head -5)
+if [ -n "$Notes" ]; then
+    Fail "Internal notes are not published: $(echo $Notes)"
+fi
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 # Builds of clang-format do not format alike, not even within one major version, so the

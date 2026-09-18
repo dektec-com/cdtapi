@@ -39,3 +39,9 @@ Thumbs.db
 # .-.-.- The design documents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 # They live in dektec-com/cdtapi-design; see CONTRIBUTING.md.
 Documentation/
+
+# .-.-.- Internal notes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# Notes for DekTec's own tooling. They name internal machines and repositories, so they
+# stay out of the published sources; Scripts/check_style.sh refuses them as well.
+CLAUDE.md
+CLAUDE.local.md
