@@ -15,6 +15,10 @@ project(CDTAPI
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)
 
+# Where CDTAPI sits beside DTAPI, in the SDK tree, the two version numbers must agree;
+# where it stands alone this does nothing. See the script for what it compares.
+include("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/check_dtapi_version.cmake")
+
 # Groups the test projects into a Tests folder in the Visual Studio solution.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

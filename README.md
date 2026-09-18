@@ -26,6 +26,19 @@ interface changes nothing about that, because the closed code is still linked in
 With CDTAPI, DekTec support belongs with the ordinary `--enable-lib*` options, and the
 build that comes out is redistributable like any other.
 
+## Documentation
+
+- [`Docs/getting-started.md`](Docs/getting-started.md) — what an application needs, a
+  first program, how to build and link it on both platforms, and how failures are
+  reported.
+- [`Docs/migrating-from-the-wrapper.md`](Docs/migrating-from-the-wrapper.md) — what an
+  application built against the C wrapper over DTAPI notices.
+- [`Examples/README.md`](Examples/README.md) — the example programs and the command
+  lines to run them, with and without a card.
+
+The headers are the reference: `cdtapi.h` documents every function above its
+declaration, with the result codes it returns.
+
 ## Building
 
     Scripts/build.sh                 # configure, build and test for the host
@@ -67,6 +80,7 @@ is selected at run time with `CDTAPI_SIM=1`.
 | `Tests/` | `Unit/`, `Abi/`, `Sim/`, `Compat/`, `Conformance/` and `Bench/` suites |
 | `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames, and receive and transmit SMPTE ST 2110 video and audio |
 | `Scripts/` | Build and style-check entry points |
+| `Docs/` | Getting started, and migrating from the C wrapper |
 
 ## Relationship to DTAPI
 
@@ -88,6 +102,12 @@ CDTAPI's major and minor version number are those of the DTAPI whose behaviour i
 reproduces, now 6.13; the patch number counts CDTAPI's own releases. The driver is
 told that DTAPI version, with bug-fix number 0, in every property request, so that it
 answers as it answers DTAPI 6.13.0.
+
+Where CDTAPI is checked out beside DTAPI, as it is in DekTec's SDK tree, every configure
+checks that the two numbers still agree and fails the build when they do not.
+`Scripts/check_dtapi_version.cmake` does that, and `cmake -P` runs it on its own. Where
+CDTAPI stands alone, which is how it comes from GitHub, there is nothing to compare
+against and the check does nothing.
 
 ## Contributing
 
