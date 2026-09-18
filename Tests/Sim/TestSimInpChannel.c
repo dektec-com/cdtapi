@@ -368,10 +368,16 @@ DT_TEST(AttachRefusals)
     SimDtPcie_Reset();
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    // An ASI port attaches, and reads no frames.
     DT_ASSERT_OK(
         SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
-    DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
-                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    {
+        int Size = BUFFER_SIZE;
+        DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
+                     DTAPI_E_NOT_SDI_MODE);
+    }
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
     FINISH(Fix);
 }
@@ -1085,9 +1091,15 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
                                           DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT),
                  DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
-                                          DTAPI_IOCONFIG_ASI, -1),
-                 DTAPI_E_NOT_SUPPORTED);
+
+    // ASI switches the channel over, and a new SDI standard back.
+    DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                          DTAPI_IOCONFIG_ASI, -1));
+    {
+        int Size = BUFFER_SIZE;
+        DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 20),
+                     DTAPI_E_NOT_SDI_MODE);
+    }
 
     // A new standard reconfigures the channel.
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,

@@ -715,9 +715,21 @@ static DtapiResult AfterWait(DtRx* Rx, const DtRxWait* Wait)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 static const DtRxBackend g_Ops = {
-    Release,    SetRxModeSdi, SetRxControlSdi, ClearFifo,     ClearFlags,
-    GetFlags,   GetFifoLoad,  GetMaxFifoSize,  ApplyIoConfig, DetectIoStd,
-    CheckFrame, TakeFrame,    PrepareWait,     Wait,          AfterWait,
+    .Release = Release,
+    .SetRxMode = SetRxModeSdi,
+    .SetRxControl = SetRxControlSdi,
+    .ClearFifo = ClearFifo,
+    .ClearFlags = ClearFlags,
+    .GetFlags = GetFlags,
+    .GetFifoLoad = GetFifoLoad,
+    .GetMaxFifoSize = GetMaxFifoSize,
+    .ApplyIoConfig = ApplyIoConfig,
+    .DetectIoStd = DetectIoStd,
+    .CheckFrame = CheckFrame,
+    .TakeFrame = TakeFrame,
+    .PrepareWait = PrepareWait,
+    .Wait = Wait,
+    .AfterWait = AfterWait,
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

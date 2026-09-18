@@ -99,4 +99,17 @@ struct DtRxBackend
     void (*PrepareWait)(DtRx* Rx, DtRxWait* Wait);
     DtapiResult (*Wait)(DtRxWait* Wait, int Ms);
     DtapiResult (*AfterWait)(DtRx* Rx, const DtRxWait* Wait);
+
+    // Read: GetLoad gives the bytes a read would deliver now, Take delivers Size of them,
+    // which the load holds. NULL gives DTAPI_E_NOT_SUPPORTED.
+    DtapiResult (*GetLoad)(DtRx* Rx, size_t* Load);
+    DtapiResult (*Take)(DtRx* Rx, uint8_t* Out, size_t Size);
+
+    // GetStatus, GetTsRateBps, GetViolCount and PolarityControl. NULL gives
+    // DTAPI_E_NOT_SUPPORTED.
+    DtapiResult (*GetStatus)(DtRx* Rx, int* PacketSize, int* NumInv, int* ClkDet,
+                             int* AsiLock, int* RateOk, int* AsiInv);
+    DtapiResult (*GetTsRateBps)(DtRx* Rx, int* TsRate);
+    DtapiResult (*GetViolCount)(DtRx* Rx, int* ViolCount);
+    DtapiResult (*PolarityControl)(DtRx* Rx, int Polarity);
 };

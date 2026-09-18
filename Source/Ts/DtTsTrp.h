@@ -57,7 +57,8 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode);
 // What packet P converts to, into Out, which has room for DT_TRP_MAX_OUTPUT bytes: the
 // number of bytes, 0 for a packet that is dropped, or -1 for bytes that are no packet in
 // sync, with a sync nibble or a valid count that is wrong, after which the stream must
-// be found again.
+// be found again. With Out NULL only the number is given, and the flags set. The number
+// depends on P and the mode alone.
 int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out);
 
 // Searches Size bytes of Buf for DT_TRP_NUM_SYNC packets in a row with the sync nibble, a

@@ -101,7 +101,9 @@ int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
     }
 
     int n = 0, From = AT_PAYLOAD;
-    if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0)
+    if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0 && Out == NULL)
+        n = 4;
+    else if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0)
     {
         // Ticks of a 54 MHz clock, as DTAPI counts them from the time of day.
         uint32_t Seconds = (uint32_t)P[0] | (uint32_t)P[1] << 8 | (uint32_t)P[2] << 16 |
@@ -119,10 +121,12 @@ int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
         From = AT_SECONDS;
         Payload += AT_PAYLOAD;
     }
-    memcpy(Out + n, P + From, (size_t)Payload);
-    n += Payload;
-    memset(Out + n, 0, (size_t)Zeros);
-    return n + Zeros;
+    if (Out != NULL)
+    {
+        memcpy(Out + n, P + From, (size_t)Payload);
+        memset(Out + n + Payload, 0, (size_t)Zeros);
+    }
+    return n + Payload + Zeros;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_FindSync -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

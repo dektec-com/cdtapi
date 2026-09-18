@@ -8,7 +8,8 @@
 // at a time, and AsiSdiInpChannel_Bb2, which keeps the implementation of the port's
 // receiver for its I/O standard. This file does what those two do: the checks in DTAPI's
 // order, the lock, attaching and detaching, and the waits of a read. The receiving is the
-// side's, a DtRx behind the functions of DtRxBackend.h: DtSdiRx.c for raw SDI frames.
+// side's, a DtRx behind the functions of DtRxBackend.h: DtSdiRx.c for raw SDI frames,
+// DtAsiRx.c for a transport stream over ASI (0011).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -18,6 +19,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"    // Allocation seam.
 #include "Device/DtDevice.h" // The device and its port capabilities.
+#include "DtAsiRx.h"         // The ASI side.
 #include "DtIoConfig.h"      // Validating I/O configurations.
 #include "DtPcieAbi.h"       // DT_FWSTATUS_ values.
 #include "DtSdiRx.h"         // The SDI side.
@@ -47,6 +49,9 @@
 
 // How often a channel that is not receiving looks again, as DTAPI's ReadWithTimeOut.
 #define DT_IDLE_POLL_MS 10
+
+// The most Read waits for at a time without a time-out, as AsiRxImpl_Bb2::Read.
+#define DT_READ_BLOCK (1024 * 1024)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -243,10 +248,11 @@ static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint32_t Caps)
     Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &Config);
     if (Result != DTAPI_OK)
         return Result;
-    if (Config.Value == DTAPI_IOCONFIG_ASI)
-        return DTAPI_E_NOT_SUPPORTED;
 
-    Result = DtSdiRx_Attach(&Chan->Port, &Config, &Chan->Rx);
+    if (Config.Value == DTAPI_IOCONFIG_ASI)
+        Result = DtAsiRx_Attach(&Chan->Port, &Chan->Rx);
+    else
+        Result = DtSdiRx_Attach(&Chan->Port, &Config, &Chan->Rx);
     if (Result != DTAPI_OK)
         return Result;
     return CheckFailSafe(Chan, &Config);
@@ -417,6 +423,10 @@ DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags, int* Lat
 // DtInpChannel::SetIoConfig's checks, then AsiSdiInpChannel_Bb2::SetIoConfig's. DTAPI
 // also refuses a configuration the port lacks a capability for; here the driver does.
 //
+// A standard that crosses between SDI and ASI releases the one side, sets the
+// configuration and attaches the other, with its default receive mode. When that fails
+// the channel is left detached, where DTAPI leaves it without a side.
+//
 DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Value,
                                      int SubValue)
 {
@@ -440,8 +450,6 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (InpChannel->Rx->RxControl != DTAPI_RXCTRL_IDLE)
         Result = DTAPI_E_NOT_IDLE;
-    else if (Group == DTAPI_IOCONFIG_IOSTD && Value == DTAPI_IOCONFIG_ASI)
-        Result = DTAPI_E_NOT_SUPPORTED;
     else
     {
         DtIoConfig Config;
@@ -450,9 +458,29 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Config.Value = Value;
         Config.SubValue = SubValue;
         Config.ParXtra[0] = Config.ParXtra[1] = -1;
-        Result = DtPcieCmd_SetIoConfig(InpChannel->Device.Drv, &Config);
-        if (Result == DTAPI_OK)
-            Result = InpChannel->Rx->Ops->ApplyIoConfig(InpChannel->Rx, &Config);
+        const bool IsAsi = InpChannel->Rx->Ops->Take != NULL;
+        const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
+
+        if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
+        {
+            ReleaseSide(InpChannel);
+            Result = DtPcieCmd_SetIoConfig(InpChannel->Device.Drv, &Config);
+            if (Result == DTAPI_OK && NewAsi)
+                Result = DtAsiRx_Attach(&InpChannel->Port, &InpChannel->Rx);
+            else if (Result == DTAPI_OK)
+                Result = DtSdiRx_Attach(&InpChannel->Port, &Config, &InpChannel->Rx);
+            if (Result != DTAPI_OK)
+            {
+                DtDevice_Release(&InpChannel->Device);
+                InpChannel->Attached = false;
+            }
+        }
+        else
+        {
+            Result = DtPcieCmd_SetIoConfig(InpChannel->Device.Drv, &Config);
+            if (Result == DTAPI_OK)
+                Result = InpChannel->Rx->Ops->ApplyIoConfig(InpChannel->Rx, &Config);
+        }
     }
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
@@ -658,4 +686,174 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
                                    int* FrameSize, int TimeOut)
 {
     return DtInpChannel_ReadFrame2(InpChannel, FrameBuffer, FrameSize, TimeOut, NULL);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ASI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Read -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// DtInpChannel::Read and ReadWithTimeOut with AsiSdiInpChannel_Bb2::CheckReadParameters,
+// and DTAPI_E_IN_USE while a read on another thread has not returned. Without a time-out
+// the read takes what it can in blocks of 1 MB, as AsiRxImpl_Bb2::Read; with one it waits
+// for all of it, which may not exceed the FIFO. It waits without the lock, so a detach
+// ends it with DTAPI_E_CANCELLED.
+//
+DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumBytesToRead,
+                              int TimeOut)
+{
+    const uint64_t Start = OsTime_MonotonicMs();
+
+    if (InpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (NumBytesToRead == 0)
+        return DTAPI_OK;
+    if (TimeOut < -1)
+        return DTAPI_E_INVALID_TIMEOUT;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtRx* Rx = InpChannel->Rx;
+    int MaxFifoSize = 0;
+    DtapiResult Result = DTAPI_OK;
+    if (InpChannel->Detachers > 0)
+        Result = DTAPI_E_NOT_ATTACHED;
+    else if (InpChannel->Reading)
+        Result = DTAPI_E_IN_USE;
+    else if (Rx->Ops->Take == NULL)
+        Result = DTAPI_E_NOT_SUPPORTED;
+    else if (NumBytesToRead < 0 || NumBytesToRead % 4 != 0)
+        Result = DTAPI_E_INVALID_SIZE;
+    else if (Buffer == NULL || (uintptr_t)Buffer % 4 != 0)
+        Result = DTAPI_E_INVALID_BUF;
+    else if (TimeOut != 0)
+    {
+        Result = Rx->Ops->GetMaxFifoSize(Rx, &MaxFifoSize);
+        if (Result == DTAPI_OK && NumBytesToRead > MaxFifoSize)
+            Result = DTAPI_E_INVALID_SIZE;
+    }
+    if (Result != DTAPI_OK)
+    {
+        OsMutex_Unlock(InpChannel->Lock);
+        return Result;
+    }
+
+    uint8_t* Out = (uint8_t*)Buffer;
+    size_t Left = (size_t)NumBytesToRead;
+    InpChannel->Reading = true;
+    while (Result == DTAPI_OK && Left > 0)
+    {
+        // While this read waited without the lock, another thread may have stopped the
+        // channel, or switched it to SDI.
+        Rx = InpChannel->Rx;
+        if (Rx->Ops->Take == NULL)
+        {
+            Result = DTAPI_E_NOT_SUPPORTED;
+            break;
+        }
+        const size_t Block = TimeOut == 0 && Left > DT_READ_BLOCK ? DT_READ_BLOCK : Left;
+        size_t Load = 0;
+        if (Rx->RxControl == DTAPI_RXCTRL_RCV)
+            Result = Rx->Ops->GetLoad(Rx, &Load);
+        if (Result == DTAPI_OK && Load >= Block)
+        {
+            Result = Rx->Ops->Take(Rx, Out, Block);
+            Out += Block;
+            Left -= Block;
+            continue;
+        }
+        if (Result != DTAPI_OK)
+            break;
+
+        const uint64_t Elapsed = OsTime_MonotonicMs() - Start;
+        if (TimeOut > 0 && Elapsed >= (uint64_t)TimeOut)
+        {
+            Result = DTAPI_E_TIMEOUT;
+            break;
+        }
+        Result =
+            WaitMore(InpChannel, TimeOut > 0 ? (int64_t)TimeOut - (int64_t)Elapsed : -1);
+    }
+    InpChannel->Reading = false;
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_GetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtInpChannel_GetStatus(DtInpChannel* InpChannel, int* PacketSize, int* NumInv,
+                                   int* ClkDet, int* AsiLock, int* RateOk, int* AsiInv)
+{
+    if (InpChannel == NULL || PacketSize == NULL || NumInv == NULL || ClkDet == NULL ||
+        AsiLock == NULL || RateOk == NULL || AsiInv == NULL)
+    {
+        return DTAPI_E_INVALID_ARG;
+    }
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtRx* Rx = InpChannel->Rx;
+    DtapiResult Result =
+        Rx->Ops->GetStatus == NULL
+            ? DTAPI_E_NOT_SUPPORTED
+            : Rx->Ops->GetStatus(Rx, PacketSize, NumInv, ClkDet, AsiLock, RateOk, AsiInv);
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtInpChannel_GetTsRateBps(DtInpChannel* InpChannel, int* TsRate)
+{
+    if (InpChannel == NULL || TsRate == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtRx* Rx = InpChannel->Rx;
+    DtapiResult Result = Rx->Ops->GetTsRateBps == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Rx->Ops->GetTsRateBps(Rx, TsRate);
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_GetViolCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtInpChannel_GetViolCount(DtInpChannel* InpChannel, int* ViolCount)
+{
+    if (InpChannel == NULL || ViolCount == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtRx* Rx = InpChannel->Rx;
+    DtapiResult Result = Rx->Ops->GetViolCount == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Rx->Ops->GetViolCount(Rx, ViolCount);
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_PolarityControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// DtInpChannel::PolarityControl checks the value before anything else.
+//
+DtapiResult DtInpChannel_PolarityControl(DtInpChannel* InpChannel, int Polarity)
+{
+    if (Polarity != DTAPI_POLARITY_AUTO && Polarity != DTAPI_POLARITY_NORMAL &&
+        Polarity != DTAPI_POLARITY_INVERT)
+    {
+        return DTAPI_E_INVALID_MODE;
+    }
+    if (InpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtRx* Rx = InpChannel->Rx;
+    DtapiResult Result = Rx->Ops->PolarityControl == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Rx->Ops->PolarityControl(Rx, Polarity);
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
 }

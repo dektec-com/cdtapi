@@ -211,7 +211,7 @@ endif()
 # Run the OS abstraction, driver and device layers against the emulated device. The
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
-                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimAsi SimNw SimNet
+                 SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimAsi SimAsiRx SimNw SimNet
                  SimAvPipe SimAvFifo)
     cdtapi_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY

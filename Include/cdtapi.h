@@ -347,15 +347,23 @@ CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtInpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// An SDI input channel on a port of a DtPcie card, delivering DTAPI's raw SDI frames:
-// every line, EAV first, with 8-, 10- or 16-bit symbols. It works directly on the DMA
-// ring of the card's receive channel, without a thread of its own: ReadFrame waits for
-// the card's format events and assembles each frame straight into the caller's buffer.
+// An input channel on a port of a DtPcie card, SDI or ASI by the port's I/O standard.
 //
-// SD, HD and 3G standards are received; 4K, ASI, 8-bit symbols, active-video-only and
-// compressed modes are not. A channel attaches exclusively and is configured for the
-// port's I/O standard when it attaches and whenever that standard is set through the
-// channel.
+// On SDI it delivers DTAPI's raw SDI frames: every line, EAV first, with 8-, 10- or
+// 16-bit symbols. It works directly on the DMA ring of the card's receive channel,
+// without a thread of its own: ReadFrame waits for the card's format events and
+// assembles each frame straight into the caller's buffer. SD, HD and 3G standards are
+// received; 4K, 8-bit symbols, active-video-only and compressed modes are not.
+//
+// On ASI it delivers a transport stream through Read, in the receive modes DTAPI has for
+// ASI: DTAPI_RXMODE_ST188, ST204, STMP2, STRAW and STTRP, with DTAPI_RXMODE_TIMESTAMP32
+// or TIMESTAMP_TOD. The card writes into a buffer of 16 MB, which Read converts from
+// straight into the caller's buffer, again without a thread; the load and the FIFO are
+// DTAPI's, 8 MB at most.
+//
+// A channel attaches exclusively and is configured for the port's I/O standard when it
+// attaches and whenever that standard is set through the channel, switching between SDI
+// and ASI as the standard does.
 //
 // Every function taking a DtInpChannel returns DTAPI_E_INVALID_ARG for a null pointer,
 // and DTAPI_E_NOT_ATTACHED when the channel is not attached.
@@ -380,61 +388,68 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 // Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT
 // for a port that cannot be, or is not configured as, an input; DTAPI_E_NOT_SUPPORTED for
-// a port without an ASI/SDI receiver and for an ASI I/O standard;
-// DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a receiver the driver does not describe
-// or is too old for; DTAPI_E_IN_USE when another user has the port; and the driver's
-// result of any command.
+// a port without an ASI/SDI receiver; DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a
+// receiver the driver does not describe or is too old for; DTAPI_E_IN_USE when another
+// user has the port; and the driver's result of any command.
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
 // Stops receiving and discards what the channel holds, and clears the overflow flag.
 CDTAPI_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
 
-// Clears the latched flags in Latched; DTAPI_RX_FIFO_OVF is the only one.
+// Clears the latched flags in Latched: DTAPI_RX_FIFO_OVF, and on ASI DTAPI_RX_SYNC_ERR.
 CDTAPI_API DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched);
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel holds is discarded first; both
-// modes stop receiving. A ReadFrame waiting on another thread returns DTAPI_E_CANCELLED;
+// modes stop receiving. A read waiting on another thread returns DTAPI_E_CANCELLED;
 // DTAPI_E_TIMEOUT when it has not returned after 100 ms, and the channel then stays
 // attached and usable. DTAPI_E_NOT_ATTACHED when another thread detached it meanwhile.
 CDTAPI_API DtapiResult DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode);
 
 // Detects the I/O standard of the signal on the port: the value and sub-value that
 // DtapiVidStd2IoStd gives for the detected video standard. Fails as that function does
-// when no standard is detected.
+// when no standard is detected, and with DTAPI_E_NOT_SUPPORTED on ASI.
 CDTAPI_API DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value,
                                                 int* SubValue);
 
 // The bytes of complete frames waiting to be read, as raw frames in the current receive
-// mode; 0 while not receiving.
+// mode; on ASI the bytes Read would deliver now. 0 while not receiving.
 CDTAPI_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad);
 
 // The largest load GetFifoLoad can report: the complete frames the channel's ring holds
 // when full, as raw frames in the current receive mode. At least two frames. On a 4K
-// port, where the channel does not receive, DTAPI's FIFO size of 48 MB.
+// port, where the channel does not receive, DTAPI's FIFO size of 48 MB; on ASI its 8 MB.
 CDTAPI_API DtapiResult DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel,
                                                    int* MaxFifoSize);
 
 // The status flags and the latched flags: DTAPI_RX_FIFO_OVF when the card's ring for the
-// channel was full, which loses frames.
+// channel was full, which loses frames. On ASI, DTAPI_RX_FIFO_OVF when packets were lost,
+// in the card or because the FIFO was full, and DTAPI_RX_SYNC_ERR for a packet the card
+// received without packet sync, as DTAPI sets them.
 CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags,
                                              int* Latched);
 
 // Sets an I/O configuration of the channel's port, while not receiving
-// (DTAPI_E_NOT_IDLE). A new SDI standard reconfigures the channel for it. Returns
-// DTAPI_E_INVALID_ARG for a combination that is no configuration and for an output
-// direction, and DTAPI_E_NOT_SUPPORTED for 6G, 12G, ASI and any other direction.
+// (DTAPI_E_NOT_IDLE). A new SDI standard reconfigures the channel for it. A standard that
+// crosses between SDI and ASI switches the channel to the other, with that side's default
+// receive mode, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_ST188; when
+// the switch fails the channel is left detached. Returns DTAPI_E_INVALID_ARG for a
+// combination that is no configuration and for an output direction, and
+// DTAPI_E_NOT_SUPPORTED for 6G, 12G and any other direction.
 CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
                                                 int Value, int SubValue);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
 // Receiving in the 8-bit mode, or on a port configured for 4K, fails with
-// DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI.
+// DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI. On ASI, starting empties the FIFO and
+// clears DTAPI_RX_FIFO_OVF, and so does stopping; a value that is neither gives
+// DTAPI_E_INVALID_ARG.
 CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int RxControl);
 
-// Sets the receive mode while not receiving: DTAPI_RXMODE_SDI_FULL, optionally with
-// DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_SDI_16B, 8-bit without either. Any other mode
-// gives DTAPI_E_INVALID_MODE; receiving gives DTAPI_E_NOT_IDLE.
+// Sets the receive mode while not receiving: on SDI DTAPI_RXMODE_SDI_FULL, optionally
+// with DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_SDI_16B, 8-bit without either; on ASI one of
+// the modes above. Any other mode gives DTAPI_E_INVALID_MODE; receiving gives
+// DTAPI_E_NOT_IDLE.
 CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
 // Reads one frame into FrameBuffer, which holds *FrameSize bytes, and sets *FrameSize to
@@ -446,8 +461,8 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 // negative size or one not a multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not
 // a multiple of 4; DTAPI_E_IN_USE while a ReadFrame on another thread has not returned,
 // where DTAPI lets both wait; DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame;
-// DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is detached meanwhile.
-// *FrameSize is 0 after a failure from the buffer size check on.
+// DTAPI_E_NOT_SDI_MODE on ASI; DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is
+// detached meanwhile. *FrameSize is 0 after a failure from the buffer size check on.
 CDTAPI_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
                                               int* FrameSize, int TimeOut);
 
@@ -457,6 +472,45 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* Fr
 CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
                                                void* FrameBuffer, int* FrameSize,
                                                int TimeOut, DtTimeOfDay* ArrivalTime);
+
+// The functions below are ASI's, and give DTAPI_E_NOT_SUPPORTED on SDI.
+
+// Reads NumBytesToRead bytes of the transport stream into Buffer, in the receive mode.
+// With a time-out of 0 it waits as long as it takes, reading 1 MB at a time when more
+// is asked for than the FIFO holds; otherwise it waits up to TimeOut milliseconds, or
+// without a limit for -1, for all of it, and reads nothing when the time runs out.
+//
+// Returns, in DTAPI's order: DTAPI_OK at once for 0 bytes; DTAPI_E_INVALID_TIMEOUT for a
+// time-out below -1; DTAPI_E_IN_USE while a Read on another thread has not returned,
+// where DTAPI lets both wait; DTAPI_E_INVALID_SIZE for a negative size or one not a
+// multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not a multiple of 4;
+// DTAPI_E_INVALID_SIZE, with a time-out, for more than the FIFO's 8 MB;
+// DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is detached meanwhile, which
+// DTAPI does not see with a time-out of 0.
+CDTAPI_API DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer,
+                                         int NumBytesToRead, int TimeOut);
+
+// The state of the ASI input: the packet size found, DTAPI_PCKSIZE_188, 204 or INV;
+// NumInv DTAPI_NOT_SUPPORTED; ClkDet DTAPI_CLKDET_OK or FAIL; AsiLock DTAPI_ASI_INLOCK or
+// 0; RateOk DTAPI_INPRATE_OK above 900 bit/s, else LOW; AsiInv DTAPI_ASIINV_NORMAL,
+// INVERT, or DTAPI_NOT_SUPPORTED when unknown.
+CDTAPI_API DtapiResult DtInpChannel_GetStatus(DtInpChannel* InpChannel, int* PacketSize,
+                                              int* NumInv, int* ClkDet, int* AsiLock,
+                                              int* RateOk, int* AsiInv);
+
+// The rate of the transport stream, in bits a second of 188-byte packets: the card
+// measures 204-byte packets with their 16 extra bytes, which are left out but in
+// DTAPI_RXMODE_STRAW.
+CDTAPI_API DtapiResult DtInpChannel_GetTsRateBps(DtInpChannel* InpChannel, int* TsRate);
+
+// The count of 8b/10b code violations the card has seen.
+CDTAPI_API DtapiResult DtInpChannel_GetViolCount(DtInpChannel* InpChannel,
+                                                 int* ViolCount);
+
+// How the input's polarity is taken: DTAPI_POLARITY_AUTO, NORMAL or INVERT. Another value
+// gives DTAPI_E_INVALID_MODE before anything else.
+CDTAPI_API DtapiResult DtInpChannel_PolarityControl(DtInpChannel* InpChannel,
+                                                    int Polarity);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtOutpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
