@@ -312,27 +312,25 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/cdtapi_version.h"
     DESTINATION ${CDTAPI_INCLUDE_DIR})
 
-# What a static consumer outside CMake has to link beside the library itself. A shared
-# build carries them, so the .pc names them as private either way.
-if(WIN32)
-    set(CDTAPI_SYSTEM_LIBS "-lsetupapi -lws2_32 -liphlpapi")
-else()
-    set(CDTAPI_SYSTEM_LIBS "-lpthread")
-endif()
+# A pkg-config file, for a consumer that builds outside CMake. The SDK's Windows tree
+# leaves it out: a Windows application is not built through pkg-config, and one file
+# cannot describe the four static archives, which differ in the runtime they call.
+if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
+    # What a static consumer has to link beside the library itself. A shared build carries
+    # them, so the .pc names them as private either way.
+    if(WIN32)
+        set(CDTAPI_SYSTEM_LIBS "-lsetupapi -lws2_32 -liphlpapi")
+    else()
+        set(CDTAPI_SYSTEM_LIBS "-lpthread")
+    endif()
 
-# The name to link, which is the target's file name: the SDK's DLL is cdtapi64, and
-# everything else is plain cdtapi. A static consumer of the SDK picks the archive of its
-# own runtime, which the documentation names.
-if(CDTAPI_SDK_LAYOUT AND WIN32)
-    set(CDTAPI_LINK_NAME "cdtapi64")
-else()
     set(CDTAPI_LINK_NAME "cdtapi")
+
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cdtapi.pc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
+        @ONLY)
+
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
+        DESTINATION ${CDTAPI_PKGCONFIG_DIR})
 endif()
-
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cdtapi.pc.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
-    @ONLY)
-
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdtapi.pc"
-    DESTINATION ${CDTAPI_PKGCONFIG_DIR})
