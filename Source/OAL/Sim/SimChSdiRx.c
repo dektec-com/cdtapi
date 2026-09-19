@@ -13,6 +13,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
+#include "OAL/OsThread.h"       // The clock a source can follow.
 #include "SimChSdiRx.h"         // Interface being implemented.
 #include "SimDtPcie.h"          // Port counts.
 #include "Video/DtFrameProps.h" // Frame geometry of the source.
@@ -33,6 +34,10 @@
 
 // Symbols in the longest line the source writes: 720p at 23.98 Hz.
 #define SIM_RX_MAX_LINE_SYMBOLS 8250
+
+// The format events one read of the write offset delivers at most, on the clock: two
+// frames. A receiver that falls further behind drops the rest, and goes on from then.
+#define SIM_RX_MAX_DUE_EVENTS 8
 
 typedef struct SimRxUser
 {
@@ -74,6 +79,9 @@ typedef struct SimRxChannel
     bool Dropped;     // Part of the frame did not fit
     int LinesWritten; // Lines of the frame in the ring
     DtSdiFrameLayout Layout;
+
+    // On the clock, when the next format event is due; 0 for at once.
+    double NextEventMs;
 } SimRxChannel;
 
 static struct
@@ -81,6 +89,7 @@ static struct
     bool Initialised;
     SimRxChannel Channels[SIM_SDI_PORT_COUNT];
     size_t RingLimit;
+    bool RealTime;
     int Alignment;
     bool MapAsLinux;
     int FailCmd;
@@ -633,8 +642,50 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
     {
         Channel->WriteOffset = 0;
         Channel->InFrame = false;
+        Channel->NextEventMs = 0;
     }
     return DT_STATUS_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EventPeriodMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// On the clock, the time between two format events of the channel, a quarter of its
+// source's frame; 0 off the clock or without a source.
+//
+static double EventPeriodMs(const SimRxChannel* Channel)
+{
+    DtFrameProps Props;
+
+    if (!g_Rx.RealTime || !DtFrameProps_Init(&Props, Channel->SourceVidStd) ||
+        Props.FpsNum <= 0)
+    {
+        return 0;
+    }
+    return 1000.0 * Props.FpsDen / Props.FpsNum / 4;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DueEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// On the clock, the format events whose time has come, as a card's receiver writes its
+// frames whether or not anyone waits: a program that only looks at the write offset sees
+// the frames arrive.
+//
+static void DueEvents(SimRxChannel* Channel)
+{
+    double PeriodMs = EventPeriodMs(Channel);
+    if (PeriodMs <= 0 || !Channel->Running)
+        return;
+
+    double NowMs = (double)OsTime_MonotonicMs();
+    DtIoctlChSdiRxCmdWaitForFmtEventOutput Event;
+    for (int i = 0; i < SIM_RX_MAX_DUE_EVENTS && Channel->NextEventMs <= NowMs; i++)
+    {
+        NextEvent(Channel, &Event);
+        Channel->NextEventMs =
+            (Channel->NextEventMs > 0 ? Channel->NextEventMs : NowMs) + PeriodMs;
+    }
+    if (Channel->NextEventMs <= NowMs)
+        Channel->NextEventMs = NowMs + PeriodMs;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RunCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -738,9 +789,28 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
             return DT_STATUS_TIMEOUT;
         }
 
+        // On the clock, a wait before the next event is due returns when it is, or
+        // times out without it; a late event comes at once.
+        double PeriodMs = EventPeriodMs(Channel);
+        double NowMs = (double)OsTime_MonotonicMs();
+        int Delay = 0;
+        if (PeriodMs > 0 && Channel->NextEventMs > NowMs)
+        {
+            Delay = (int)(Channel->NextEventMs - NowMs + 0.999);
+            if (Request->m_Timeout >= 0 && Delay > Request->m_Timeout)
+            {
+                *SleepMs = Request->m_Timeout;
+                return DT_STATUS_TIMEOUT;
+            }
+        }
+        if (PeriodMs > 0)
+            Channel->NextEventMs =
+                (Channel->NextEventMs > NowMs ? Channel->NextEventMs : NowMs) + PeriodMs;
+
         memset(Event, 0, sizeof(*Event));
         NextEvent(Channel, Event);
         *OutSize = sizeof(*Event);
+        *SleepMs = Delay;
         if (Channel->SourceVidStd == DTAPI_VIDSTD_UNKNOWN && Request->m_Timeout > 0)
             *SleepMs = Request->m_Timeout < 10 ? Request->m_Timeout : 10;
         return DT_STATUS_OK;
@@ -754,6 +824,7 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
         }
         if (!Channel->Configured)
             return DT_STATUS_NOT_INITIALISED;
+        DueEvents(Channel);
         ((DtIoctlChSdiRxCmdGetWrOffsetOutput*)Out)->m_WriteOffset = Channel->WriteOffset;
         *OutSize = sizeof(DtIoctlChSdiRxCmdGetWrOffsetOutput);
         return DT_STATUS_OK;
@@ -858,6 +929,7 @@ void SimChSdiRx_Reset(void)
         Channel->SourceVidStd = DTAPI_VIDSTD_UNKNOWN;
     }
     g_Rx.RingLimit = 0;
+    g_Rx.RealTime = false;
     g_Rx.Alignment = SIM_RX_STREAM_ALIGNMENT;
     g_Rx.MapAsLinux = false;
     g_Rx.FailCmd = -1;
@@ -880,6 +952,16 @@ void SimDtPcie_SetRxSource(int PortIndex, int VidStd)
     Channel->SourceVidStd = VidStd;
     DtAlloc_Free(Channel->File);
     Channel->File = NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxRealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_SetRxRealTime(bool RealTime)
+{
+    EnsureRx();
+    g_Rx.RealTime = RealTime;
+    for (int i = 0; i < SIM_SDI_PORT_COUNT; i++)
+        g_Rx.Channels[i].NextEventMs = 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_SetFileSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

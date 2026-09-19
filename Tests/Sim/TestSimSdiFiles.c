@@ -22,6 +22,7 @@
 #include "Core/DtAlloc.h"           // Live allocations.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Direct handles.
+#include "OAL/OsThread.h"           // Waiting for frames on the clock.
 #include "OAL/Sim/SimChSdiRx.h"     // The emulated source's frames.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "Video/DtSdiFrame.h"       // Frame sizes.
@@ -291,6 +292,56 @@ DT_TEST(SourceRefusesWhatItCannotUse)
     remove(SINK_FILE);
 }
 
+// On the clock the frames arrive whether or not a read waits, so that a program that
+// looks at the FIFO load before it reads, as FFmpeg's device does, sees them come; off
+// the clock, as a test has it, none arrives without a wait.
+DT_TEST(SourceFollowsTheClock)
+{
+    for (int RealTime = 0; RealTime <= 1; RealTime++)
+    {
+        Fixture Fix;
+        if (!Start(&Fix, DtFailures))
+            return;
+        DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_625I50, 7, 2, 0));
+        DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("625I50", SOURCE_FILE)));
+        SimDtPcie_SetRxRealTime(RealTime != 0);
+
+        DtInpChannel* Channel = DtInpChannel_Alloc();
+        DT_ASSERT(Channel != NULL);
+        DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Channel, Fix.Device, PORT));
+        DT_ASSERT_OK(DtInpChannel_SetRxMode(Channel, DTAPI_RXMODE_SDI_FULL |
+                                                         DTAPI_RXMODE_SDI_10B));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV));
+
+        int Load = 0;
+        for (int Ms = 0; Ms < (RealTime ? 2000 : 200) && Load == 0; Ms += 10)
+        {
+            DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Channel, &Load));
+            if (Load == 0)
+                OsTime_SleepMs(10);
+        }
+        if (RealTime)
+        {
+            size_t Size, Padded;
+            uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_625I50, 7, &Size, &Padded);
+            int FrameSize = BUFFER_SIZE;
+            DT_ASSERT(Load > 0 && (size_t)Load % Size == 0);
+            DT_ASSERT_OK(DtInpChannel_ReadFrame(Channel, Fix.Buffer, &FrameSize, 1000));
+            DT_ASSERT_EQ((size_t)FrameSize, Size);
+            DT_ASSERT(Expected != NULL && memcmp(Fix.Buffer, Expected, Size) == 0);
+            free(Expected);
+        }
+        else
+        {
+            DT_ASSERT_EQ(Load, 0);
+        }
+        DtInpChannel_Free(Channel);
+        FINISH(Fix);
+    }
+    remove(SOURCE_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sink +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What an output channel sends lands in the file, frame for frame and padded: the frames
@@ -356,5 +407,5 @@ DT_TEST(LeavesAFileForTheExamples)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
-             DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SinkWritesWhatIsSent),
-             DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
+             DT_RUN(SinkWritesWhatIsSent), DT_RUN(LeavesAFileForTheExamples))

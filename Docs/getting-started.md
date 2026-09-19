@@ -249,7 +249,9 @@ its prefix. A file holds whole frames of 10-bit symbols, packed least significan
 first, each line from its EAV on and each frame padded with zeros to a multiple of 8
 bytes: what FFmpeg's `sdi` format holds without its header, and what a 10-bit
 `ReadFrame` gives but for the padding. The source plays the file's frames over and
-over; a value the emulator cannot use is reported on stderr and ignored.
+over at the standard's frame rate, as a card receives them, so that a program that
+looks at the FIFO load before it reads sees them arrive; a value the emulator cannot
+use is reported on stderr and ignored.
 
 ## Where to go next
 

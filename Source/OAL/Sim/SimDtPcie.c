@@ -1239,8 +1239,13 @@ void SimDtPcie_Reset(void)
     // calls no test control, an example, asks for it through the environment, with the
     // device index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
     const char* Source = getenv("CDTAPI_SIM_SDI_SOURCE");
-    if (Source != NULL && Source[0] != '\0' && !ApplySdiSource(Source))
-        fprintf(stderr, "CDTAPI_SIM_SDI_SOURCE: cannot use \"%s\"\n", Source);
+    if (Source != NULL && Source[0] != '\0')
+    {
+        if (ApplySdiSource(Source))
+            SimDtPcie_SetRxRealTime(true);
+        else
+            fprintf(stderr, "CDTAPI_SIM_SDI_SOURCE: cannot use \"%s\"\n", Source);
+    }
     const char* Sink = getenv("CDTAPI_SIM_SDI_SINK");
     if (Sink != NULL && Sink[0] != '\0' && !ApplySdiSink(Sink))
         fprintf(stderr, "CDTAPI_SIM_SDI_SINK: cannot use \"%s\"\n", Sink);

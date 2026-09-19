@@ -91,6 +91,13 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
 // source away, as after a reset. The frame numbers continue.
 void SimDtPcie_SetRxSource(int PortIndex, int VidStd);
 
+// Makes the receivers follow the clock when true: a format event falls due every quarter
+// of the source's frame, a read of the write offset writes the ones that are due, and a
+// wait returns when the next is. When false, as after a reset, each wait writes the next
+// quarter at once and nothing else does. A source from CDTAPI_SIM_SDI_SOURCE sets it, for
+// a program that looks at the FIFO load before it reads.
+void SimDtPcie_SetRxRealTime(bool RealTime);
+
 // Makes the port at PortIndex receive VidStd from now on with the frames of the file at
 // Path in place of the ones SimChSdiRx_Line makes, the first again after the last. The
 // file holds whole frames of 10-bit symbols, packed least significant bit first, each
