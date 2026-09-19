@@ -10,14 +10,16 @@ The interface is the same one. This page lists what an application notices.
 ## What does not change
 
 - **The functions.** Every function the wrapper's `CDTAPI.h` and `CDTAPI_AvFifo.h`
-  declared is declared here, with the same prototype and the same meaning.
+  declared is declared here, with the same meaning, and with the same prototype but for
+  the three that set an I/O configuration; see below.
 - **The names and the values.** The structures, enumerations and macros are DTAPI's, as
   they were, down to the numbers: `DTAPI_OK`, the `DTAPI_E_` codes, `DTAPI_VIDSTD_`,
   `DTAPI_IOCONFIG_`, `MAX_DEVICE_NAME_SIZE`, and the rest.
 - **`CDTAPI_VERSION`**, `CDTAPI_VERSION_MAJOR`, `_MINOR` and `_PATCH`, unchanged in
   spelling and in meaning.
 
-For most applications, migrating is the include line and the library to link.
+For most applications, migrating is the include line, the library to link, and an
+I/O configuration set with its extra arguments.
 
 ## The headers are lower case
 
@@ -31,6 +33,23 @@ For most applications, migrating is the include line and the library to link.
 A file system that tells capitals apart turns one spelling into a build that works on
 one platform and not the other, and a vcpkg port name may be lower case only, so every
 file name in CDTAPI is now lower case.
+
+## An I/O configuration takes DTAPI's extra arguments
+
+The wrapper's three functions that set an I/O configuration could not pass what some
+configurations need: the port a double-buffered or looped output names, or the ISI of
+one. They take it now, as DTAPI does, and each has a function beside it that reads a
+configuration back:
+
+| Was | Is |
+|---|---|
+| `DtDevice_SetIoConfig(Device, Port, Group, Value, SubValue)` | `DtDevice_SetIoConfig(Device, Configs, Count)`, a list of `DtIoConfig` |
+| `DtInpChannel_SetIoConfig(InpChannel, Group, Value, SubValue)` | `DtInpChannel_SetIoConfig(InpChannel, Group, Value, SubValue, ParXtra0, ParXtra1)` |
+| `DtOutpChannel_SetIoConfig(OutpChannel, Group, Value, SubValue)` | `DtOutpChannel_SetIoConfig(OutpChannel, Group, Value, SubValue, ParXtra0, ParXtra1)` |
+
+Where a call had no extra arguments, pass `-1, -1`; a single configuration of the
+device is a `DtIoConfig` of `{Port, Group, Value, SubValue, {-1, -1}}` and a count of 1.
+The compiler finds every call that is left.
 
 ## `ENABLE_AVFIFO` is gone
 
