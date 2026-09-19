@@ -91,6 +91,15 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
 // source away, as after a reset. The frame numbers continue.
 void SimDtPcie_SetRxSource(int PortIndex, int VidStd);
 
+// Makes the port at PortIndex receive VidStd from now on with the frames of the file at
+// Path in place of the ones SimChSdiRx_Line makes, the first again after the last. The
+// file holds whole frames of 10-bit symbols, packed least significant bit first, each
+// line from its EAV to the end of its active part, and each frame padded with zeros to a
+// multiple of 8 bytes: what FFmpeg's sdi format holds without its header, and what
+// SimDtPcie_SetSdiSink writes. Returns false, changing nothing, for a 4K or unknown
+// standard, a file that cannot be read, or one that holds no whole number of frames.
+bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path);
+
 // The one-off faults of a port's source, each applied to the next frame it starts.
 typedef enum SimRxFault
 {

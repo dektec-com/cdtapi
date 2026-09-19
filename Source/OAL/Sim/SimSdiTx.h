@@ -81,6 +81,13 @@ void SimSdiTx_CloseHandle(void* Handle);
 // Frees everything and restores the power-on state of every port and control below.
 void SimSdiTx_Reset(void);
 
+// Writes every frame the port at PortIndex sends from now on to the file at Path, which
+// is created or emptied: its lines from the EAV on as 10-bit symbols, packed least
+// significant bit first, the frame padded with zeros to a multiple of 8 bytes, as
+// FFmpeg's sdi format holds a frame without its header. A reset closes the file. Returns
+// false, changing nothing, when the file cannot be created.
+bool SimSdiTx_SetFileSink(int PortIndex, const char* Path);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For the ASI blocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // What SimAsi.c does with the DMA of a port, with the emulator's lock held.

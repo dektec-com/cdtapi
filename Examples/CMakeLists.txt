@@ -119,6 +119,14 @@ cdtapi_example_test(ConfigPortBadOption DtConfigPort "^Unknown option: --bogus" 
 cdtapi_example_test(DetectVidStd DtDetectVidStd "^9217800001:1  no video standard")
 cdtapi_example_test(DetectVidStdWaiting DtDetectVidStd
     "^9217800001:1  no video standard" --timeout 50)
+# The emulator plays a file of frames on port 1 when CDTAPI_SIM_SDI_SOURCE names one; the
+# SimSdiFiles suite leaves such a file in its directory.
+set(ExampleExtraEnv
+    "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${CMAKE_BINARY_DIR}/Tests/SimSdiFiles_1080i50.sdi")
+cdtapi_example_test(DetectVidStdFromFile DtDetectVidStd "^9217800001:1  1080I50")
+set(ExampleExtraEnv "")
+set_tests_properties(Example_DetectVidStdFromFile PROPERTIES
+    FIXTURES_REQUIRED SimSdiSourceFile)
 cdtapi_example_test(DetectVidStdOnOutput DtDetectVidStd
     "^9217800001:2  DtDevice_DetectVidStd: DTAPI_E_INVALID_MODE" --port 2)
 cdtapi_example_test(DetectVidStdNoInput DtDetectVidStd

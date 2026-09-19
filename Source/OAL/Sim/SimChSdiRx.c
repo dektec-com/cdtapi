@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdio.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -57,6 +58,12 @@ typedef struct SimRxChannel
 
     int SourceVidStd;
     uint32_t NextFrame;
+
+    // Frames from a file in place of the ones SimChSdiRx_Line makes; NULL for none.
+    uint8_t* File;
+    size_t FileFrames;
+    size_t FileFrameBytes; // A frame in the file, with its padding
+    int FileLineSyms;      // The symbols of a line, from its EAV on
     bool Faults[SIM_RX_FAULT_COUNT];
 
     // The frame being written.
@@ -253,6 +260,34 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
     return Total;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FileLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Fills Symbols with line Line, from 1, of frame FrameNumber of the channel's file, the
+// first frame again after the last.
+//
+static void FileLine(const SimRxChannel* Channel, uint32_t FrameNumber, int Line,
+                     uint16_t* Symbols)
+{
+    const uint8_t* Frame =
+        Channel->File + (FrameNumber % Channel->FileFrames) * Channel->FileFrameBytes;
+    size_t Bit = (size_t)(Line - 1) * (size_t)Channel->FileLineSyms * 10;
+    const uint8_t* In = Frame + Bit / 8;
+    uint32_t Accu = (uint32_t)(*In++ >> (Bit % 8));
+    int Have = 8 - (int)(Bit % 8);
+
+    for (int i = 0; i < Channel->FileLineSyms; i++)
+    {
+        while (Have < 10)
+        {
+            Accu |= (uint32_t)*In++ << Have;
+            Have += 8;
+        }
+        Symbols[i] = (uint16_t)(Accu & 0x3FF);
+        Accu >>= 10;
+        Have -= 10;
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackSection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Packs Count symbols, least significant bit first, into Bytes bytes, padding with zero.
@@ -408,7 +443,10 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     {
         int Line = Channel->LinesWritten + 1;
 
-        SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
+        if (Channel->File != NULL)
+            FileLine(Channel, Channel->FrameNumber, Line, Symbols);
+        else
+            SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
         PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->LineBytesHanc);
         PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
                     Coded + Layout->LineBytesHanc, Layout->LineBytesVideo);
@@ -812,7 +850,10 @@ void SimChSdiRx_Reset(void)
         SimRxChannel* Channel = &g_Rx.Channels[Port];
 
         if (g_Rx.Initialised)
+        {
             DtAlloc_Free(Channel->Ring);
+            DtAlloc_Free(Channel->File);
+        }
         memset(Channel, 0, sizeof(*Channel));
         Channel->SourceVidStd = DTAPI_VIDSTD_UNKNOWN;
     }
@@ -833,8 +874,68 @@ void SimChSdiRx_Reset(void)
 void SimDtPcie_SetRxSource(int PortIndex, int VidStd)
 {
     EnsureRx();
-    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
-        g_Rx.Channels[PortIndex].SourceVidStd = VidStd;
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
+        return;
+    SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
+    Channel->SourceVidStd = VidStd;
+    DtAlloc_Free(Channel->File);
+    Channel->File = NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_SetFileSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
+{
+    DtFrameProps Props;
+
+    EnsureRx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Path == NULL ||
+        DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
+    {
+        return false;
+    }
+    const int LineSyms = DtFrameProps_LineSymbolsHanc(&Props) + Props.LineNumSymVanc;
+    const size_t Bits = (size_t)DtFrameProps_NumLines(&Props) * (size_t)LineSyms * 10;
+    const size_t FrameBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
+    if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)
+        return false;
+
+    FILE* File = SimDtPcie_OpenFile(Path, "rb");
+    if (File == NULL)
+        return false;
+    uint8_t* Data = NULL;
+    size_t Size = 0;
+    bool Failed = false;
+    for (;;)
+    {
+        uint8_t* More = (uint8_t*)DtAlloc_Realloc(Data, Size + FrameBytes);
+        if (More == NULL)
+        {
+            Failed = true;
+            break;
+        }
+        Data = More;
+        size_t Got = fread(Data + Size, 1, FrameBytes, File);
+        Size += Got;
+        if (Got < FrameBytes)
+            break;
+    }
+    Failed = Failed || ferror(File) != 0;
+    fclose(File);
+    if (Failed || Size == 0 || Size % FrameBytes != 0)
+    {
+        DtAlloc_Free(Data);
+        return false;
+    }
+
+    SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
+    DtAlloc_Free(Channel->File);
+    Channel->File = Data;
+    Channel->FileFrames = Size / FrameBytes;
+    Channel->FileFrameBytes = FrameBytes;
+    Channel->FileLineSyms = LineSyms;
+    Channel->SourceVidStd = VidStd;
+    return true;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_RunRxEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

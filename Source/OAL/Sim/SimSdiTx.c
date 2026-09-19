@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -106,6 +107,7 @@ typedef struct SimTxPort
     int HeaderErrors;
     SimTxKept Kept[SIM_TX_KEPT_FRAMES];
     int NumKept;
+    FILE* Sink; // Where the frames sent go as well; NULL for nowhere
 } SimTxPort;
 
 static struct
@@ -312,12 +314,50 @@ static void UnpackSection(const SimTxPort* Port, size_t Offset, int Count, uint1
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SinkFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Appends the frame just received to the port's file, packed and padded; a write that
+// fails is not retried.
+//
+static void SinkFrame(const SimTxPort* Port)
+{
+    const size_t Count =
+        (size_t)Port->NumLines * (size_t)(Port->SymsHanc + Port->SymsVideo);
+    const size_t Bytes = ((Count * 10 + 7) / 8 + 7) / 8 * 8;
+    uint8_t* Out = (uint8_t*)DtAlloc_Malloc(Bytes);
+    if (Out == NULL)
+        return;
+
+    uint32_t Accu = 0;
+    int Have = 0;
+    size_t Byte = 0;
+    memset(Out, 0, Bytes);
+    for (size_t i = 0; i < Count; i++)
+    {
+        Accu |= (uint32_t)(Port->Symbols[i] & 0x3FF) << Have;
+        Have += 10;
+        while (Have >= 8)
+        {
+            Out[Byte++] = (uint8_t)Accu;
+            Accu >>= 8;
+            Have -= 8;
+        }
+    }
+    if (Have > 0)
+        Out[Byte] = (uint8_t)Accu;
+    fwrite(Out, 1, Bytes, Port->Sink);
+    fflush(Port->Sink);
+    DtAlloc_Free(Out);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- KeepFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Moves the frame just received into the kept frames, dropping the oldest when full.
 //
 static void KeepFrame(SimTxPort* Port)
 {
+    if (Port->Sink != NULL)
+        SinkFrame(Port);
     if (Port->NumKept == SIM_TX_KEPT_FRAMES)
     {
         DtAlloc_Free(Port->Kept[0].Symbols);
@@ -1251,6 +1291,8 @@ void SimSdiTx_Reset(void)
             DtAlloc_Free(Port->Symbols);
             for (int k = 0; k < Port->NumKept; k++)
                 DtAlloc_Free(Port->Kept[k].Symbols);
+            if (Port->Sink != NULL)
+                fclose(Port->Sink);
         }
         memset(Port, 0, sizeof(*Port));
         Port->CdmacMode = DT_BLOCK_OPMODE_IDLE;
@@ -1335,6 +1377,23 @@ void SimDtPcie_SetTxFrameLimit(int PortIndex, int Count)
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
         g_Tx.Ports[PortIndex].FrameLimit = Count;
     SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_SetFileSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimSdiTx_SetFileSink(int PortIndex, const char* Path)
+{
+    EnsureTx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Path == NULL)
+        return false;
+    FILE* File = SimDtPcie_OpenFile(Path, "wb");
+    if (File == NULL)
+        return false;
+    SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    if (Port->Sink != NULL)
+        fclose(Port->Sink);
+    Port->Sink = File;
+    return true;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetTxRealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

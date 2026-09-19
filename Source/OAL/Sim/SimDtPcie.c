@@ -29,6 +29,8 @@
 #include "SimNet.h"                 // The DTA-2110's interface in the network.
 #include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
+#include "Video/DtFrameProps.h"     // The signal of a file source's standard.
+#include "Video/DtVidStd.h"         // Its level and I/O standard.
 #include "cdtapi.h"                 // DTAPI_IOCONFIG_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -1059,6 +1061,136 @@ static uint32_t SimLastError(const void* State)
     return ((const SimDevice*)State)->LastError;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Files +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenFile -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode)
+{
+#ifdef _MSC_VER
+    FILE* File = NULL;
+    return fopen_s(&File, Path, Mode) == 0 ? File : NULL;
+#else
+    return fopen(Path, Mode);
+#endif
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParsePort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The SDI port a value starts with, numbered from 1 and followed by a colon, as a port
+// index; *Rest receives what follows the colon. -1 when there is no such port.
+//
+static int ParsePort(const char* Value, const char** Rest)
+{
+    int Port = 0;
+    const char* At = Value;
+
+    while (*At >= '0' && *At <= '9' && Port <= SIM_SDI_PORT_COUNT)
+        Port = Port * 10 + (*At++ - '0');
+    if (At == Value || *At != ':' || Port < 1 || Port > SIM_SDI_PORT_COUNT)
+        return -1;
+    *Rest = At + 1;
+    return Port - 1;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- VidStdNamed -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The video standard whose DTAPI_VIDSTD_ name without its prefix is the Length
+// characters at Name, in any case; DTAPI_VIDSTD_UNKNOWN for none.
+//
+static int VidStdNamed(const char* Name, size_t Length)
+{
+    static const struct
+    {
+        const char* Name;
+        int VidStd;
+    } Names[] = {
+#define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, OneLink)               \
+    {#Name, DTAPI_VIDSTD_##Name},
+#include "Tables/DtVidStdList.inc"
+#undef X
+    };
+
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        size_t k = 0;
+        while (k < Length && Names[i].Name[k] != '\0')
+        {
+            char A = Name[k], B = Names[i].Name[k];
+            if (A >= 'a' && A <= 'z')
+                A = (char)(A - 'a' + 'A');
+            if (A != B)
+                break;
+            k++;
+        }
+        if (k == Length && Names[i].Name[k] == '\0')
+            return Names[i].VidStd;
+    }
+    return DTAPI_VIDSTD_UNKNOWN;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The locked signal of a video standard, without a VPID, as a receiver reports it. False
+// for a 4K or unknown standard.
+//
+static bool SignalOf(int VidStd, SimSdiSignal* Signal)
+{
+    DtFrameProps Props;
+    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
+
+    if (Info == NULL || DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
+        return false;
+    memset(Signal, 0, sizeof(*Signal));
+    Signal->CarrierDetect = 1;
+    Signal->SdiLock = 1;
+    Signal->LineLock = 1;
+    Signal->Valid = 1;
+    Signal->NumSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
+    Signal->NumSymsVidVanc = Props.LineNumSymVanc;
+    Signal->NumLinesF1 = Props.Fields[0].EndLine - Props.Fields[0].StartLine + 1;
+    if (Props.NumFields == 2)
+        Signal->NumLinesF2 = Props.Fields[1].EndLine - Props.Fields[1].StartLine + 1;
+    Signal->IsLevelB = Info->IsLevelB ? 1 : 0;
+    Signal->FramePeriod = (int)(1e9 * Props.FpsDen / Props.FpsNum + 0.5);
+    Signal->SdiRate = Info->IoStd == DTAPI_IOCONFIG_SDI     ? DT_DRV_SDIRATE_SD
+                      : Info->IoStd == DTAPI_IOCONFIG_HDSDI ? DT_DRV_SDIRATE_HD
+                                                            : DT_DRV_SDIRATE_3G;
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplySdiSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// SimDtPcie_SetSdiSource without taking the lock, for the reset, which may hold it.
+//
+static bool ApplySdiSource(const char* Source)
+{
+    const char* Rest = NULL;
+    int PortIndex = ParsePort(Source, &Rest);
+    if (PortIndex < 0)
+        return false;
+    const char* Colon = strchr(Rest, ':');
+    if (Colon == NULL || Colon[1] == '\0')
+        return false;
+
+    SimSdiSignal Signal;
+    int VidStd = VidStdNamed(Rest, (size_t)(Colon - Rest));
+    if (!SignalOf(VidStd, &Signal) ||
+        !SimChSdiRx_SetFileSource(PortIndex, VidStd, Colon + 1))
+        return false;
+    SimDtPcie_SetSdiSignal(PortIndex, &Signal);
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplySdiSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static bool ApplySdiSink(const char* Sink)
+{
+    const char* Rest = NULL;
+    int PortIndex = ParsePort(Sink, &Rest);
+    return PortIndex >= 0 && Rest[0] != '\0' && SimSdiTx_SetFileSink(PortIndex, Rest);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1106,6 +1238,13 @@ void SimDtPcie_Reset(void)
     // A test puts the DTA-2110 there through SimDtPcie_SetDta2110Index. A program that
     // calls no test control, an example, asks for it through the environment, with the
     // device index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
+    const char* Source = getenv("CDTAPI_SIM_SDI_SOURCE");
+    if (Source != NULL && Source[0] != '\0' && !ApplySdiSource(Source))
+        fprintf(stderr, "CDTAPI_SIM_SDI_SOURCE: cannot use \"%s\"\n", Source);
+    const char* Sink = getenv("CDTAPI_SIM_SDI_SINK");
+    if (Sink != NULL && Sink[0] != '\0' && !ApplySdiSink(Sink))
+        fprintf(stderr, "CDTAPI_SIM_SDI_SINK: cannot use \"%s\"\n", Sink);
+
     const char* Dta2110 = getenv("CDTAPI_SIM_DTA2110");
     g_Sim.Dta2110Index = Dta2110 != NULL && Dta2110[0] != '\0' ? atoi(Dta2110) : -1;
     if (g_Sim.Dta2110Index >= 0)
@@ -1228,6 +1367,28 @@ void SimDtPcie_SetSdiSignal(int PortIndex, const SimSdiSignal* Signal)
     }
     memset(Port, 0, sizeof(*Port));
     Port->SdiRate = DT_DRV_SDIRATE_UNKNOWN;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimDtPcie_SetSdiSource(const char* Source)
+{
+    EnsureState();
+    Lock();
+    bool Done = Source != NULL && ApplySdiSource(Source);
+    Unlock();
+    return Done;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimDtPcie_SetSdiSink(const char* Sink)
+{
+    EnsureState();
+    Lock();
+    bool Done = Sink != NULL && ApplySdiSink(Sink);
+    Unlock();
+    return Done;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

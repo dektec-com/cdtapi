@@ -238,6 +238,19 @@ emulated DTA-2110, which has one, and `CDTAPI_SIM_LOOPBACK=1` makes the packets 
 program sends arrive at its own receive side. The emulator starts afresh in each
 process, so a configuration one program sets is gone for the next.
 
+Two more give the emulated SDI ports something to receive and somewhere to send to,
+through files:
+
+    CDTAPI_SIM_SDI_SOURCE=1:1080I50:frames.sdi   # port 1 receives the file's frames
+    CDTAPI_SIM_SDI_SINK=2:sent.sdi               # what port 2 sends goes to the file
+
+The port is numbered from 1 and the video standard is a `DTAPI_VIDSTD_` name without
+its prefix. A file holds whole frames of 10-bit symbols, packed least significant bit
+first, each line from its EAV on and each frame padded with zeros to a multiple of 8
+bytes: what FFmpeg's `sdi` format holds without its header, and what a 10-bit
+`ReadFrame` gives but for the padding. The source plays the file's frames over and
+over; a value the emulator cannot use is reported on stderr and ignored.
+
 ## Where to go next
 
 - [`Examples/README.md`](../Examples/README.md) lists example programs that configure a

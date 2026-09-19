@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Identity +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -142,6 +143,21 @@ void SimDtPcie_SetSdiSignal(int PortIndex, const SimSdiSignal* Signal);
 // ends it.
 void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads);
 
+// An SDI source and sink through files, for a program that calls no test control, such
+// as FFmpeg with DekTec's devices: the reset takes them from the environment variables
+// CDTAPI_SIM_SDI_SOURCE and CDTAPI_SIM_SDI_SINK, whose values these two take too, and a
+// value it cannot use is reported on stderr and ignored.
+//
+// Source is "<port>:<vidstd>:<file>": the SDI port, numbered from 1, receives a locked
+// signal of the video standard, a DTAPI_VIDSTD_ name without its prefix such as 1080I50,
+// in any case, and its channel the frames of the file, as SimChSdiRx_SetFileSource
+// describes, the first again after the last. Sink is "<port>:<file>": every frame the SDI
+// port sends goes to the file too, as SimSdiTx_SetFileSink describes. The file is the
+// rest of the value, so it may hold colons. Each returns false, changing nothing, for a
+// value it cannot use.
+bool SimDtPcie_SetSdiSource(const char* Source);
+bool SimDtPcie_SetSdiSink(const char* Sink);
+
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.
 void SimDtPcie_SetIndex(int Index);
@@ -176,6 +192,10 @@ size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size);
 #define SIM_MAX_RECORDED_INPUT 1024
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Emulator parts +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Opens the file at Path as fopen does, with fopen_s where MSVC deprecates fopen; NULL
+// when it cannot.
+FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 //
 // For the emulated functions, not for tests.
 //
