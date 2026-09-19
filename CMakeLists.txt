@@ -181,6 +181,10 @@ if(CDTAPI_BUILD_SHARED)
     target_compile_definitions(cdtapi INTERFACE CDTAPI_DLL)
 else()
     add_library(cdtapi STATIC ${CDTAPI_BUILT} ${CDTAPI_SHOWN_ONLY})
+
+    # The static library also ends up inside shared ones, as in FFmpeg's libavdevice
+    # built shared; that takes position-independent code, its thread-local error too.
+    set_target_properties(cdtapi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 add_library(cdtapi::cdtapi ALIAS cdtapi)
