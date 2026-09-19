@@ -36,8 +36,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Room for the largest frame a channel delivers: 1080-line 3G with 16-bit symbols.
-#define FRAME_BUFFER_SIZE (16 * 1024 * 1024)
+// Room for the largest frame a channel delivers: 2160p over one link with 16-bit
+// symbols, 47 520 000 bytes.
+#define FRAME_BUFFER_SIZE (48 * 1024 * 1024)
 
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI input"},

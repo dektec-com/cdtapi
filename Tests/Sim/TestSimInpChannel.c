@@ -349,14 +349,21 @@ DT_TEST(AttachRefusals)
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_DRIVER_INCOMP);
 
-    // A 4K standard attaches, but does not receive.
+    // 2160p over one 12G link receives (0014), but a 4K standard of level-B links
+    // attaches without receiving, as with DTAPI.
     SimDtPcie_Reset();
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_2160P50B", PORT - 1, true, 1);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+    DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                             DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50B));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_EQ(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV),
                  DTAPI_E_CONFIG_RAW_SDI);
@@ -467,8 +474,10 @@ DT_TEST(RingHoldsTwoFramesAtLeast)
 }
 
 // A channel on a 4K port has no ring and no frame size: a read waits for its time-out,
-// also after the channel was attached to the port with an HD standard before.
-DT_TEST(FourKPortReadsNothing)
+// A port of 2160p over one link wants a buffer for a whole raw frame, 29.7 MB in 10 bits,
+// also after the channel was attached to the port with an HD standard before; without a
+// signal nothing comes.
+DT_TEST(FourKPortWantsWholeFrames)
 {
     Fixture Fix;
 
@@ -482,13 +491,24 @@ DT_TEST(FourKPortReadsNothing)
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel,
+                                        DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
 
-    int Size = 4;
-    uint64_t Before = OsTime_MonotonicMs();
+    int Size = BUFFER_SIZE;
     DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 30),
-                 DTAPI_E_TIMEOUT);
+                 DTAPI_E_BUF_TOO_SMALL);
+    int MaxFifo = 0;
+    DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &MaxFifo));
+    DT_ASSERT(MaxFifo >= 2 * 29700000);
+
+    char* Frame = (char*)malloc(29700000);
+    DT_ASSERT(Frame != NULL);
+    Size = 29700000;
+    uint64_t Before = OsTime_MonotonicMs();
+    DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.Channel, Frame, &Size, 30), DTAPI_E_TIMEOUT);
     DT_ASSERT(OsTime_MonotonicMs() - Before >= 30);
-    DT_ASSERT_EQ(Size, 0);
+    free(Frame);
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);
 }
@@ -1085,10 +1105,20 @@ DT_TEST(IoConfiguration)
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
+    // 2160p over one link goes through to the driver, which refuses it on a port without
+    // the capability and takes it on one with (0014).
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50,
                                           -1, -1),
-                 DTAPI_E_NOT_SUPPORTED);
+                 DTAPI_E_CONFIG);
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                          DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50,
+                                          -1, -1));
+    DT_ASSERT_OK(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1));
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IODIR,
                                           DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT,
                                           -1, -1),
@@ -1201,7 +1231,7 @@ DT_TEST(DetectsTheIoStandard)
 
 DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AttachRefusals), DT_RUN(AttachCleansUpAfterFailures),
-             DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(FourKPortReadsNothing),
+             DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(FourKPortWantsWholeFrames),
              DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
              DT_RUN(ReadFrame2GivesTheArrivalTime), DT_RUN(ReadsAcrossTheEndOfTheRing),
              DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),

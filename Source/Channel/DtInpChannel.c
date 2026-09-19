@@ -481,12 +481,7 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    if (Group == DTAPI_IOCONFIG_IOSTD &&
-        (Value == DTAPI_IOCONFIG_6GSDI || Value == DTAPI_IOCONFIG_12GSDI))
-    {
-        Result = DTAPI_E_NOT_SUPPORTED;
-    }
-    else if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_OUTPUT)
+    if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_OUTPUT)
         Result = DTAPI_E_INVALID_ARG;
     else if (Group == DTAPI_IOCONFIG_IODIR && Value == DTAPI_IOCONFIG_INPUT &&
              SubValue == DTAPI_IOCONFIG_SHAREDANT &&

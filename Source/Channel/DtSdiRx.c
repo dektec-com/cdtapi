@@ -58,10 +58,11 @@ typedef struct DtSdiRx
     // The configured channel.
     bool ChannelAttached;
     DtSdiFrameLayout Layout;
-    DtRing Ring;      // Base NULL without a ring
-    bool RingMapped;  // Mapped by CDTAPI rather than by the driver
-    uint8_t* LineBuf; // A coded line that runs across the end of the ring
-    int QuarterMs;    // A quarter frame period, at least 1 ms
+    DtRing Ring;       // Base NULL without a ring
+    bool RingMapped;   // Mapped by CDTAPI rather than by the driver
+    uint8_t* LineBuf;  // Coded lines that run across the end of the ring
+    uint16_t* Scratch; // The conversion's working symbols of a 4K line
+    int QuarterMs;     // A quarter frame period, at least 1 ms
 
     // Reading.
     bool InSync;
@@ -131,6 +132,8 @@ static void ReleaseChannel(DtSdiRx* Sdi)
     Sdi->RingMapped = false;
     DtAlloc_Free(Sdi->LineBuf);
     Sdi->LineBuf = NULL;
+    DtAlloc_Free(Sdi->Scratch);
+    Sdi->Scratch = NULL;
     memset(&Sdi->Layout, 0, sizeof(Sdi->Layout));
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
 
@@ -192,11 +195,14 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 
     Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
 
-    // A 4K standard, which DTAPI's raw row does not take, attaches without a ring; see
-    // SetRxControl.
-    if (Result == DTAPI_OK &&
-        (Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
-         Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI || DtVidStd_Is4k(Sdi->IoStdSubValue)))
+    // 2160p over one 6G or 12G link receives as raw frames (0014); a 4K standard over
+    // four links, or of level-B links, which DTAPI's raw row does not take either,
+    // attaches without a ring; see SetRxControl.
+    const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
+    const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
+                         Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
+    if (Result == DTAPI_OK && (OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
+        (!OneLink || Info == NULL || Info->IsLevelB))
     {
         return DTAPI_OK;
     }
@@ -225,9 +231,11 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Config.NumSymsHanc = Sdi->Layout.LineSymsHanc;
     Config.NumSymsVidVanc = Sdi->Layout.LineSymsVideo;
     Config.NumLines = Sdi->Layout.NumLines;
-    Config.SdiRate = DtFrameProps_IsSd(&Frame)   ? DT_DRV_SDIRATE_SD
-                     : DtFrameProps_Is3g(&Frame) ? DT_DRV_SDIRATE_3G
-                                                 : DT_DRV_SDIRATE_HD;
+    Config.SdiRate = Sdi->Layout.SdiRate == DT_SDIRATE_12G  ? DT_DRV_SDIRATE_12G
+                     : Sdi->Layout.SdiRate == DT_SDIRATE_6G ? DT_DRV_SDIRATE_6G
+                     : DtFrameProps_IsSd(&Frame)            ? DT_DRV_SDIRATE_SD
+                     : DtFrameProps_Is3g(&Frame)            ? DT_DRV_SDIRATE_3G
+                                                            : DT_DRV_SDIRATE_HD;
     Config.AssumeInterlaced = DtFrameProps_IsInterlaced(&Frame);
     Config.Scale12GTo3G = Sdi->Scale12GTo3G;
 
@@ -248,8 +256,12 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     if (Result == DTAPI_OK)
     {
         Sdi->RingMapped = Mapped;
-        Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc((size_t)Sdi->Layout.Stride);
-        if (Sdi->LineBuf == NULL)
+        Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc((size_t)Sdi->Layout.HancSections *
+                                                (size_t)Sdi->Layout.Stride);
+        if (Sdi->Layout.Is4k)
+            Sdi->Scratch = (uint16_t*)DtAlloc_Malloc(
+                DtSdiFrame_ScratchSymbols(&Sdi->Layout) * sizeof(uint16_t));
+        if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
             Result = DTAPI_E_OUT_OF_MEM;
     }
     if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_RING_MIN_FRAMES)
@@ -370,9 +382,10 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 //
 // SdiRxImpl_Bb2::SetRxControl: anything but idle receives, and the value is kept as
 // given. Receiving starts reading at the start of the ring, as DtPalCHSDIRX does. With
-// 8-bit symbols or a 4K standard receiving fails as the Matrix's row validation fails it
-// (MxPreProcess::ValidateRowConfigRaw accepts only 10- and 16-bit raw data of one logical
-// link), before the channel runs.
+// 8-bit symbols, or a 4K standard over four links or of level-B links, receiving fails as
+// the Matrix's row validation fails it (MxPreProcess::ValidateRowConfigRaw accepts only
+// 10- and 16-bit raw data of one logical link), before the channel runs. 2160p over one
+// 6G or 12G link receives, which DTAPI refuses too (0014).
 //
 static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
 {
@@ -500,8 +513,8 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetMaxFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The load GetFifoLoad reports for a full ring. A channel without a ring, on a 4K port,
-// gives DTAPI's size.
+// The load GetFifoLoad reports for a full ring. A channel without a ring, on a port of
+// 4K over four links, gives DTAPI's size.
 //
 static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
 {
@@ -625,7 +638,7 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
             uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
             DtRing_PeekAt(&Sdi->Ring,
                           (size_t)Layout->HeaderBytes +
-                              (size_t)(Layout->NumLines - 1) * (size_t)Layout->Stride,
+                              (size_t)(Layout->CodedLines - 1) * (size_t)Layout->Stride,
                           Last, sizeof(Last));
             if (DtSdiFrame_CheckLines(Layout, First, Last) == DTAPI_OK)
                 break;
@@ -638,20 +651,28 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
         Sdi->InSync = false;
     }
 
-    // A line that runs across the end of the ring is copied into one piece first.
-    memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
+    // A line that runs across the end of the ring is copied into one piece first. A raw
+    // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
+    size_t Coded4Line = (size_t)Layout->HancSections * (size_t)Layout->Stride;
+    size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
+    if (!Layout->Is4k)
+        memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
     for (int Line = 0; Line < Layout->NumLines; Line++)
     {
-        size_t Offset =
-            (size_t)Layout->HeaderBytes + (size_t)Line * (size_t)Layout->Stride;
-        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, (size_t)Layout->Stride);
+        size_t Offset = (size_t)Layout->HeaderBytes + (size_t)Line * Coded4Line;
+        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Coded4Line);
 
         if (Coded == NULL)
         {
-            DtRing_PeekAt(&Sdi->Ring, Offset, Sdi->LineBuf, (size_t)Layout->Stride);
+            DtRing_PeekAt(&Sdi->Ring, Offset, Sdi->LineBuf, Coded4Line);
             Coded = Sdi->LineBuf;
         }
-        DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Buffer);
+        if (Layout->Is4k)
+            DtSdiFrame_ConvertLine4k(Layout, Sdi->SymbolBits, Coded,
+                                     Coded + Layout->Stride, Line,
+                                     Buffer + (size_t)Line * RawLineBytes, Sdi->Scratch);
+        else
+            DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Buffer);
     }
 
     Result = Advance(Sdi, Frame);
