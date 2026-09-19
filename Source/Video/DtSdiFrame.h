@@ -44,7 +44,22 @@
 //               padded to the stream alignment
 //
 // All values are little endian. The layout below holds what a frame of one video
-// standard takes. 4K, whose coded lines have two sections of each kind, is not described.
+// standard takes.
+//
+// 2160p over one 6G or 12G link carries four links, each a 1080p stream of the same
+// rate, divided by two-sample interleave: the pixel pairs of an even picture line go to
+// links 1 and 2 in turn, those of an odd one to 3 and 4. The receiver undoes it, and a
+// 4K frame has two coded lines per link line (MxHdChannelMemless.cpp:1051-1116, 0014):
+//
+//   coded line 2n-1   HANC section of link 1, HANC section of link 2, video section
+//   coded line 2n     HANC section of link 3, HANC section of link 4, video section
+//
+// A HANC section is one link's EAV, HANC and SAV, its C and Y words interleaved, C first.
+// On a picture line the video section is the picture line itself, 3840 pixels, C Y C Y;
+// on a blanking line it is the two links' own active parts side by side, as DTAPI's
+// Matrix API has them (MxPreProcessMemless.cpp:1503-1529). A transmitter takes the same
+// lines, each after a line header of 4 bytes padded to the alignment, whose first byte
+// is 1 for a blanking line and 0 for a picture line (MxPostProcessMemless.cpp:2564-2572).
 //
 
 // The first word of every header.
@@ -60,23 +75,33 @@
 
 typedef struct DtSdiFrameLayout
 {
-    int VidStd;         // DTAPI_VIDSTD_ code
-    int Alignment;      // Bytes every part is padded to
-    int HeaderBytes;    // The receive header with its padding
-    int TxHeaderBytes;  // The transmit header with its padding
-    int NumLines;       // Coded lines per frame
-    int LineSymsHanc;   // Symbols in the HANC section
-    int LineBytesHanc;  // Bytes of the HANC section with its padding
-    int LineSymsVideo;  // Symbols in the video section
-    int LineBytesVideo; // Bytes of the video section with its padding
-    int Stride;         // Bytes per coded line
-    int Format;         // The format a header of this standard names
-    int SdiRate;        // DT_SDIRATE_ value of the standard: SD, HD or 3G
+    int VidStd;            // DTAPI_VIDSTD_ code
+    bool Is4k;             // 2160p over one 6G or 12G link
+    int Alignment;         // Bytes every part is padded to
+    int HeaderBytes;       // The receive header with its padding
+    int TxHeaderBytes;     // The transmit header with its padding
+    int NumLines;          // Lines per frame: of the raw frame, and of each link of 4K
+    int CodedLines;        // Coded lines per frame: NumLines, or twice that for 4K
+    int LineSymsHanc;      // Symbols in the HANC of a raw line
+    int LineSymsVideo;     // Symbols in the active part of a raw line
+    int HancSections;      // HANC sections per coded line: 1, or 2 for 4K
+    int SectionSymsHanc;   // Symbols in one HANC section
+    int SectionSymsVideo;  // Symbols in the video section
+    int LineBytesHanc;     // Bytes of one HANC section with its padding
+    int LineBytesVideo;    // Bytes of the video section with its padding
+    int Stride;            // Bytes per coded line received
+    int TxLineHeaderBytes; // Bytes before each coded line sent: 0, or 4 padded for 4K
+    int TxStride;          // Bytes per coded line sent
+    int PictureStart;      // For 4K the first link line of the picture
+    int PictureEnd;        // For 4K the last link line of the picture
+    int Format;            // The format a header of this standard names
+    int SdiRate;           // DT_SDIRATE_ value of the standard
 } DtSdiFrameLayout;
 
 // Fills Layout for a video standard and a stream alignment in bits, as
 // SdiRxSimpleProps::Init and SdiTxSimpleProps::Init. Returns false for an unknown
-// standard, a 4K standard, and an alignment that is not a positive number of whole bytes.
+// standard, a 4K standard made of level-B links, and an alignment that is not a positive
+// number of whole bytes.
 bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits);
 
 // The bytes one coded frame takes: its header and its lines, for reception and for
@@ -124,9 +149,22 @@ typedef struct DtSdiFrameTxHeader
 } DtSdiFrameTxHeader;
 
 // Fills Header for a frame of Layout with frame ID FrameId, as
-// MxChannelMemlessTx::SetVidStd does: protocol version 0 and a valid SDI rate.
+// MxChannelMemlessTx::SetVidStd does: protocol version 0 and a valid SDI rate, and the
+// coded lines and the sizes of one HANC section and of the video section.
 void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
                              DtSdiFrameTxHeader* Header);
+
+// True when raw line LineIndex, from 0, of a 4K frame is a blanking line: a link line
+// before or after the picture. False for a picture line, and for a standard that is
+// not 4K.
+bool DtSdiFrame_IsBlankingLine(const DtSdiFrameLayout* Layout, int LineIndex);
+
+// Writes the Layout->TxLineHeaderBytes bytes of the line header before coded line
+// CodedIndex, from 0, of a frame sent, as LineProcessor::WriteCodedLineHeader does: 1 for
+// a blanking line, 0 for a picture line, then zeros. Writes nothing for a standard that
+// is not 4K.
+void DtSdiFrame_EncodeTxLineHeader(const DtSdiFrameLayout* Layout, int CodedIndex,
+                                   uint8_t* Bytes);
 
 // Decodes the DT_SDIFRAME_TX_HEADER_BYTES bytes at Bytes.
 void DtSdiFrame_DecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header);
@@ -191,6 +229,36 @@ void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
 
+// A raw 4K line is the link's data stream as a 6G or 12G link carries it (SMPTE ST
+// 2081-10 and 2082-10, and DekTec's SDI File Format Specification): the eight streams of
+// the four links, C and Y of each, word by word. Per eight words, the C words of links 4,
+// 2, 3 and 1, then their Y words (PxCnvRef.cpp:345-400). Each link's stream is its HANC
+// section followed by its active part, the pixel pairs of the picture line that are its
+// own. A raw 4K line takes whole bytes in every symbol size.
+//
+// The conversions work through a scratch buffer of DtSdiFrame_ScratchSymbols(Layout)
+// 16-bit symbols the caller provides, so that they allocate nothing per line.
+size_t DtSdiFrame_ScratchSymbols(const DtSdiFrameLayout* Layout);
+
+// Converts coded lines 2n-1 and 2n of a 4K frame, at CodedA and CodedB, into raw line
+// LineIndex, n-1 from 0, at RawLine, whose symbols take SymbolBits, 8, 10 or 16: the
+// line's DtSdiFrame_RawLineBits / 8 bytes, which in a raw 4K frame start at LineIndex
+// times that. Does nothing for another symbol size or a standard that is not 4K. Padding
+// bits of the coded lines are not copied.
+void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+                              const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
+                              uint8_t* RawLine, uint16_t* Scratch);
+
+// Codes raw line LineIndex of a 4K frame, whose symbols take SymbolBits, 8, 10 or 16, at
+// RawLine, into coded lines 2n-1 and 2n at CodedA and CodedB, Layout->Stride bytes each,
+// their sections padded with zero bits; the line headers of transmission are not written.
+// A 16-bit symbol gives its lower ten bits, and an 8-bit one its eight bits shifted up by
+// two. Returns false, writing nothing, for another symbol size or a standard that is not
+// 4K.
+bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+                           const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
+                           uint8_t* CodedB, uint16_t* Scratch);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A black frame holds the lines of a standard with nothing in them: every symbol that is
@@ -203,6 +271,8 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 // which in a black frame is as black as any other.
 //
 
-// Writes the coded lines of a black frame of Layout's standard at Lines, Layout->NumLines
-// times Layout->Stride bytes, padding bits 0.
-void DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);
+// Writes the coded lines of a black frame of Layout's standard at Lines, as a transmitter
+// takes them: Layout->CodedLines times Layout->TxStride bytes, line headers included,
+// padding bits 0. A 4K frame's four links are each the black frame of a 1080p link.
+// Returns false when a 4K frame's working memory cannot be allocated.
+bool DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);

@@ -187,9 +187,9 @@ DT_TEST(LayoutRefuses)
 {
     DtSdiFrameLayout Layout;
 
-    DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50, 128));
+    DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50B, 128));
     DT_ASSERT_EQ(Layout.VidStd, DTAPI_VIDSTD_UNKNOWN);
-    DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P30, 128));
+    DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P60B, 128));
     DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_UNKNOWN, 128));
     DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, 12345, 128));
     DT_ASSERT(!DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 0));
@@ -1091,6 +1091,485 @@ DT_TEST(BlackFrameRoundTrip)
     }
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// A 4K frame is built here from four links whose lines the tests make up: each link line
+// has an EAV with its line number and each stream's CRC-18 over the active part of the
+// line before, a SAV, and HANC and active symbols of its own. The coded lines are packed
+// bit by bit, by the two-sample interleave as DTAPI and the card have it (0014, step A),
+// and the raw line is checked word by word against the order of PxCnvRef.cpp's
+// Mux4k2si_Uyvy10_Ref, independently of the module's own permutation.
+
+// The 4K standards tested, 12G and 6G, with the three HANC sizes.
+static const int g_Standards4k[] = {DTAPI_VIDSTD_2160P50, DTAPI_VIDSTD_2160P60,
+                                    DTAPI_VIDSTD_2160P30, DTAPI_VIDSTD_2160P24};
+
+// Link lines at the edges of the picture: the first and last blanking and picture lines.
+static const int g_Lines4k[] = {1, 2, 41, 42, 43, 1120, 1121, 1122, 1125};
+
+#define LINES_4K ((int)(sizeof(g_Lines4k) / sizeof(g_Lines4k[0])))
+
+// The links whose C words and then Y words take the places of a group of eight words.
+static const int g_Order4k[4] = {3, 1, 2, 0};
+
+// SMPTE 292's CRC-18 over one 10-bit word, least significant bit first, bit by bit.
+static uint32_t TestCrc18(uint32_t Crc, uint32_t Word)
+{
+    for (int Bit = 0; Bit < 10; Bit++)
+    {
+        uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
+
+        Crc >>= 1;
+        if (Feedback != 0)
+            Crc ^= 0x23000;
+    }
+    return Crc;
+}
+
+// Nine bits with bit 9 the inverse of bit 8.
+static uint32_t Parity9(uint32_t Nine)
+{
+    Nine &= 0x1FF;
+    return Nine | ((Nine >> 8) ^ 1) << 9;
+}
+
+// The word of a link line's HANC section (Part 0) or active part (Part 1) at Index.
+static uint32_t LinkSymbol(int Link, int Line, int Part, size_t Index)
+{
+    return Symbol(Line * 4 + Link, Part + 2, Index);
+}
+
+// The words of link Link's line Line, from 1: its HANC section, then its active part,
+// C and Y interleaved, C first.
+static void LinkLine(const DtSdiFrameLayout* Layout, int Link, int Line, uint16_t* Words)
+{
+    const size_t Hanc = (size_t)Layout->SectionSymsHanc;
+    const size_t Active = (size_t)Layout->SectionSymsVideo / 2;
+    const uint32_t V = Line < Layout->PictureStart || Line > Layout->PictureEnd ? 1 : 0;
+    const uint32_t Eav =
+        0x200 | V << 7 | 1u << 6 | (V ^ 1) << 5 | 1u << 4 | V << 3 | (V ^ 1) << 2;
+    const uint32_t Sav = 0x200 | V << 7 | V << 5 | V << 3 | V << 2;
+    const int Previous = Line == 1 ? Layout->NumLines : Line - 1;
+    size_t i;
+
+    for (i = 0; i < Hanc; i++)
+        Words[i] = (uint16_t)LinkSymbol(Link, Line, 0, i);
+    for (i = 0; i < Active; i++)
+        Words[Hanc + i] = (uint16_t)LinkSymbol(Link, Line, 1, i);
+
+    for (size_t Channel = 0; Channel < 2; Channel++)
+    {
+        uint32_t Start[6] = {0x3FF,
+                             0,
+                             0,
+                             Eav,
+                             Parity9((uint32_t)(Line & 0x7F) << 2),
+                             Parity9((uint32_t)(Line >> 7 & 0xF) << 2)};
+        uint32_t Crc = 0;
+
+        for (i = Channel; i < Active; i += 2)
+            Crc = TestCrc18(Crc, LinkSymbol(Link, Previous, 1, i));
+        for (i = 0; i < 6; i++)
+        {
+            Crc = TestCrc18(Crc, Start[i]);
+            Words[2 * i + Channel] = (uint16_t)Start[i];
+        }
+        Words[12 + Channel] = (uint16_t)Parity9(Crc);
+        Words[14 + Channel] = (uint16_t)Parity9(Crc >> 9);
+        Words[Hanc - 8 + Channel] = 0x3FF;
+        Words[Hanc - 6 + Channel] = 0;
+        Words[Hanc - 4 + Channel] = 0;
+        Words[Hanc - 2 + Channel] = (uint16_t)Sav;
+    }
+}
+
+// Packs Count words into a section of Bytes bytes, bit by bit, the padding zero.
+static void PackBitByBit(const uint16_t* Words, size_t Count, uint8_t* Section,
+                         size_t Bytes)
+{
+    memset(Section, 0, Bytes);
+    for (size_t i = 0; i < Count; i++)
+    {
+        for (size_t b = 0; b < 10; b++)
+        {
+            if (Words[i] >> b & 1)
+                SetBit(Section, i * 10 + b);
+        }
+    }
+}
+
+// The test's own 4K frame lines: the four link lines of line Line, and the two coded
+// lines they make, each Layout->Stride bytes.
+typedef struct Line4k
+{
+    uint16_t* Links[4];
+    uint8_t* Coded[2];
+    uint16_t* Video;
+} Line4k;
+
+static bool Line4kAlloc(const DtSdiFrameLayout* Layout, Line4k* L)
+{
+    size_t Words = (size_t)Layout->SectionSymsHanc + (size_t)Layout->SectionSymsVideo / 2;
+    bool Ok = true;
+
+    for (int i = 0; i < 4; i++)
+        Ok = (L->Links[i] = (uint16_t*)malloc(Words * 2)) != NULL && Ok;
+    for (int i = 0; i < 2; i++)
+        Ok = (L->Coded[i] = (uint8_t*)malloc((size_t)Layout->Stride)) != NULL && Ok;
+    Ok = (L->Video = (uint16_t*)malloc((size_t)Layout->SectionSymsVideo * 2)) != NULL &&
+         Ok;
+    return Ok;
+}
+
+static void Line4kFree(Line4k* L)
+{
+    for (int i = 0; i < 4; i++)
+        free(L->Links[i]);
+    for (int i = 0; i < 2; i++)
+        free(L->Coded[i]);
+    free(L->Video);
+}
+
+// Makes the link lines of line Line and codes them: a picture line's links 1 and 2 take
+// its pixel pairs in turn, a blanking line's their own halves.
+static void Line4kMake(const DtSdiFrameLayout* Layout, int Line, Line4k* L)
+{
+    const size_t Hanc = (size_t)Layout->SectionSymsHanc;
+    const size_t Active = (size_t)Layout->SectionSymsVideo / 2;
+    const bool Blanking = Line < Layout->PictureStart || Line > Layout->PictureEnd;
+
+    for (int i = 0; i < 4; i++)
+        LinkLine(Layout, i, Line, L->Links[i]);
+    for (int c = 0; c < 2; c++)
+    {
+        const uint16_t* First = L->Links[2 * c];
+        const uint16_t* Second = L->Links[2 * c + 1];
+        uint8_t* Coded = L->Coded[c];
+
+        for (size_t a = 0; a < Active; a++)
+        {
+            size_t To1 = Blanking ? a : a / 4 * 8 + a % 4;
+            size_t To2 = Blanking ? Active + a : a / 4 * 8 + 4 + a % 4;
+
+            L->Video[To1] = First[Hanc + a];
+            L->Video[To2] = Second[Hanc + a];
+        }
+        PackBitByBit(First, Hanc, Coded, (size_t)Layout->LineBytesHanc);
+        PackBitByBit(Second, Hanc, Coded + Layout->LineBytesHanc,
+                     (size_t)Layout->LineBytesHanc);
+        PackBitByBit(L->Video, (size_t)Layout->SectionSymsVideo,
+                     Coded + 2 * Layout->LineBytesHanc, (size_t)Layout->LineBytesVideo);
+    }
+}
+
+// Symbol Index of a raw line whose symbols take SymbolBits, read bit by bit.
+static uint32_t RawSymbol(const uint8_t* Line, int SymbolBits, size_t Index)
+{
+    uint32_t Value = 0;
+
+    for (size_t b = 0; b < (size_t)SymbolBits; b++)
+    {
+        size_t Bit = Index * (size_t)SymbolBits + b;
+        Value |= (uint32_t)(Line[Bit / 8] >> (Bit % 8) & 1) << b;
+    }
+    return SymbolBits == 8 ? Value << 2 : Value & 0x3FF;
+}
+
+// Checks that the raw line at Raw holds L's links in the order of Mux4k2si_Uyvy10_Ref.
+// Returns false, having reported the first difference, when it does not.
+static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int SymbolBits,
+                         const uint8_t* Raw, const Line4k* L, int* DtFailures)
+{
+    size_t Words = (size_t)Layout->SectionSymsHanc + (size_t)Layout->SectionSymsVideo / 2;
+    uint32_t Mask = SymbolBits == 8 ? 0x3FC : 0x3FF;
+
+    for (size_t w = 0; w < Words / 2; w++)
+    {
+        for (size_t p = 0; p < 8; p++)
+        {
+            const uint16_t* Link = L->Links[g_Order4k[p % 4]];
+            uint32_t Want = Link[2 * w + p / 4] & Mask;
+            uint32_t Have = RawSymbol(Raw, SymbolBits, 8 * w + p);
+
+            if (Have != Want)
+            {
+                printf(
+                    "    FAIL: standard %d, %d bits: word %zu of the raw line is %03X, "
+                    "not %03X\n",
+                    Layout->VidStd, SymbolBits, 8 * w + p, Have, Want);
+                (*DtFailures)++;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// The layouts of 12G 2160p50 and 6G 2160p30, as the card's ring showed them.
+DT_TEST(Layout4k)
+{
+    DtSdiFrameLayout L;
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_2160P50, 128));
+    DT_ASSERT(L.Is4k);
+    DT_ASSERT_EQ(L.NumLines, 1125);
+    DT_ASSERT_EQ(L.CodedLines, 2250);
+    DT_ASSERT_EQ(L.HancSections, 2);
+    DT_ASSERT_EQ(L.SectionSymsHanc, 1440);
+    DT_ASSERT_EQ(L.SectionSymsVideo, 7680);
+    DT_ASSERT_EQ(L.LineSymsHanc, 5760);
+    DT_ASSERT_EQ(L.LineSymsVideo, 15360);
+    DT_ASSERT_EQ(L.LineBytesHanc, 1808);
+    DT_ASSERT_EQ(L.LineBytesVideo, 9600);
+    DT_ASSERT_EQ(L.Stride, 13216);
+    DT_ASSERT_EQ(L.TxLineHeaderBytes, 16);
+    DT_ASSERT_EQ(L.TxStride, 13232);
+    DT_ASSERT_EQ(L.PictureStart, 42);
+    DT_ASSERT_EQ(L.PictureEnd, 1121);
+    DT_ASSERT_EQ(L.Format, DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K);
+    DT_ASSERT_EQ(L.SdiRate, DT_SDIRATE_12G);
+    DT_ASSERT_EQ((long)DtSdiFrame_CodedSize(&L), 29736016L);
+    DT_ASSERT_EQ((long)DtSdiFrame_TxCodedSize(&L), 32L + 2250L * 13232L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 10), 29700000L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 16), 47520000L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 8), 23760000L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawLineBits(&L, 10), 211200L);
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_2160P30, 128));
+    DT_ASSERT_EQ(L.SectionSymsHanc, 560);
+    DT_ASSERT_EQ(L.LineBytesHanc, 704);
+    DT_ASSERT_EQ(L.SdiRate, DT_SDIRATE_6G);
+    DT_ASSERT_EQ((long)DtSdiFrame_CodedSize(&L), 24768016L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 10), 24750000L);
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_2160P24, 128));
+    DT_ASSERT_EQ(L.LineSymsHanc, 6640);
+
+    // A standard that is not 4K keeps one section of each kind and no line header.
+    DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_1080P50, 128));
+    DT_ASSERT(!L.Is4k);
+    DT_ASSERT_EQ(L.CodedLines, L.NumLines);
+    DT_ASSERT_EQ(L.HancSections, 1);
+    DT_ASSERT_EQ(L.TxStride, L.Stride);
+    DT_ASSERT_EQ((long)DtSdiFrame_ScratchSymbols(&L), 0L);
+}
+
+// Each raw 4K line holds the four links' words in the order of Mux4k2si_Uyvy10_Ref, in
+// every symbol size, on blanking and picture lines alike.
+DT_TEST(Converts4k)
+{
+    static const int Bits[] = {10, 16, 8};
+
+    for (size_t s = 0; s < sizeof(g_Standards4k) / sizeof(g_Standards4k[0]); s++)
+    {
+        DtSdiFrameLayout Layout;
+        Line4k L;
+
+        DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
+        size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+        uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) * 2);
+        uint8_t* Raw = (uint8_t*)malloc(LineBytes);
+        DT_ASSERT(Line4kAlloc(&Layout, &L) && Scratch != NULL && Raw != NULL);
+
+        for (int i = 0; i < LINES_4K; i++)
+        {
+            Line4kMake(&Layout, g_Lines4k[i], &L);
+            for (size_t b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
+            {
+                memset(Raw, 0xA5, LineBytes);
+                DtSdiFrame_ConvertLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1],
+                                         g_Lines4k[i] - 1, Raw, Scratch);
+                if (!Raw4kMatches(&Layout, Bits[b], Raw, &L, DtFailures))
+                    break;
+            }
+        }
+        Line4kFree(&L);
+        free(Scratch);
+        free(Raw);
+    }
+}
+
+// Coding a raw 4K line gives back the coded lines it was converted from, byte for byte,
+// in 10 and 16 bits; in 8 bits, the raw line again once converted.
+DT_TEST(Codes4k)
+{
+    static const int Bits[] = {10, 16, 8};
+
+    for (size_t s = 0; s < sizeof(g_Standards4k) / sizeof(g_Standards4k[0]); s++)
+    {
+        DtSdiFrameLayout Layout;
+        Line4k L;
+
+        DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
+        size_t Stride = (size_t)Layout.Stride;
+        size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+        uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) * 2);
+        uint8_t* Raw = (uint8_t*)malloc(LineBytes);
+        uint8_t* Again = (uint8_t*)malloc(LineBytes);
+        uint8_t* A = (uint8_t*)malloc(Stride);
+        uint8_t* B = (uint8_t*)malloc(Stride);
+        DT_ASSERT(Line4kAlloc(&Layout, &L) && Scratch != NULL && Raw != NULL &&
+                  Again != NULL && A != NULL && B != NULL);
+
+        for (int i = 0; i < LINES_4K; i++)
+        {
+            int Index = g_Lines4k[i] - 1;
+            Line4kMake(&Layout, g_Lines4k[i], &L);
+            for (size_t b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
+            {
+                DtSdiFrame_ConvertLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1], Index,
+                                         Raw, Scratch);
+                memset(A, 0xA5, Stride);
+                memset(B, 0xA5, Stride);
+                DT_ASSERT(
+                    DtSdiFrame_CodeLine4k(&Layout, Bits[b], Raw, Index, A, B, Scratch));
+                if (Bits[b] != 8)
+                {
+                    DT_ASSERT(memcmp(A, L.Coded[0], Stride) == 0);
+                    DT_ASSERT(memcmp(B, L.Coded[1], Stride) == 0);
+                    continue;
+                }
+                DtSdiFrame_ConvertLine4k(&Layout, 8, A, B, Index, Again, Scratch);
+                DT_ASSERT(memcmp(Again, Raw, DtSdiFrame_RawLineBits(&Layout, 8) / 8) ==
+                          0);
+            }
+        }
+        DT_ASSERT(!DtSdiFrame_CodeLine4k(&Layout, 12, Raw, 0, A, B, Scratch));
+        Line4kFree(&L);
+        free(Scratch);
+        free(Raw);
+        free(Again);
+        free(A);
+        free(B);
+    }
+
+    DtSdiFrameLayout Hd;
+    uint8_t Line[16];
+    uint16_t Scratch[4];
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Hd, DTAPI_VIDSTD_1080I50, 128));
+    DT_ASSERT(!DtSdiFrame_CodeLine4k(&Hd, 10, Line, 0, Line, Line, Scratch));
+}
+
+// A 4K frame starts at coded line 1, line 1 of links 1 and 2, and ends at coded line
+// 2250, line 1125 of links 3 and 4.
+DT_TEST(ChecksLines4k)
+{
+    DtSdiFrameLayout Layout;
+    Line4k First;
+    Line4k Last;
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50, 128));
+    DT_ASSERT(Line4kAlloc(&Layout, &First) && Line4kAlloc(&Layout, &Last));
+    Line4kMake(&Layout, 1, &First);
+    Line4kMake(&Layout, 1125, &Last);
+    DT_ASSERT_EQ(DtSdiFrame_CheckLines(&Layout, First.Coded[0], Last.Coded[1]), DTAPI_OK);
+    DT_ASSERT_EQ(DtSdiFrame_CheckLines(&Layout, Last.Coded[1], First.Coded[0]),
+                 DTAPI_E_OUT_OF_SYNC);
+    Line4kFree(&First);
+    Line4kFree(&Last);
+}
+
+// Sent, a 4K frame names 2250 coded lines, one HANC section and the video section, and
+// each coded line has its header: 1 on a blanking line, 0 on a picture line.
+DT_TEST(TxLines4k)
+{
+    DtSdiFrameLayout Layout;
+    DtSdiFrameTxHeader Header;
+    uint8_t Bytes[16];
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50, 128));
+    DtSdiFrame_TxHeaderInit(&Layout, 7, &Header);
+    DT_ASSERT_EQ(Header.Format, DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K);
+    DT_ASSERT_EQ(Header.SdiRate, DT_SDIRATE_12G);
+    DT_ASSERT_EQ(Header.NumLines, 2250);
+    DT_ASSERT_EQ(Header.NumSymsHanc, 1440);
+    DT_ASSERT_EQ(Header.NumWordsHanc, 113);
+    DT_ASSERT_EQ(Header.NumSymsVideo, 7680);
+    DT_ASSERT_EQ(Header.NumWordsVideo, 600);
+
+    static const struct
+    {
+        int Coded;
+        uint8_t Header;
+    } Cases[] = {{0, 1},  {1, 1},    {80, 1},   {81, 1},   {82, 0},
+                 {83, 0}, {2240, 0}, {2241, 0}, {2242, 1}, {2249, 1}};
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        memset(Bytes, 0xA5, sizeof(Bytes));
+        DtSdiFrame_EncodeTxLineHeader(&Layout, Cases[i].Coded, Bytes);
+        DT_ASSERT_EQ(Bytes[0], Cases[i].Header);
+        for (size_t b = 1; b < sizeof(Bytes); b++)
+            DT_ASSERT_EQ(Bytes[b], 0);
+    }
+
+    // No line header for a standard that is not 4K.
+    DtSdiFrameLayout Hd;
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Hd, DTAPI_VIDSTD_1080I50, 128));
+    memset(Bytes, 0xA5, sizeof(Bytes));
+    DtSdiFrame_EncodeTxLineHeader(&Hd, 0, Bytes);
+    DT_ASSERT_EQ(Bytes[0], 0xA5);
+}
+
+// A black 4K frame: each coded line's header, the same HANC section twice, black video;
+// raw, every stream starts with its EAV and line number, and each stream's CRC is SMPTE
+// 292's over the black active part of the line before and its own EAV and line number.
+DT_TEST(BlackFrame4k)
+{
+    DtSdiFrameLayout Layout;
+
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50, 128));
+    size_t TxStride = (size_t)Layout.TxStride;
+    size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 10) / 8;
+    uint8_t* Lines = (uint8_t*)malloc((size_t)Layout.CodedLines * TxStride);
+    uint8_t* Raw = (uint8_t*)malloc(LineBytes);
+    uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) * 2);
+    DT_ASSERT(Lines != NULL && Raw != NULL && Scratch != NULL);
+    DT_ASSERT(DtSdiFrame_BlackLines(&Layout, Lines));
+
+    uint32_t ActiveCrc[2] = {0, 0};
+    for (size_t i = 0; i < (size_t)Layout.SectionSymsVideo / 2; i++)
+        ActiveCrc[i % 2] = TestCrc18(ActiveCrc[i % 2], i % 2 == 0 ? 0x200 : 0x040);
+
+    for (int i = 0; i < LINES_4K; i++)
+    {
+        int Line = g_Lines4k[i];
+        const uint8_t* A = Lines + (size_t)(2 * Line - 2) * TxStride;
+        const uint8_t* B = A + TxStride;
+        size_t Header = (size_t)Layout.TxLineHeaderBytes;
+        size_t HancBytes = (size_t)Layout.LineBytesHanc;
+        bool Blanking = Line < 42 || Line > 1121;
+
+        DT_ASSERT_EQ(A[0], Blanking ? 1 : 0);
+        DT_ASSERT_EQ(B[0], Blanking ? 1 : 0);
+        DT_ASSERT(memcmp(A + Header, A + Header + HancBytes, HancBytes) == 0);
+        DT_ASSERT(memcmp(A + Header, B + Header, HancBytes) == 0);
+
+        DtSdiFrame_ConvertLine4k(&Layout, 10, A + Header, B + Header, Line - 1, Raw,
+                                 Scratch);
+        for (size_t s = 0; s < 8; s++)
+        {
+            uint32_t Channel = s < 4 ? 0 : 1;
+            uint32_t Words[8];
+            uint32_t Crc = ActiveCrc[Channel];
+            for (size_t w = 0; w < 8; w++)
+                Words[w] = RawSymbol(Raw, 10, 8 * w + s);
+            DT_ASSERT_EQ(Words[0], 0x3FF);
+            DT_ASSERT_EQ(Words[1], 0);
+            DT_ASSERT_EQ(Words[2], 0);
+            DT_ASSERT_EQ(Words[4], Parity9((uint32_t)(Line & 0x7F) << 2));
+            for (size_t w = 0; w < 6; w++)
+                Crc = TestCrc18(Crc, Words[w]);
+            DT_ASSERT_EQ(Words[6], Parity9(Crc));
+            DT_ASSERT_EQ(Words[7], Parity9(Crc >> 9));
+            DT_ASSERT_EQ(RawSymbol(Raw, 10, (size_t)Layout.LineSymsHanc + s),
+                         Channel == 0 ? 0x200u : 0x040u);
+        }
+    }
+    free(Lines);
+    free(Raw);
+    free(Scratch);
+}
+
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderBytes),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
@@ -1099,4 +1578,6 @@ DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(LayoutTransmit), DT_RUN(TxHeaderBytes), DT_RUN(TxHeaderFieldWidths),
              DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
              DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
-             DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip))
+             DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip),
+             DT_RUN(Layout4k), DT_RUN(Converts4k), DT_RUN(Codes4k), DT_RUN(ChecksLines4k),
+             DT_RUN(TxLines4k), DT_RUN(BlackFrame4k))
