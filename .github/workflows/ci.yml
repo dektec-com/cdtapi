@@ -20,7 +20,7 @@ jobs:
     name: Style
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The exact version, not just the program: builds of the same major version
       # differ in what they format, and a distribution ships whichever it ships.
@@ -52,7 +52,7 @@ jobs:
           - os: windows-latest
             preset: windows-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Ninja
         if: runner.os == 'Linux'
@@ -71,7 +71,7 @@ jobs:
     name: Vendored ABI is unmodified
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Source/DtPcie/Abi holds files copied verbatim from the SDK. Reformatting one of
       # them turns the next driver-ABI update from a copy into a merge, so catch it here.
