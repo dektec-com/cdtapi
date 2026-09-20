@@ -1153,7 +1153,9 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
     // 2160p over one link goes through to the driver, which refuses it on a port without
-    // the capability and takes it on one with (0014).
+    // the capability and takes it on one with (0014). Ports 1 and 5 have it, so the
+    // refusal needs the capability taken away.
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, false, 0);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
                                           DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50,
                                           -1, -1),

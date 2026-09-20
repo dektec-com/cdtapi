@@ -154,7 +154,12 @@ DT_TEST(CapabilitiesArePerPort)
     DT_ASSERT_OK(
         DtPcieCmd_GetPropertyBool(Drv, "CAP_OUTPUT", SIM_SDI_PORT_COUNT - 1, &Value));
     DT_ASSERT(Value);
+    // Ports 1 and 5 carry 2160p over one link and the others do not.
     DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_12GSDI", 0, &Value));
+    DT_ASSERT(Value);
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_2160P50", 4, &Value));
+    DT_ASSERT(Value);
+    DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_12GSDI", 1, &Value));
     DT_ASSERT(!Value);
     DT_ASSERT_OK(
         DtPcieCmd_GetPropertyBool(Drv, "CAP_GENREF", SIM_SDI_PORT_COUNT, &Value));
@@ -541,8 +546,13 @@ DT_TEST(UnsupportedConfigurationIsConfigError)
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg = Config(1, DTAPI_IOCONFIG_GENREF, DTAPI_IOCONFIG_TRUE, -1);
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
-    Cfg = Config(1, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);
+    // Port 2 is no 12G port, where ports 1 and 5 are.
+    Cfg = Config(2, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
+    Cfg = Config(1, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
+    Cfg = Config(5, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_6GSDI, DTAPI_IOCONFIG_2160P30);
+    DT_ASSERT_OK(DtPcieCmd_SetIoConfig(Drv, &Cfg));
 
     OsDrv_Close(Drv);
 }

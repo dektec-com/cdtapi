@@ -19,7 +19,8 @@
 //
 // Per port, as the device description lists them for firmware variant 1, in alphabetical
 // order since nothing reads them in any other. Ports 1 to 8 share one list, each of them
-// an input as well as an output; ports 9 and 10 are the genlock reference ports, and port
+// an input as well as an output; ports 1 and 5 have the 4K list on top of it, as the 12G
+// ports of a variant 2 card do; ports 9 and 10 are the genlock reference ports, and port
 // 10 is virtual. CAP_QUADLINK comes with the demultiplexer every port's transmitter lists
 // below, as it does on ports 1 and 5 of a variant 2 card.
 //
@@ -79,6 +80,15 @@ static const char* const SdiPortCaps[] = {
     "CAP_TS",
     "CAP_TX_T2MI",
     "CAP_TXONTIME",
+};
+
+// What ports 1 and 5 have on top of that: 2160p over one link, which a variant 2 card
+// carries on its two 12G ports. The emulator gives them to the same two ports, so that
+// the library's 4K can be exercised without a card.
+static const char* const Sdi4kPortCaps[] = {
+    "CAP_12GSDI",  "CAP_2160P23_98", "CAP_2160P24",  "CAP_2160P25",    "CAP_2160P29_97",
+    "CAP_2160P30", "CAP_2160P50",    "CAP_2160P50B", "CAP_2160P59_94", "CAP_2160P59_94B",
+    "CAP_2160P60", "CAP_2160P60B",   "CAP_6GSDI",
 };
 
 static const char* const GenRefPortCaps[] = {
@@ -225,7 +235,12 @@ static bool InList(const char* const* List, size_t Count, const char* Name)
 static bool HasCapability(const char* Name, int PortIndex)
 {
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
-        return InList(SdiPortCaps, COUNT_OF(SdiPortCaps), Name);
+    {
+        if (InList(SdiPortCaps, COUNT_OF(SdiPortCaps), Name))
+            return true;
+        return (PortIndex == 0 || PortIndex == 4) &&
+               InList(Sdi4kPortCaps, COUNT_OF(Sdi4kPortCaps), Name);
+    }
 
     if (PortIndex == SIM_SDI_PORT_COUNT || PortIndex == SIM_SDI_PORT_COUNT + 1)
     {
