@@ -17,10 +17,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Per port, as the device description lists them for firmware variant 1. Ports 1 to 8
-// share one list, extended by the direction each can take; ports 9 and 10 are the genlock
-// reference ports, and port 10 is virtual. CAP_QUADLINK comes with the demultiplexer
-// every port's transmitter lists below, as it does on ports 1 and 5 of a variant 2 card.
+// Per port, as the device description lists them for firmware variant 1, in alphabetical
+// order since nothing reads them in any other. Ports 1 to 8 share one list, each of them
+// an input as well as an output; ports 9 and 10 are the genlock reference ports, and port
+// 10 is virtual. CAP_QUADLINK comes with the demultiplexer every port's transmitter lists
+// below, as it does on ports 1 and 5 of a variant 2 card.
 //
 // The list leaves out CAP_SCALE_12GTO3G, which variant 1 has and variants 2 and 3 do
 // not. A port that has it always scales 12G down to 3G, and detection then reports every
@@ -67,7 +68,10 @@ static const char* const SdiPortCaps[] = {
     "CAP_DMATESTMODE",
     "CAP_GENLOCKED",
     "CAP_HDSDI",
+    "CAP_INPUT",
     "CAP_MATRIX2",
+    "CAP_OUTPUT",
+    "CAP_QUADLINK",
     "CAP_SDI",
     "CAP_TODREF_INTERNAL",
     "CAP_TODREF_STEADYCLOCK",
@@ -75,9 +79,6 @@ static const char* const SdiPortCaps[] = {
     "CAP_TS",
     "CAP_TX_T2MI",
     "CAP_TXONTIME",
-    "CAP_INPUT",
-    "CAP_OUTPUT",
-    "CAP_QUADLINK",
 };
 
 static const char* const GenRefPortCaps[] = {
