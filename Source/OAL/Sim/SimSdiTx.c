@@ -15,6 +15,7 @@
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "OAL/OsThread.h"       // The clock the output follows.
+#include "Sim4k.h"              // How 2160p over one link lies in the ring.
 #include "SimAsi.h"             // What an ASI port receives and sends.
 #include "SimDtPcie.h"          // Port counts and the lock.
 #include "SimSdiTx.h"           // Interface being implemented.
@@ -95,9 +96,12 @@ typedef struct SimTxPort
     // The sink
     bool InFrame;
     int FrameId;
-    int NumLines;
-    int SymsHanc, SymsVideo;
+    bool Is4k;    // The header names the 4K format: two HANC sections and line headers
+    int NumLines; // Coded lines
+    int SymsHanc, SymsVideo; // Of one section
     size_t BytesHanc, BytesVideo;
+    size_t LineHdrBytes; // Before each coded line sent: 0, or 4 padded for 4K
+    uint8_t* Blanking;   // Per coded line, what its line header says; NULL when not 4K
     int LinesDone;
     int SeqNumber;
     uint16_t* Symbols; // The frame being received
@@ -137,7 +141,9 @@ static void EnsureTx(void)
 static void ClearFrame(SimTxPort* Port)
 {
     DtAlloc_Free(Port->Symbols);
+    DtAlloc_Free(Port->Blanking);
     Port->Symbols = NULL;
+    Port->Blanking = NULL;
     Port->InFrame = false;
     Port->LinesDone = 0;
     Port->SeqNumber = 0;
@@ -255,6 +261,23 @@ static size_t Padded(int Symbols)
     return (Bytes + Alignment - 1) / Alignment * Alignment;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The bytes and the symbols of one coded line as it is sent: a line header for 4K, the
+// HANC sections, one for a standard and two for 4K, and the video section.
+//
+static size_t LineBytes(const SimTxPort* Port)
+{
+    size_t Sections = Port->Is4k ? 2 : 1;
+    return Port->LineHdrBytes + Sections * Port->BytesHanc + Port->BytesVideo;
+}
+
+static size_t LineSymbols(const SimTxPort* Port)
+{
+    size_t Sections = Port->Is4k ? 2 : 1;
+    return Sections * (size_t)Port->SymsHanc + (size_t)Port->SymsVideo;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Checks the header at the pipeline's head and takes the frame's geometry from it. False
@@ -268,12 +291,14 @@ static bool ReadHeader(SimTxPort* Port)
     uint32_t Word3 = Word32(Port, 12);
     uint32_t Word4 = Word32(Port, 16);
 
-    if (Word32(Port, 0) != 0xFFEFFBFEu || (Word1 & 0xF) != 0 || (Word1 >> 4 & 0xF) != 0 ||
+    if (Word32(Port, 0) != 0xFFEFFBFEu || (Word1 & 0xF) != 0 || (Word1 >> 4 & 0xF) > 1 ||
         (Word1 >> 8 & 1) != 1 || (Word1 >> 9 & 7) > DT_DRV_SDIRATE_12G)
     {
         return false;
     }
 
+    Port->Is4k = (Word1 >> 4 & 0xF) == 1;
+    Port->LineHdrBytes = Port->Is4k ? (4 + Alignment - 1) / Alignment * Alignment : 0;
     Port->FrameId = (int)(Word2 & 0xFFFF);
     Port->NumLines = (int)(Word2 >> 16);
     Port->BytesHanc = (size_t)(Word3 & 0xFFFF) * Alignment;
@@ -287,8 +312,7 @@ static bool ReadHeader(SimTxPort* Port)
     {
         return false;
     }
-    size_t Frame =
-        HeaderBytes() + (size_t)Port->NumLines * (Port->BytesHanc + Port->BytesVideo);
+    size_t Frame = HeaderBytes() + (size_t)Port->NumLines * LineBytes(Port);
     return Frame <= SIM_TX_MAX_FRAME;
 }
 
@@ -350,12 +374,51 @@ static void SinkFrame(const SimTxPort* Port)
     DtAlloc_Free(Out);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RawFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Turns the coded lines of the 4K frame just received into the raw frame the card sends,
+// each line from the pair of coded lines and the blanking flag of its line header.
+// Returns NULL when memory runs out.
+//
+static uint16_t* RawFrame(const SimTxPort* Port)
+{
+    const int Hanc = Port->SymsHanc;
+    const int Act = Port->SymsVideo / 2;
+    const size_t RawLine = (size_t)(4 * (Hanc + Act));
+    const int Lines = Port->NumLines / 2;
+    uint16_t* Raw = (uint16_t*)DtAlloc_Malloc((size_t)Lines * RawLine * sizeof(uint16_t));
+
+    if (Raw == NULL)
+        return NULL;
+    for (int Line = 0; Line < Lines; Line++)
+    {
+        const uint16_t* A = Port->Symbols + (size_t)(2 * Line) * LineSymbols(Port);
+
+        Sim4k_Merge(Hanc, Act, Port->Blanking[2 * Line] != 0, A, A + LineSymbols(Port),
+                    Raw + (size_t)Line * RawLine);
+    }
+    return Raw;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- KeepFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Moves the frame just received into the kept frames, dropping the oldest when full.
+// Moves the frame just received into the kept frames, dropping the oldest when full. A
+// 4K frame is kept as the raw frame it carries, whose lines are those of one link.
 //
 static void KeepFrame(SimTxPort* Port)
 {
+    if (Port->Is4k)
+    {
+        uint16_t* Raw = RawFrame(Port);
+
+        if (Raw == NULL)
+            return;
+        DtAlloc_Free(Port->Symbols);
+        Port->Symbols = Raw;
+        Port->NumLines /= 2;
+        Port->SymsHanc *= 4;
+        Port->SymsVideo *= 2;
+    }
     if (Port->Sink != NULL)
         SinkFrame(Port);
     if (Port->NumKept == SIM_TX_KEPT_FRAMES)
@@ -452,7 +515,7 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
     }
 
     // The card reads the buffer while it sends, so a part can exceed the pipeline.
-    size_t Stride = Port->BytesHanc + Port->BytesVideo;
+    size_t Stride = LineBytes(Port);
     int Lines =
         Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (Port->NumLines + 3) / 4;
     if (Lines > Port->NumLines - Port->LinesDone)
@@ -466,12 +529,16 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
     if (!Port->InFrame)
     {
-        size_t Symbols =
-            (size_t)Port->NumLines * (size_t)(Port->SymsHanc + Port->SymsVideo);
+        size_t Symbols = (size_t)Port->NumLines * LineSymbols(Port);
 
         Port->Symbols = (uint16_t*)DtAlloc_Malloc(Symbols * sizeof(uint16_t));
-        if (Port->Symbols == NULL)
+        if (Port->Is4k)
+            Port->Blanking = (uint8_t*)DtAlloc_Malloc((size_t)Port->NumLines);
+        if (Port->Symbols == NULL || (Port->Is4k && Port->Blanking == NULL))
+        {
+            ClearFrame(Port);
             return false;
+        }
         Consume(Port, Header);
         Port->InFrame = true;
         Port->LinesDone = 0;
@@ -480,12 +547,19 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
     for (int i = 0; i < Lines; i++)
     {
-        uint16_t* Line = Port->Symbols + (size_t)Port->LinesDone *
-                                             (size_t)(Port->SymsHanc + Port->SymsVideo);
+        uint16_t* Line = Port->Symbols + (size_t)Port->LinesDone * LineSymbols(Port);
+        size_t At = Port->LineHdrBytes;
 
         Advance(Port);
-        UnpackSection(Port, 0, Port->SymsHanc, Line);
-        UnpackSection(Port, Port->BytesHanc, Port->SymsVideo, Line + Port->SymsHanc);
+        if (Port->Is4k)
+        {
+            Port->Blanking[Port->LinesDone] = Peek(Port, 0);
+            UnpackSection(Port, At, Port->SymsHanc, Line);
+            Line += Port->SymsHanc;
+            At += Port->BytesHanc;
+        }
+        UnpackSection(Port, At, Port->SymsHanc, Line);
+        UnpackSection(Port, At + Port->BytesHanc, Port->SymsVideo, Line + Port->SymsHanc);
         Consume(Port, Stride);
         Port->LinesDone++;
     }

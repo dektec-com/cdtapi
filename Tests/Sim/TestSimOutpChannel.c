@@ -26,6 +26,7 @@
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks.
 #include "Video/DtSdiFrame.h"       // Frame sizes and black frames.
+#include "Video/DtVidStd.h"         // Which standards are 4K.
 #include "cdtapi.h"                 // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -33,6 +34,9 @@
 // Port 2, an output by default with HD-SDI 1080i50, and port 1, an input.
 #define PORT 2
 #define PORT_INPUT 1
+
+// Symbols in the longest line the emulated source makes: a raw 2160p50 line.
+#define SIM_LINE_SYMBOLS 21120
 
 // How long a case waits for frames to be sent.
 #define SEND_TIMEOUT_MS 5000
@@ -97,15 +101,22 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
     } while (0)
 
-// Sets the I/O standard of PORT to VidStd through the device.
+// Sets the I/O standard of PORT to VidStd through the device. 2160p over one link needs
+// its link standard, and a port that has the capabilities for it.
 static DtapiResult SetStandard(Fixture* Fix, int VidStd)
 {
     int Value;
     int SubValue;
-    DtapiResult Result = DtapiVidStd2IoStd(VidStd, -1, &Value, &SubValue);
+    bool Is4k = DtVidStd_Is4k(VidStd);
+    DtapiResult Result = DtapiVidStd2IoStd(VidStd, Is4k ? 3 : -1, &Value, &SubValue);
 
     if (Result != DTAPI_OK)
         return Result;
+    if (Is4k)
+    {
+        SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+        SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    }
     return SetIoConfig(Fix->Device, PORT, DTAPI_IOCONFIG_IOSTD, Value, SubValue);
 }
 
@@ -126,7 +137,13 @@ static uint8_t* MakeFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t* Si
         return NULL;
 
     uint8_t* Out = Frame;
-    uint16_t Symbols[8250];
+    uint16_t* Symbols = (uint16_t*)malloc(SIM_LINE_SYMBOLS * sizeof(uint16_t));
+    if (Symbols == NULL)
+    {
+        free(Frame);
+        *Size = 0;
+        return NULL;
+    }
     for (int Line = 1; Line <= Layout.NumLines; Line++)
     {
         int Count = SimChSdiRx_Line(VidStd, FrameNumber, Line, Symbols);
@@ -147,6 +164,7 @@ static uint8_t* MakeFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t* Si
             }
         }
     }
+    free(Symbols);
     if (Have > 0)
         *Out = (uint8_t)Accu;
     return Frame;
@@ -262,8 +280,8 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
 {
     SimTxFrame Frame;
     uint16_t* Symbols = SentFrame(FrameId, VidStd, &Frame);
-    uint16_t Line[8250];
-    bool Same = Symbols != NULL;
+    uint16_t* Line = (uint16_t*)malloc(SIM_LINE_SYMBOLS * sizeof(uint16_t));
+    bool Same = Symbols != NULL && Line != NULL;
     int n;
 
     for (n = 1; Same && n <= Frame.NumLines; n++)
@@ -275,6 +293,7 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
                memcmp(Symbols + At, Line, (size_t)Count * sizeof(uint16_t)) == 0;
     }
     free(Symbols);
+    free(Line);
     return Same;
 }
 
@@ -1072,6 +1091,13 @@ DT_TEST(WholeFrames1080p50)
     WholeFrames(DTAPI_VIDSTD_1080P50, 16, 2, DtFailures);
 }
 
+// 2160p over one 12G link: the channel writes the coded lines and their line headers, and
+// the emulated card sends the raw frame of the four links it was given.
+DT_TEST(WholeFrames2160p50)
+{
+    WholeFrames(DTAPI_VIDSTD_2160P50, 10, 2, DtFailures);
+}
+
 // A frame for which the buffer has no room within the time-out is refused, nothing of it
 // is written and its frame ID stays free; once there is room it is written.
 DT_TEST(WriteFrameTimesOut)
@@ -1556,5 +1582,6 @@ DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(TimeForTheSecondFrame), DT_RUN(FreeWhileSending),
              DT_RUN(WriteFrameChecks), DT_RUN(WriteFrameChecksTheSdStart),
              DT_RUN(WholeFrames525i), DT_RUN(WholeFrames720p24),
-             DT_RUN(WholeFrames1080p50), DT_RUN(WriteFrameTimesOut),
-             DT_RUN(WriteFrameInUseAndCancelled), DT_RUN(WholeFramesAmongBlackFrames))
+             DT_RUN(WholeFrames1080p50), DT_RUN(WholeFrames2160p50),
+             DT_RUN(WriteFrameTimesOut), DT_RUN(WriteFrameInUseAndCancelled),
+             DT_RUN(WholeFramesAmongBlackFrames))

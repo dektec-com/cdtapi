@@ -36,6 +36,9 @@
 // Large enough for a 1080-line frame with 16-bit symbols.
 #define BUFFER_SIZE (16 * 1024 * 1024)
 
+// Symbols in the longest line the emulated source makes: a raw 2160p50 line.
+#define SIM_RX_LINE_SYMBOLS 21120
+
 typedef struct Fixture
 {
     int Live;
@@ -125,7 +128,12 @@ static uint8_t* ExpectedFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t
     if (Frame == NULL)
         return NULL;
 
-    uint16_t Symbols[8250];
+    uint16_t* Symbols = (uint16_t*)malloc(SIM_RX_LINE_SYMBOLS * sizeof(uint16_t));
+    if (Symbols == NULL)
+    {
+        free(Frame);
+        return NULL;
+    }
     for (int Line = 1; Line <= Layout.NumLines; Line++)
     {
         int Count = SimChSdiRx_Line(VidStd, FrameNumber, Line, Symbols);
@@ -152,6 +160,7 @@ static uint8_t* ExpectedFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t
             }
         }
     }
+    free(Symbols);
     return Frame;
 }
 
@@ -511,6 +520,44 @@ DT_TEST(FourKPortWantsWholeFrames)
     free(Frame);
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);
+}
+
+// 2160p over one 12G link: the emulated card writes its ring as the card does, and a
+// read gives the raw frame of the four links, in 10 and in 16 bits.
+DT_TEST(ReceivesFourKFrames)
+{
+    static const int Modes[] = {DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B,
+                                DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B};
+
+    for (size_t m = 0; m < sizeof(Modes) / sizeof(Modes[0]); m++)
+    {
+        Fixture Fix;
+        int Bits = BitsOf(Modes[m]);
+
+        if (!Start(&Fix, DtFailures))
+            return;
+        SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
+        SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+        DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                                 DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+        SimDtPcie_SetRxSource(PORT - 1, DTAPI_VIDSTD_2160P50);
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+        DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Channel, Modes[m]));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
+
+        size_t Size = 0;
+        uint8_t* Expected = ExpectedFrame(DTAPI_VIDSTD_2160P50, 0, Bits, &Size);
+        char* Buffer = (char*)malloc(Size);
+        DT_ASSERT(Expected != NULL && Buffer != NULL);
+        int FrameSize = (int)Size;
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.Channel, Buffer, &FrameSize, 20000));
+        DT_ASSERT_EQ((size_t)FrameSize, Size);
+        DT_ASSERT_MEM(Buffer, Expected, Size);
+        free(Expected);
+        free(Buffer);
+        DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+        FINISH(Fix);
+    }
 }
 
 // The channel has its own handle: the device object may go.
@@ -1232,7 +1279,7 @@ DT_TEST(DetectsTheIoStandard)
 DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(AttachRefusals), DT_RUN(AttachCleansUpAfterFailures),
              DT_RUN(RingHoldsTwoFramesAtLeast), DT_RUN(FourKPortWantsWholeFrames),
-             DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
+             DT_RUN(ReceivesFourKFrames), DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
              DT_RUN(ReadFrame2GivesTheArrivalTime), DT_RUN(ReadsAcrossTheEndOfTheRing),
              DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),
              DT_RUN(SkipsAFrameThatLostLines), DT_RUN(FifoLoadBeforeTheFirstRead),

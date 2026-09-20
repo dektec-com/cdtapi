@@ -545,14 +545,13 @@ static DtDetVidStd WaitFor(int* DtFailures, DtDevice* Device, const SdiFormat* F
 
 // With its VPID every standard is detected, with its link standard, the VPID, a link
 // number from 1, and the aspect ratio the VPID gives: 16:9 in HD, 4:3 in SD. Nothing is
-// scaled on a port without the capability.
+// scaled on the emulated ports, which have no down-scaler.
 DT_TEST(EveryStandardWithItsVpid)
 {
     int Live;
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -585,7 +584,6 @@ DT_TEST(EveryStandardWithoutVpid)
 
     if (!StartSim(DtFailures, &Live))
         return;
-    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
         return;
@@ -613,15 +611,18 @@ DT_TEST(EveryStandardWithoutVpid)
     FINISH(Device, Live);
 }
 
-// A port that scales 12G down to 3G, as the card's ports do by default, reports 4K on
-// one link, 6G or 12G, as the 1080p standard that link carries; what arrived stays in
-// the original fields. Four links are not scaled.
+// A port that scales 12G down to 3G, as the ports of a DTA-2178 of firmware variant 1
+// always do, reports 4K on one link, 6G or 12G, as the 1080p standard that link carries;
+// what arrived stays in the original fields. Four links are not scaled.
 DT_TEST(ScaledPortReportsOneLink)
 {
     DtDevice* Device;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live))
+        return;
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
+    if ((Device = Attach(DtFailures)) == NULL)
         return;
 
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
@@ -738,6 +739,9 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
 
     if (!StartSim(DtFailures, &Live))
         return;
+    // With the down-scaler the configuration is read before the driver version is
+    // checked, which the failing command below shows.
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
     SimDtPcie_SetDriverVersion(1, 4, 0, 110);
     DtDevice* Device;
     if ((Device = Attach(DtFailures)) == NULL)
@@ -767,16 +771,16 @@ DT_TEST(DownScalingIsReadOnlyWhereItExists)
     int VidStd = 12345;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live))
+        return;
+    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
+    if ((Device = Attach(DtFailures)) == NULL)
         return;
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
-    if (!StartSim(DtFailures, &Live))
-        return;
-    SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 0);
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));

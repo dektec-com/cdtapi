@@ -88,6 +88,7 @@ set(CDTAPI_SOURCES
     Source/OAL/OsDmaBuffer.c
     Source/OAL/OsIoctlOutcome.c
     Source/OAL/OsNet.c
+    Source/OAL/Sim/Sim4k.c
     Source/OAL/Sim/SimAsi.c
     Source/OAL/Sim/SimChSdiRx.c
     Source/OAL/Sim/SimDta2110.c

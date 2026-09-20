@@ -14,6 +14,7 @@
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "DtPcieAbi.h"          // The driver ABI the emulator answers in.
 #include "OAL/OsThread.h"       // The clock a source can follow.
+#include "Sim4k.h"              // How 2160p over one link lies in the ring.
 #include "SimChSdiRx.h"         // Interface being implemented.
 #include "SimDtPcie.h"          // Port counts.
 #include "Video/DtFrameProps.h" // Frame geometry of the source.
@@ -32,8 +33,9 @@
 // The faults SimRxFault numbers.
 #define SIM_RX_FAULT_COUNT 4
 
-// Symbols in the longest line the source writes: 720p at 23.98 Hz.
-#define SIM_RX_MAX_LINE_SYMBOLS 8250
+// Symbols in the longest line the source writes: a raw 2160p50 line, which is four
+// 1080p50 lines. Without 4K the longest is 720p at 23.98 Hz, of 8250.
+#define SIM_RX_MAX_LINE_SYMBOLS 21120
 
 // The format events one read of the write offset delivers at most, on the clock: two
 // frames. A receiver that falls further behind drops the rest, and goes on from then.
@@ -199,13 +201,42 @@ static uint32_t WithParity(uint32_t Nine)
     return Nine | ((Nine >> 8) ^ 1) << 9;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Line4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The raw line of a 4K standard: the lines of the four links, each of a frame number of
+// its own so that a test sees which link a symbol came from, interleaved word by word.
+// Returns the number of symbols, or 0 for a standard of level-B links or a line the
+// frame does not have.
+//
+static int Line4k(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
+{
+    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
+    uint16_t Link[SIM_RX_MAX_LINE_SYMBOLS / 4];
+    int Count = 0;
+
+    if (Info == NULL || Info->IsLevelB)
+        return 0;
+    for (int L = 0; L < 4; L++)
+    {
+        Count =
+            SimChSdiRx_Line(Info->OneLinkVidStd, FrameNumber + (uint32_t)L, Line, Link);
+        if (Count == 0 || Count > SIM_RX_MAX_LINE_SYMBOLS / 4)
+            return 0;
+        for (int i = 0; i < Count; i++)
+            Symbols[Sim4k_RawAt(L, i)] = Link[i];
+    }
+    return 4 * Count;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_Line -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
 {
     DtFrameProps Props;
 
-    if (DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
+    if (DtVidStd_Is4k(VidStd))
+        return Line4k(VidStd, FrameNumber, Line, Symbols);
+    if (!DtFrameProps_Init(&Props, VidStd))
         return 0;
 
     int NumLines = DtFrameProps_NumLines(&Props);
@@ -410,14 +441,17 @@ static void StartFrame(SimRxChannel* Channel)
 
         Fields.SyncWord = DT_SDIFRAME_SYNC_WORD;
         Fields.ProtocolVersion = 0;
-        Fields.Format = DT_SDIFRAME_FORMAT_UNCOMPRESSED;
+        Fields.Format = Layout->Format;
         Fields.FrameId = (int)(Channel->FrameNumber & 0xFFFF);
         Fields.PtpSeconds = Channel->FrameNumber;
         Fields.PtpNanoseconds = 0;
         if (Channel->Faults[SIM_RX_FAULT_SYNC_WORD])
             Fields.SyncWord ^= 0x100;
         if (Channel->Faults[SIM_RX_FAULT_FORMAT])
-            Fields.Format = DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K;
+        {
+            Fields.Format = Layout->Is4k ? DT_SDIFRAME_FORMAT_UNCOMPRESSED
+                                         : DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K;
+        }
         Channel->Faults[SIM_RX_FAULT_SYNC_WORD] = false;
         Channel->Faults[SIM_RX_FAULT_FORMAT] = false;
 
@@ -425,6 +459,33 @@ static void StartFrame(SimRxChannel* Channel)
         DtSdiFrame_EncodeHeader(&Fields, Header);
         if (!RingWrite(Channel, Header, (size_t)Layout->HeaderBytes))
             Channel->Dropped = true;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLines4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Packs raw line Line, from 1, of a 4K frame into the two coded lines the ring holds,
+// through Sections, which takes both coded lines in symbols.
+//
+static void CodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, int Line,
+                        uint16_t* Sections, uint8_t* Coded)
+{
+    const int Hanc = Layout->SectionSymsHanc;
+    const int Video = Layout->SectionSymsVideo;
+    uint16_t* A = Sections;
+    uint16_t* B = Sections + 2 * Hanc + Video;
+
+    Sim4k_Split(Hanc, Video / 2, DtSdiFrame_IsBlankingLine(Layout, Line - 1), Raw, A, B);
+    for (int i = 0; i < 2; i++)
+    {
+        const uint16_t* Line2 = i == 0 ? A : B;
+        uint8_t* Out = Coded + (size_t)i * (size_t)Layout->Stride;
+
+        PackSection(Line2, Hanc, Out, Layout->LineBytesHanc);
+        PackSection(Line2 + Hanc, Hanc, Out + Layout->LineBytesHanc,
+                    Layout->LineBytesHanc);
+        PackSection(Line2 + 2 * Hanc, Video, Out + 2 * (size_t)Layout->LineBytesHanc,
+                    Layout->LineBytesVideo);
     }
 }
 
@@ -440,14 +501,25 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     if (!Channel->FrameInSync || Channel->Dropped || Channel->LinesWritten >= Upto)
         return;
 
-    uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)Layout->Stride);
-    if (Coded == NULL)
+    const int PerLine = Layout->CodedLines / Layout->NumLines;
+    uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)PerLine * (size_t)Layout->Stride);
+    uint16_t* Symbols =
+        (uint16_t*)DtAlloc_Malloc(SIM_RX_MAX_LINE_SYMBOLS * sizeof(uint16_t));
+    uint16_t* Sections =
+        Layout->Is4k ? (uint16_t*)DtAlloc_Malloc((size_t)PerLine *
+                                                 (size_t)(2 * Layout->SectionSymsHanc +
+                                                          Layout->SectionSymsVideo) *
+                                                 sizeof(uint16_t))
+                     : NULL;
+    if (Coded == NULL || Symbols == NULL || (Layout->Is4k && Sections == NULL))
     {
+        DtAlloc_Free(Coded);
+        DtAlloc_Free(Symbols);
+        DtAlloc_Free(Sections);
         Channel->Dropped = true;
         return;
     }
 
-    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
     while (Channel->LinesWritten < Upto)
     {
         int Line = Channel->LinesWritten + 1;
@@ -456,10 +528,15 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
             FileLine(Channel, Channel->FrameNumber, Line, Symbols);
         else
             SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
-        PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->LineBytesHanc);
-        PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
-                    Coded + Layout->LineBytesHanc, Layout->LineBytesVideo);
-        if (!RingWrite(Channel, Coded, (size_t)Layout->Stride))
+        if (Layout->Is4k)
+            CodeLines4k(Layout, Symbols, Line, Sections, Coded);
+        else
+        {
+            PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->LineBytesHanc);
+            PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
+                        Coded + Layout->LineBytesHanc, Layout->LineBytesVideo);
+        }
+        if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->Stride))
         {
             Channel->Dropped = true;
             break;
@@ -467,6 +544,8 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         Channel->LinesWritten++;
     }
     DtAlloc_Free(Coded);
+    DtAlloc_Free(Symbols);
+    DtAlloc_Free(Sections);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NextEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -968,16 +1047,16 @@ void SimDtPcie_SetRxRealTime(bool RealTime)
 //
 bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
 {
-    DtFrameProps Props;
+    DtSdiFrameLayout Layout;
 
     EnsureRx();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Path == NULL ||
-        DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
+        !DtSdiFrame_LayoutInit(&Layout, VidStd, g_Rx.Alignment))
     {
         return false;
     }
-    const int LineSyms = DtFrameProps_LineSymbolsHanc(&Props) + Props.LineNumSymVanc;
-    const size_t Bits = (size_t)DtFrameProps_NumLines(&Props) * (size_t)LineSyms * 10;
+    const int LineSyms = Layout.LineSymsHanc + Layout.LineSymsVideo;
+    const size_t Bits = (size_t)Layout.NumLines * (size_t)LineSyms * 10;
     const size_t FrameBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
     if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)
         return false;

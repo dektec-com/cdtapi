@@ -1131,15 +1131,16 @@ static int VidStdNamed(const char* Name, size_t Length)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The locked signal of a video standard, without a VPID, as a receiver reports it. False
-// for a 4K or unknown standard.
+// The locked signal of a video standard, without a VPID, as a receiver reports it: of
+// 2160p over one link the geometry of one of its four links, as the card reports it.
+// False for an unknown standard.
 //
 static bool SignalOf(int VidStd, SimSdiSignal* Signal)
 {
     DtFrameProps Props;
     const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
 
-    if (Info == NULL || DtVidStd_Is4k(VidStd) || !DtFrameProps_Init(&Props, VidStd))
+    if (Info == NULL || !DtFrameProps_Init(&Props, VidStd))
         return false;
     memset(Signal, 0, sizeof(*Signal));
     Signal->CarrierDetect = 1;
@@ -1153,9 +1154,11 @@ static bool SignalOf(int VidStd, SimSdiSignal* Signal)
         Signal->NumLinesF2 = Props.Fields[1].EndLine - Props.Fields[1].StartLine + 1;
     Signal->IsLevelB = Info->IsLevelB ? 1 : 0;
     Signal->FramePeriod = (int)(1e9 * Props.FpsDen / Props.FpsNum + 0.5);
-    Signal->SdiRate = Info->IoStd == DTAPI_IOCONFIG_SDI     ? DT_DRV_SDIRATE_SD
-                      : Info->IoStd == DTAPI_IOCONFIG_HDSDI ? DT_DRV_SDIRATE_HD
-                                                            : DT_DRV_SDIRATE_3G;
+    Signal->SdiRate = Info->IoStd == DTAPI_IOCONFIG_SDI      ? DT_DRV_SDIRATE_SD
+                      : Info->IoStd == DTAPI_IOCONFIG_HDSDI  ? DT_DRV_SDIRATE_HD
+                      : Info->IoStd == DTAPI_IOCONFIG_6GSDI  ? DT_DRV_SDIRATE_6G
+                      : Info->IoStd == DTAPI_IOCONFIG_12GSDI ? DT_DRV_SDIRATE_12G
+                                                             : DT_DRV_SDIRATE_3G;
     return true;
 }
 

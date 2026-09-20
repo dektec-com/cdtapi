@@ -26,6 +26,7 @@
 #include "OAL/Sim/SimChSdiRx.h"     // The emulated source's frames.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "Video/DtSdiFrame.h"       // Frame sizes.
+#include "Video/DtVidStd.h"         // Which standards are 4K.
 #include "cdtapi.h"                 // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -36,6 +37,9 @@
 
 // Large enough for a 1080-line frame with 10-bit symbols.
 #define BUFFER_SIZE (8 * 1024 * 1024)
+
+// Symbols in the longest line the emulated source makes: a raw 2160p50 line.
+#define SIM_LINE_SYMBOLS 21120
 
 // The files the cases write, in the directory CTest runs them in.
 #define SOURCE_FILE "SimSdiFiles_source.sdi"
@@ -109,8 +113,15 @@ static uint8_t* PatternFrame(int VidStd, uint32_t FrameNumber, size_t* Size,
     if (Frame == NULL)
         return NULL;
 
-    uint16_t Symbols[8250];
+    uint16_t* Symbols = (uint16_t*)malloc(SIM_LINE_SYMBOLS * sizeof(uint16_t));
     size_t Symbol = 0;
+
+    if (Symbols == NULL)
+    {
+        free(Frame);
+        *Size = *Padded = 0;
+        return NULL;
+    }
     for (int Line = 1; Line <= Layout.NumLines; Line++)
     {
         int Count = SimChSdiRx_Line(VidStd, FrameNumber, Line, Symbols);
@@ -125,6 +136,7 @@ static uint8_t* PatternFrame(int VidStd, uint32_t FrameNumber, size_t* Size,
             }
         }
     }
+    free(Symbols);
     return Frame;
 }
 
@@ -187,10 +199,16 @@ static DtapiResult SetStandard(Fixture* Fix, int Port, int VidStd)
 {
     int Value;
     int SubValue;
-    DtapiResult Result = DtapiVidStd2IoStd(VidStd, -1, &Value, &SubValue);
+    bool Is4k = DtVidStd_Is4k(VidStd);
+    DtapiResult Result = DtapiVidStd2IoStd(VidStd, Is4k ? 3 : -1, &Value, &SubValue);
 
     if (Result != DTAPI_OK)
         return Result;
+    if (Is4k)
+    {
+        SimDtPcie_OverrideProperty("CAP_12GSDI", Port - 1, true, 1);
+        SimDtPcie_OverrideProperty("CAP_2160P50", Port - 1, true, 1);
+    }
     DtIoConfig Config = {Port, DTAPI_IOCONFIG_IOSTD, Value, SubValue, {-1, -1}};
     return DtDevice_SetIoConfig(Fix->Device, &Config, 1);
 }
@@ -395,6 +413,68 @@ DT_TEST(SinkWritesWhatIsSent)
     remove(SINK_FILE);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// A file of one 2160p50 frame plays on the input port, and what the output port sends
+// goes to a file of its own: the frame read is the one in the file, and the frame written
+// is the one sent. The emulated card codes the ring and the line headers by its own
+// reading of the layout, so the two files must hold the same bytes.
+DT_TEST(FourKThroughFiles)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_2160P50, 0, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("2160P50", SOURCE_FILE)));
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    int Found = DTAPI_VIDSTD_UNKNOWN;
+    DT_ASSERT_OK(DtDevice_DetectVidStd(Fix.Device, PORT, &Found));
+    DT_ASSERT_EQ(Found, DTAPI_VIDSTD_2160P50);
+
+    size_t Size = 0, Padded = 0;
+    uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
+    char* Buffer = (char*)malloc(Size);
+    DtInpChannel* In = DtInpChannel_Alloc();
+    DtOutpChannel* Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+    int FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_EQ((size_t)FrameSize, Size);
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+    DtInpChannel_Free(In);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(
+        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Out, Buffer, (int)Size, 30000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Free(Out);
+    DtDevice_Free(Fix.Device);
+    Fix.Device = NULL;
+    SimDtPcie_Reset(); // Closes the file
+
+    size_t FileSize = 0;
+    uint8_t* File = ReadAll(SINK_FILE, &FileSize);
+    DT_ASSERT(File != NULL && FileSize >= Padded);
+    DT_ASSERT_MEM(File, Expected, Size);
+    free(File);
+    free(Expected);
+    free(Buffer);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+    remove(SINK_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For examples +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Leaves three frames of 1080i50 for the CTest run of DtDetectVidStd with
@@ -408,4 +488,5 @@ DT_TEST(LeavesAFileForTheExamples)
 
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
-             DT_RUN(SinkWritesWhatIsSent), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(SinkWritesWhatIsSent), DT_RUN(FourKThroughFiles),
+             DT_RUN(LeavesAFileForTheExamples))

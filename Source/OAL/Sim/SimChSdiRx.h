@@ -82,9 +82,12 @@ void SimChSdiRx_Reset(void);
 //
 
 // Fills Symbols with line Line, from 1, of frame FrameNumber of VidStd, from the first
-// symbol of the EAV to the last of the active part. Symbols holds the line's symbols.
-// Returns the number of symbols, or 0, writing nothing, for an unknown or 4K standard or
-// a line the frame does not have.
+// symbol of the EAV to the last of the active part. Symbols holds the line's symbols. Of
+// a 4K standard it is the raw line of the four links, each carrying the line of a frame
+// number of its own, FrameNumber for link 1 up to FrameNumber + 3 for link 4, so that a
+// test sees which link a symbol came from. Returns the number of symbols, or 0, writing
+// nothing, for an unknown standard, one of level-B links, or a line the frame does not
+// have.
 int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols);
 
 // Makes the port at PortIndex receive VidStd from now on; DTAPI_VIDSTD_UNKNOWN takes the
@@ -103,8 +106,9 @@ void SimDtPcie_SetRxRealTime(bool RealTime);
 // file holds whole frames of 10-bit symbols, packed least significant bit first, each
 // line from its EAV to the end of its active part, and each frame padded with zeros to a
 // multiple of 8 bytes: what FFmpeg's sdi format holds without its header, and what
-// SimDtPcie_SetSdiSink writes. Returns false, changing nothing, for a 4K or unknown
-// standard, a file that cannot be read, or one that holds no whole number of frames.
+// SimDtPcie_SetSdiSink writes; of a 4K standard, the raw lines of its four links.
+// Returns false, changing nothing, for an unknown standard, a file that cannot be read,
+// or one that holds no whole number of frames.
 bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path);
 
 // The one-off faults of a port's source, each applied to the next frame it starts.

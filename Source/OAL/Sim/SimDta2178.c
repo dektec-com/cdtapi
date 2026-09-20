@@ -22,6 +22,13 @@
 // reference ports, and port 10 is virtual. CAP_QUADLINK comes with the demultiplexer
 // every port's transmitter lists below, as it does on ports 1 and 5 of a variant 2 card.
 //
+// The list leaves out CAP_SCALE_12GTO3G, which variant 1 has and variants 2 and 3 do
+// not. A port that has it always scales 12G down to 3G, and detection then reports every
+// 2160p signal as the 1080p standard of one link, which would leave a program that
+// chooses its standard by detection unable to see 2160p on the emulator. A test that
+// wants that behaviour adds the capability with SimDtPcie_OverrideProperty; the
+// down-scale configuration is there either way.
+//
 
 static const char* const SdiPortCaps[] = {
     "CAP_1080I50",
@@ -61,7 +68,6 @@ static const char* const SdiPortCaps[] = {
     "CAP_GENLOCKED",
     "CAP_HDSDI",
     "CAP_MATRIX2",
-    "CAP_SCALE_12GTO3G",
     "CAP_SDI",
     "CAP_TODREF_INTERNAL",
     "CAP_TODREF_STEADYCLOCK",
@@ -384,6 +390,8 @@ void SimDta2178_DefaultConfig(int PortIndex, int Group, int* Value, int* SubValu
         *SubValue = Sdi ? DTAPI_IOCONFIG_1080I50 : DTAPI_IOCONFIG_625I50;
         break;
     case DTAPI_IOCONFIG_IODOWNSCALE:
+        // What a port that has the down-scaler reports; without the capability, which
+        // the emulated ports lack, nothing reads it. See the capabilities above.
         if (Sdi)
             *Value = DTAPI_IOCONFIG_SCALE_12GTO3G;
         break;

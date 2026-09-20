@@ -640,12 +640,40 @@ DT_TEST(HdTimingReferences)
     DT_ASSERT_EQ(Line2[10], 0x204);
 }
 
+// A 4K line is the four links' lines word by word, links 4, 2, 3 and 1, each link
+// carrying the line of a frame number of its own.
+DT_TEST(FourKLine)
+{
+    static uint16_t Raw[21120];
+    static uint16_t Links[4][8250];
+    static const int Order[4] = {3, 1, 2, 0};
+
+    int Count = SimChSdiRx_Line(DTAPI_VIDSTD_2160P50, 7, 42, Raw);
+    DT_ASSERT_EQ(Count, 4 * 5280);
+    for (int L = 0; L < 4; L++)
+        DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_1080P50, 7 + (uint32_t)L, 42, Links[L]),
+                     5280);
+
+    for (int p = 0; p < 5280 / 2; p++)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            DT_ASSERT_EQ(Raw[8 * p + i], Links[Order[i]][2 * p]);
+            DT_ASSERT_EQ(Raw[8 * p + 4 + i], Links[Order[i]][2 * p + 1]);
+        }
+    }
+    // Every link's line starts with its own EAV, and the links differ.
+    DT_ASSERT_EQ(Raw[0], 0x3FF);
+    DT_ASSERT_EQ(Raw[3], 0x3FF);
+    DT_ASSERT(Links[0][100] != Links[1][100]);
+}
+
 DT_TEST(LineRefusesWhatIsNot)
 {
     uint16_t Symbols[8250];
 
     Symbols[0] = 0x123;
-    DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_2160P50, 0, 1, Symbols), 0);
+    DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_2160P50B, 0, 1, Symbols), 0);
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_UNKNOWN, 0, 1, Symbols), 0);
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_625I50, 0, 0, Symbols), 0);
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_625I50, 0, 626, Symbols), 0);
@@ -659,4 +687,4 @@ DT_TEST_MAIN("SimChSdiRx", DT_RUN(ReportsTheCardsProperties), DT_RUN(AttachesUse
              DT_RUN(WritesFramesInQuarters), DT_RUN(MismatchedSourceIsOutOfSync),
              DT_RUN(InjectsFaults), DT_RUN(FullRingDropsAndWraps),
              DT_RUN(RefusesAndReportsStatus), DT_RUN(SdTimingReferences),
-             DT_RUN(HdTimingReferences), DT_RUN(LineRefusesWhatIsNot))
+             DT_RUN(HdTimingReferences), DT_RUN(FourKLine), DT_RUN(LineRefusesWhatIsNot))
