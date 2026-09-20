@@ -598,14 +598,12 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A raw 4K line is built from, and split into, its four links in the scratch buffer:
-//
-//   the raw line          LineSymsHanc + LineSymsVideo symbols
-//   the HANC sections     SectionSymsHanc symbols each, links 1 to 4
-//   the video sections    SectionSymsVideo symbols each, coded lines 2n-1 and 2n
-//
-// Every section of a 4K line holds a multiple of four symbols, so each packs into whole
-// groups of five bytes.
+// A raw 4K line is built from, and split into, its four links four symbols at a time:
+// two pixels of one link, which pack into exactly five bytes and which the raw line
+// carries as two groups of eight words. Every section of a 4K line holds a multiple of
+// four symbols, so a line is a whole number of such tiles and every tile lies on a byte
+// boundary on both sides. The scratch buffer holds the raw line's symbols, which one
+// pass then writes in the symbol size of the raw frame.
 //
 
 // The links, from 0, whose C words and then Y words take the four places of a group of
@@ -647,14 +645,13 @@ static void Pack10(const uint16_t* In, size_t Count, uint8_t* Out)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackSection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearPadding -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Count symbols into a section of Bytes bytes, its padding cleared.
+// The bytes of a section of Bytes bytes that its Count packed symbols do not reach.
 //
-static void PackSection(const uint16_t* In, size_t Count, uint8_t* Out, size_t Bytes)
+static void ClearPadding(uint8_t* Section, size_t Count, size_t Bytes)
 {
-    Pack10(In, Count, Out);
-    memset(Out + Count * 10 / 8, 0, Bytes - Count * 10 / 8);
+    memset(Section + Count * 10 / 8, 0, Bytes - Count * 10 / 8);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -701,73 +698,86 @@ static void WriteRaw(const uint16_t* In, int SymbolBits, size_t Count, uint8_t* 
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ActiveIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TileBlocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Where word Word of a link's active part is in the video section of its coded line: on
-// a picture line in its own pixel pairs, every other group of four symbols; on a blanking
-// line in its own half. Odd is true for links 2 and 4.
+// Where the four links' five bytes of tile Tile lie in their coded lines, links 1 and 2
+// in the first and links 3 and 4 in the second: the HANC sections first, tile by tile,
+// and then the active part, whose blocks of four symbols a picture line gives to the two
+// links of a coded line in turn and a blanking line in halves. The one rule both ways.
 //
-static size_t ActiveIndex(size_t Word, bool Odd, bool Blanking, size_t Half)
+static void TileBlocks(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
+                       size_t Offset[4])
 {
-    if (Blanking)
-        return (Odd ? Half : 0) + Word;
-    return Word / 4 * 8 + (Odd ? 4 : 0) + Word % 4;
-}
+    const size_t HancTiles = (size_t)Layout->SectionSymsHanc / 4;
+    const size_t HancBytes = (size_t)Layout->LineBytesHanc;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interleave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// The raw line from the four links in the scratch buffer, or the other way round when
-// Split is true: the one rule both ways.
-//
-static void Interleave(const DtSdiFrameLayout* Layout, int LineIndex, uint16_t* Scratch,
-                       bool Split)
-{
-    const size_t SectionHanc = (size_t)Layout->SectionSymsHanc;
-    const size_t SectionVideo = (size_t)Layout->SectionSymsVideo;
-    const size_t Half = SectionVideo / 2;
-    const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
-    uint16_t* Line = Scratch;
-    uint16_t* Hanc = Line + Layout->LineSymsHanc + Layout->LineSymsVideo;
-    uint16_t* Video = Hanc + 4 * SectionHanc;
-
-    for (size_t j = 0; j < SectionHanc; j += 2)
+    if (Tile < HancTiles)
     {
-        uint16_t* Group = Line + 4 * j;
-        for (size_t p = 0; p < 4; p++)
-        {
-            uint16_t* Link = Hanc + g_LinkOrder[p] * SectionHanc + j;
-            if (Split)
-            {
-                Link[0] = Group[p];
-                Link[1] = Group[4 + p];
-            }
-            else
-            {
-                Group[p] = Link[0];
-                Group[4 + p] = Link[1];
-            }
-        }
+        for (size_t L = 0; L < 4; L++)
+            Offset[L] = (L & 1) * HancBytes + 5 * Tile;
+        return;
     }
 
-    uint16_t* Active = Line + 4 * SectionHanc;
-    for (size_t j = 0; j < Half; j += 2)
+    const size_t Video = 2 * HancBytes;
+    const size_t Half = (size_t)Layout->SectionSymsVideo / 8 * 5;
+    const size_t t = Tile - HancTiles;
+
+    for (size_t L = 0; L < 4; L++)
+        Offset[L] = Video + (Blanking ? (L & 1) * Half + 5 * t : 5 * (2 * t + (L & 1)));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GatherLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The symbols of a raw 4K line from the two coded lines it is made of.
+//
+static void GatherLine(const DtSdiFrameLayout* Layout, const uint8_t* CodedA,
+                       const uint8_t* CodedB, int LineIndex, uint16_t* Raw)
+{
+    const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
+    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+
+    for (size_t Tile = 0; Tile < Tiles; Tile++, Raw += 16)
     {
-        uint16_t* Group = Active + 4 * j;
+        size_t Offset[4];
+
+        TileBlocks(Layout, Blanking, Tile, Offset);
         for (size_t p = 0; p < 4; p++)
         {
-            size_t L = g_LinkOrder[p];
-            uint16_t* Section = Video + (L / 2) * SectionVideo;
-            size_t Index = ActiveIndex(j, (L & 1) != 0, Blanking, Half);
-            if (Split)
-            {
-                Section[Index] = Group[p];
-                Section[Index + 1] = Group[4 + p];
-            }
-            else
-            {
-                Group[p] = Section[Index];
-                Group[4 + p] = Section[Index + 1];
-            }
+            const size_t L = g_LinkOrder[p];
+            const uint8_t* Src = (L < 2 ? CodedA : CodedB) + Offset[L];
+            uint16_t Four[4];
+
+            Unpack10(Src, 4, Four);
+            Raw[p] = Four[0];
+            Raw[4 + p] = Four[1];
+            Raw[8 + p] = Four[2];
+            Raw[12 + p] = Four[3];
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScatterLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The symbols of a raw 4K line into the two coded lines it is made of.
+//
+static void ScatterLine(const DtSdiFrameLayout* Layout, const uint16_t* Raw,
+                        int LineIndex, uint8_t* CodedA, uint8_t* CodedB)
+{
+    const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
+    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+
+    for (size_t Tile = 0; Tile < Tiles; Tile++, Raw += 16)
+    {
+        size_t Offset[4];
+
+        TileBlocks(Layout, Blanking, Tile, Offset);
+        for (size_t p = 0; p < 4; p++)
+        {
+            const size_t L = g_LinkOrder[p];
+            uint8_t* Dst = (L < 2 ? CodedA : CodedB) + Offset[L];
+            const uint16_t Four[4] = {Raw[p], Raw[4 + p], Raw[8 + p], Raw[12 + p]};
+
+            Pack10(Four, 4, Dst);
         }
     }
 }
@@ -778,8 +788,7 @@ size_t DtSdiFrame_ScratchSymbols(const DtSdiFrameLayout* Layout)
 {
     if (!Layout->Is4k)
         return 0;
-    return (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) +
-           4 * (size_t)Layout->SectionSymsHanc + 2 * (size_t)Layout->SectionSymsVideo;
+    return (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -789,22 +798,11 @@ void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
                               uint8_t* RawLine, uint16_t* Scratch)
 {
     const size_t LineSyms = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
-    const size_t SectionHanc = (size_t)Layout->SectionSymsHanc;
-    const size_t HancBytes = (size_t)Layout->LineBytesHanc;
-    uint16_t* Hanc = Scratch + LineSyms;
-    uint16_t* Video = Hanc + 4 * SectionHanc;
 
     if (!Layout->Is4k || (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16))
         return;
 
-    Unpack10(CodedA, SectionHanc, Hanc);
-    Unpack10(CodedA + HancBytes, SectionHanc, Hanc + SectionHanc);
-    Unpack10(CodedB, SectionHanc, Hanc + 2 * SectionHanc);
-    Unpack10(CodedB + HancBytes, SectionHanc, Hanc + 3 * SectionHanc);
-    Unpack10(CodedA + 2 * HancBytes, (size_t)Layout->SectionSymsVideo, Video);
-    Unpack10(CodedB + 2 * HancBytes, (size_t)Layout->SectionSymsVideo,
-             Video + Layout->SectionSymsVideo);
-    Interleave(Layout, LineIndex, Scratch, false);
+    GatherLine(Layout, CodedA, CodedB, LineIndex, Scratch);
     WriteRaw(Scratch, SymbolBits, LineSyms, RawLine);
 }
 
@@ -819,20 +817,20 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
     const size_t SectionVideo = (size_t)Layout->SectionSymsVideo;
     const size_t HancBytes = (size_t)Layout->LineBytesHanc;
     const size_t VideoBytes = (size_t)Layout->LineBytesVideo;
-    uint16_t* Hanc = Scratch + LineSyms;
-    uint16_t* Video = Hanc + 4 * SectionHanc;
 
     if (!Layout->Is4k || (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16))
         return false;
 
     ReadRaw(RawLine, SymbolBits, LineSyms, Scratch);
-    Interleave(Layout, LineIndex, Scratch, true);
-    PackSection(Hanc, SectionHanc, CodedA, HancBytes);
-    PackSection(Hanc + SectionHanc, SectionHanc, CodedA + HancBytes, HancBytes);
-    PackSection(Hanc + 2 * SectionHanc, SectionHanc, CodedB, HancBytes);
-    PackSection(Hanc + 3 * SectionHanc, SectionHanc, CodedB + HancBytes, HancBytes);
-    PackSection(Video, SectionVideo, CodedA + 2 * HancBytes, VideoBytes);
-    PackSection(Video + SectionVideo, SectionVideo, CodedB + 2 * HancBytes, VideoBytes);
+    ScatterLine(Layout, Scratch, LineIndex, CodedA, CodedB);
+
+    // The padding of every section, which its symbols do not reach.
+    ClearPadding(CodedA, SectionHanc, HancBytes);
+    ClearPadding(CodedA + HancBytes, SectionHanc, HancBytes);
+    ClearPadding(CodedB, SectionHanc, HancBytes);
+    ClearPadding(CodedB + HancBytes, SectionHanc, HancBytes);
+    ClearPadding(CodedA + 2 * HancBytes, SectionVideo, VideoBytes);
+    ClearPadding(CodedB + 2 * HancBytes, SectionVideo, VideoBytes);
     return true;
 }
 
