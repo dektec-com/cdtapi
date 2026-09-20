@@ -1,0 +1,136 @@
+# #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* release.yml *#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+#
+# CDTAPI - What a version tag does
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# A tag such as v6.13.3 checks that the sources at it call themselves 6.13.3, builds and
+# tests them on Linux and Windows once more, and makes a GitHub Release whose notes are
+# the tag's own message, with the SHA-512 of the source tarball for the vcpkg registry.
+# Nothing is attached: the library is built from source, by vcpkg and by the SDK, and
+# GitHub serves the tarball of the tag itself.
+#
+# Run by hand, it does the same for the tag given and leaves the release a draft.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to check, as a draft release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: The tag is the version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      # A tag on the wrong commit would ship sources that call themselves something else,
+      # which nothing downstream would notice: the port fetches the tag and believes it.
+      - name: CMakeLists says what the tag says
+        run: |
+          Tag="${{ steps.tag.outputs.tag }}"
+          Version="$(sed -n 's/^ *VERSION \([0-9.]*\) *$/\1/p' CMakeLists.txt | head -1)"
+          echo "tag $Tag, sources $Version"
+          test "v$Version" = "$Tag"
+
+  build:
+    name: Build ${{ matrix.preset }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            preset: linux-release
+          - os: windows-latest
+            preset: windows-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Install Ninja
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+  release:
+    name: Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+          fetch-depth: 0
+
+      # The tarball GitHub serves for the tag is what vcpkg_from_github downloads, so its
+      # hash is what the registry's portfile has to hold.
+      - name: The source tarball's hash
+        id: tarball
+        run: |
+          Tag="${{ needs.version.outputs.tag }}"
+          Url="https://github.com/${{ github.repository }}/archive/refs/tags/$Tag.tar.gz"
+          curl -sSLf "$Url" -o source.tar.gz
+          Sha="$(sha512sum source.tar.gz | cut -d' ' -f1)"
+          echo "sha=$Sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "## $Tag"
+            echo
+            echo "For the vcpkg registry's \`ports/cdtapi/portfile.cmake\`:"
+            echo
+            echo '```'
+            echo "SHA512 $Sha"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notes from the tag
+        id: notes
+        run: |
+          Tag="${{ needs.version.outputs.tag }}"
+          # Subject and body rather than the whole contents: a signed tag carries its
+          # signature there, and the notes are read by everyone who downloads a release.
+          {
+            git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$Tag"
+            echo
+            echo "The source tarball's SHA-512, for the vcpkg registry:"
+            echo
+            echo '    SHA512 ${{ steps.tarball.outputs.sha }}'
+          } > notes.md
+          cat notes.md
+
+      - name: The release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Tag="${{ needs.version.outputs.tag }}"
+          Draft=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            Draft="--draft"
+          fi
+          gh release create "$Tag" --title "CDTAPI ${Tag#v}" --notes-file notes.md $Draft
