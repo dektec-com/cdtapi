@@ -482,11 +482,21 @@ DT_TEST(AttachRefusals)
     SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
 
-    // The exclusive access was released: another attach succeeds.
+    // The exclusive access was released: another attach succeeds. 2160p over one 12G
+    // link sends (0014), but a 4K standard of level-B links holds no buffer and does not
+    // leave idle, as with DTAPI.
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
+    SimDtPcie_OverrideProperty("CAP_2160P50B", PORT - 1, true, 1);
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_IDLE));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
+
+    DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD,
+                             DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50B));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
     DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD),
                  DTAPI_E_CONFIG_RAW_SDI);

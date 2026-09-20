@@ -10,8 +10,9 @@
 // for more; or, without --in, they are a generated test pattern of the video standard
 // --vidstd: grey bars and a white bar that moves one step each frame, with legal values,
 // line numbers and line CRCs. --vidstd also sets the port's I/O standard through the
-// channel. The program prints one line per frame as DtReceiveFrames does, so that the
-// hashes of what one port sends and another receives can be compared:
+// channel, with --linkstd for a 4K standard, which says how it is carried. The program
+// prints one line per frame as DtReceiveFrames does, so that the hashes of what one port
+// sends and another receives can be compared:
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
@@ -49,6 +50,8 @@ static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI output"},
     {"--port", true, "The port number; the first SDI output"},
     {"--vidstd", true, "Set the port's I/O standard for this video standard: 1080I50"},
+    {"--linkstd", true,
+     "How 4K is carried: 0 or 1 four 3G links, 2 6G, 3 12G; default -1"},
     {"--txmode", true, "8B, 10B or 16B symbols; 10B without it"},
     {"--in", true, "Transmit the frames in <in>0.raw, <in>1.raw and so on"},
     {"--count", true, "The number of frames to transmit; without it one, or every file"},
@@ -579,7 +582,7 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              const DtHwFuncDesc* Port, int TxMode, int VidStd,
-                             Source* Src, int64_t Count, bool Flags)
+                             int LinkStd, Source* Src, int64_t Count, bool Flags)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
     if (!Example_Succeeded(Result))
@@ -599,7 +602,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
         int SubValue = -1;
 
         What = "DtapiVidStd2IoStd";
-        Result = DtapiVidStd2IoStd(VidStd, -1, &Value, &SubValue);
+        Result = DtapiVidStd2IoStd(VidStd, LinkStd, &Value, &SubValue);
         if (Result == DTAPI_OK)
         {
             What = "DtOutpChannel_SetIoConfig";
@@ -666,12 +669,14 @@ int main(int Argc, char** Argv)
     int64_t Serial = 0;
     int64_t PortNumber = 0;
     int64_t Count = -1;
+    int64_t LinkStd = -1;
     if (!Example_CheckArguments(Argc, Argv, "Transmits raw SDI frames on an SDI output.",
                                 g_Options,
                                 (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
         !Example_Int64(Argc, Argv, "--serial", &Serial) ||
         !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
-        !Example_Int64(Argc, Argv, "--count", &Count))
+        !Example_Int64(Argc, Argv, "--count", &Count) ||
+        !Example_Int64(Argc, Argv, "--linkstd", &LinkStd))
     {
         return EXAMPLE_FAILED;
     }
@@ -716,8 +721,8 @@ int main(int Argc, char** Argv)
     else if (Device == NULL || Channel == NULL)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
-        Exit = AttachAndTransmit(Device, Channel, &Port, TxMode, VidStd, &Src, Count,
-                                 Example_HasFlag(Argc, Argv, "--flags"));
+        Exit = AttachAndTransmit(Device, Channel, &Port, TxMode, VidStd, (int)LinkStd,
+                                 &Src, Count, Example_HasFlag(Argc, Argv, "--flags"));
 
     DtOutpChannel_Free(Channel);
     DtDevice_Free(Device);

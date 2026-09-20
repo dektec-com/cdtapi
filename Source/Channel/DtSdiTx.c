@@ -98,10 +98,11 @@ typedef struct DtSdiTx
     size_t WordBytes;  // A PCIe data word, which the card reads the buffer in
     int BurstFifoSize; // Bytes
     int QuarterMs;     // A quarter frame period, at least 1 ms
-    uint8_t* Black;    // The coded lines of a black frame
-    uint8_t* LineBuf;  // A coded line that runs across the end of the buffer
+    uint8_t* Black;    // The coded lines of a black frame, line headers included
+    uint8_t* LineBuf;  // A raw line's coded lines when they run across the end
     uint8_t* RawBuf;   // The raw bytes of a line not yet complete
     size_t RawBufSize;
+    uint16_t* Scratch; // The working symbols of a 4K line
 
     // The buffer while holding or sending.
     size_t WriteOffset; // Where the next frame's header goes, and the driver's offset
@@ -282,7 +283,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
     if (Sdi->Reserved)
     {
         Partial = (size_t)Layout->TxHeaderBytes +
-                  (size_t)Sdi->LinesDone * (size_t)Layout->Stride;
+                  (size_t)Sdi->LinesDone * DtSdiFrame_TxLineBytes(Layout);
         if (Free < 2 * Coded)
         {
             ResetFrame(Sdi);
@@ -298,7 +299,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
     }
     PutHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
     PutAt(Sdi, Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes), Sdi->Black,
-          (size_t)Layout->NumLines * (size_t)Layout->Stride);
+          (size_t)Layout->CodedLines * (size_t)Layout->TxStride);
 
     DtapiResult Result = CommitFrame(Sdi);
     if (Result == DTAPI_OK)
@@ -649,7 +650,9 @@ static void FreeBuffer(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->Black);
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->RawBuf);
+    DtAlloc_Free(Sdi->Scratch);
     Sdi->Black = Sdi->LineBuf = Sdi->RawBuf = NULL;
+    Sdi->Scratch = NULL;
     Sdi->RawBufSize = 0;
     memset(&Sdi->Layout, 0, sizeof(Sdi->Layout));
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
@@ -661,8 +664,9 @@ static void FreeBuffer(DtSdiTx* Sdi)
 // MxChannelMemlessTx::SetVidStd for the port's I/O standard, while idle: format events,
 // the stream alignment and the format, the start-of-frame offset, the switches around
 // the demultiplexer, and a buffer for the standard, registered anew only when its size
-// changes. A 4K standard, which DTAPI's raw row does not take, leaves the channel without
-// a buffer; see IdleToHold.
+// changes. 2160p over one 6G or 12G link is sent as raw frames (0014); a 4K standard over
+// four links, or of level-B links, which DTAPI's raw row does not take either, leaves the
+// channel without a buffer; see IdleToHold.
 //
 static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 {
@@ -672,8 +676,11 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     DtSdiFrameLayout Layout = {0};
     int Alignment = 0;
 
-    if (Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
-        Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI || DtVidStd_Is4k(Sdi->IoStdSubValue))
+    const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
+    const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
+                         Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
+    if ((OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
+        (!OneLink || Info == NULL || Info->IsLevelB))
     {
         FreeBuffer(Sdi);
         return DTAPI_OK;
@@ -694,7 +701,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
             Drv, Sdi->Txf,
-            (Layout.NumLines + DT_FMT_EVENTS_PER_FRAME - 1) / DT_FMT_EVENTS_PER_FRAME + 1,
+            (Layout.CodedLines + DT_FMT_EVENTS_PER_FRAME - 1) / DT_FMT_EVENTS_PER_FRAME +
+                1,
             1);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Drv, Sdi->Phy, 0);
@@ -714,7 +722,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 
     size_t Size = Sdi->Buf.Size;
     if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
-        Sdi->Layout.Stride != Layout.Stride || Sdi->Layout.NumLines != Layout.NumLines ||
+        Sdi->Layout.TxStride != Layout.TxStride ||
+        Sdi->Layout.CodedLines != Layout.CodedLines ||
         Sdi->Layout.TxHeaderBytes != Layout.TxHeaderBytes)
     {
         Size = 0;
@@ -728,17 +737,23 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->Black);
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->RawBuf);
+    DtAlloc_Free(Sdi->Scratch);
+    Sdi->Scratch = NULL;
     Sdi->Black =
-        (uint8_t*)DtAlloc_Malloc((size_t)Layout.NumLines * (size_t)Layout.Stride);
-    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc((size_t)Layout.Stride);
+        (uint8_t*)DtAlloc_Malloc((size_t)Layout.CodedLines * (size_t)Layout.TxStride);
+    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxLineBytes(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->RawBufSize = Line;
-    if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL)
+    if (Layout.Is4k)
+        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc(DtSdiFrame_ScratchSymbols(&Layout) *
+                                                 sizeof(uint16_t));
+    if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
+        (Layout.Is4k && Sdi->Scratch == NULL) ||
+        !DtSdiFrame_BlackLines(&Layout, Sdi->Black))
     {
         FreeBuffer(Sdi);
         return DTAPI_E_OUT_OF_MEM;
     }
-    DtSdiFrame_BlackLines(&Layout, Sdi->Black);
 
     // A buffer of another size replaces the registered one.
     if (!Sdi->Registered || Size != BufferSizeFor(Sdi, Props.PrefetchSize))
@@ -810,11 +825,13 @@ static uint32_t StartSymbol(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t Ind
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The bytes the start of a frame is recognised by: twelve symbols in HD and 3G, four in
-// SD.
+// SD, and 48 in 2160p, whose eight streams each hold the six words.
 //
 static size_t StartBytes(const DtSdiTx* Sdi)
 {
-    size_t Symbols = Sdi->Layout.SdiRate == DT_SDIRATE_SD ? 4 : 12;
+    size_t Symbols = Sdi->Layout.SdiRate == DT_SDIRATE_SD ? 4
+                     : Sdi->Layout.Is4k                   ? 48
+                                                          : 12;
 
     return Symbols * (size_t)Sdi->SymbolBits / 8;
 }
@@ -822,12 +839,14 @@ static size_t StartBytes(const DtSdiTx* Sdi)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsFrameStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // SdiTxImpl_Bb2::CheckEav, comparing the upper eight bits of each symbol. HD and 3G start
-// with the EAV and line number of line 1. SD has no line number: its first frame starts
-// at any line in the vertical blanking of field 1, and after a mismatch the search first
-// needs an active line of field 2 and then again a blanking line of field 1.
+// with the EAV and line number of line 1, each word in both streams; 2160p over one link
+// with the same six words in each of its eight streams. SD has no line number: its first
+// frame starts at any line in the vertical blanking of field 1, and after a mismatch the
+// search first needs an active line of field 2 and then again a blanking line of field 1.
 //
 static bool IsFrameStart(DtSdiTx* Sdi, const uint8_t* Bytes)
 {
+    static const uint32_t Eav[6] = {0x3FF, 0, 0, 0x2D8, 0x204, 0x200};
     static const uint32_t Hd[12] = {0x3FF, 0x3FF, 0,     0,     0,     0,
                                     0x2D8, 0x2D8, 0x204, 0x204, 0x200, 0x200};
     static const uint32_t SdFrameStart[4] = {0x3FF, 0, 0, 0x2D8};
@@ -836,12 +855,14 @@ static bool IsFrameStart(DtSdiTx* Sdi, const uint8_t* Bytes)
     const uint32_t* Symbols = !IsSd                              ? Hd
                               : Sdi->SdSync == DT_SD_FIND_FIELD2 ? SdField2
                                                                  : SdFrameStart;
-    size_t Count = IsSd ? 4 : 12;
+    size_t Count = IsSd ? 4 : Sdi->Layout.Is4k ? 48 : 12;
     size_t i;
 
     for (i = 0; i < Count; i++)
     {
-        if ((StartSymbol(Sdi, Bytes, i) & 0x3FC) != (Symbols[i] & 0x3FC))
+        uint32_t Want = Sdi->Layout.Is4k ? Eav[i / 8] : Symbols[i];
+
+        if ((StartSymbol(Sdi, Bytes, i) & 0x3FC) != (Want & 0x3FC))
         {
             if (IsSd && Sdi->SdSync == DT_SD_IN_SYNC)
                 Sdi->SdSync = DT_SD_FIND_FIELD2;
@@ -1014,14 +1035,26 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
         Src = Sdi->RawBuf;
     }
 
+    // A raw line becomes one coded line, or the two coded lines of 4K, each of them
+    // preceded by its line header.
+    size_t Coded = DtSdiFrame_TxLineBytes(Layout);
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
-                                  (size_t)Sdi->LinesDone * (size_t)Layout->Stride);
-    uint8_t* Dst = Offset + (size_t)Layout->Stride <= Sdi->Buf.Size
-                       ? Sdi->Buf.Data + Offset
-                       : Sdi->LineBuf;
-    DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, Sdi->Phase, Dst);
+                                  (size_t)Sdi->LinesDone * Coded);
+    uint8_t* Dst =
+        Offset + Coded <= Sdi->Buf.Size ? Sdi->Buf.Data + Offset : Sdi->LineBuf;
+    if (Layout->Is4k)
+    {
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone + 1,
+                                      Dst + Layout->TxStride);
+        DtSdiFrame_CodeLine4k(
+            Layout, Sdi->SymbolBits, Src, Sdi->LinesDone, Dst + Layout->TxLineHeaderBytes,
+            Dst + Layout->TxStride + Layout->TxLineHeaderBytes, Sdi->Scratch);
+    }
+    else
+        DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, Sdi->Phase, Dst);
     if (Dst == Sdi->LineBuf)
-        PutAt(Sdi, Offset, Sdi->LineBuf, (size_t)Layout->Stride);
+        PutAt(Sdi, Offset, Sdi->LineBuf, Coded);
 
     if (Src == Sdi->RawBuf)
     {

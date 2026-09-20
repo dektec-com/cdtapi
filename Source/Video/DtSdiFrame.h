@@ -109,6 +109,21 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
 size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
+// The coded lines one raw line is made of, and the bytes they take as they are received
+// and as they are sent.
+static inline int DtSdiFrame_CodedPerLine(const DtSdiFrameLayout* Layout)
+{
+    return Layout->CodedLines / Layout->NumLines;
+}
+static inline size_t DtSdiFrame_CodedLineBytes(const DtSdiFrameLayout* Layout)
+{
+    return (size_t)DtSdiFrame_CodedPerLine(Layout) * (size_t)Layout->Stride;
+}
+static inline size_t DtSdiFrame_TxLineBytes(const DtSdiFrameLayout* Layout)
+{
+    return (size_t)DtSdiFrame_CodedPerLine(Layout) * (size_t)Layout->TxStride;
+}
+
 // A receive header, decoded.
 typedef struct DtSdiFrameHeader
 {
