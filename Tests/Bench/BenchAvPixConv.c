@@ -346,19 +346,19 @@ static void Sdi4k(int Seconds)
             }
             memset(Buf.Raw, 0, DtSdiFrame_RawSize(&Layout, Bits));
 
-            for (int Way = 0; Way < 2; Way++)
+            for (int ToRaw = 1; ToRaw >= 0; ToRaw--)
             {
                 double Ms[NUM_SETS] = {0.0, 0.0};
                 double Fps[NUM_SETS] = {0.0, 0.0};
                 char Name[40];
 
                 snprintf(Name, sizeof(Name), "%s %s %d bits %s", g_Sdi4kCases[c].Name,
-                         g_Sdi4kCases[c].Rate, Bits, Way == 0 ? "to raw" : "to coded");
+                         g_Sdi4kCases[c].Rate, Bits, ToRaw ? "to raw" : "to coded");
                 for (int Set = 0; Set < NUM_SETS; Set++)
                 {
                     if (Sets[Set] != NULL)
                     {
-                        Measure4k(Sets[Set], &Layout, Bits, Way == 0, &Buf, Seconds,
+                        Measure4k(Sets[Set], &Layout, Bits, ToRaw != 0, &Buf, Seconds,
                                   &Ms[Set], &Fps[Set]);
                     }
                 }

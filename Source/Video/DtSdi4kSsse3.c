@@ -243,12 +243,17 @@ static void TileC(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
     {
         for (size_t i = 0; i < 16; i++)
         {
-            Symbols[i] = SymbolBits == 16
-                             ? (uint16_t)((Raw[2 * i] | Raw[2 * i + 1] << 8) & 0x3FF)
-                             : (uint16_t)(((uint32_t)Raw[i * 10 / 8] |
-                                           (uint32_t)Raw[i * 10 / 8 + 1] << 8) >>
-                                              (i * 10 % 8) &
-                                          0x3FF);
+            const size_t Bit = i * 10;
+            uint32_t Value;
+
+            if (SymbolBits == 16)
+                Value = (uint32_t)Raw[2 * i] | (uint32_t)Raw[2 * i + 1] << 8;
+            else
+            {
+                Value = ((uint32_t)Raw[Bit / 8] | (uint32_t)Raw[Bit / 8 + 1] << 8) >>
+                        (Bit % 8);
+            }
+            Symbols[i] = (uint16_t)(Value & 0x3FF);
         }
     }
 
