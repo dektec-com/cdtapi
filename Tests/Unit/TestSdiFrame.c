@@ -17,6 +17,7 @@
 // CDTAPI includes
 #include "DtTest.h"             // Test framework.
 #include "Video/DtFrameProps.h" // Frame geometry for the expected sizes.
+#include "Video/DtSdi4k.h"      // The conversions each instruction set has.
 #include "Video/DtSdiFrame.h"   // Module under test.
 #include "cdtapi.h"             // DTAPI_VIDSTD_ codes and results.
 
@@ -1570,6 +1571,101 @@ DT_TEST(BlackFrame4k)
     free(Scratch);
 }
 
+// The padding of the six sections of two coded lines, which a conversion may write into
+// and DtSdiFrame_CodeLine4k clears afterwards.
+static void ClearPadding4k(uint8_t* Coded, const DtSdiFrameLayout* Layout)
+{
+    const size_t Hanc = (size_t)Layout->LineBytesHanc;
+    const size_t HancSyms = (size_t)Layout->SectionSymsHanc * 10 / 8;
+    const size_t VideoSyms = (size_t)Layout->SectionSymsVideo * 10 / 8;
+
+    for (int Line = 0; Line < 2; Line++)
+    {
+        uint8_t* At = Coded + (size_t)Line * (size_t)Layout->Stride;
+
+        memset(At + HancSyms, 0, Hanc - HancSyms);
+        memset(At + Hanc + HancSyms, 0, Hanc - HancSyms);
+        memset(At + 2 * Hanc + VideoSyms, 0, (size_t)Layout->LineBytesVideo - VideoSyms);
+    }
+}
+
+// Every conversion the processor runs gives what the portable one gives, for every 4K
+// standard, symbol size and kind of line, in both directions. The symbols are random,
+// since the conversion moves them and reads none.
+DT_TEST(Conv4kSetsAgree)
+{
+    static const int Bits[] = {10, 16};
+    const DtSdi4kConv* Sets[] = {DtSdi4kConv_Ssse3()};
+    uint32_t State = 2160;
+
+    for (size_t k = 0; k < sizeof(Sets) / sizeof(Sets[0]); k++)
+    {
+        if (Sets[k] == NULL || Sets[k] == DtSdi4kConv_C())
+            continue;
+        for (size_t s = 0; s < sizeof(g_Standards4k) / sizeof(g_Standards4k[0]); s++)
+        {
+            DtSdiFrameLayout Layout;
+
+            DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
+            const size_t Coded = (size_t)Layout.Stride;
+            const size_t RawBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+            uint8_t* CodedA = (uint8_t*)malloc(2 * Coded);
+            uint8_t* CodedB = (uint8_t*)malloc(2 * Coded);
+            uint8_t* RawC = (uint8_t*)malloc(RawBytes);
+            uint8_t* RawSet = (uint8_t*)malloc(RawBytes);
+            uint8_t* BackC = (uint8_t*)malloc(2 * Coded);
+            uint8_t* BackSet = (uint8_t*)malloc(2 * Coded);
+            uint16_t* Scratch =
+                (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) * sizeof(uint16_t));
+
+            DT_ASSERT(CodedA != NULL && CodedB != NULL && RawC != NULL && RawSet != NULL);
+            DT_ASSERT(BackC != NULL && BackSet != NULL && Scratch != NULL);
+            for (size_t i = 0; i < 2 * Coded; i++)
+            {
+                State = State * 1664525u + 1013904223u;
+                CodedA[i] = (uint8_t)(State >> 24);
+                State = State * 1664525u + 1013904223u;
+                CodedB[i] = (uint8_t)(State >> 24);
+            }
+
+            for (int i = 0; i < LINES_4K; i++)
+            {
+                const int Line = g_Lines4k[i] - 1;
+
+                for (size_t b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
+                {
+                    // The same padding in both, which neither conversion touches.
+                    memset(RawC, 0x5A, RawBytes);
+                    memset(RawSet, 0x5A, RawBytes);
+                    DtSdi4kConv_C()->ConvertLine(&Layout, Bits[b], CodedA, CodedB, Line,
+                                                 RawC, Scratch);
+                    Sets[k]->ConvertLine(&Layout, Bits[b], CodedA, CodedB, Line, RawSet,
+                                         Scratch);
+                    DT_ASSERT_MEM(RawSet, RawC,
+                                  DtSdiFrame_RawLineBits(&Layout, Bits[b]) / 8);
+
+                    memset(BackC, 0x11, 2 * Coded);
+                    memset(BackSet, 0x11, 2 * Coded);
+                    DtSdi4kConv_C()->CodeLine(&Layout, Bits[b], RawC, Line, BackC,
+                                              BackC + Coded, Scratch);
+                    Sets[k]->CodeLine(&Layout, Bits[b], RawC, Line, BackSet,
+                                      BackSet + Coded, Scratch);
+                    ClearPadding4k(BackC, &Layout);
+                    ClearPadding4k(BackSet, &Layout);
+                    DT_ASSERT_MEM(BackSet, BackC, 2 * Coded);
+                }
+            }
+            free(CodedA);
+            free(CodedB);
+            free(RawC);
+            free(RawSet);
+            free(BackC);
+            free(BackSet);
+            free(Scratch);
+        }
+    }
+}
+
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderBytes),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
@@ -1580,4 +1676,4 @@ DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
              DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
              DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip),
              DT_RUN(Layout4k), DT_RUN(Converts4k), DT_RUN(Codes4k), DT_RUN(ChecksLines4k),
-             DT_RUN(TxLines4k), DT_RUN(BlackFrame4k))
+             DT_RUN(TxLines4k), DT_RUN(BlackFrame4k), DT_RUN(Conv4kSetsAgree))

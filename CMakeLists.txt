@@ -100,6 +100,7 @@ set(CDTAPI_SOURCES
     Source/Ts/DtAsiEnc.c
     Source/Ts/DtTsTrp.c
     Source/Video/DtFrameProps.c
+    Source/Video/DtSdi4k.c
     Source/Video/DtSdiFrame.c
     Source/Video/DtSmpte352.c
     Source/Video/DtVidStd.c)
@@ -115,7 +116,8 @@ list(APPEND CDTAPI_SOURCES
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
     list(APPEND CDTAPI_SOURCES
         Source/AvFifo/DtAvPixConvSsse3.c
-        Source/AvFifo/DtAvPixConvAvx2.c)
+        Source/AvFifo/DtAvPixConvAvx2.c
+        Source/Video/DtSdi4kSsse3.c)
     set(CDTAPI_HAVE_SSSE3 ON)
 else()
     set(CDTAPI_HAVE_SSSE3 OFF)
@@ -235,8 +237,10 @@ if(CDTAPI_HAVE_SSSE3)
     # MSVC compiles the SSSE3 intrinsics without a flag and needs /arch:AVX2 for AVX2;
     # GCC and Clang, clang-cl too, need a flag for each.
     set(PixConvDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo")
+    set(VideoDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/Video")
     if(NOT MSVC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
         set_source_files_properties("${PixConvDir}/DtAvPixConvSsse3.c"
+            "${VideoDir}/DtSdi4kSsse3.c"
             PROPERTIES COMPILE_OPTIONS -mssse3)
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
             PROPERTIES COMPILE_OPTIONS -mavx2)
