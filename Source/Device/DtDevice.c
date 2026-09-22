@@ -11,13 +11,14 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h" // Allocation seam.
-#include "Core/DtVec.h"   // The scan's list of hardware functions.
-#include "DtAvInput.h"    // Video standard detection.
-#include "DtDevice.h"     // Interface being implemented.
-#include "DtIoConfig.h"   // I/O configuration validation.
-#include "DtPcieAbi.h"    // DT_FWSTATUS_ values.
-#include "OAL/OsThread.h" // Sleeping and the clock while waiting for a signal.
+#include "Core/DtAlloc.h"  // Allocation seam.
+#include "Core/DtVec.h"    // The scan's list of hardware functions.
+#include "DtAvInput.h"     // Video standard detection.
+#include "DtDevActivate.h" // Activating the device at attach.
+#include "DtDevice.h"      // Interface being implemented.
+#include "DtIoConfig.h"    // I/O configuration validation.
+#include "DtPcieAbi.h"     // DT_FWSTATUS_ values.
+#include "OAL/OsThread.h"  // Sleeping and the clock while waiting for a signal.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -159,6 +160,10 @@ DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
         OsDrv_Close(Drv);
         return Result;
     }
+
+    // The device is attached whether or not this succeeds; a device that is not
+    // activated is there and answers for itself, it only carries no data.
+    DtDevActivate_OnAttach(Drv);
 
     Device->Drv = Drv;
     Device->Index = Index;

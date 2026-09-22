@@ -23,6 +23,13 @@ static const char* const g_PortCaps[] = {
 // The network function's UUID: the first driver function.
 #define SIM_DTA2110_NW_UUID (DT_UUID_DF_FLAG | 1)
 
+// The activation part's UUID: a building block of the device rather than of a port, at
+// the index a card has it, and the property names it answers to.
+#define SIM_DTA2110_ACTIVATE_UUID (DT_UUID_BC_FLAG | 4)
+#define SIM_DTA2110_ACTIVATE_NAME "BC_IPSECG#1"
+#define SIM_DTA2110_ACTIVATE_TYPE_NAME "BC_IPSECG#1_TYPE"
+#define SIM_DTA2110_ACTIVATE_UUID_NAME "BC_IPSECG#1_UUID"
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 static bool IsPort(int PortIndex)
@@ -58,6 +65,19 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
         return true;
     }
 
+    if (PortIndex == -1 && strcmp(Name, SIM_DTA2110_ACTIVATE_TYPE_NAME) == 0)
+    {
+        *Type = PROPERTY_VALUE_TYPE_INT;
+        *Value = DT_BLOCK_TYPE_IPSECG;
+        return true;
+    }
+    if (PortIndex == -1 && strcmp(Name, SIM_DTA2110_ACTIVATE_UUID_NAME) == 0)
+    {
+        *Type = PROPERTY_VALUE_TYPE_INT;
+        *Value = SIM_DTA2110_ACTIVATE_UUID;
+        return true;
+    }
+
     if (!IsPort(PortIndex))
         return false;
     if (strcmp(Name, "DF_NW#1_TYPE") == 0)
@@ -81,6 +101,12 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
 //
 bool SimDta2110_GetString(const char* Name, int PortIndex, const char** Str)
 {
+    if (PortIndex == -1 && strcmp(Name, SIM_DTA2110_ACTIVATE_NAME) == 0)
+    {
+        *Str = "";
+        return true;
+    }
+
     if (!IsPort(PortIndex))
         return false;
 
@@ -101,7 +127,16 @@ bool SimDta2110_GetString(const char* Name, int PortIndex, const char** Str)
 //
 bool SimDta2110_FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
 {
-    if ((Uuid & (DT_UUID_FLAG_MASK | DT_UUID_INDEX_MASK)) != SIM_DTA2110_NW_UUID)
+    const int Part = Uuid & (DT_UUID_FLAG_MASK | DT_UUID_INDEX_MASK);
+
+    if (Part == SIM_DTA2110_ACTIVATE_UUID)
+    {
+        *PortIndex = -1;
+        *Type = DT_BLOCK_TYPE_IPSECG;
+        *Role = "";
+        return true;
+    }
+    if (Part != SIM_DTA2110_NW_UUID)
         return false;
 
     *PortIndex = 0;

@@ -21,6 +21,7 @@
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
 #include "OAL/OsThread.h"           // Pacing format events.
+#include "SimActivate.h"            // The activation part.
 #include "SimAsi.h"                 // The ASI blocks.
 #include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
@@ -29,6 +30,7 @@
 #include "SimNet.h"                 // The DTA-2110's interface in the network.
 #include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
+#include "SimVpd.h"                 // The card's own EEPROM.
 #include "Video/DtFrameProps.h"     // The signal of a file source's standard.
 #include "Video/DtVidStd.h"         // Its level and I/O standard.
 #include "cdtapi.h"                 // DTAPI_IOCONFIG_ codes.
@@ -934,6 +936,23 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         }
         if (Dev->IsDta2110)
         {
+            if (Type == DT_BLOCK_TYPE_IPSECG && SimActivate_Takes(FunctionCode))
+            {
+                // The part answers nobody who does not hold it, as a card's does.
+                const int PartIndex = (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1;
+                void* Owner = PartIndex >= 0 && PartIndex < SIM_MAX_PARTS
+                                  ? g_Sim.ExclOwners2110[PartIndex]
+                                  : NULL;
+                if (Owner == NULL)
+                    return SimFail(Dev, DT_STATUS_EXCL_ACCESS_REQD, DrvStatus);
+                if (Owner != Dev)
+                    return SimFail(Dev, DT_STATUS_IN_USE, DrvStatus);
+
+                uint32_t Status = SimActivate_Cmd(Cmd, In, InSize, Out, OutSize);
+                if (Status != DT_STATUS_OK)
+                    return SimFail(Dev, Status, DrvStatus);
+                return OS_IOCTL_OK;
+            }
             if (Type != DT_FUNC_TYPE_NW || !SimNw_Takes(FunctionCode))
                 return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
             uint32_t Status =
@@ -979,6 +998,13 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         return IoConfigCmd(Dev, Cmd, In, InSize, Out, OutSize, DrvStatus);
     case DT_FUNC_CODE_TOD_CMD:
         return TodCmd(Dev, Cmd, InSize, Out, OutSize, DrvStatus);
+    case DT_FUNC_CODE_VPD_CMD:
+    {
+        uint32_t Status = SimVpd_Cmd(Cmd, In, InSize, Out, OutSize);
+        if (Status != DT_STATUS_OK)
+            return SimFail(Dev, Status, DrvStatus);
+        return OS_IOCTL_OK;
+    }
     default:
         return SimFail(Dev, DT_STATUS_NOT_SUPPORTED, DrvStatus);
     }
@@ -1219,6 +1245,8 @@ void SimDtPcie_Reset(void)
     SimAsi_Reset();
     SimNw_Reset();
     SimNet_Reset();
+    SimVpd_Reset();
+    SimActivate_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;

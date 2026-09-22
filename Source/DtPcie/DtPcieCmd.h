@@ -601,3 +601,31 @@ typedef struct DtIpFilter
 
 DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtPartRef Pipe,
                                       const DtIpFilter* Filter);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- VPD -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The Vital Product Data a card holds in its own EEPROM: a read-only section the factory
+// writes, a read-write section, and whatever lies beyond them. The commands go to the
+// device rather than to a port. Only reading is here; writing, the items by keyword and
+// a public interface are for later.
+//
+
+// Where the sections lie in the EEPROM, and how large it is, as GET_PROPERTIES gives it.
+typedef struct DtVpdProperties
+{
+    int RoOffset;
+    int RoSize;
+    int RwOffset;
+    int RwSize;
+    int EepromSize;
+    int MaxItemLength;
+} DtVpdProperties;
+
+// Reads where the sections lie.
+DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props);
+
+// Reads Count bytes of the EEPROM from Offset, whatever section they belong to. Fails
+// with DTAPI_E_INVALID_ARG for a count that is not positive, and gives in *NumRead, when
+// NumRead is not NULL, how many bytes the driver read, which can be fewer.
+DtapiResult DtPcieCmd_VpdRawRead(OsDrv* Drv, uint32_t Offset, uint8_t* Buf, int Count,
+                                 int* NumRead);

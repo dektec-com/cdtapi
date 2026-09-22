@@ -74,6 +74,7 @@ set(CDTAPI_SOURCES
     Source/Core/DtRing.c
     Source/Core/DtVec.c
     Source/Device/DtAvInput.c
+    Source/Device/DtDevActivate.c
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
     Source/Net/DtNet.c
@@ -82,6 +83,7 @@ set(CDTAPI_SOURCES
     Source/DtPcie/DtPcieCmdAsi.c
     Source/DtPcie/DtPcieCmdPipe.c
     Source/DtPcie/DtPcieCmdSdiTx.c
+    Source/DtPcie/DtPcieCmdVpd.c
     Source/DtPcie/DtPcieStatus.c
     Source/DtPcie/DtIoConfig.c
     Source/OAL/OsDispatch.c
@@ -89,6 +91,7 @@ set(CDTAPI_SOURCES
     Source/OAL/OsIoctlOutcome.c
     Source/OAL/OsNet.c
     Source/OAL/Sim/Sim4k.c
+    Source/OAL/Sim/SimActivate.c
     Source/OAL/Sim/SimAsi.c
     Source/OAL/Sim/SimChSdiRx.c
     Source/OAL/Sim/SimDta2110.c
@@ -97,6 +100,7 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimNet.c
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
+    Source/OAL/Sim/SimVpd.c
     Source/Ts/DtAsiEnc.c
     Source/Ts/DtTsTrp.c
     Source/Video/DtFrameProps.c
