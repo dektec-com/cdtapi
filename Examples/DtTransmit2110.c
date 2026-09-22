@@ -88,8 +88,8 @@ static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, in
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes Count frames, one frame period apart, from a time of day a little after the
-// card's clock.
+// Writes Count frames, one frame period apart in time of day, from a little after the
+// card's clock, as fast as the FIFO takes them, and waits until the FIFO is empty.
 //
 static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc* Port,
                       const ExampleAvConfig* Config, int Count)
@@ -101,6 +101,7 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
 
     int64_t PeriodNs = ExampleAv_PeriodNs(Config);
     int64_t StartNs = ExampleAv_ToNs(&Now) + 100 * 1000 * 1000;
+    int WaitMs = (int)(PeriodNs / 4000000) > 1 ? (int)(PeriodNs / 4000000) : 1;
     int Size = ExampleAv_FrameBytes(Config);
     for (int Number = 0; Number < Count; Number++)
     {
@@ -115,20 +116,26 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
         Frame->RtpTime = Config->Channels > 0
                              ? Tod2Rtp_Audio(&Frame->ToD, Config->SampleRate)
                              : Tod2Rtp_Video(&Frame->ToD);
+        // The card's scheduler sends each frame at its time of day, so the program only
+        // keeps the FIFO full: a frame the full FIFO refuses stays the program's, to
+        // write again once the thread has taken one out.
         Result = AvFifo_TxFifo_Write(Fifo, Frame);
+        while (Result == DTAPI_E_FIFO_FULL)
+        {
+            Example_SleepMs(WaitMs);
+            Result = AvFifo_TxFifo_Write(Fifo, Frame);
+        }
         if (Result != DTAPI_OK)
             return ExampleAv_Failed("AvFifo_TxFifo_Write", Result);
 
         printf("%lld:%d  frame %d  %d bytes  tod %u.%09u  rtp %u\n",
                (long long)Port->SerialNumber, Port->Port, Number, Size,
                Frame->ToD.Seconds, Frame->ToD.Nanoseconds, Frame->RtpTime);
-
-        // The FIFO holds a few frames; waiting a frame period keeps it from filling up
-        // and sends the frames at the rate a live source would.
-        Example_SleepMs((int)(PeriodNs / 1000000));
     }
 
     // The thread packetizes what is left, and the card's scheduler sends it at its time.
+    while (AvFifo_TxFifo_GetFifoLoad(Fifo) > 0)
+        Example_SleepMs(WaitMs);
     Example_SleepMs(200);
     printf("%lld:%d  sent %d frames\n", (long long)Port->SerialNumber, Port->Port,
            AvFifo_TxFifo_GetStatistics(Fifo).FramesOk);

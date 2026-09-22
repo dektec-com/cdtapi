@@ -101,8 +101,12 @@ On a card with an IP port, one machine sending and another receiving:
     DtTransmit2110 --ip 239.1.2.3 --udp 5004 --count 250
     DtReceive2110 --ip 239.1.2.3 --udp 5004 --count 250 --format 10b
 
-Each frame is given a time of day a little after the card's clock, and the card's
-scheduler sends it at that time.
+Each frame is given a time of day a little after the card's clock, one frame period
+after the one before, and the card's scheduler sends it at that time. So the scheduler
+sets the pace, and the program only keeps the FIFO full: when `AvFifo_TxFifo_Write`
+refuses a frame with `DTAPI_E_FIFO_FULL`, it waits a moment and writes the same frame
+again. A program that paced itself would fall behind the card's clock as soon as a frame
+took longer to make than a frame period, and its frames would go out late.
 
 ## Output and exit codes
 
