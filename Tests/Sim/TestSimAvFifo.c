@@ -170,12 +170,13 @@ DT_TEST(ResultsOfTheLifecycle)
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT(strstr(GetLastException(), "AvFifo_RxFifo_Start") != NULL);
     DT_ASSERT_EQ(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo), DTAPI_E_NOT_ATTACHED);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, NULL, 0), DTAPI_E_DEVICE);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1), DTAPI_E_NO_SUCH_PORT);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 0, (HwOrSwPipe)9),
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, NULL, 1), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 2), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 1, (HwOrSwPipe)9),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0), DTAPI_E_ATTACHED);
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1), DTAPI_E_ATTACHED);
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_CONFIG);
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo));
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_NO_IPPARS);
@@ -199,7 +200,7 @@ DT_TEST(ResultsOfTheLifecycle)
 
     // The transmit side.
     DT_ASSERT(AvFifo_TxFifo_GetFromMemPool(Tx, 100) == NULL);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 0, HwOrSwPipe_UseSwPipe));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 1, HwOrSwPipe_UseSwPipe));
     DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Tx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 0);
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &TxVideo));
@@ -234,7 +235,7 @@ DT_TEST(SdiPortIsRefused)
     AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
     DT_ASSERT(Device != NULL && Rx != NULL);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, (int64_t)SIM_SERIAL));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Device, 0), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Device, 1), DTAPI_E_NOT_SUPPORTED);
     AvFifo_RxFifo_Free(Rx);
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
@@ -249,7 +250,7 @@ static DtapiResult StartRx(AvFifo_RxFifo* Rx, DtDevice* Device, HwOrSwPipe Pipe,
                            const AvFifo_IpPars* P)
 {
     const St2110_RxConfigVideo Video = {St2110_RxFrameFormat_Uyvy422_8b};
-    DtapiResult Result = AvFifo_RxFifo_Attach2(Rx, Device, 0, Pipe);
+    DtapiResult Result = AvFifo_RxFifo_Attach2(Rx, Device, 1, Pipe);
     if (Result == DTAPI_OK || Result == DTAPI_E_ATTACHED)
         Result = AvFifo_RxFifo_ConfigureVideo(Rx, &Video);
     if (Result == DTAPI_OK)
@@ -303,7 +304,7 @@ DT_TEST(StartFailures)
     const St2110_TxConfigVideo Video = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
     AvFifo_IpPars Unicast = P;
     memcpy(Unicast.IpAddr, Unknown, 4);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &Video));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &Unicast));
     DT_ASSERT_EQ(AvFifo_TxFifo_Start(Tx), DTAPI_E_DST_MAC_ADDR);
@@ -407,7 +408,7 @@ DT_TEST(PacketsOnTheWire)
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5004, false, Sources);
     const St2110_TxConfigVideo Video = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &Video));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
@@ -522,11 +523,11 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
     const AvFifo_IpPars P = Pars(5004, false, Sources);
     const St2110_TxConfigVideo TxVideo = VideoConfig(TxFormat);
     const St2110_RxConfigVideo RxVideo = {RxFormat};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 0, Pipe));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 1, Pipe));
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo));
     DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
     DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 0, Pipe));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 1, Pipe));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &TxVideo));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
@@ -638,12 +639,12 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
     const AvFifo_IpPars P = Pars(5006, false, Sources);
     const St2110_RxConfigAudio RxAudio = {Format, 48000};
     const St2110_TxConfigAudio TxAudio = {Format, 2, 48, 48000};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Rx, &RxAudio));
     DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 400);
     DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
     DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Tx, &TxAudio));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
@@ -712,7 +713,7 @@ DT_TEST(FullFifos)
     const AvFifo_IpPars P = Pars(5006, false, Sources);
     const St2110_RxConfigAudio RxAudio = {St2110_AudioFormat_L24BE, 48000};
     const St2110_TxConfigAudio TxAudio = {St2110_AudioFormat_L24BE, 2, 240, 48000};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Rx, &RxAudio));
     AvFifo_RxFifo_SetMaxSize(Rx, 5);
     DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 5);
@@ -722,7 +723,7 @@ DT_TEST(FullFifos)
     DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 5);
     DT_ASSERT(strstr(GetLastException(), "already started") != NULL);
 
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 0));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Tx, &TxAudio));
     AvFifo_TxFifo_SetMaxSize(Tx, 2);
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));

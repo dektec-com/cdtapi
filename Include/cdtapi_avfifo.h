@@ -285,8 +285,8 @@ CDTAPI_API int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Pr
 //   Alloc, Attach, Configure (audio or video), SetIpPars, Start,
 //   Read and ReturnToMemPool, or GetFromMemPool and Write, ..., Stop, Detach, Free
 //
-// The port of Attach counts from 0, as DTAPI's AV FIFO counts it, where DtInpChannel's
-// and DtOutpChannel's ports count from 1.
+// The port of Attach counts from 1, as DTAPI's AV FIFO, DtInpChannel and DtOutpChannel
+// count it.
 //
 // Every function that returns a result gives DTAPI_OK or a failure, and a failure also
 // sets the text GetLastException gives on the calling thread. The failures:
@@ -347,7 +347,7 @@ CDTAPI_API AvFifo_RxFifo* AvFifo_RxFifo_Alloc(void);
 CDTAPI_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
 CDTAPI_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
 
-// Attaches the FIFO to a port, counted from 0, with HwOrSwPipe_Auto or a pipe
+// Attaches the FIFO to a port, counted from 1, with HwOrSwPipe_Auto or a pipe
 // preference. The FIFO opens its own handle to the device.
 CDTAPI_API DtapiResult AvFifo_RxFifo_Attach(AvFifo_RxFifo* Fifo, const DtDevice* Device,
                                             int Port);

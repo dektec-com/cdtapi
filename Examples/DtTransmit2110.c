@@ -152,8 +152,7 @@ static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
     if (Result != DTAPI_OK)
         return Example_Failed("DtDevice_AttachToSerial", Result);
 
-    // An AV FIFO counts ports from 0, where a hardware function's Port counts from 1.
-    Result = ExampleAv_AttachTx(Fifo, Device, Port->Port - 1, Config);
+    Result = ExampleAv_AttachTx(Fifo, Device, Port->Port, Config);
     if (Result != DTAPI_OK)
         return ExampleAv_Failed("AvFifo_TxFifo_Attach", Result);
 

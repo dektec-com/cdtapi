@@ -71,7 +71,7 @@ void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Inde
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Attaches the FIFO to the port, counted from 0, with the pipe the configuration asks
+// Attaches the FIFO to the port, counted from 1, with the pipe the configuration asks
 // for.
 unsigned int ExampleAv_AttachTx(AvFifo_TxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config);

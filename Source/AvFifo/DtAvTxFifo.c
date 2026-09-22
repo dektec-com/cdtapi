@@ -390,8 +390,9 @@ DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo, const DtDevice* Device, i
     DtapiResult Result = DTAPI_OK;
     if (Fifo->Attached)
         Result = DtAvError_Set(DTAPI_E_ATTACHED, Where, "TxFifo already attached");
-    else
-        Result = DtAvPort_Attach(&Fifo->Port, Device, Port, Pipe, Where);
+    else // A Port counts from 1, a PortIndex from 0
+        Result =
+            DtAvPort_Attach(&Fifo->Port, Device, Port >= 1 ? Port - 1 : -1, Pipe, Where);
     Fifo->Attached = Fifo->Attached || Result == DTAPI_OK;
     OsMutex_Unlock(Fifo->Lock);
     return Result;

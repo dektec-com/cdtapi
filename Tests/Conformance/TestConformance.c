@@ -397,11 +397,9 @@ DT_TEST(ReceiveFifoCalls)
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fifo), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT(strstr(GetLastException(), "AvFifo_RxFifo_Start") != NULL);
 
-    // An AV FIFO counts ports from 0, where a hardware function's Port counts from 1.
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fifo, Device, Port.Port - 1));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fifo, Device, Port.Port));
     DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fifo));
-    DT_ASSERT_OK(
-        AvFifo_RxFifo_Attach2(Fifo, Device, Port.Port - 1, HwOrSwPipe_PreferHwPipe));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Fifo, Device, Port.Port, HwOrSwPipe_PreferHwPipe));
 
     const St2110_RxConfigVideo Video = {St2110_RxFrameFormat_Uyvy422_10b};
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fifo, &Video));
@@ -453,10 +451,9 @@ DT_TEST(TransmitFifoCalls)
     AvFifo_TxFifo* Fifo = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fifo != NULL);
     DT_ASSERT_EQ(AvFifo_TxFifo_Start(Fifo), DTAPI_E_NOT_ATTACHED);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fifo, Device, Port.Port - 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fifo, Device, Port.Port));
     DT_ASSERT_OK(AvFifo_TxFifo_Detach(Fifo));
-    DT_ASSERT_OK(
-        AvFifo_TxFifo_Attach2(Fifo, Device, Port.Port - 1, HwOrSwPipe_UseSwPipe));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Fifo, Device, Port.Port, HwOrSwPipe_UseSwPipe));
 
     const St2110_TxConfigAudio Audio = {St2110_AudioFormat_L24BE, 2, 48, 48000};
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fifo, &Audio));
