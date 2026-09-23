@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSimFunc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Finding the parts of an API function against the emulator
+// CDTAPI - Finding the objects of an API function against the emulator
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -22,14 +22,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The parts of the ASI/SDI receiver of every SDI port, as a DTA-2178 lists them.
+// The objects of the ASI/SDI receiver of every SDI port, as a DTA-2178 lists them.
 static const struct
 {
     const char* Name;
     const char* Role;
     bool IsDf;
     int Type;
-} g_Parts[] = {
+} g_Objects[] = {
     {"BC_SWITCH#2", "SDI_MUX_IN", false, DT_BLOCK_TYPE_SWITCH},
     {"BC_ST425LR#1", "", false, DT_BLOCK_TYPE_ST425LR},
     {"BC_SDIMUX12G#1", "", false, DT_BLOCK_TYPE_SDIMUX12G},
@@ -40,7 +40,7 @@ static const struct
     {"DF_CHSDIRX#1", "", true, DT_FUNC_TYPE_CHSDIRX},
 };
 
-#define PART_COUNT (sizeof(g_Parts) / sizeof(g_Parts[0]))
+#define OBJECT_COUNT (sizeof(g_Objects) / sizeof(g_Objects[0]))
 
 // Opens the emulated device in its power-on state and notes the live allocations. Returns
 // NULL, having recorded a failure, when it is not the emulator.
@@ -71,17 +71,17 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
         DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
     } while (0)
 
-// The part at Index of an instance.
-static const DtFuncPart* PartAt(const DtFuncInstance* Instance, size_t Index)
+// The object at Index of an instance.
+static const DtFuncObject* ObjectAt(const DtFuncInstance* Instance, size_t Index)
 {
-    return &DT_VEC_AT(&Instance->Parts, DtFuncPart, Index);
+    return &DT_VEC_AT(&Instance->Objects, DtFuncObject, Index);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Find +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Every part comes with its name, role, kind, type and the UUID the card gives it, in the
-// card's order.
-DT_TEST(PartsOfTheReceiverFunction)
+// Every object comes with its name, role, kind, type and the UUID the card gives it, in
+// the card's order.
+DT_TEST(ObjectsOfTheReceiverFunction)
 {
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
@@ -92,30 +92,30 @@ DT_TEST(PartsOfTheReceiverFunction)
     DtFuncInstance Func;
     DT_ASSERT_OK(DtFunc_Find(Drv, 5, "AF_ASISDIRX", "", &Func));
     DT_ASSERT_EQ(Func.PortIndex, 5);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), PART_COUNT);
-    for (size_t i = 0; i < PART_COUNT && i < DtVec_Count(&Func.Parts); i++)
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), OBJECT_COUNT);
+    for (size_t i = 0; i < OBJECT_COUNT && i < DtVec_Count(&Func.Objects); i++)
     {
-        const DtFuncPart* Part = PartAt(&Func, i);
+        const DtFuncObject* Object = ObjectAt(&Func, i);
         int Uuid = 0;
 
-        DT_ASSERT_STR(Part->Name, g_Parts[i].Name);
-        DT_ASSERT_STR(Part->Role, g_Parts[i].Role);
-        DT_ASSERT_EQ(Part->IsDf, g_Parts[i].IsDf);
-        DT_ASSERT_EQ(Part->Type, g_Parts[i].Type);
+        DT_ASSERT_STR(Object->Name, g_Objects[i].Name);
+        DT_ASSERT_STR(Object->Role, g_Objects[i].Role);
+        DT_ASSERT_EQ(Object->IsDf, g_Objects[i].IsDf);
+        DT_ASSERT_EQ(Object->Type, g_Objects[i].Type);
         char Key[PROPERTY_NAME_MAX_SIZE];
-        snprintf(Key, sizeof(Key), "%s_UUID", g_Parts[i].Name);
+        snprintf(Key, sizeof(Key), "%s_UUID", g_Objects[i].Name);
         DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, 5, &Uuid));
-        DT_ASSERT_EQ(Part->Ref.Uuid, Uuid);
+        DT_ASSERT_EQ(Object->Ref.Uuid, Uuid);
     }
     DtFunc_Release(&Func);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
 
     FINISH(Drv, Live);
 }
 
-// The transmitter and the DMA of every SDI port have the parts a DTA-2178 listed for its
-// port 5, in that order.
-DT_TEST(PartsOfTheTransmitFunctions)
+// The transmitter and the DMA of every SDI port have the objects a DTA-2178 listed for
+// its port 5, in that order.
+DT_TEST(ObjectsOfTheTransmitFunctions)
 {
     static const struct
     {
@@ -151,19 +151,19 @@ DT_TEST(PartsOfTheTransmitFunctions)
         DT_ASSERT_OK(DtFunc_Find(Drv, Port, "AF_ASISDITX", "", &Tx));
         DtFuncInstance Dma;
         DT_ASSERT_OK(DtFunc_Find(Drv, Port, "AF_DMA", "", &Dma));
-        DT_ASSERT_EQ(DtVec_Count(&Tx.Parts) + DtVec_Count(&Dma.Parts), Count);
+        DT_ASSERT_EQ(DtVec_Count(&Tx.Objects) + DtVec_Count(&Dma.Objects), Count);
         for (size_t i = 0;
-             i < Count && i < DtVec_Count(&Tx.Parts) + DtVec_Count(&Dma.Parts); i++)
+             i < Count && i < DtVec_Count(&Tx.Objects) + DtVec_Count(&Dma.Objects); i++)
         {
             bool InTx = strcmp(Expected[i].Af, "AF_ASISDITX") == 0;
-            size_t At = InTx ? i : i - DtVec_Count(&Tx.Parts);
-            const DtFuncPart* Part = PartAt(InTx ? &Tx : &Dma, At);
+            size_t At = InTx ? i : i - DtVec_Count(&Tx.Objects);
+            const DtFuncObject* Object = ObjectAt(InTx ? &Tx : &Dma, At);
 
-            DT_ASSERT_STR(Part->Name, Expected[i].Name);
-            DT_ASSERT_STR(Part->Role, Expected[i].Role);
-            DT_ASSERT_EQ(Part->IsDf, Expected[i].IsDf);
-            DT_ASSERT_EQ(Part->Type, Expected[i].Type);
-            DT_ASSERT_EQ(Part->Ref.Uuid & DT_UUID_FLAG_MASK,
+            DT_ASSERT_STR(Object->Name, Expected[i].Name);
+            DT_ASSERT_STR(Object->Role, Expected[i].Role);
+            DT_ASSERT_EQ(Object->IsDf, Expected[i].IsDf);
+            DT_ASSERT_EQ(Object->Type, Expected[i].Type);
+            DT_ASSERT_EQ(Object->Ref.Uuid & DT_UUID_FLAG_MASK,
                          Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
         }
         DtFunc_Release(&Tx);
@@ -178,7 +178,7 @@ DT_TEST(PartsOfTheTransmitFunctions)
     FINISH(Drv, Live);
 }
 
-// No two parts of the card share a UUID, across API functions and ports.
+// No two objects of the card share a UUID, across API functions and ports.
 DT_TEST(UuidsAreUnique)
 {
     static const char* const Functions[] = {"AF_ASISDIRX", "AF_ASISDITX", "AF_DMA"};
@@ -201,17 +201,17 @@ DT_TEST(UuidsAreUnique)
             DtFuncInstance Func;
 
             DT_ASSERT_OK(DtFunc_Find(Drv, Port, Functions[f], "", &Func));
-            for (i = 0; i < DtVec_Count(&Func.Parts) &&
+            for (i = 0; i < DtVec_Count(&Func.Objects) &&
                         Count < (int)(sizeof(Uuids) / sizeof(Uuids[0]));
                  i++)
             {
-                int Uuid = PartAt(&Func, i)->Ref.Uuid;
+                int Uuid = ObjectAt(&Func, i)->Ref.Uuid;
 
                 for (j = 0; j < Count; j++)
                 {
                     if (Uuids[j] == Uuid)
-                        DT_FAIL("%s of port %d repeats UUID 0x%x", PartAt(&Func, i)->Name,
-                                Port, Uuid);
+                        DT_FAIL("%s of port %d repeats UUID 0x%x",
+                                ObjectAt(&Func, i)->Name, Port, Uuid);
                 }
                 Uuids[Count++] = Uuid;
             }
@@ -235,7 +235,7 @@ DT_TEST(MissingFunctionIsNotFound)
 
     DtFuncInstance Func;
     DT_ASSERT_EQ(DtFunc_Find(Drv, 5, "AF_ASISDIMON", "", &Func), DTAPI_E_NOT_FOUND);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
     DT_ASSERT_EQ(DtFunc_Find(Drv, 5, "AF_ASISDIRX", "OTHER", &Func), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtFunc_Find(Drv, SIM_SDI_PORT_COUNT, "AF_ASISDIRX", "", &Func),
                  DTAPI_E_NOT_FOUND);
@@ -244,12 +244,12 @@ DT_TEST(MissingFunctionIsNotFound)
     memset(TooLong, 'A', sizeof(TooLong) - 1);
     TooLong[sizeof(TooLong) - 1] = '\0';
     DT_ASSERT_EQ(DtFunc_Find(Drv, 5, TooLong, "", &Func), DTAPI_E_BUF_TOO_SMALL);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
 
     FINISH(Drv, Live);
 }
 
-// The first instance with the role is read; parts end at the first one not found.
+// The first instance with the role is read; objects end at the first one not found.
 DT_TEST(InstanceIsChosenByRole)
 {
     int Live;
@@ -265,20 +265,21 @@ DT_TEST(InstanceIsChosenByRole)
 
     DtFuncInstance Func;
     DT_ASSERT_OK(DtFunc_Find(Drv, 1, "AF_ASISDIRX", "SECOND", &Func));
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 1);
-    DT_ASSERT_STR(PartAt(&Func, 0)->Name, "DF_ASIRX#1");
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 1);
+    DT_ASSERT_STR(ObjectAt(&Func, 0)->Name, "DF_ASIRX#1");
     DtFunc_Release(&Func);
 
     SimDtPcie_OverrideString("AF_ASISDIRX#1.4", 1, false, NULL);
     DT_ASSERT_OK(DtFunc_Find(Drv, 1, "AF_ASISDIRX", "", &Func));
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 3);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 3);
     DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
 }
 
-// Failing to read an instance or a part's name is returned, with nothing kept; failing to
-// read a part's role, type or UUID, or a name of another kind, leaves the part out.
+// Failing to read an instance or an object's name is returned, with nothing kept;
+// failing to read an object's role, type or UUID, or a name of another kind, leaves the
+// object out.
 DT_TEST(ReadFailures)
 {
     int Live;
@@ -293,7 +294,7 @@ DT_TEST(ReadFailures)
 
     SimDtPcie_FailProperty("AF_ASISDIRX#1.8", 3, true, DT_STATUS_BUSY);
     DT_ASSERT_EQ(DtFunc_Find(Drv, 3, "AF_ASISDIRX", "", &Func), DTAPI_E_BUSY);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
 
     SimDtPcie_Reset();
     SimDtPcie_FailProperty("BC_SWITCH#2", 4, true, DT_STATUS_TIMEOUT);
@@ -304,14 +305,14 @@ DT_TEST(ReadFailures)
     SimDtPcie_OverrideProperty("XX_SWITCH#3_TYPE", 4, true, DT_BLOCK_TYPE_SWITCH);
     SimDtPcie_OverrideProperty("XX_SWITCH#3_UUID", 4, true, DT_UUID_BC_FLAG | 1);
     DT_ASSERT_OK(DtFunc_Find(Drv, 4, "AF_ASISDIRX", "", &Func));
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), PART_COUNT - 4);
-    DT_ASSERT_STR(PartAt(&Func, 0)->Name, "BC_SDIRXF#1");
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), OBJECT_COUNT - 4);
+    DT_ASSERT_STR(ObjectAt(&Func, 0)->Name, "BC_SDIRXF#1");
     DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
 }
 
-// When memory runs out the parts found are freed and the failure returned.
+// When memory runs out the objects found are freed and the failure returned.
 DT_TEST(OutOfMemory)
 {
     int Live;
@@ -324,15 +325,15 @@ DT_TEST(OutOfMemory)
     DtFuncInstance Func;
     DT_ASSERT_EQ(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func), DTAPI_E_OUT_OF_MEM);
     DtAlloc_FailAfter(-1);
-    DT_ASSERT_EQ(DtVec_Count(&Func.Parts), 0);
+    DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
 
     FINISH(Drv, Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Get +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// A part is got by kind, type and role; of parts alike the last.
-DT_TEST(PartsAreGotByKindTypeAndRole)
+// An object is got by kind, type and role; of objects alike the last.
+DT_TEST(ObjectsAreGotByKindTypeAndRole)
 {
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
@@ -343,12 +344,12 @@ DT_TEST(PartsAreGotByKindTypeAndRole)
     DtFuncInstance Func;
     DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
 
-    const DtFuncPart* Part = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
-    DT_ASSERT(Part != NULL && strcmp(Part->Name, "DF_SDIRX#1") == 0);
-    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
-    DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#3") == 0);
-    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
-    DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#2") == 0);
+    const DtFuncObject* Object = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    DT_ASSERT(Object != NULL && strcmp(Object->Name, "DF_SDIRX#1") == 0);
+    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
+    DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#3") == 0);
+    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#2") == 0);
 
     DT_ASSERT(DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "") == NULL);
     DT_ASSERT(DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "OTHER") == NULL);
@@ -358,8 +359,8 @@ DT_TEST(PartsAreGotByKindTypeAndRole)
 
     SimDtPcie_OverrideString("BC_SWITCH#3", 0, true, "SDI_MUX_IN");
     DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
-    Part = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
-    DT_ASSERT(Part != NULL && strcmp(Part->Name, "BC_SWITCH#3") == 0);
+    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#3") == 0);
     DtFunc_Release(&Func);
 
     FINISH(Drv, Live);
@@ -412,8 +413,8 @@ DT_TEST(DriverVersionPerProxy)
                  DTAPI_E_INTERNAL);
 }
 
-DT_TEST_MAIN("SimFunc", DT_RUN(PartsOfTheReceiverFunction),
-             DT_RUN(PartsOfTheTransmitFunctions), DT_RUN(UuidsAreUnique),
+DT_TEST_MAIN("SimFunc", DT_RUN(ObjectsOfTheReceiverFunction),
+             DT_RUN(ObjectsOfTheTransmitFunctions), DT_RUN(UuidsAreUnique),
              DT_RUN(MissingFunctionIsNotFound), DT_RUN(InstanceIsChosenByRole),
              DT_RUN(ReadFailures), DT_RUN(OutOfMemory),
-             DT_RUN(PartsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerProxy))
+             DT_RUN(ObjectsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerProxy))

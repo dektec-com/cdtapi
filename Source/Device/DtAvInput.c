@@ -46,14 +46,14 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
     if ((Caps & DT_CAP_MATRIX2) == 0)
         return DTAPI_E_NOT_SUPPORTED;
 
-    // The ASI/SDI receiver API function with the empty role holds the parts; the SDI
+    // The ASI/SDI receiver API function with the empty role holds the objects; the SDI
     // receiver with the empty role is taken from them here, at attach, rather than at
     // detection.
     DtFuncInstance Func;
     DtapiResult Result = DtFunc_Find(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
     if (Result != DTAPI_OK)
         return Result;
-    const DtFuncPart* SdiRx = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncObject* SdiRx = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     if (SdiRx != NULL)
     {
         Input->Device = Device;

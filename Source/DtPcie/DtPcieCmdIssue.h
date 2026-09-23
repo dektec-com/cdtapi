@@ -14,7 +14,7 @@
 
 // CDTAPI includes
 #include "DtPcieAbi.h"              // DtIoctlInputDataHdr.
-#include "DtPcieCmd.h"              // DtPartRef.
+#include "DtPcieCmd.h"              // DtDrvObject.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
 #include "cdtapi.h"                 // DtapiResult.
 
@@ -30,8 +30,8 @@
 #define DT_IOCTL(Code) ((uint32_t)(Code))
 
 // Fills the header every command starts with, for the driver function or building block
-// Part.
-void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtPartRef Part);
+// Object.
+void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtDrvObject Object);
 
 // Issues a command whose answer has a fixed size, and turns the outcome into a result:
 // a refused command into the result its DtStatus stands for, and a failure to reach the
@@ -47,8 +47,8 @@ void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtPartRef Part);
 DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                             void* Out, size_t OutSize);
 
-// Issues a command that is only its header, for Part, answered with Out of OutSize bytes,
-// which are cleared first, or with nothing when Out is NULL. Gives DTAPI_E_INVALID_ARG
-// for a Drv of NULL.
-DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part,
+// Issues a command that is only its header, for Object, answered with Out of OutSize
+// bytes, which are cleared first, or with nothing when Out is NULL. Gives
+// DTAPI_E_INVALID_ARG for a Drv of NULL.
+DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, DtDrvObject Object,
                                  void* Out, size_t OutSize);

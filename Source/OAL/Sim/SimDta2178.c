@@ -120,7 +120,7 @@ typedef struct SimFunction
     bool IsDf;
 } SimFunction;
 
-static const SimFunction g_AsiSdiRxParts[] = {
+static const SimFunction g_AsiSdiRxObjects[] = {
     {"BC_SWITCH#2", "SDI_MUX_IN", DT_BLOCK_TYPE_SWITCH, false},
     {"BC_ST425LR#1", "", DT_BLOCK_TYPE_ST425LR, false},
     {"BC_SDIMUX12G#1", "", DT_BLOCK_TYPE_SDIMUX12G, false},
@@ -131,7 +131,7 @@ static const SimFunction g_AsiSdiRxParts[] = {
     {"DF_CHSDIRX#1", "", DT_FUNC_TYPE_CHSDIRX, true},
 };
 
-static const SimFunction g_AsiSdiTxParts[] = {
+static const SimFunction g_AsiSdiTxObjects[] = {
     {"BC_ASITXG#1", "", DT_BLOCK_TYPE_ASITXG, false},
     {"BC_SDITXF#1", "", DT_BLOCK_TYPE_SDITXF, false},
     {"BC_SWITCH#6", "SDI_DEMUX_IN", DT_BLOCK_TYPE_SWITCH, false},
@@ -141,7 +141,7 @@ static const SimFunction g_AsiSdiTxParts[] = {
     {"DF_SDITXPHY#1", "", DT_FUNC_TYPE_SDITXPHY, true},
 };
 
-static const SimFunction g_DmaParts[] = {
+static const SimFunction g_DmaObjects[] = {
     {"BC_CDMAC#1", "", DT_BLOCK_TYPE_CDMAC, false},
     {"BC_BURSTFIFO#1", "", DT_BLOCK_TYPE_BURSTFIFO, false},
     {"BC_CONSTSOURCE#1", "", DT_BLOCK_TYPE_CONSTSOURCE, false},
@@ -153,21 +153,21 @@ static const SimFunction g_DmaParts[] = {
 typedef struct SimApiFunction
 {
     const char* Name; // The first instance, with the empty role
-    const SimFunction* Parts;
-    int NumParts;
+    const SimFunction* Objects;
+    int NumObjects;
 } SimApiFunction;
 
 static const SimApiFunction g_ApiFunctions[] = {
-    {"AF_ASISDIRX#1", g_AsiSdiRxParts, (int)COUNT_OF(g_AsiSdiRxParts)},
-    {"AF_ASISDITX#1", g_AsiSdiTxParts, (int)COUNT_OF(g_AsiSdiTxParts)},
-    {"AF_DMA#1", g_DmaParts, (int)COUNT_OF(g_DmaParts)},
+    {"AF_ASISDIRX#1", g_AsiSdiRxObjects, (int)COUNT_OF(g_AsiSdiRxObjects)},
+    {"AF_ASISDITX#1", g_AsiSdiTxObjects, (int)COUNT_OF(g_AsiSdiTxObjects)},
+    {"AF_DMA#1", g_DmaObjects, (int)COUNT_OF(g_DmaObjects)},
 };
 
 #define API_FUNCTION_COUNT ((int)COUNT_OF(g_ApiFunctions))
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FunctionUuid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The emulator numbers the parts of one API function for all ports, then those of the
+// The emulator numbers the objects of one API function for all ports, then those of the
 // next, and flags each UUID as the driver does. The numbers are its own; a real card's
 // depend on its whole layout.
 //
@@ -178,26 +178,26 @@ static int FunctionUuid(int Af, int PortIndex, int Index)
     int i;
 
     for (i = 0; i < Af; i++)
-        Base += g_ApiFunctions[i].NumParts * SIM_SDI_PORT_COUNT;
-    return (Api->Parts[Index].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG) |
-           (Base + PortIndex * Api->NumParts + Index + 1);
+        Base += g_ApiFunctions[i].NumObjects * SIM_SDI_PORT_COUNT;
+    return (Api->Objects[Index].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG) |
+           (Base + PortIndex * Api->NumObjects + Index + 1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The part whose name starts Name and is followed by Suffix: true with its API function
+// The object whose name starts Name and is followed by Suffix: true with its API function
 // in *Af and its index in *Index.
 //
 static bool FindFunction(const char* Name, const char* Suffix, int* Af, int* Index)
 {
     for (int a = 0; a < API_FUNCTION_COUNT; a++)
     {
-        for (int i = 0; i < g_ApiFunctions[a].NumParts; i++)
+        for (int i = 0; i < g_ApiFunctions[a].NumObjects; i++)
         {
-            const char* PartName = g_ApiFunctions[a].Parts[i].Name;
-            size_t Length = strlen(PartName);
+            const char* ObjectName = g_ApiFunctions[a].Objects[i].Name;
+            size_t Length = strlen(ObjectName);
 
-            if (strncmp(Name, PartName, Length) == 0 &&
+            if (strncmp(Name, ObjectName, Length) == 0 &&
                 strcmp(Name + Length, Suffix) == 0)
             {
                 *Af = a;
@@ -281,7 +281,7 @@ bool SimDta2178_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
         if (FindFunction(Name, "_TYPE", &Af, &Index))
         {
             *Type = PROPERTY_VALUE_TYPE_INT;
-            *Value = (uint64_t)g_ApiFunctions[Af].Parts[Index].Type;
+            *Value = (uint64_t)g_ApiFunctions[Af].Objects[Index].Type;
             return true;
         }
 
@@ -299,7 +299,7 @@ bool SimDta2178_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_GetString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // An API function's first instance, such as AF_ASISDIRX#1, gives its role,
-// AF_ASISDIRX#1.<n> the name of its n-th part, and the name of a part its role.
+// AF_ASISDIRX#1.<n> the name of its n-th object, and the name of an object its role.
 //
 bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
 {
@@ -327,19 +327,19 @@ bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
         // One or more digits and nothing else, without a leading zero.
         if (*Digits < '1' || *Digits > '9')
             return false;
-        for (; *Digits >= '0' && *Digits <= '9' && Number <= Api->NumParts; Digits++)
+        for (; *Digits >= '0' && *Digits <= '9' && Number <= Api->NumObjects; Digits++)
             Number = Number * 10 + (*Digits - '0');
-        if (*Digits != '\0' || Number > Api->NumParts)
+        if (*Digits != '\0' || Number > Api->NumObjects)
             return false;
 
-        *Str = Api->Parts[Number - 1].Name;
+        *Str = Api->Objects[Number - 1].Name;
         return true;
     }
 
     int Index;
     if (!FindFunction(Name, "", &a, &Index))
         return false;
-    *Str = g_ApiFunctions[a].Parts[Index].Role;
+    *Str = g_ApiFunctions[a].Objects[Index].Role;
     return true;
 }
 
@@ -352,18 +352,18 @@ bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** R
     for (int a = 0; a < API_FUNCTION_COUNT && Flat >= 0; a++)
     {
         const SimApiFunction* Api = &g_ApiFunctions[a];
-        int Count = Api->NumParts * SIM_SDI_PORT_COUNT;
+        int Count = Api->NumObjects * SIM_SDI_PORT_COUNT;
 
         if (Flat < Count)
         {
-            int Port = Flat / Api->NumParts;
-            int Index = Flat % Api->NumParts;
+            int Port = Flat / Api->NumObjects;
+            int Index = Flat % Api->NumObjects;
 
             if (FunctionUuid(a, Port, Index) != Uuid)
                 return false;
             *PortIndex = Port;
-            *Type = Api->Parts[Index].Type;
-            *Role = Api->Parts[Index].Role;
+            *Type = Api->Objects[Index].Type;
+            *Role = Api->Objects[Index].Role;
             return true;
         }
         Flat -= Count;
@@ -371,14 +371,14 @@ bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** R
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_PartCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2178_ObjectCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int SimDta2178_PartCount(void)
+int SimDta2178_ObjectCount(void)
 {
     int Count = 0;
 
     for (int a = 0; a < API_FUNCTION_COUNT; a++)
-        Count += g_ApiFunctions[a].NumParts * SIM_SDI_PORT_COUNT;
+        Count += g_ApiFunctions[a].NumObjects * SIM_SDI_PORT_COUNT;
     return Count;
 }
 

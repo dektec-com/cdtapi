@@ -53,7 +53,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Model +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The port has one API function, AF_NW#1 with the empty role, whose one part is the
+// The port has one API function, AF_NW#1 with the empty role, whose one object is the
 // driver function DF_NW#1. The lookups follow those of SimDta2178.h.
 //
 
@@ -65,6 +65,6 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
 // Looks up a string property the same way.
 bool SimDta2110_GetString(const char* Name, int PortIndex, const char** Str);
 
-// Finds the part a UUID names, with its port index, type and role. The UUID is compared
+// Finds the object a UUID names, with its port index, type and role. The UUID is compared
 // without the bits above its flags, which name a pipe of the network function.
 bool SimDta2110_FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role);

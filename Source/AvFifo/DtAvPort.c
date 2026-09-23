@@ -43,14 +43,14 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
         return DtAvError_Set(Result, Where, "Opening the device failed");
 
     DtFuncInstance Af;
-    DtVec_Init(&Af.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Af.Objects, sizeof(DtFuncObject));
     Result = DtFunc_Find(Port->Device.Drv, PortIndex, "AF_NW", "", &Af);
-    const DtFuncPart* Part =
+    const DtFuncObject* Object =
         Result == DTAPI_OK ? DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "") : NULL;
-    if (Result == DTAPI_OK && Part == NULL)
+    if (Result == DTAPI_OK && Object == NULL)
         Result = DTAPI_E_NOT_FOUND;
     if (Result == DTAPI_OK)
-        Port->Nw = Part->Ref;
+        Port->Nw = Object->Ref;
     DtFunc_Release(&Af);
     if (Result != DTAPI_OK)
     {

@@ -72,13 +72,13 @@ typedef struct DtSdiTx
 
     // The transmit blocks, held exclusively while attached.
     DtFuncInstance AfTx, AfDma;
-    DtPartRef Cdmac, Burst, Txf, Txp, Phy;
+    DtDrvObject Cdmac, Burst, Txf, Txp, Phy;
 
     // The demultiplexer and its switches of a port with DT_CAP_QUADLINK, and the switch
     // from a quad-link master where the port has it; their UUIDs are 0 otherwise.
     bool QuadLink;
-    DtPartRef SwitchIn, SwitchOut, Dmx;
-    DtPartRef FromMaster;
+    DtDrvObject SwitchIn, SwitchOut, Dmx;
+    DtDrvObject FromMaster;
 
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
@@ -325,7 +325,7 @@ static void Keeper(void* Context)
     OsThread_RaisePriority();
     OsMutex_Lock(Sdi->Base.Port.Lock);
     OsDrv* Drv = DrvOf(Sdi);
-    DtPartRef Txf = Sdi->Txf;
+    DtDrvObject Txf = Sdi->Txf;
     int WaitMs = Sdi->QuarterMs < 1000 ? Sdi->QuarterMs : 1000;
     OsMutex_Unlock(Sdi->Base.Port.Lock);
 
@@ -1210,14 +1210,14 @@ static void PadToWord(DtSdiTx* Sdi)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjects -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The parts of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is new
+// The objects of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is new
 // enough for each: always the DMA controller, the burst FIFO, the formatter, the encoder
 // and the PHY; the demultiplexer and its two switches on a port with DT_CAP_QUADLINK; and
 // the switch from a quad-link master when the port has it.
 //
-static DtapiResult FindParts(DtSdiTx* Sdi)
+static DtapiResult FindObjects(DtSdiTx* Sdi)
 {
     typedef struct
     {
@@ -1225,11 +1225,11 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
         bool IsDf;
         int Type;
         const char* Role;
-        DtPartRef* Ref;
+        DtDrvObject* Ref;
         bool Needed;
     } Wanted;
     const bool QuadLink = (Sdi->Base.Port.Caps & DT_CAP_QUADLINK) != 0;
-    const Wanted Parts[] = {
+    const Wanted Objects[] = {
         {&Sdi->AfDma, false, DT_BLOCK_TYPE_CDMAC, "", &Sdi->Cdmac, true},
         {&Sdi->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "", &Sdi->Burst, true},
         {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXF, "", &Sdi->Txf, true},
@@ -1249,21 +1249,22 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
     if (Result == DTAPI_OK)
         Result =
             DtFunc_Find(DrvOf(Sdi), Sdi->Base.Port.PortIndex, "AF_DMA", "", &Sdi->AfDma);
-    for (size_t i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
+    for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
+         i++)
     {
-        const bool Optional = Parts[i].Ref == &Sdi->FromMaster;
-        if (!Parts[i].Needed && !Optional)
+        const bool Optional = Objects[i].Ref == &Sdi->FromMaster;
+        if (!Objects[i].Needed && !Optional)
             continue;
-        const DtFuncPart* Part =
-            DtFunc_Get(Parts[i].Instance, Parts[i].IsDf, Parts[i].Type, Parts[i].Role);
+        const DtFuncObject* Object = DtFunc_Get(Objects[i].Instance, Objects[i].IsDf,
+                                                Objects[i].Type, Objects[i].Role);
 
-        if (Part == NULL && !Optional)
+        if (Object == NULL && !Optional)
             Result = DTAPI_E_NOT_FOUND;
-        else if (Part != NULL)
+        else if (Object != NULL)
         {
-            *Parts[i].Ref = Part->Ref;
+            *Objects[i].Ref = Object->Ref;
             Result = DtFunc_CheckDriverVersion(&Sdi->Base.Port.Device->DriverVersion,
-                                               Parts[i].IsDf, Parts[i].Type);
+                                               Objects[i].IsDf, Objects[i].Type);
         }
     }
     Sdi->QuadLink = QuadLink;
@@ -1275,7 +1276,7 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Lets go of the buffer and the exclusive access, ignoring failures. Releasing the
-// exclusive access of a part the handle does not hold changes nothing.
+// exclusive access of an object the handle does not hold changes nothing.
 //
 static void Release(DtTx* Tx)
 {
@@ -1496,7 +1497,7 @@ static void WaitUntilSent(DtTx* Tx)
         }
 
         OsDrv* Drv = DrvOf(Sdi);
-        DtPartRef Txf = Sdi->Txf;
+        DtDrvObject Txf = Sdi->Txf;
 
         OsMutex_Unlock(Tx->Port.Lock);
         DtSdiTxFEvent Event;
@@ -1551,8 +1552,8 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     Sdi->Base.Ops = &g_Ops;
     Sdi->Base.Port = *Port;
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
-    DtVec_Init(&Sdi->AfTx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Sdi->AfDma.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Sdi->AfTx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Sdi->AfDma.Objects, sizeof(DtFuncObject));
     Sdi->Room = OsEvent_Create();
     if (Sdi->Room == NULL)
     {
@@ -1571,7 +1572,7 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     // Exclusive access to the transmitter and the DMA, all blocks idle, the encoder's
     // corrections on, and the channel set up for the standard.
     if (Result == DTAPI_OK)
-        Result = FindParts(Sdi);
+        Result = FindObjects(Sdi);
     if (Result == DTAPI_OK)
         Result =
             DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfTx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);

@@ -24,7 +24,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtPartRef Nw, int Type,
+DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
                           int Fallback)
 {
     memset(Pipe, 0, sizeof(*Pipe));

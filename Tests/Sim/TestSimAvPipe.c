@@ -39,7 +39,7 @@
 
 // Opens the DTA-2110 with its clock stopped and the loopback on; gives the network
 // function, with UUID 0 when there is none.
-static OsDrv* OpenDevice(DtPartRef* Nw)
+static OsDrv* OpenDevice(DtDrvObject* Nw)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(INDEX);
@@ -48,12 +48,12 @@ static OsDrv* OpenDevice(DtPartRef* Nw)
     OsDrv* Drv = OsDrv_Open(INDEX);
     memset(Nw, 0, sizeof(*Nw));
     DtFuncInstance Af;
-    DtVec_Init(&Af.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Af.Objects, sizeof(DtFuncObject));
     if (Drv != NULL && DtFunc_Find(Drv, PORT, "AF_NW", "", &Af) == DTAPI_OK)
     {
-        const DtFuncPart* Part = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
-        if (Part != NULL)
-            *Nw = Part->Ref;
+        const DtFuncObject* Object = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
+        if (Object != NULL)
+            *Nw = Object->Ref;
     }
     DtFunc_Release(&Af);
     return Drv;
@@ -96,7 +96,7 @@ static void ParsePacket(void* Context, const uint8_t* Packet, int Size)
 DT_TEST(OpenBufferClose)
 {
     int Live = DtAlloc_Live();
-    DtPartRef Nw;
+    DtDrvObject Nw;
     OsDrv* Drv = OpenDevice(&Nw);
     DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
     DtAvPipe Pipe;
@@ -140,7 +140,7 @@ DT_TEST(OpenBufferClose)
 DT_TEST(FramesAroundTheBuffers)
 {
     int Live = DtAlloc_Live();
-    DtPartRef Nw;
+    DtDrvObject Nw;
     OsDrv* Drv = OpenDevice(&Nw);
     DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
     static DtAvWriter Writer;

@@ -32,12 +32,12 @@ bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str);
 // Finds the driver function or building block a UUID names, with the index of its port,
 // its type and its role. The type is a DT_FUNC_TYPE_ for a UUID with DT_UUID_DF_FLAG and
 // a DT_BLOCK_TYPE_ for one with DT_UUID_BC_FLAG. Returns false for a UUID the card does
-// not have. The index part of the UUIDs of the card's parts runs from 1 to
-// SimDta2178_PartCount without gaps.
+// not have. The index part of the UUIDs of the card's objects runs from 1 to
+// SimDta2178_ObjectCount without gaps.
 bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role);
 
-// The number of parts of all API functions of all ports.
-int SimDta2178_PartCount(void);
+// The number of objects of all API functions of all ports.
+int SimDta2178_ObjectCount(void);
 
 // The power-on configuration of Group on the port at PortIndex, as I/O configuration
 // codes, -1 for none.

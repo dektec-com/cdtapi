@@ -397,7 +397,7 @@ DT_TEST(ReadFailureIsReturned)
     DT_ASSERT_EQ(VidStd, 12345);
     FINISH(Device, Live);
 
-    // Reading an instance's role, or a part's name, fails the search.
+    // Reading an instance's role, or an object's name, fails the search.
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
     SimDtPcie_FailProperty("AF_ASISDIRX#1", 0, true, DT_STATUS_TIMEOUT);
@@ -410,7 +410,7 @@ DT_TEST(ReadFailureIsReturned)
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
-    // Reading a part's role or type only skips the part.
+    // Reading an object's role or type only skips the object.
     if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
         return;
     SimDtPcie_FailProperty("BC_SWITCH#2", 0, true, DT_STATUS_TIMEOUT);
@@ -419,9 +419,9 @@ DT_TEST(ReadFailureIsReturned)
     FINISH(Device, Live);
 }
 
-// Parts end at the first one not found; without the receiver among them, it is not
+// Objects end at the first one not found; without the receiver among them, it is not
 // found at all.
-DT_TEST(PartsEndAtTheFirstMissingOne)
+DT_TEST(ObjectsEndAtTheFirstMissingOne)
 {
     int Live;
 
@@ -433,7 +433,7 @@ DT_TEST(PartsEndAtTheFirstMissingOne)
     DT_ASSERT_EQ(DetectWith(DtFailures, &Device, &VidStd), DTAPI_E_NOT_FOUND);
     FINISH(Device, Live);
 
-    // A part that cannot be read is skipped, not fatal.
+    // An object that cannot be read is skipped, not fatal.
     if (!StartSim(DtFailures, &Live))
         return;
     SimDtPcie_OverrideString("BC_SWITCH#2", 0, false, NULL);
@@ -491,7 +491,7 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
     FINISH(Device, Live);
 }
 
-// Of two SDI receivers the last is used, because the last part found for a type and
+// Of two SDI receivers the last is used, because the last object found for a type and
 // role wins. The extra receiver is that of port 3, which has no signal: listed after
 // the input port's own, it is used; listed before, it is not.
 static DtapiResult DetectWithSecondReceiver(int* DtFailures, const char* Position,
@@ -888,7 +888,7 @@ DT_TEST_MAIN("SimDetect", DT_RUN(NullArgumentsAreRefused),
              DT_RUN(PortsAreAllPortsOfTheCard), DT_RUN(PortNeedsAnInputWithTheMatrixApi),
              DT_RUN(InternalInputIsNoInputToTheScan),
              DT_RUN(FirstInstanceWithTheEmptyRole), DT_RUN(ReadFailureIsReturned),
-             DT_RUN(PartsEndAtTheFirstMissingOne),
+             DT_RUN(ObjectsEndAtTheFirstMissingOne),
              DT_RUN(ReceiverIsAnSdiRxDriverFunction), DT_RUN(LastReceiverIsUsed),
              DT_RUN(EveryStandardWithItsVpid), DT_RUN(EveryStandardWithoutVpid),
              DT_RUN(ScaledPortReportsOneLink),

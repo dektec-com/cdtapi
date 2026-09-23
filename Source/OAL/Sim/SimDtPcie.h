@@ -164,7 +164,7 @@ void SimDtPcie_SetIndex(int Index);
 
 // Adds a DTA-2110, SimDta2110.h, at driver index Index, a different one from the
 // DTA-2178's; -1, as after a reset, takes it away again. Its handles address its own
-// parts and properties, and it has an interface in the emulated network, SimNet.h. The
+// objects and properties, and it has an interface in the emulated network, SimNet.h. The
 // property overrides and failures, the firmware status, the driver version and the
 // faults apply to both devices.
 // The emulated DTA-2110 at device index Index, or none for a negative index. Without
@@ -200,10 +200,10 @@ FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 // For the emulated functions, not for tests.
 //
 
-// Whether Handle holds the part whose UUID has index PartIndex plus one, as the driver
-// answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when nobody does,
-// DT_STATUS_IN_USE when another handle does. Called with the emulator's lock held.
-uint32_t SimDtPcie_CheckAccess(void* Handle, int PartIndex);
+// Whether Handle holds the object whose UUID has index ObjectIndex plus one, as the
+// driver answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when nobody
+// does, DT_STATUS_IN_USE when another handle does. Called with the emulator's lock held.
+uint32_t SimDtPcie_CheckAccess(void* Handle, int ObjectIndex);
 
 // Takes and releases the emulator's lock, for a test control that reads or changes state
 // a command on another thread may be using. Not recursive.

@@ -45,7 +45,7 @@
 typedef struct DtSdiRx
 {
     DtRx Base;
-    DtPartRef Ch; // The receive channel
+    DtDrvObject Ch; // The receive channel
     bool Scale12GTo3G;
 
     int IoStdValue; // The port's I/O standard
@@ -691,7 +691,7 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
     memset(Wait, 0, sizeof(*Wait));
     Wait->Ops = Rx->Ops;
     Wait->Drv = DrvOf(Sdi);
-    Wait->Part = Sdi->Ch;
+    Wait->Object = Sdi->Ch;
     Wait->MaxMs = Sdi->QuarterMs;
 }
 
@@ -704,7 +704,7 @@ static DtapiResult Wait(DtRxWait* Wait, int Ms)
 {
     DtChSdiRxEvent Event;
     DtapiResult Result =
-        DtPcieCmd_ChSdiRxWaitForFmtEvent(Wait->Drv, Wait->Part, Ms, &Event);
+        DtPcieCmd_ChSdiRxWaitForFmtEvent(Wait->Drv, Wait->Object, Ms, &Event);
 
     Wait->OutOfSync = Result == DTAPI_OK && !Event.InSync;
     return Result == DTAPI_E_TIMEOUT ? DTAPI_OK : Result;
@@ -764,8 +764,8 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
         DtAlloc_Free(Sdi);
         return Result;
     }
-    const DtFuncPart* SdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_SDIRX, "");
-    const DtFuncPart* ChSdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
+    const DtFuncObject* SdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncObject* ChSdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
     Result = SdiRx == NULL || ChSdiRx == NULL ? DTAPI_E_NOT_FOUND : DTAPI_OK;
     if (Result == DTAPI_OK)
         Result = DtFunc_CheckDriverVersion(&Port->Device->DriverVersion, true,

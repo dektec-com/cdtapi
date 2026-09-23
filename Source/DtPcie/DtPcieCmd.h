@@ -33,14 +33,16 @@
 // structures stay inside this layer, so nothing above it depends on their layout.
 //
 
-// The part a command is addressed to: a driver function or building block, by the UUID
-// the driver gave it, in the port it belongs to. The two travel together, as the header
-// of every such command carries them.
-typedef struct DtPartRef
+// The driver object a command is addressed to: a block controller, a driver function, or
+// the core function of the device. It is named by the UUID the driver gave it and the
+// port it belongs to; the two travel together, as the header of every such command
+// carries them. An object of the device rather than of one of its ports, the core
+// function among them, has DT_PROPERTY_DEVICE for its port.
+typedef struct DtDrvObject
 {
     int Uuid;
-    int PortIndex; // From 0
-} DtPartRef;
+    int PortIndex; // From 0, or DT_PROPERTY_DEVICE
+} DtDrvObject;
 
 typedef struct DtDriverVersion
 {
@@ -185,8 +187,9 @@ typedef struct DtSdiRxStatus
     int SdiRate;        // -1 unknown, 0 SD, 1 HD, 2 3G, 3 6G, 4 12G
 } DtSdiRxStatus;
 
-// Reads the status of the SDI receiver Part. Clears *Status first.
-DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtSdiRxStatus* Status);
+// Reads the status of the SDI receiver Object. Clears *Status first.
+DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, DtDrvObject Object,
+                                     DtSdiRxStatus* Status);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI receive channel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -234,37 +237,40 @@ typedef struct DtChSdiRxEvent
 // Attaches to the channel, exclusively or shared, under a friendly name of at most
 // DT_CHAN_FRIENDLY_NAME_MAX_LENGTH characters. A longer or empty name gives
 // DTAPI_E_INVALID_ARG without a command.
-DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, DtPartRef Part, bool Exclusive,
+DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, DtDrvObject Object, bool Exclusive,
                                     const char* FriendlyName);
 
 // Detaches from the channel.
-DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtDrvObject Object);
 
 // Configures the channel, which must be idle.
-DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtDrvObject Object,
                                        const DtChSdiRxConfig* Config);
 
 // Reads and sets this user's operational mode, a DT_FUNC_OPMODE_ value.
-DtapiResult DtPcieCmd_ChSdiRxGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode);
-DtapiResult DtPcieCmd_ChSdiRxSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_ChSdiRxGetOpMode(OsDrv* Drv, DtDrvObject Object, int* OpMode);
+DtapiResult DtPcieCmd_ChSdiRxSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Waits up to TimeoutMs milliseconds for the next format event. Gives DTAPI_E_TIMEOUT
 // when none comes.
-DtapiResult DtPcieCmd_ChSdiRxWaitForFmtEvent(OsDrv* Drv, DtPartRef Part, int TimeoutMs,
-                                             DtChSdiRxEvent* Event);
+DtapiResult DtPcieCmd_ChSdiRxWaitForFmtEvent(OsDrv* Drv, DtDrvObject Object,
+                                             int TimeoutMs, DtChSdiRxEvent* Event);
 
 // Reads how far the channel has written into the ring, as an offset from its start.
-DtapiResult DtPcieCmd_ChSdiRxGetWriteOffset(OsDrv* Drv, DtPartRef Part, uint32_t* Offset);
+DtapiResult DtPcieCmd_ChSdiRxGetWriteOffset(OsDrv* Drv, DtDrvObject Object,
+                                            uint32_t* Offset);
 
 // Tells the channel how far this user has read.
-DtapiResult DtPcieCmd_ChSdiRxSetReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t Offset);
+DtapiResult DtPcieCmd_ChSdiRxSetReadOffset(OsDrv* Drv, DtDrvObject Object,
+                                           uint32_t Offset);
 
 // Reads the channel's properties.
-DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtPartRef Part, DtChSdiRxProps* Props);
+DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtDrvObject Object,
+                                      DtChSdiRxProps* Props);
 
 // Reads the status of the channel's input, as DtPcieCmd_SdiRxGetStatus does for the
 // receiver.
-DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
                                           DtSdiRxStatus* Status);
 
 // Maps the configured ring into the process. On Windows the driver maps it during the
@@ -272,7 +278,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtPartRef Part,
 // is then mapped from the device at offset DT_MMAP_PORT_MEM_SEGMENT_SIZE times the port
 // index plus one. *Mapped is true in the second case, in which
 // DtPcieCmd_ChSdiRxUnmapDmaBuf must release the mapping.
-DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtPartRef Part, uint8_t** Buffer,
+DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t** Buffer,
                                        int* BufSize, int* MaxLoad, bool* Mapped);
 
 // Releases a mapping DtPcieCmd_ChSdiRxMapDmaBuf made itself; one the driver made goes
@@ -282,24 +288,24 @@ void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize, bool
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Exclusive access -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // One file handle at a time can hold a driver function or building block. The driver
-// checks the holder on the commands that change a part, and the handle lets go of what
+// checks the holder on the commands that change an object, and the handle lets go of what
 // it holds when it is closed.
 //
 
-// Issues EXCL_ACCESS_CMD Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for Part. Acquiring a
-// part that is held, also by this handle, gives DTAPI_E_IN_USE. Checking gives DTAPI_OK
-// for a part this handle holds, DTAPI_E_EXCL_ACCESS_REQD for one nobody holds, and
-// DTAPI_E_IN_USE for one another handle holds; probing gives DTAPI_E_IN_USE for a part
-// anyone holds. Releasing a part another handle holds gives DTAPI_E_IN_USE.
-DtapiResult DtPcieCmd_ExclAccess(OsDrv* Drv, DtPartRef Part, int Cmd);
+// Issues EXCL_ACCESS_CMD Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for Object. Acquiring an
+// object that is held, also by this handle, gives DTAPI_E_IN_USE. Checking gives DTAPI_OK
+// for an object this handle holds, DTAPI_E_EXCL_ACCESS_REQD for one nobody holds, and
+// DTAPI_E_IN_USE for one another handle holds; probing gives DTAPI_E_IN_USE for an object
+// anyone holds. Releasing an object another handle holds gives DTAPI_E_IN_USE.
+DtapiResult DtPcieCmd_ExclAccess(OsDrv* Drv, DtDrvObject Object, int Cmd);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI transmit blocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A port transmits without a channel driver function. The process drives the parts of
+// A port transmits without a channel driver function. The process drives the objects of
 // the port's AF_DMA and AF_ASISDITX API functions itself: the DMA controller CDMAC, which
 // reads a buffer the process allocates, the burst FIFO behind it, the formatter SDITXF,
 // the switches around the 12G demultiplexer SDIDMX12G, the protocol encoder SDITXP and
-// the driver function SDITXPHY. Every command goes to the part's UUID and port index.
+// the driver function SDITXPHY. Every command goes to the object's UUID and port index.
 //
 // Operational modes are DT_BLOCK_OPMODE_ values, and DT_FUNC_OPMODE_ values for SDITXPHY;
 // any other value gives DTAPI_E_INVALID_ARG without a command.
@@ -314,7 +320,7 @@ typedef struct DtCdmacProps
     int ReorderBufSize; // Bytes
 } DtCdmacProps;
 
-DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtPartRef Part, DtCdmacProps* Props);
+DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtDrvObject Object, DtCdmacProps* Props);
 
 // Registers Buf, which the process allocated and keeps until the buffer is freed, for
 // Direction, DT_CDMAC_DIR_TX or DT_CDMAC_DIR_RX. The buffer travels as this platform's
@@ -326,33 +332,35 @@ DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtPartRef Part, DtCdmacProps* Pr
 // With the buffer as the output, as on Windows, the answer's size is not checked against
 // the buffer's: the driver reports the output it was given, which could not be confirmed
 // on a card.
-DtapiResult DtPcieCmd_CdmacAllocateBuffer(OsDrv* Drv, DtPartRef Part, int Direction,
+DtapiResult DtPcieCmd_CdmacAllocateBuffer(OsDrv* Drv, DtDrvObject Object, int Direction,
                                           const OsDmaBuffer* Buf);
-DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtPartRef Part, int Direction,
+DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtDrvObject Object, int Direction,
                                             const OsDmaBuffer* Buf, bool BufferIsOutput);
 
 // Lets go of the registered buffer. The controller must be idle.
-DtapiResult DtPcieCmd_CdmacFreeBuffer(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_CdmacFreeBuffer(OsDrv* Drv, DtDrvObject Object);
 
 // Empties the controller's pipeline. The controller must be idle.
-DtapiResult DtPcieCmd_CdmacIssueChannelFlush(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_CdmacIssueChannelFlush(OsDrv* Drv, DtDrvObject Object);
 
-DtapiResult DtPcieCmd_CdmacSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_CdmacSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Sets a DT_CDMAC_TESTMODE_ value. The controller must be idle.
-DtapiResult DtPcieCmd_CdmacSetTestMode(OsDrv* Drv, DtPartRef Part, int TestMode);
+DtapiResult DtPcieCmd_CdmacSetTestMode(OsDrv* Drv, DtDrvObject Object, int TestMode);
 
 // Reads how far the card has read the buffer, as an offset from its start.
-DtapiResult DtPcieCmd_CdmacGetTxReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t* Offset);
+DtapiResult DtPcieCmd_CdmacGetTxReadOffset(OsDrv* Drv, DtDrvObject Object,
+                                           uint32_t* Offset);
 
 // Tells the card how far the buffer holds data for it.
-DtapiResult DtPcieCmd_CdmacSetTxWriteOffset(OsDrv* Drv, DtPartRef Part, uint32_t Offset);
+DtapiResult DtPcieCmd_CdmacSetTxWriteOffset(OsDrv* Drv, DtDrvObject Object,
+                                            uint32_t Offset);
 
 // Reads the reorder buffer's load and its minimum or maximum since the last clear.
-DtapiResult DtPcieCmd_CdmacGetReorderBufStatus(OsDrv* Drv, DtPartRef Part, int* Load,
+DtapiResult DtPcieCmd_CdmacGetReorderBufStatus(OsDrv* Drv, DtDrvObject Object, int* Load,
                                                int* MinMaxLoad);
 
-DtapiResult DtPcieCmd_CdmacClearReorderBufMinMax(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_CdmacClearReorderBufMinMax(OsDrv* Drv, DtDrvObject Object);
 
 // What a burst FIFO is like, as DT_BURSTFIFO_CMD_GET_PROPERTIES reports.
 typedef struct DtBurstFifoProps
@@ -371,18 +379,18 @@ typedef struct DtBurstFifoStatus
     int MaxLoad;
 } DtBurstFifoStatus;
 
-DtapiResult DtPcieCmd_BurstFifoGetProps(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_BurstFifoGetProps(OsDrv* Drv, DtDrvObject Object,
                                         DtBurstFifoProps* Props);
-DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtDrvObject Object,
                                          DtBurstFifoStatus* Status);
-DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtPartRef Part, bool MaxFree,
+DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool MaxFree,
                                         bool MaxLoad);
 
 // Reads the count of overflows and underflows. It stands still while data flows.
-DtapiResult DtPcieCmd_BurstFifoGetOvfUflCount(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_BurstFifoGetOvfUflCount(OsDrv* Drv, DtDrvObject Object,
                                               uint32_t* Count);
 
-DtapiResult DtPcieCmd_BurstFifoSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_BurstFifoSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // A transmit format event: the frame going out, how far, whether the formatter ran out of
 // data since the last wait, and the time the frame started when that was taken.
@@ -397,52 +405,52 @@ typedef struct DtSdiTxFEvent
 } DtSdiTxFEvent;
 
 // The formatter takes DT_BLOCK_OPMODE_IDLE and DT_BLOCK_OPMODE_RUN.
-DtapiResult DtPcieCmd_SdiTxFSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_SdiTxFSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Asks for a format event every NumLinesPerEvent lines, and a start-of-frame time every
 // NumSofsBetweenTod frames.
-DtapiResult DtPcieCmd_SdiTxFSetFmtEventSetting(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_SdiTxFSetFmtEventSetting(OsDrv* Drv, DtDrvObject Object,
                                                int NumLinesPerEvent,
                                                int NumSofsBetweenTod);
 
 // Reads the bits every part of the buffer's format is padded to.
-DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
                                                int* AlignmentBits);
 
 // Waits up to TimeoutMs milliseconds, -1 to 1000, for the next format event. Gives
 // DTAPI_E_TIMEOUT when none comes, and DTAPI_E_INVALID_MODE at once while the formatter
 // is not running.
-DtapiResult DtPcieCmd_SdiTxFWaitForFmtEvent(OsDrv* Drv, DtPartRef Part, int TimeoutMs,
+DtapiResult DtPcieCmd_SdiTxFWaitForFmtEvent(OsDrv* Drv, DtDrvObject Object, int TimeoutMs,
                                             DtSdiTxFEvent* Event);
 
 // Connects input InputIndex to output OutputIndex.
-DtapiResult DtPcieCmd_SwitchSetPosition(OsDrv* Drv, DtPartRef Part, int InputIndex,
+DtapiResult DtPcieCmd_SwitchSetPosition(OsDrv* Drv, DtDrvObject Object, int InputIndex,
                                         int OutputIndex);
-DtapiResult DtPcieCmd_SwitchSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_SwitchSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
-DtapiResult DtPcieCmd_SdiDmx12GSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_SdiDmx12GSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
-DtapiResult DtPcieCmd_SdiTxPSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_SdiTxPSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Makes the encoder clamp video symbols, and insert ANC checksums and line CRCs.
-DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtPartRef Part, bool Clamp,
+DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtDrvObject Object, bool Clamp,
                                               bool AncChecksum, bool LineCrc);
 
-DtapiResult DtPcieCmd_SdiTxPhySetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
+DtapiResult DtPcieCmd_SdiTxPhySetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Reads and clears the flag the PHY sets when its data ran out. It stays set until
 // cleared.
-DtapiResult DtPcieCmd_SdiTxPhyGetUnderflowFlag(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_SdiTxPhyGetUnderflowFlag(OsDrv* Drv, DtDrvObject Object,
                                                bool* Underflow);
-DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, DtDrvObject Object);
 
 // Delays the start of each frame by OffsetNs nanoseconds.
-DtapiResult DtPcieCmd_SdiTxPhySetStartOfFrameOffset(OsDrv* Drv, DtPartRef Part,
+DtapiResult DtPcieCmd_SdiTxPhySetStartOfFrameOffset(OsDrv* Drv, DtDrvObject Object,
                                                     int OffsetNs);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ASI blocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// An ASI port is driven as an SDI transmit port is: the process drives the parts of the
+// An ASI port is driven as an SDI transmit port is: the process drives the objects of the
 // port's AF_ASISDIRX or AF_ASISDITX and AF_DMA itself. Receiving uses the driver function
 // ASIRX and CDMAC in its receive direction, transmitting the gate ASITXG and the PHY or
 // the serialiser ASITXSER. The values these functions take and give are the driver's,
@@ -462,51 +470,54 @@ typedef struct DtAsiRxStatus
 
 // ASIRX's operational mode: DT_FUNC_OPMODE_IDLE or RUN; and its status, which is
 // DT_FUNC_OPSTATUS_IDLE or RUN.
-DtapiResult DtPcieCmd_AsiRxSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
-DtapiResult DtPcieCmd_AsiRxGetOpStatus(OsDrv* Drv, DtPartRef Part, int* OpStatus);
+DtapiResult DtPcieCmd_AsiRxSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
+DtapiResult DtPcieCmd_AsiRxGetOpStatus(OsDrv* Drv, DtDrvObject Object, int* OpStatus);
 
 // Packetisation, DT_ASIRX_PCKMODE_AUTO or RAW.
-DtapiResult DtPcieCmd_AsiRxSetPacketMode(OsDrv* Drv, DtPartRef Part, int Mode);
-DtapiResult DtPcieCmd_AsiRxGetPacketMode(OsDrv* Drv, DtPartRef Part, int* Mode);
+DtapiResult DtPcieCmd_AsiRxSetPacketMode(OsDrv* Drv, DtDrvObject Object, int Mode);
+DtapiResult DtPcieCmd_AsiRxGetPacketMode(OsDrv* Drv, DtDrvObject Object, int* Mode);
 
 // Polarity control, DT_ASIRX_POLARITY_AUTO, NORMAL or INVERT.
-DtapiResult DtPcieCmd_AsiRxSetPolarityCtrl(OsDrv* Drv, DtPartRef Part, int Polarity);
-DtapiResult DtPcieCmd_AsiRxGetPolarityCtrl(OsDrv* Drv, DtPartRef Part, int* Polarity);
+DtapiResult DtPcieCmd_AsiRxSetPolarityCtrl(OsDrv* Drv, DtDrvObject Object, int Polarity);
+DtapiResult DtPcieCmd_AsiRxGetPolarityCtrl(OsDrv* Drv, DtDrvObject Object, int* Polarity);
 
 // Packet synchronisation, DT_ASIRX_SYNCMODE_AUTO, 188 or 204.
-DtapiResult DtPcieCmd_AsiRxSetSyncMode(OsDrv* Drv, DtPartRef Part, int Mode);
-DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, DtPartRef Part, int* Mode);
+DtapiResult DtPcieCmd_AsiRxSetSyncMode(OsDrv* Drv, DtDrvObject Object, int Mode);
+DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, DtDrvObject Object, int* Mode);
 
-DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtAsiRxStatus* Status);
+DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtDrvObject Object,
+                                     DtAsiRxStatus* Status);
 
 // The rate of the stream on the wire, in bits a second: of 204-byte packets when those
 // come, which the channel layer converts to a rate of 188-byte packets; 0 while no
 // packets come.
-DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, DtPartRef Part, int* Bitrate);
+DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, DtDrvObject Object, int* Bitrate);
 
 // The count of 8b/10b code violations since the receiver started.
-DtapiResult DtPcieCmd_AsiRxGetViolCount(OsDrv* Drv, DtPartRef Part, int* Count);
+DtapiResult DtPcieCmd_AsiRxGetViolCount(OsDrv* Drv, DtDrvObject Object, int* Count);
 
 // ASITXG's operational mode, a DT_BLOCK_OPMODE_ value: STANDBY sends K28.5 only, RUN
 // what the buffer holds.
-DtapiResult DtPcieCmd_AsiTxGSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
-DtapiResult DtPcieCmd_AsiTxGGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode);
+DtapiResult DtPcieCmd_AsiTxGSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
+DtapiResult DtPcieCmd_AsiTxGGetOpMode(OsDrv* Drv, DtDrvObject Object, int* OpMode);
 
 // The polarity of what ASITXG sends, DT_ASITXG_POL_NORMAL or INVERT.
-DtapiResult DtPcieCmd_AsiTxGSetPolarity(OsDrv* Drv, DtPartRef Part, int Polarity);
-DtapiResult DtPcieCmd_AsiTxGGetPolarity(OsDrv* Drv, DtPartRef Part, int* Polarity);
+DtapiResult DtPcieCmd_AsiTxGSetPolarity(OsDrv* Drv, DtDrvObject Object, int Polarity);
+DtapiResult DtPcieCmd_AsiTxGGetPolarity(OsDrv* Drv, DtDrvObject Object, int* Polarity);
 
 // Forgets the part of a symbol stream the gate had taken in.
-DtapiResult DtPcieCmd_AsiTxGClearInputState(OsDrv* Drv, DtPartRef Part);
+DtapiResult DtPcieCmd_AsiTxGClearInputState(OsDrv* Drv, DtDrvObject Object);
 
 // ASITXSER's operational mode, a DT_BLOCK_OPMODE_ value, on a port that has one.
-DtapiResult DtPcieCmd_AsiTxSerSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode);
-DtapiResult DtPcieCmd_AsiTxSerGetOpMode(OsDrv* Drv, DtPartRef Part, int* OpMode);
+DtapiResult DtPcieCmd_AsiTxSerSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
+DtapiResult DtPcieCmd_AsiTxSerGetOpMode(OsDrv* Drv, DtDrvObject Object, int* OpMode);
 
 // How far the card has written the receive buffer, and how far the process has read it,
 // as offsets from its start.
-DtapiResult DtPcieCmd_CdmacGetRxWriteOffset(OsDrv* Drv, DtPartRef Part, uint32_t* Offset);
-DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t Offset);
+DtapiResult DtPcieCmd_CdmacGetRxWriteOffset(OsDrv* Drv, DtDrvObject Object,
+                                            uint32_t* Offset);
+DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, DtDrvObject Object,
+                                           uint32_t Offset);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Network port -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -521,20 +532,20 @@ DtapiResult DtPcieCmd_CdmacSetRxReadOffset(OsDrv* Drv, DtPartRef Part, uint32_t 
 //
 
 // Reads the port's current MAC address into Mac, which holds 6 bytes.
-DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, DtPartRef Part, uint8_t* Mac);
+DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, DtDrvObject Object, uint8_t* Mac);
 
 // Reads the PHY speed, a DT_PHY_SPEED_ value; DT_PHY_SPEED_NO_LINK while the link is
 // down.
-DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtPartRef Part, int* Speed);
+DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtDrvObject Object, int* Speed);
 
 // Opens a pipe of Type, or of Fallback when every pipe of Type is in use; -1 for no
-// fallback. *Pipe receives the pipe, in the port of the network function Part; its UUID
+// fallback. *Pipe receives the pipe, in the port of the network function Object; its UUID
 // is 0 after a failure.
-DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtPartRef Part, int Type, int Fallback,
-                                 DtPartRef* Pipe);
+DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type, int Fallback,
+                                 DtDrvObject* Pipe);
 
 // Closes a pipe this handle opened.
-DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, DtPartRef Pipe);
+DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, DtDrvObject Pipe);
 
 // What a pipe is, as DT_PIPE_CMD_GET_PROPERTIES reports.
 typedef struct DtPipeProps
@@ -545,7 +556,7 @@ typedef struct DtPipeProps
     int Type;         // A DT_PIPE_ value
 } DtPipeProps;
 
-DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, DtPartRef Pipe, DtPipeProps* Props);
+DtapiResult DtPcieCmd_PipeGetProps(OsDrv* Drv, DtDrvObject Pipe, DtPipeProps* Props);
 
 // A pipe's state, as DT_PIPE_CMD_GET_STATUS reports.
 typedef struct DtPipeStatus
@@ -555,35 +566,36 @@ typedef struct DtPipeStatus
     uint32_t ErrorFlags;  // DT_PIPE_ERROR_ flags
 } DtPipeStatus;
 
-DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, DtPartRef Pipe, DtPipeStatus* Status);
+DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, DtDrvObject Pipe, DtPipeStatus* Status);
 
 // Gives the pipe Buf, which the process allocated and keeps until the pipe lets go of it.
 // The buffer travels as for DtPcieCmd_CdmacAllocateBuffer, and
 // DtPcieCmd_PipeSetSharedBufferAs chooses the convention the same way. An empty buffer
 // and one larger than an int can count give DTAPI_E_INVALID_ARG.
-DtapiResult DtPcieCmd_PipeSetSharedBuffer(OsDrv* Drv, DtPartRef Pipe,
+DtapiResult DtPcieCmd_PipeSetSharedBuffer(OsDrv* Drv, DtDrvObject Pipe,
                                           const OsDmaBuffer* Buf);
-DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtPartRef Pipe,
+DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtDrvObject Pipe,
                                             const OsDmaBuffer* Buf, bool BufferIsOutput);
 
 // Lets go of the shared buffer.
-DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, DtPartRef Pipe);
+DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, DtDrvObject Pipe);
 
 // Empties the pipe and clears an invalid time.
-DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, DtPartRef Pipe);
+DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, DtDrvObject Pipe);
 
 // Sets a DT_PIPE_OPMODE_ value; any other gives DTAPI_E_INVALID_ARG without a command.
-DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, DtPartRef Pipe, int OpMode);
+DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, DtDrvObject Pipe, int OpMode);
 
 // The offsets of a receive pipe: how far the process has read, and how far the pipe has
 // written.
-DtapiResult DtPcieCmd_PipeSetRxReadOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t Offset);
-DtapiResult DtPcieCmd_PipeGetRxWriteOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t* Offset);
+DtapiResult DtPcieCmd_PipeSetRxReadOffset(OsDrv* Drv, DtDrvObject Pipe, uint32_t Offset);
+DtapiResult DtPcieCmd_PipeGetRxWriteOffset(OsDrv* Drv, DtDrvObject Pipe,
+                                           uint32_t* Offset);
 
 // The offsets of a transmit pipe: how far the process has written, and how far the pipe
 // has read.
-DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t Offset);
-DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, DtPartRef Pipe, uint32_t* Offset);
+DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, DtDrvObject Pipe, uint32_t Offset);
+DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, DtDrvObject Pipe, uint32_t* Offset);
 
 // Which packets a receive pipe takes. The addresses are in network byte order, IPv4 in
 // their first 4 bytes; the ports are numbers. Flags are DT_PIPE_IPFLT_FLAG_ values: the
@@ -599,7 +611,7 @@ typedef struct DtIpFilter
     uint32_t Flags;
 } DtIpFilter;
 
-DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtPartRef Pipe,
+DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtDrvObject Pipe,
                                       const DtIpFilter* Filter);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- VPD -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

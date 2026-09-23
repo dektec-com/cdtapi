@@ -18,9 +18,9 @@
 // Each SDI port of the emulated card has the driver function ASIRX of its AF_ASISDIRX and
 // the gate ASITXG of its AF_ASISDITX, which behave as the driver's do:
 //
-//   commands    refused in the driver's order: a command the part does not have, the
-//               sizes, exclusive access for the commands that change the part, and a
-//               part that is not enabled; ASIRX is enabled while the port is an ASI
+//   commands    refused in the driver's order: a command the object does not have, the
+//               sizes, exclusive access for the commands that change the object, and an
+//               object that is not enabled; ASIRX is enabled while the port is an ASI
 //               input, ASITXG while it is an ASI output
 //   settings    ASIRX's operational mode, IDLE or RUN, its packet mode, polarity control
 //               and synchronisation mode, and ASITXG's operational mode and polarity, are
@@ -37,9 +37,9 @@
 // Whether the emulated ASI blocks take commands with this DT_FUNC_CODE_.
 bool SimAsi_Takes(int FunctionCode);
 
-// Handles a command from Handle for the part of type Type of the port at PortIndex.
-// Access is what SimDtPcie_CheckAccess answers for Handle and the part, and Enabled
-// whether the part is enabled. Returns the DtStatus the driver would, and fills Out and
+// Handles a command from Handle for the object of type Type of the port at PortIndex.
+// Access is what SimDtPcie_CheckAccess answers for Handle and the object, and Enabled
+// whether the object is enabled. Returns the DtStatus the driver would, and fills Out and
 // *OutSize for a command that answers.
 uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int Cmd,
                     uint32_t Access, bool Enabled, const void* In, size_t InSize,

@@ -721,7 +721,7 @@ DT_TEST(SingleLinkPort)
     if (!Start(&Fix, DtFailures))
         return;
 
-    // The transmitter's parts less the demultiplexer and its two switches.
+    // The transmitter's objects less the demultiplexer and its two switches.
     SimDtPcie_OverrideString("AF_ASISDITX#1.3", PORT - 1, true, "BC_SDITXP#1");
     SimDtPcie_OverrideString("AF_ASISDITX#1.4", PORT - 1, true, "DF_SDITXPHY#1");
     SimDtPcie_OverrideString("AF_ASISDITX#1.5", PORT - 1, false, NULL);
@@ -979,7 +979,7 @@ DT_TEST(WriteFrameChecks)
     DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, 0);
 
-    // Part of a frame from Write, until Write completes it.
+    // Object of a frame from Write, until Write completes it.
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame, 4000));
     DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10),
                  DTAPI_E_INCOMP_FRAME);

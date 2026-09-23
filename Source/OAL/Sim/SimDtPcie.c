@@ -21,7 +21,7 @@
 #include "OAL/OsAbstractionLayer.h" // The OS_IOCTL_ outcomes.
 #include "OAL/OsBackend.h"          // Backend interface being implemented.
 #include "OAL/OsThread.h"           // Pacing format events.
-#include "SimActivate.h"            // The activation part.
+#include "SimActivate.h"            // The activation object.
 #include "SimAsi.h"                 // The ASI blocks.
 #include "SimChSdiRx.h"             // The receive channels.
 #include "SimDtPcie.h"              // What the emulated card reports.
@@ -67,8 +67,8 @@ typedef struct SimFault
 // Overrides for this many properties can be active at once.
 #define SIM_MAX_OVERRIDES 8
 
-// Room for the exclusive access of every part the card has.
-#define SIM_MAX_PARTS 256
+// Room for the exclusive access of every object the card has.
+#define SIM_MAX_OBJECTS 256
 
 typedef struct SimOverride
 {
@@ -99,8 +99,9 @@ static struct
     int LastFunctionCode;
     size_t LastInputSize;
     uint8_t LastInput[SIM_MAX_RECORDED_INPUT];
-    void* ExclOwners[SIM_MAX_PARTS]; // Per UUID index less one; NULL when nobody holds it
-    void* ExclOwners2110[SIM_MAX_PARTS]; // The same for the DTA-2110
+    void*
+        ExclOwners[SIM_MAX_OBJECTS]; // Per UUID index less one; NULL when nobody holds it
+    void* ExclOwners2110[SIM_MAX_OBJECTS]; // The same for the DTA-2110
 } g_Sim;
 
 // Serialises commands, so that a thread waiting for a format event and another issuing
@@ -809,15 +810,15 @@ static int AsiCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExclAccessCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// EXCL_ACCESS_CMD for the part at PartIndex, with the driver's rules for a building
+// EXCL_ACCESS_CMD for the object at ObjectIndex, with the driver's rules for a building
 // block or a driver function, the owner being the handle.
 //
-static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvStatus)
+static int ExclAccessCmd(SimDevice* Dev, int ObjectIndex, int Cmd, uint32_t* DrvStatus)
 {
-    if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
+    if (ObjectIndex < 0 || ObjectIndex >= SIM_MAX_OBJECTS)
         return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
-    void** Owner =
-        Dev->IsDta2110 ? &g_Sim.ExclOwners2110[PartIndex] : &g_Sim.ExclOwners[PartIndex];
+    void** Owner = Dev->IsDta2110 ? &g_Sim.ExclOwners2110[ObjectIndex]
+                                  : &g_Sim.ExclOwners[ObjectIndex];
 
     switch (Cmd)
     {
@@ -880,7 +881,7 @@ static void SimClose(void* State)
     SimChSdiRx_CloseHandle(State);
     SimSdiTx_CloseHandle(State);
     SimNw_CloseHandle(State);
-    for (int i = 0; i < SIM_MAX_PARTS; i++)
+    for (int i = 0; i < SIM_MAX_OBJECTS; i++)
     {
         if (g_Sim.ExclOwners[i] == State)
             g_Sim.ExclOwners[i] = NULL;
@@ -905,7 +906,7 @@ static void SimClose(void* State)
 // stub. A target refuses a command it does not handle with DT_STATUS_NOT_SUPPORTED,
 // before its sizes are looked at, as the driver does.
 //
-// The DTA-2110 has the network function and exclusive access on its parts; its core
+// The DTA-2110 has the network function and exclusive access on its objects; its core
 // answers what the DTA-2178's does but the I/O configuration, which it refuses.
 //
 static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
@@ -919,10 +920,10 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
     {
         int PortIndex;
         int Type;
-        int Part = Hdr->m_Uuid & (DT_UUID_FLAG_MASK | DT_UUID_INDEX_MASK);
+        int Object = Hdr->m_Uuid & (DT_UUID_FLAG_MASK | DT_UUID_INDEX_MASK);
         bool Found = Dev->IsDta2110
-                         ? SimDta2110_FindFunction(Part, &PortIndex, &Type, &Role)
-                         : SimDta2178_FindFunction(Part, &PortIndex, &Type, &Role);
+                         ? SimDta2110_FindFunction(Object, &PortIndex, &Type, &Role)
+                         : SimDta2178_FindFunction(Object, &PortIndex, &Type, &Role);
         if ((Hdr->m_Uuid & (DT_UUID_BC_FLAG | DT_UUID_DF_FLAG)) == 0 || !Found)
             return SimFail(Dev, DT_STATUS_NO_IOSTUB, DrvStatus);
 
@@ -937,10 +938,10 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
         {
             if (Type == DT_BLOCK_TYPE_IPSECG && SimActivate_Takes(FunctionCode))
             {
-                // The part answers nobody who does not hold it, as a card's does.
-                const int PartIndex = (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1;
-                void* Owner = PartIndex >= 0 && PartIndex < SIM_MAX_PARTS
-                                  ? g_Sim.ExclOwners2110[PartIndex]
+                // The object answers nobody who does not hold it, as a card's does.
+                const int ObjectIndex = (Hdr->m_Uuid & DT_UUID_INDEX_MASK) - 1;
+                void* Owner = ObjectIndex >= 0 && ObjectIndex < SIM_MAX_OBJECTS
+                                  ? g_Sim.ExclOwners2110[ObjectIndex]
                                   : NULL;
                 if (Owner == NULL)
                     return SimFail(Dev, DT_STATUS_EXCL_ACCESS_REQD, DrvStatus);
@@ -1466,11 +1467,11 @@ size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_CheckAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint32_t SimDtPcie_CheckAccess(void* Handle, int PartIndex)
+uint32_t SimDtPcie_CheckAccess(void* Handle, int ObjectIndex)
 {
-    if (PartIndex < 0 || PartIndex >= SIM_MAX_PARTS)
+    if (ObjectIndex < 0 || ObjectIndex >= SIM_MAX_OBJECTS)
         return DT_STATUS_EXCL_ACCESS_REQD;
-    void* Owner = g_Sim.ExclOwners[PartIndex];
+    void* Owner = g_Sim.ExclOwners[ObjectIndex];
     if (Owner == NULL)
         return DT_STATUS_EXCL_ACCESS_REQD;
     return Owner == Handle ? DT_STATUS_OK : DT_STATUS_IN_USE;

@@ -30,7 +30,7 @@ typedef struct DtAvPort
 {
     DtDevice Device; // The FIFO's own handle
     int PortIndex;   // From 0
-    DtPartRef Nw;    // The network function
+    DtDrvObject Nw;  // The network function
     HwOrSwPipe Preference;
     uint8_t Mac[6]; // Read at Start
 } DtAvPort;

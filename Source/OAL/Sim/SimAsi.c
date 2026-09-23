@@ -113,7 +113,7 @@ static void NoSignal(SimAsiSignal* Signal)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What a command is like to the driver: the sizes of its input and output, and whether
-// it needs exclusive access. Every command needs its part enabled.
+// it needs exclusive access. Every command needs its object enabled.
 typedef struct SimAsiCmdProps
 {
     int FunctionCode;
@@ -295,8 +295,8 @@ bool SimAsi_Takes(int FunctionCode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A part that is disabled forgets its settings, as the driver's does when it is enabled
-// again.
+// An object that is disabled forgets its settings, as the driver's does when it is
+// enabled again.
 //
 uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int Cmd,
                     uint32_t Access, bool Enabled, const void* In, size_t InSize,

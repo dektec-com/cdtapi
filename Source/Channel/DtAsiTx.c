@@ -55,15 +55,15 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// A slave port and the parts of it the master drives.
+// A slave port and those of its objects the master drives.
 typedef struct DtAsiTxSlave
 {
     int Port;     // From 1
     int SubValue; // Of its I/O direction
     DtFuncInstance Af;
     bool Held;
-    DtPartRef Phy;
-    DtPartRef Txp; // Its UUID 0 when the function has none
+    DtDrvObject Phy;
+    DtDrvObject Txp; // Its UUID 0 when the function has none
 } DtAsiTxSlave;
 
 typedef struct DtAsiTx
@@ -73,7 +73,7 @@ typedef struct DtAsiTx
     int PortIndex;
     DtFuncInstance AfTx, AfDma;
     bool Held;
-    DtPartRef AsiTxG, Phy, Ser, Cdmac, Burst; // The UUID of Phy or Ser 0 when absent
+    DtDrvObject AsiTxG, Phy, Ser, Cdmac, Burst; // The UUID of Phy or Ser 0 when absent
     int BurstFifoSize;
     DtVec Slaves; // DtAsiTxSlave
 
@@ -411,15 +411,15 @@ static DtapiResult FindSlaves(DtAsiTx* Tx)
         memset(&S, 0, sizeof(S));
         S.Port = Index + 1;
         S.SubValue = Dir.SubValue;
-        DtVec_Init(&S.Af.Parts, sizeof(DtFuncPart));
+        DtVec_Init(&S.Af.Objects, sizeof(DtFuncObject));
         Result = DtFunc_Find(Tx->Drv, Index, Name, "", &S.Af);
         if (Result == DTAPI_OK)
             Result = DtFunc_ExclAccess(Tx->Drv, &S.Af, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
         S.Held = Result == DTAPI_OK;
         if (Result == DTAPI_OK)
         {
-            const DtFuncPart* Phy = DtFunc_Get(&S.Af, true, DT_FUNC_TYPE_SDITXPHY, "");
-            const DtFuncPart* Txp = DtFunc_Get(&S.Af, false, DT_BLOCK_TYPE_SDITXP, "");
+            const DtFuncObject* Phy = DtFunc_Get(&S.Af, true, DT_FUNC_TYPE_SDITXPHY, "");
+            const DtFuncObject* Txp = DtFunc_Get(&S.Af, false, DT_BLOCK_TYPE_SDITXP, "");
             Result = Phy == NULL ? DTAPI_E_NOT_FOUND : DTAPI_OK;
             if (Phy != NULL)
                 S.Phy = Phy->Ref;
@@ -1057,13 +1057,13 @@ static void Release(DtTx* Base)
     DtAlloc_Free(Tx);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjects -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The parts the side drives: CDMAC and BURSTFIFO of AF_DMA, ASITXG of AF_ASISDITX, and
+// The objects the side drives: CDMAC and BURSTFIFO of AF_DMA, ASITXG of AF_ASISDITX, and
 // the port's SDITXPHY or ASITXSER, one of which it must have; and whether the driver is
 // new enough for each.
 //
-static DtapiResult FindParts(DtAsiTx* Tx)
+static DtapiResult FindObjects(DtAsiTx* Tx)
 {
     const DtDriverVersion* Version = &Tx->Base.Port.Device->DriverVersion;
     DtapiResult Result =
@@ -1073,11 +1073,12 @@ static DtapiResult FindParts(DtAsiTx* Tx)
     if (Result != DTAPI_OK)
         return Result;
 
-    const DtFuncPart* Cdmac = DtFunc_Get(&Tx->AfDma, false, DT_BLOCK_TYPE_CDMAC, "");
-    const DtFuncPart* Burst = DtFunc_Get(&Tx->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "");
-    const DtFuncPart* Gate = DtFunc_Get(&Tx->AfTx, false, DT_BLOCK_TYPE_ASITXG, "");
-    const DtFuncPart* Phy = DtFunc_Get(&Tx->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "");
-    const DtFuncPart* Ser = DtFunc_Get(&Tx->AfTx, false, DT_BLOCK_TYPE_ASITXSER, "");
+    const DtFuncObject* Cdmac = DtFunc_Get(&Tx->AfDma, false, DT_BLOCK_TYPE_CDMAC, "");
+    const DtFuncObject* Burst =
+        DtFunc_Get(&Tx->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "");
+    const DtFuncObject* Gate = DtFunc_Get(&Tx->AfTx, false, DT_BLOCK_TYPE_ASITXG, "");
+    const DtFuncObject* Phy = DtFunc_Get(&Tx->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "");
+    const DtFuncObject* Ser = DtFunc_Get(&Tx->AfTx, false, DT_BLOCK_TYPE_ASITXSER, "");
     if (Cdmac == NULL || Burst == NULL || Gate == NULL || (Phy == NULL && Ser == NULL))
         return DTAPI_E_NOT_FOUND;
     Tx->Cdmac = Cdmac->Ref;
@@ -1168,8 +1169,8 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     Tx->Base.TxControl = DTAPI_TXCTRL_IDLE;
     OsDrv* Drv = Tx->Drv = Port->Device->Drv;
     Tx->PortIndex = Port->PortIndex;
-    DtVec_Init(&Tx->AfTx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Tx->AfDma.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Tx->AfTx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Tx->AfDma.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Tx->Slaves, sizeof(DtAsiTxSlave));
     DtAsiEnc_Init(&Tx->Enc);
     Tx->Wake = OsEvent_Create();
@@ -1178,7 +1179,7 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
 
     DtapiResult Result = Tx->Wake == NULL || Tx->Room == NULL || Tx->Fifo == NULL
                              ? DTAPI_E_OUT_OF_MEM
-                             : FindParts(Tx);
+                             : FindObjects(Tx);
     if (Result == DTAPI_OK)
         Result = DtFunc_ExclAccess(Drv, &Tx->AfTx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)

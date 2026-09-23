@@ -15,7 +15,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
-#include "DtFunc.h"                 // Finding the parts.
+#include "DtFunc.h"                 // Finding the objects.
 #include "DtPcieAbi.h"              // Types, commands and driver statuses.
 #include "DtPcieCmd.h"              // Commands under test.
 #include "DtTest.h"                 // Test framework.
@@ -48,8 +48,8 @@ static bool Open(Fixture* Fix, int* DtFailures)
     SimDtPcie_SetTxRealTime(false);
     Fix->Live = DtAlloc_Live();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
-    DtVec_Init(&Fix->Tx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Fix->Dma.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Fix->Tx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Fix->Dma.Objects, sizeof(DtFuncObject));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         DtFunc_Find(Fix->Drv, PORT, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
         DtFunc_Find(Fix->Drv, PORT, "AF_DMA", "", &Fix->Dma) != DTAPI_OK)
@@ -64,7 +64,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     return true;
 }
 
-// Frees the parts, closes the device and checks that nothing is left open or allocated.
+// Frees the objects, closes the device and checks that nothing is left open or allocated.
 // The frames the sink kept are the emulator's until a reset, which comes first.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
@@ -77,30 +77,30 @@ static bool Open(Fixture* Fix, int* DtFailures)
         DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
     } while (0)
 
-// The part of Instance at Index.
-static DtPartRef RefAt(const DtFuncInstance* Instance, size_t Index)
+// The object of Instance at Index.
+static DtDrvObject RefAt(const DtFuncInstance* Instance, size_t Index)
 {
-    return DT_VEC_AT(&Instance->Parts, DtFuncPart, Index).Ref;
+    return DT_VEC_AT(&Instance->Objects, DtFuncObject, Index).Ref;
 }
 
-// The part of Instance with IsDf, Type and Role; with UUID 0 when there is none.
-static DtPartRef RefOf(const DtFuncInstance* Instance, bool IsDf, int Type,
-                       const char* Role)
+// The object of Instance with IsDf, Type and Role; with UUID 0 when there is none.
+static DtDrvObject RefOf(const DtFuncInstance* Instance, bool IsDf, int Type,
+                         const char* Role)
 {
-    const DtFuncPart* Part = DtFunc_Get(Instance, IsDf, Type, Role);
-    const DtPartRef None = {0, PORT};
-    return Part != NULL ? Part->Ref : None;
+    const DtFuncObject* Object = DtFunc_Get(Instance, IsDf, Type, Role);
+    const DtDrvObject None = {0, PORT};
+    return Object != NULL ? Object->Ref : None;
 }
 
-// The parts a transmit channel drives.
-typedef struct Parts
+// The objects a transmit channel drives.
+typedef struct Objects
 {
-    DtPartRef Cdmac, Burst, Txf, SwitchIn, SwitchOut, Dmx, Txp, Phy;
-} Parts;
+    DtDrvObject Cdmac, Burst, Txf, SwitchIn, SwitchOut, Dmx, Txp, Phy;
+} Objects;
 
-static Parts PartsOf(const Fixture* Fix)
+static Objects ObjectsOf(const Fixture* Fix)
 {
-    Parts P;
+    Objects P;
 
     P.Cdmac = RefOf(&Fix->Dma, false, DT_BLOCK_TYPE_CDMAC, "");
     P.Burst = RefOf(&Fix->Dma, false, DT_BLOCK_TYPE_BURSTFIFO, "");
@@ -113,9 +113,10 @@ static Parts PartsOf(const Fixture* Fix)
     return P;
 }
 
-// Whether the last command was Cmd of FunctionCode for Part, with an input of Size bytes,
-// which are copied to Input when it is not NULL.
-static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size, void* Input)
+// Whether the last command was Cmd of FunctionCode for Object, with an input of Size
+// bytes, which are copied to Input when it is not NULL.
+static bool LastWas(int FunctionCode, DtDrvObject Object, int Cmd, size_t Size,
+                    void* Input)
 {
     DtIoctlInputDataHdr Hdr;
     int Code = -1;
@@ -125,8 +126,8 @@ static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size, void
     memcpy(&Hdr, In, sizeof(Hdr));
     if (Input != NULL)
         memcpy(Input, In, Size);
-    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Part.Uuid &&
-           Hdr.m_PortIndex == Part.PortIndex && Hdr.m_Cmd == Cmd &&
+    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Object.Uuid &&
+           Hdr.m_PortIndex == Object.PortIndex && Hdr.m_Cmd == Cmd &&
            Hdr.m_CmdEx == DT_IOCTL_CMD_NOP;
 }
 
@@ -136,12 +137,12 @@ static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size, void
 // A buffer of 8 MB, room for seven coded 525i frames.
 #define BUFFER_SIZE (8 * 1024 * 1024)
 
-// Acquires every part and brings the port to what a transmit channel in HOLD is: a
+// Acquires every object and brings the port to what a transmit channel in HOLD is: a
 // registered buffer, every block running, the switches bypassing the demultiplexer and
 // the PHY in standby. Returns false, having recorded a failure, when that fails.
-static bool Hold(Fixture* Fix, Parts* P, OsDmaBuffer* Buf, int* DtFailures)
+static bool Hold(Fixture* Fix, Objects* P, OsDmaBuffer* Buf, int* DtFailures)
 {
-    *P = PartsOf(Fix);
+    *P = ObjectsOf(Fix);
     DtSdiFrameLayout Layout;
     DtSdiFrame_LayoutInit(&Layout, VIDSTD, SIM_TX_STREAM_ALIGNMENT);
     if (OsDmaBuffer_Alloc(BUFFER_SIZE, Buf) != 0 ||
@@ -262,23 +263,23 @@ static bool Received(int Index, uint32_t FrameNumber, int FrameId)
 }
 
 // Waits for an event without a time-out.
-static DtapiResult Wait(const Fixture* Fix, const Parts* P, DtSdiTxFEvent* Event)
+static DtapiResult Wait(const Fixture* Fix, const Objects* P, DtSdiTxFEvent* Event)
 {
     return DtPcieCmd_SdiTxFWaitForFmtEvent(Fix->Drv, P->Txf, 0, Event);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exclusive access +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// One handle holds a part at a time; checking, probing and releasing answer as the
+// One handle holds an object at a time; checking, probing and releasing answer as the
 // driver's building blocks do.
-DT_TEST(OneHandleHoldsAPart)
+DT_TEST(OneHandleHoldsAnObject)
 {
     Fixture Fix;
 
     if (!Open(&Fix, DtFailures))
         return;
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
-    DtPartRef Uuid = RefOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
+    DtDrvObject Uuid = RefOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
     DT_ASSERT(Other != NULL && Uuid.Uuid != 0);
 
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
@@ -310,10 +311,10 @@ DT_TEST(OneHandleHoldsAPart)
     FINISH(Fix);
 }
 
-// Every part of both functions, driver function included, has exclusive access of its
+// Every object of both functions, driver function included, has exclusive access of its
 // own; a UUID the card does not have has no I/O stub, and a command the access has not
 // is not supported.
-DT_TEST(EveryPartHasExclusiveAccess)
+DT_TEST(EveryObjectHasExclusiveAccess)
 {
     Fixture Fix;
 
@@ -323,12 +324,12 @@ DT_TEST(EveryPartHasExclusiveAccess)
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     size_t i;
-    for (i = 0; i < DtVec_Count(&Fix.Tx.Parts); i++)
+    for (i = 0; i < DtVec_Count(&Fix.Tx.Objects); i++)
     {
         DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, i),
                                           DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     }
-    for (i = 0; i < DtVec_Count(&Fix.Dma.Parts); i++)
+    for (i = 0; i < DtVec_Count(&Fix.Dma.Objects); i++)
     {
         DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Dma, i),
                                           DT_EXCLUSIVE_ACCESS_CMD_CHECK));
@@ -340,7 +341,7 @@ DT_TEST(EveryPartHasExclusiveAccess)
         DTAPI_E_EXCL_ACCESS_REQD);
 
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv,
-                                      (DtPartRef){DT_UUID_BC_FLAG | 0xFFFF, PORT},
+                                      (DtDrvObject){DT_UUID_BC_FLAG | 0xFFFF, PORT},
                                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_NOT_IMPLEMENTED);
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 0), 99),
@@ -349,8 +350,8 @@ DT_TEST(EveryPartHasExclusiveAccess)
     FINISH(Fix);
 }
 
-// Acquiring every part stops at the first part another handle holds, and lets go of the
-// parts before it; a part without exclusive access is passed over.
+// Acquiring every object stops at the first object another handle holds, and lets go of
+// the objects before it; an object without exclusive access is passed over.
 DT_TEST(AcquiringAllRollsBack)
 {
     Fixture Fix;
@@ -358,13 +359,13 @@ DT_TEST(AcquiringAllRollsBack)
     if (!Open(&Fix, DtFailures))
         return;
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
-    DT_ASSERT(Other != NULL && DtVec_Count(&Fix.Tx.Parts) == 7);
+    DT_ASSERT(Other != NULL && DtVec_Count(&Fix.Tx.Objects) == 7);
 
     DT_ASSERT_OK(
         DtPcieCmd_ExclAccess(Other, RefAt(&Fix.Tx, 3), DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
-    for (size_t i = 0; i < DtVec_Count(&Fix.Tx.Parts); i++)
+    for (size_t i = 0; i < DtVec_Count(&Fix.Tx.Objects); i++)
     {
         DtapiResult Probe = DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, i),
                                                  DT_EXCLUSIVE_ACCESS_CMD_PROBE);
@@ -373,7 +374,7 @@ DT_TEST(AcquiringAllRollsBack)
             DT_FAIL("part %zu: %s", i, DtapiResult2Str(Probe));
     }
 
-    // Releasing all goes on past the part another handle holds, and reports it.
+    // Releasing all goes on past the object another handle holds, and reports it.
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 6),
                                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
@@ -397,7 +398,7 @@ DT_TEST(RequestsCarryTheirFields)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
 
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, P.Cdmac, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT(LastWas(DT_FUNC_CODE_EXCL_ACCESS_CMD, P.Cdmac,
@@ -582,7 +583,7 @@ DT_TEST(InvalidArgumentsSendNothing)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, P.Cdmac, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
 
     DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, 3), DTAPI_E_INVALID_ARG);
@@ -619,7 +620,7 @@ DT_TEST(BufferIsRegisteredBothWays)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     OsDmaBuffer Buf;
     DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
@@ -664,7 +665,7 @@ DT_TEST(BufferRules)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     OsDmaBuffer Buf;
     DT_ASSERT(OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
@@ -705,7 +706,7 @@ DT_TEST(ModesOfTheDmaController)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, DT_BLOCK_OPMODE_STANDBY),
                  DTAPI_E_NOT_INITIALIZED);
@@ -747,7 +748,7 @@ DT_TEST(BlocksCheckAccessAndPort)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
 
     DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, DT_BLOCK_OPMODE_IDLE),
                  DTAPI_E_EXCL_ACCESS_REQD);
@@ -796,7 +797,7 @@ DT_TEST(WaitRules)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     DtSdiTxFEvent Event;
@@ -819,7 +820,7 @@ DT_TEST(WaitRules)
 DT_TEST(StandbyFillsThePipeline)
 {
     Fixture Fix;
-    Parts P;
+    Objects P;
     OsDmaBuffer Buf;
     uint32_t Offset = 0;
     uint32_t Read = 0;
@@ -856,7 +857,7 @@ DT_TEST(StandbyFillsThePipeline)
 DT_TEST(FramesReachTheSink)
 {
     Fixture Fix;
-    Parts P;
+    Objects P;
     OsDmaBuffer Buf;
     uint32_t Offset = 0;
 
@@ -910,7 +911,7 @@ DT_TEST(FramesReachTheSink)
 DT_TEST(UnderflowAndRecovery)
 {
     Fixture Fix;
-    Parts P;
+    Objects P;
     OsDmaBuffer Buf;
     uint32_t Offset = 0;
     uint32_t Count = 0;
@@ -962,7 +963,7 @@ DT_TEST(UnderflowAndRecovery)
 DT_TEST(SwitchesMustBypassTheDemux)
 {
     Fixture Fix;
-    Parts P;
+    Objects P;
     OsDmaBuffer Buf;
     uint32_t Offset = 0;
 
@@ -994,7 +995,7 @@ DT_TEST(SwitchesMustBypassTheDemux)
 DT_TEST(BadHeadersAreSkipped)
 {
     Fixture Fix;
-    Parts P;
+    Objects P;
     OsDmaBuffer Buf;
     uint32_t Offset = 0;
 
@@ -1026,7 +1027,7 @@ DT_TEST(ClosingTheHandleStopsTheDma)
 
     if (!Open(&Fix, DtFailures))
         return;
-    Parts P = PartsOf(&Fix);
+    Objects P = ObjectsOf(&Fix);
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
     OsDmaBuffer Buf;
     DT_ASSERT(Other != NULL && OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
@@ -1051,11 +1052,12 @@ DT_TEST(ClosingTheHandleStopsTheDma)
     FINISH(Fix);
 }
 
-DT_TEST_MAIN("SimSdiTx", DT_RUN(OneHandleHoldsAPart), DT_RUN(EveryPartHasExclusiveAccess),
-             DT_RUN(AcquiringAllRollsBack), DT_RUN(RequestsCarryTheirFields),
-             DT_RUN(InvalidArgumentsSendNothing), DT_RUN(BufferIsRegisteredBothWays),
-             DT_RUN(BufferRules), DT_RUN(ModesOfTheDmaController),
-             DT_RUN(BlocksCheckAccessAndPort), DT_RUN(WaitRules),
-             DT_RUN(StandbyFillsThePipeline), DT_RUN(FramesReachTheSink),
-             DT_RUN(UnderflowAndRecovery), DT_RUN(SwitchesMustBypassTheDemux),
-             DT_RUN(BadHeadersAreSkipped), DT_RUN(ClosingTheHandleStopsTheDma))
+DT_TEST_MAIN("SimSdiTx", DT_RUN(OneHandleHoldsAnObject),
+             DT_RUN(EveryObjectHasExclusiveAccess), DT_RUN(AcquiringAllRollsBack),
+             DT_RUN(RequestsCarryTheirFields), DT_RUN(InvalidArgumentsSendNothing),
+             DT_RUN(BufferIsRegisteredBothWays), DT_RUN(BufferRules),
+             DT_RUN(ModesOfTheDmaController), DT_RUN(BlocksCheckAccessAndPort),
+             DT_RUN(WaitRules), DT_RUN(StandbyFillsThePipeline),
+             DT_RUN(FramesReachTheSink), DT_RUN(UnderflowAndRecovery),
+             DT_RUN(SwitchesMustBypassTheDemux), DT_RUN(BadHeadersAreSkipped),
+             DT_RUN(ClosingTheHandleStopsTheDma))

@@ -24,11 +24,11 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The VPD commands go to the device rather than to a part of it: UUID 0 and no port.
+// The VPD commands go to the device rather than to an object: UUID 0 and no port.
 //
 static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {
-    const DtPartRef Device = {0, DT_PROPERTY_DEVICE};
+    const DtDrvObject Device = {0, DT_PROPERTY_DEVICE};
 
     DtPcieCmd_InitHeader(Hdr, Cmd, Device);
 }
@@ -44,7 +44,7 @@ DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props)
     if (Drv == NULL || Props == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    const DtPartRef Device = {0, DT_PROPERTY_DEVICE};
+    const DtDrvObject Device = {0, DT_PROPERTY_DEVICE};
     DtIoctlVpdCmdGetPropertiesOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result =

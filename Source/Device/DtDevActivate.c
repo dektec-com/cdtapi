@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// At attach the part is handed the data the card's own EEPROM holds for it, and reports
+// At attach the object is handed the data the card's own EEPROM holds for it, and reports
 // itself ready. Until it does, the firmware does not do its work: the card carries
-// nothing, in either direction, whether over SDI, ASI or IP. Every card that has the part
-// needs this; a card without it needs none of it.
+// nothing, in either direction, whether over SDI, ASI or IP. Every card that has the
+// object needs this; a card without it needs none of it.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -26,24 +26,24 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The part that is asked, and the data it takes: 64 words of the EEPROM, which sit
+// The object that is asked, and the data it takes: 64 words of the EEPROM, which sit
 // behind the sections that hold the card's own description.
-#define ACTIVATE_PART_UUID "BC_IPSECG#1_UUID"
+#define ACTIVATE_OBJECT_UUID "BC_IPSECG#1_UUID"
 #define ACTIVATE_NUM_WORDS 64
 
-// How long the part may take to answer, in milliseconds, and the step between polls.
+// How long the object may take to answer, in milliseconds, and the step between polls.
 #define ACTIVATE_TIMEOUT_MS 50
 #define ACTIVATE_POLL_MS 1
 
-// How often to try for the part, a millisecond apart, before giving up on it.
+// How often to try for the object, a millisecond apart, before giving up on it.
 #define ACTIVATE_ACQUIRE_TRIES 10
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Acquire -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The part answers nothing without exclusive access, so it is taken for the whole pass
+// The object answers nothing without exclusive access, so it is taken for the whole pass
 // and released again.
 //
-static DtapiResult Acquire(OsDrv* Drv, DtPartRef Part)
+static DtapiResult Acquire(OsDrv* Drv, DtDrvObject Object)
 {
     DtapiResult Result = DTAPI_E_IN_USE;
 
@@ -51,33 +51,33 @@ static DtapiResult Acquire(OsDrv* Drv, DtPartRef Part)
     {
         if (Try > 0)
             OsTime_SleepMs(1);
-        Result = DtPcieCmd_ExclAccess(Drv, Part, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
+        Result = DtPcieCmd_ExclAccess(Drv, Object, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     }
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindPart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. FindObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The part belongs to the device rather than to a port, and is addressed by the UUID the
-// driver gives it. DTAPI_E_NOT_FOUND for a device that has no such part.
+// The object belongs to the device rather than to a port, and is addressed by the UUID
+// the driver gives it. DTAPI_E_NOT_FOUND for a device that has no such object.
 //
-static DtapiResult FindPart(OsDrv* Drv, DtPartRef* Part)
+static DtapiResult FindObject(OsDrv* Drv, DtDrvObject* Object)
 {
-    Part->PortIndex = DT_PROPERTY_DEVICE;
-    return DtPcieCmd_GetPropertyInt(Drv, ACTIVATE_PART_UUID, DT_PROPERTY_DEVICE,
-                                    &Part->Uuid);
+    Object->PortIndex = DT_PROPERTY_DEVICE;
+    return DtPcieCmd_GetPropertyInt(Drv, ACTIVATE_OBJECT_UUID, DT_PROPERTY_DEVICE,
+                                    &Object->Uuid);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult GetStatus(OsDrv* Drv, DtPartRef Part, bool* Busy, bool* Ready)
+static DtapiResult GetStatus(OsDrv* Drv, DtDrvObject Object, bool* Busy, bool* Ready)
 {
     DtIoctlIpSecGCmdGetStatusOutput Out;
 
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result =
         DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_IPSECG_CMD), DT_IPSECG_CMD_GET_STATUS,
-                             Part, &Out, sizeof(Out));
+                             Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -88,10 +88,10 @@ static DtapiResult GetStatus(OsDrv* Drv, DtPartRef Part, bool* Busy, bool* Ready
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Apply -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Hands the part its data. A count of zero is what a card whose EEPROM holds nothing for
-// it gets, and is a command of its own rather than no command at all.
+// Hands the object its data. A count of zero is what a card whose EEPROM holds nothing
+// for it gets, and is a command of its own rather than no command at all.
 //
-static DtapiResult Apply(OsDrv* Drv, DtPartRef Part, const uint32_t* Words, int Count)
+static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, int Count)
 {
     const size_t InSize =
         sizeof(DtIoctlIpSecGCmdCheckInput) + (size_t)Count * sizeof(uint32_t);
@@ -101,7 +101,7 @@ static DtapiResult Apply(OsDrv* Drv, DtPartRef Part, const uint32_t* Words, int 
         return DTAPI_E_OUT_OF_MEM;
 
     memset(In, 0, InSize);
-    DtPcieCmd_InitHeader(&In->m_CmdHdr, DT_IPSECG_CMD_CHECK, Part);
+    DtPcieCmd_InitHeader(&In->m_CmdHdr, DT_IPSECG_CMD_CHECK, Object);
     In->m_NumWords = Count;
     memcpy(In->m_Data, Words, (size_t)Count * sizeof(uint32_t));
 
@@ -165,24 +165,24 @@ static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
 //
 DtapiResult DtDevActivate_OnAttach(OsDrv* Drv)
 {
-    DtPartRef Part;
+    DtDrvObject Object;
     bool Busy = false;
     bool Ready = false;
 
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    DtapiResult Result = FindPart(Drv, &Part);
+    DtapiResult Result = FindObject(Drv, &Object);
     if (Result == DTAPI_E_NOT_FOUND)
         return DTAPI_OK; // Nothing to activate on this device
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = Acquire(Drv, Part);
+    Result = Acquire(Drv, Object);
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = GetStatus(Drv, Part, &Busy, &Ready);
+    Result = GetStatus(Drv, Object, &Busy, &Ready);
     if (DT_SUCCEEDED(Result) && !Ready)
     {
         uint32_t Words[ACTIVATE_NUM_WORDS];
@@ -191,19 +191,19 @@ DtapiResult DtDevActivate_OnAttach(OsDrv* Drv)
         memset(Words, 0, sizeof(Words));
         Result = ReadData(Drv, Words, &Present);
         if (DT_SUCCEEDED(Result))
-            Result = Apply(Drv, Part, Words, Present ? ACTIVATE_NUM_WORDS : 0);
+            Result = Apply(Drv, Object, Words, Present ? ACTIVATE_NUM_WORDS : 0);
 
         for (int Waited = 0; DT_SUCCEEDED(Result) && Waited < ACTIVATE_TIMEOUT_MS;
              Waited += ACTIVATE_POLL_MS)
         {
-            Result = GetStatus(Drv, Part, &Busy, &Ready);
+            Result = GetStatus(Drv, Object, &Busy, &Ready);
             if (!Busy)
                 break;
             OsTime_SleepMs(ACTIVATE_POLL_MS);
         }
     }
 
-    DtPcieCmd_ExclAccess(Drv, Part, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+    DtPcieCmd_ExclAccess(Drv, Object, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
     if (!DT_SUCCEEDED(Result))
         return Result;
     return Ready ? DTAPI_OK : DTAPI_E_INVALID;

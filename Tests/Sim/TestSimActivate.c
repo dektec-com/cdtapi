@@ -19,7 +19,7 @@
 #include "DtPcie/DtPcieCmd.h"       // The VPD layer and exclusive access.
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Device handles.
-#include "OAL/Sim/SimActivate.h"    // The emulated part and its test controls.
+#include "OAL/Sim/SimActivate.h"    // The emulated object and its test controls.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimDta2110.h"     // The emulated DTA-2110.
 #include "OAL/Sim/SimVpd.h"         // The emulated EEPROM.
@@ -124,7 +124,7 @@ DT_TEST(ActivatesOnce)
     FINISH(Drv, Live);
 }
 
-// The part may take a moment; the caller waits for it.
+// The object may take a moment; the caller waits for it.
 DT_TEST(ActivationWaits)
 {
     int Live = 0;
@@ -137,8 +137,8 @@ DT_TEST(ActivationWaits)
     FINISH(Drv, Live);
 }
 
-// A card whose EEPROM holds nothing for the part cannot be activated, and the failure is
-// reported rather than hidden.
+// A card whose EEPROM holds nothing for the object cannot be activated, and the failure
+// is reported rather than hidden.
 DT_TEST(BlankEepromFails)
 {
     int Live = 0;
@@ -151,7 +151,7 @@ DT_TEST(BlankEepromFails)
     FINISH(Drv, Live);
 }
 
-// A device without the part needs no activating, and does not fail for want of it.
+// A device without the object needs no activating, and does not fail for want of it.
 DT_TEST(OtherDeviceNeedsNone)
 {
     SimDtPcie_Reset();
@@ -206,8 +206,8 @@ DT_TEST(AttachSucceedsWithoutActivation)
     DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
-// The part is only answered to whoever holds it, so a second handle cannot activate.
-DT_TEST(ActivationNeedsThePart)
+// The object is only answered to whoever holds it, so a second handle cannot activate.
+DT_TEST(ActivationNeedsTheObject)
 {
     int Live = 0;
     OsDrv* Drv = OpenDta2110(DtFailures, &Live);
@@ -218,13 +218,13 @@ DT_TEST(ActivationNeedsThePart)
     int Uuid = 0;
     DT_ASSERT_OK(
         DtPcieCmd_GetPropertyInt(Other, "BC_IPSECG#1_UUID", DT_PROPERTY_DEVICE, &Uuid));
-    const DtPartRef Part = {Uuid, DT_PROPERTY_DEVICE};
-    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Part, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    const DtDrvObject Object = {Uuid, DT_PROPERTY_DEVICE};
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Object, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     DT_ASSERT(DtDevActivate_OnAttach(Drv) != DTAPI_OK);
     DT_ASSERT(!SimActivate_IsReady());
 
-    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Part, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Object, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
     OsDrv_Close(Other);
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
     DT_ASSERT(SimActivate_IsReady());
@@ -233,4 +233,4 @@ DT_TEST(ActivationNeedsThePart)
 DT_TEST_MAIN("SimActivate", DT_RUN(VpdProperties), DT_RUN(VpdRawRead),
              DT_RUN(ActivatesOnce), DT_RUN(ActivationWaits), DT_RUN(BlankEepromFails),
              DT_RUN(OtherDeviceNeedsNone), DT_RUN(AttachActivates),
-             DT_RUN(AttachSucceedsWithoutActivation), DT_RUN(ActivationNeedsThePart))
+             DT_RUN(AttachSucceedsWithoutActivation), DT_RUN(ActivationNeedsTheObject))

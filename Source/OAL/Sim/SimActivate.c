@@ -1,10 +1,10 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimActivate.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - The emulated card's activation part
+// CDTAPI - The emulated card's activation object
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// As much of the part as the library uses: it reports whether it is ready,
+// As much of the object as the library uses: it reports whether it is ready,
 // and is given data to become ready. The data it accepts is what its own EEPROM holds
 // behind the sections, most significant byte first, which is the order the library hands
 // it over in.
@@ -21,7 +21,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The board number the part reports; any number does, nothing reads it.
+// The board number the object reports; any number does, nothing reads it.
 #define SIM_ACTIVATE_BOARD_ID 0x0037FC0502E25900LL
 
 static bool g_Ready;
@@ -30,7 +30,7 @@ static int g_BusyLeft;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Expected -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The word at Index of the EEPROM's tail, in the order the part is given it.
+// The word at Index of the EEPROM's tail, in the order the object is given it.
 //
 static uint32_t Expected(int Index)
 {

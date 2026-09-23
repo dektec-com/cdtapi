@@ -15,7 +15,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"           // Live allocations.
-#include "DtFunc.h"                 // Finding the parts.
+#include "DtFunc.h"                 // Finding the objects.
 #include "DtPcieAbi.h"              // Types, commands and driver statuses.
 #include "DtPcieCmd.h"              // Commands under test.
 #include "DtTest.h"                 // Test framework.
@@ -42,7 +42,7 @@ typedef struct Fixture
     DtFuncInstance RxDma; // AF_DMA of RX
     DtFuncInstance Tx;    // AF_ASISDITX of TX
     DtFuncInstance TxDma; // AF_DMA of TX
-    DtPartRef AsiRx, RxCdmac, RxBurst, AsiTxG, TxPhy, TxCdmac, TxBurst;
+    DtDrvObject AsiRx, RxCdmac, RxBurst, AsiTxG, TxPhy, TxCdmac, TxBurst;
     int Live;
 } Fixture;
 
@@ -54,17 +54,17 @@ static DtapiResult Configure(OsDrv* Drv, int Index, int Group, int Value, int Su
 }
 
 // Opens the emulated device in its power-on state, makes RX an ASI input and TX an ASI
-// output, and finds their parts. Returns false, having recorded a failure, when that is
+// output, and finds their objects. Returns false, having recorded a failure, when that is
 // not possible.
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_Live();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
-    DtVec_Init(&Fix->Rx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Fix->RxDma.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Fix->Tx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Fix->TxDma.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Fix->Rx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Fix->RxDma.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Fix->Tx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Fix->TxDma.Objects, sizeof(DtFuncObject));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         Configure(Fix->Drv, RX, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
                   DTAPI_IOCONFIG_INPUT) != DTAPI_OK ||
@@ -98,7 +98,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     return true;
 }
 
-// Takes exclusive access to every part the tests use.
+// Takes exclusive access to every object the tests use.
 static bool Acquire(Fixture* Fix)
 {
     return DtFunc_ExclAccess(Fix->Drv, &Fix->Rx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE) ==
@@ -111,7 +111,7 @@ static bool Acquire(Fixture* Fix)
                DTAPI_OK;
 }
 
-// Frees the parts, closes the device and checks that nothing is left open or allocated.
+// Frees the objects, closes the device and checks that nothing is left open or allocated.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
@@ -125,9 +125,10 @@ static bool Acquire(Fixture* Fix)
         DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
     } while (0)
 
-// Whether the last command was Cmd of FunctionCode for Part, with an input of Size bytes;
-// when Value is not NULL, the input is a header and one Int, which must equal *Value.
-static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size,
+// Whether the last command was Cmd of FunctionCode for Object, with an input of
+// Size bytes; when Value is not NULL, the input is a header and one Int, which must
+// equal *Value.
+static bool LastWas(int FunctionCode, DtDrvObject Object, int Cmd, size_t Size,
                     const int* Value)
 {
     uint8_t In[SIM_MAX_RECORDED_INPUT];
@@ -143,8 +144,8 @@ static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size,
         if (Sent != *Value)
             return false;
     }
-    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Part.Uuid &&
-           Hdr.m_PortIndex == Part.PortIndex && Hdr.m_Cmd == Cmd &&
+    return Got == Size && Code == FunctionCode && Hdr.m_Uuid == Object.Uuid &&
+           Hdr.m_PortIndex == Object.PortIndex && Hdr.m_Cmd == Cmd &&
            Hdr.m_CmdEx == DT_IOCTL_CMD_NOP;
 }
 
@@ -153,7 +154,8 @@ static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Every command goes to its part with the fields it carries, and what is set reads back.
+// Every command goes to its object with the fields it carries, and what is set
+// reads back.
 DT_TEST(RequestsCarryTheirFields)
 {
     Fixture Fix;
@@ -161,7 +163,7 @@ DT_TEST(RequestsCarryTheirFields)
     if (!Open(&Fix, DtFailures))
         return;
     DT_ASSERT(Acquire(&Fix));
-    const DtPartRef Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
+    const DtDrvObject Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
     int Value = -1;
 
     static const struct
@@ -266,7 +268,7 @@ DT_TEST(InvalidValuesSendNothing)
     if (!Open(&Fix, DtFailures))
         return;
     DT_ASSERT(Acquire(&Fix));
-    const DtPartRef Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
+    const DtDrvObject Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
 
     int Value;
     DT_ASSERT_OK(DtPcieCmd_AsiRxGetSyncMode(Fix.Drv, Rx, &Value));
@@ -290,15 +292,15 @@ DT_TEST(InvalidValuesSendNothing)
     FINISH(Fix);
 }
 
-// Settings need exclusive access and readings do not; a part of a port that is not ASI in
-// its direction refuses both, and forgets what was set.
-DT_TEST(PartsCheckAccessAndPort)
+// Settings need exclusive access and readings do not; an object of a port that is not ASI
+// in its direction refuses both, and forgets what was set.
+DT_TEST(ObjectsCheckAccessAndPort)
 {
     Fixture Fix;
 
     if (!Open(&Fix, DtFailures))
         return;
-    const DtPartRef Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
+    const DtDrvObject Rx = Fix.AsiRx, TxG = Fix.AsiTxG;
     int Value;
 
     DT_ASSERT_EQ(DtPcieCmd_AsiRxSetSyncMode(Fix.Drv, Rx, DT_ASIRX_SYNCMODE_188),
@@ -347,7 +349,7 @@ DT_TEST(StatusComesFromTheSignal)
 
     if (!Open(&Fix, DtFailures))
         return;
-    const DtPartRef Rx = Fix.AsiRx;
+    const DtDrvObject Rx = Fix.AsiRx;
     DtAsiRxStatus Status;
     int Bitrate, Viol;
 
@@ -394,7 +396,7 @@ DT_TEST(ReceiveOffsets)
     if (!Open(&Fix, DtFailures))
         return;
     DT_ASSERT(Acquire(&Fix));
-    const DtPartRef Cdmac = Fix.RxCdmac;
+    const DtDrvObject Cdmac = Fix.RxCdmac;
     uint32_t Offset = 5;
 
     // Without a receive buffer, as a DTA-2178 answers.
@@ -461,7 +463,7 @@ static bool StartTx(Fixture* Fix, OsDmaBuffer* Buf)
 }
 
 // Stops the DMA of Cdmac and frees its buffer.
-static void Stop(Fixture* Fix, DtPartRef Cdmac, OsDmaBuffer* Buf)
+static void Stop(Fixture* Fix, DtDrvObject Cdmac, OsDmaBuffer* Buf)
 {
     DtPcieCmd_CdmacSetOpMode(Fix->Drv, Cdmac, DT_BLOCK_OPMODE_IDLE);
     DtPcieCmd_CdmacFreeBuffer(Fix->Drv, Cdmac);
@@ -723,7 +725,7 @@ DT_TEST(LoopbackReceivesWhatIsSent)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST_MAIN("SimAsi", DT_RUN(RequestsCarryTheirFields), DT_RUN(InvalidValuesSendNothing),
-             DT_RUN(PartsCheckAccessAndPort), DT_RUN(StatusComesFromTheSignal),
+             DT_RUN(ObjectsCheckAccessAndPort), DT_RUN(StatusComesFromTheSignal),
              DT_RUN(ReceiveOffsets), DT_RUN(SourceWritesTransparentPackets),
              DT_RUN(SourceFollowsTheClock), DT_RUN(SinkDecodesTheSymbols),
              DT_RUN(LoopbackReceivesWhatIsSent))

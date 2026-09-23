@@ -46,7 +46,7 @@ typedef struct DtAsiRx
     int PortIndex;
     DtFuncInstance AfRx, AfDma;
     bool Held; // Exclusive access to both
-    DtPartRef AsiRx, Cdmac, Burst;
+    DtDrvObject AsiRx, Cdmac, Burst;
     OsDmaBuffer Buf;
     bool Registered;
     DtRing Ring;
@@ -653,21 +653,21 @@ static void Release(DtRx* Base)
     DtAlloc_Free(Rx);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjects -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // ASIRX of AF_ASISDIRX, CDMAC and BURSTFIFO of AF_DMA, and whether the driver is new
 // enough for each.
 //
-static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
+static DtapiResult FindObjects(DtAsiRx* Rx, const DtDriverVersion* Version)
 {
     typedef struct
     {
         DtFuncInstance* Instance;
         bool IsDf;
         int Type;
-        DtPartRef* Ref;
+        DtDrvObject* Ref;
     } Wanted;
-    const Wanted Parts[] = {
+    const Wanted Objects[] = {
         {&Rx->AfRx, true, DT_FUNC_TYPE_ASIRX, &Rx->AsiRx},
         {&Rx->AfDma, false, DT_BLOCK_TYPE_CDMAC, &Rx->Cdmac},
         {&Rx->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, &Rx->Burst},
@@ -677,16 +677,17 @@ static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
         DtFunc_Find(Rx->Drv, Rx->PortIndex, "AF_ASISDIRX", "", &Rx->AfRx);
     if (Result == DTAPI_OK)
         Result = DtFunc_Find(Rx->Drv, Rx->PortIndex, "AF_DMA", "", &Rx->AfDma);
-    for (size_t i = 0; i < sizeof(Parts) / sizeof(Parts[0]) && Result == DTAPI_OK; i++)
+    for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
+         i++)
     {
-        const DtFuncPart* Part =
-            DtFunc_Get(Parts[i].Instance, Parts[i].IsDf, Parts[i].Type, "");
-        if (Part == NULL)
+        const DtFuncObject* Object =
+            DtFunc_Get(Objects[i].Instance, Objects[i].IsDf, Objects[i].Type, "");
+        if (Object == NULL)
             Result = DTAPI_E_NOT_FOUND;
         else
         {
-            *Parts[i].Ref = Part->Ref;
-            Result = DtFunc_CheckDriverVersion(Version, Parts[i].IsDf, Parts[i].Type);
+            *Objects[i].Ref = Object->Ref;
+            Result = DtFunc_CheckDriverVersion(Version, Objects[i].IsDf, Objects[i].Type);
         }
     }
     return Result;
@@ -764,11 +765,11 @@ DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
     Rx->Base.RxControl = DTAPI_RXCTRL_IDLE;
     OsDrv* Drv = Rx->Drv = Port->Device->Drv;
     Rx->PortIndex = Port->PortIndex;
-    DtVec_Init(&Rx->AfRx.Parts, sizeof(DtFuncPart));
-    DtVec_Init(&Rx->AfDma.Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Rx->AfRx.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Rx->AfDma.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Rx->Skips, sizeof(DtAsiRxSkip));
 
-    DtapiResult Result = FindParts(Rx, &Port->Device->DriverVersion);
+    DtapiResult Result = FindObjects(Rx, &Port->Device->DriverVersion);
     if (Result == DTAPI_OK)
         Result = DtFunc_ExclAccess(Drv, &Rx->AfRx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)

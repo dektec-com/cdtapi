@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtFunc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Device layer: the parts of an API function - Implementation
+// CDTAPI - Device layer: the objects of an API function - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -40,39 +40,40 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadPart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. ReadObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Reads the role, the type and the UUID, in that order, and a name that says which kind
-// of part it is. False when any of it cannot be had, in which case the part is left out.
+// of object it is. False when any of it cannot be had, in which case the object is
+// left out.
 //
-static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
+static bool ReadObject(OsDrv* Drv, int PortIndex, DtFuncObject* Object)
 {
-    if (DtPcieCmd_GetPropertyStr(Drv, Part->Name, PortIndex, Part->Role,
-                                 sizeof(Part->Role)) != DTAPI_OK)
+    if (DtPcieCmd_GetPropertyStr(Drv, Object->Name, PortIndex, Object->Role,
+                                 sizeof(Object->Role)) != DTAPI_OK)
     {
         return false;
     }
 
     char Key[PROPERTY_NAME_MAX_SIZE];
-    if (snprintf(Key, sizeof(Key), "%s_TYPE", Part->Name) >= (int)sizeof(Key) ||
-        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Type) != DTAPI_OK)
+    if (snprintf(Key, sizeof(Key), "%s_TYPE", Object->Name) >= (int)sizeof(Key) ||
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Object->Type) != DTAPI_OK)
     {
         return false;
     }
 
-    if (strncmp(Part->Name, "DF_", 3) == 0)
-        Part->IsDf = true;
-    else if (strncmp(Part->Name, "BC_", 3) == 0)
-        Part->IsDf = false;
+    if (strncmp(Object->Name, "DF_", 3) == 0)
+        Object->IsDf = true;
+    else if (strncmp(Object->Name, "BC_", 3) == 0)
+        Object->IsDf = false;
     else
         return false;
 
-    if (snprintf(Key, sizeof(Key), "%s_UUID", Part->Name) >= (int)sizeof(Key) ||
-        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Part->Ref.Uuid) != DTAPI_OK)
+    if (snprintf(Key, sizeof(Key), "%s_UUID", Object->Name) >= (int)sizeof(Key) ||
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Object->Ref.Uuid) != DTAPI_OK)
     {
         return false;
     }
-    Part->Ref.PortIndex = PortIndex;
+    Object->Ref.PortIndex = PortIndex;
     return true;
 }
 
@@ -84,7 +85,7 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
     int Number = 0;
 
     Instance->PortIndex = PortIndex;
-    DtVec_Init(&Instance->Parts, sizeof(DtFuncPart));
+    DtVec_Init(&Instance->Objects, sizeof(DtFuncObject));
 
     DtapiResult Result = FindInstance(Drv, PortIndex, Name, Role, &Number);
     if (Result != DTAPI_OK)
@@ -93,21 +94,22 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
     char Key[PROPERTY_NAME_MAX_SIZE];
     for (int K = 1;; K++)
     {
-        DtFuncPart Part;
+        DtFuncObject Object;
 
-        memset(&Part, 0, sizeof(Part));
+        memset(&Object, 0, sizeof(Object));
         if (snprintf(Key, sizeof(Key), "%s#%d.%d", Name, Number, K) >= (int)sizeof(Key))
             Result = DTAPI_E_BUF_TOO_SMALL;
         else
-            Result = DtPcieCmd_GetPropertyStr(Drv, Key, PortIndex, Part.Name,
-                                              sizeof(Part.Name));
+            Result = DtPcieCmd_GetPropertyStr(Drv, Key, PortIndex, Object.Name,
+                                              sizeof(Object.Name));
 
         if (Result == DTAPI_E_NOT_FOUND)
             return DTAPI_OK;
         if (Result != DTAPI_OK)
             break;
 
-        if (ReadPart(Drv, PortIndex, &Part) && DtVec_Push(&Instance->Parts, &Part) != 0)
+        if (ReadObject(Drv, PortIndex, &Object) &&
+            DtVec_Push(&Instance->Objects, &Object) != 0)
         {
             Result = DTAPI_E_OUT_OF_MEM;
             break;
@@ -122,22 +124,23 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
 //
 void DtFunc_Release(DtFuncInstance* Instance)
 {
-    DtVec_Free(&Instance->Parts);
+    DtVec_Free(&Instance->Objects);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_Get -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtFuncPart* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
-                             const char* Role)
+const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
+                               const char* Role)
 {
-    size_t i = DtVec_Count(&Instance->Parts);
+    size_t i = DtVec_Count(&Instance->Objects);
 
     while (i-- > 0)
     {
-        const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
+        const DtFuncObject* Object = &DT_VEC_AT(&Instance->Objects, DtFuncObject, i);
 
-        if (Part->IsDf == IsDf && Part->Type == Type && strcmp(Part->Role, Role) == 0)
-            return Part;
+        if (Object->IsDf == IsDf && Object->Type == Type &&
+            strcmp(Object->Role, Role) == 0)
+            return Object;
     }
     return NULL;
 }
@@ -148,18 +151,18 @@ const DtFuncPart* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type
 //
 DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd)
 {
-    size_t Count = DtVec_Count(&Instance->Parts);
+    size_t Count = DtVec_Count(&Instance->Objects);
     DtapiResult Result = DTAPI_OK;
     size_t i;
 
     for (i = 0;
          i < Count && (Result == DTAPI_OK || Cmd == DT_EXCLUSIVE_ACCESS_CMD_RELEASE); i++)
     {
-        const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
-        DtapiResult PartResult = DtPcieCmd_ExclAccess(Drv, Part->Ref, Cmd);
+        const DtFuncObject* Object = &DT_VEC_AT(&Instance->Objects, DtFuncObject, i);
+        DtapiResult ObjectResult = DtPcieCmd_ExclAccess(Drv, Object->Ref, Cmd);
 
-        if (Result == DTAPI_OK && PartResult != DTAPI_E_NOT_SUPPORTED)
-            Result = PartResult;
+        if (Result == DTAPI_OK && ObjectResult != DTAPI_E_NOT_SUPPORTED)
+            Result = ObjectResult;
     }
 
     if (Result != DTAPI_OK && Cmd == DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE)
@@ -168,9 +171,9 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 
         for (i = 0; i < Acquired; i++)
         {
-            const DtFuncPart* Part = &DT_VEC_AT(&Instance->Parts, DtFuncPart, i);
+            const DtFuncObject* Object = &DT_VEC_AT(&Instance->Objects, DtFuncObject, i);
 
-            DtPcieCmd_ExclAccess(Drv, Part->Ref, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+            DtPcieCmd_ExclAccess(Drv, Object->Ref, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
         }
     }
     return Result;
@@ -178,7 +181,7 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The oldest DtPcie driver each part works with.
+// The oldest DtPcie driver each object works with.
 static const struct
 {
     bool IsDf;

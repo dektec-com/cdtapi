@@ -35,7 +35,7 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
-    DtPartRef Ch; // The receive channel
+    DtDrvObject Ch; // The receive channel
     int Live;
 } Fixture;
 
@@ -44,7 +44,7 @@ typedef struct Fixture
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     DtFuncInstance Instance;
-    const DtFuncPart* Part;
+    const DtFuncObject* Object;
 
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_Live();
@@ -58,11 +58,11 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close(Fix->Drv);
         return false;
     }
-    Part = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
-    if (Part != NULL)
-        Fix->Ch = Part->Ref;
+    Object = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
+    if (Object != NULL)
+        Fix->Ch = Object->Ref;
     DtFunc_Release(&Instance);
-    return Part != NULL;
+    return Object != NULL;
 }
 
 // Closes the device and checks that nothing is left open or allocated.
