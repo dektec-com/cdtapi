@@ -38,3 +38,9 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
 // DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be had, after which the
 // side codes in the writing thread again.
 DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads);
+
+// Codes a frame's lines on the caller's own threads instead, in Pieces pieces, each given
+// to Dispatch. Dispatch NULL goes back to the writing thread alone. The same rules as
+// DtSdiTx_SetConversionThreads, and DTAPI_E_INVALID_ARG for a Pieces below 1.
+DtapiResult DtSdiTx_SetConversionDispatch(DtTx* Tx, DtDispatchFunc Dispatch, void* User,
+                                          int Pieces);

@@ -1677,6 +1677,7 @@ static void WaitUntilSent(DtTx* Tx)
 static const DtTxBackend g_Ops = {
     .Release = Release,
     .SetConversionThreads = DtSdiTx_SetConversionThreads,
+    .SetConversionDispatch = DtSdiTx_SetConversionDispatch,
     .SetTxControl = SetTxControlSdi,
     .ClearFifo = ClearFifo,
     .GetFifoLoad = GetFifoLoad,
@@ -1695,27 +1696,41 @@ static const DtTxBackend g_Ops = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The working symbols are one set a band, so they follow a change in the number of bands.
+// A side with no buffer yet takes them from the buffer's allocation instead. Symbols that
+// cannot be had for the bands asked for are taken for one band again, so that the side is
+// left coding in the writing thread rather than without them.
+static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
+{
+    if (Result != DTAPI_OK || Sdi->Scratch == NULL)
+        return Result;
+
+    DtAlloc_Free(Sdi->Scratch);
+    Sdi->Scratch = AllocScratch(Sdi);
+    if (Sdi->Scratch == NULL)
+    {
+        DtWork_SetThreads(&Sdi->Work, 1);
+        Sdi->Scratch = AllocScratch(Sdi);
+        Result = DTAPI_E_OUT_OF_MEM;
+    }
+    return Result;
+}
+
 DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
-    DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
 
-    // The working symbols are one set a band, so they follow the number of threads. A
-    // side with no buffer yet takes them from the buffer's allocation instead. Symbols
-    // that cannot be had for the bands asked for are taken for one band again, so that
-    // the side is left coding in the writing thread rather than without them.
-    if (Result == DTAPI_OK && Sdi->Scratch != NULL)
-    {
-        DtAlloc_Free(Sdi->Scratch);
-        Sdi->Scratch = AllocScratch(Sdi);
-        if (Sdi->Scratch == NULL)
-        {
-            DtWork_SetThreads(&Sdi->Work, 1);
-            Sdi->Scratch = AllocScratch(Sdi);
-            Result = DTAPI_E_OUT_OF_MEM;
-        }
-    }
-    return Result;
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiTx_SetConversionDispatch(DtTx* Tx, DtDispatchFunc Dispatch, void* User,
+                                          int Pieces)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+
+    return BandsFollow(Sdi, DtWork_SetDispatch(&Sdi->Work, Dispatch, User, Pieces));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

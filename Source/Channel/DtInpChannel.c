@@ -355,6 +355,27 @@ DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel, int Thre
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.- DtInpChannel_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtInpChannel_SetConversionDispatch(DtInpChannel* InpChannel,
+                                               DtDispatchFunc Dispatch, void* User,
+                                               int Pieces)
+{
+    if (InpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    const DtRxBackend* Ops = InpChannel->Rx->Ops;
+    DtapiResult Result =
+        InpChannel->Reading ? DTAPI_E_IN_USE
+        : Ops->SetConversionDispatch == NULL
+            ? DTAPI_E_NOT_SUPPORTED
+            : Ops->SetConversionDispatch(InpChannel->Rx, Dispatch, User, Pieces);
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched)

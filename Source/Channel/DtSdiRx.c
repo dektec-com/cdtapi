@@ -800,6 +800,7 @@ static const DtRxBackend g_Ops = {
     .ApplyIoConfig = ApplyIoConfig,
     .DetectIoStd = DetectIoStd,
     .SetConversionThreads = DtSdiRx_SetConversionThreads,
+    .SetConversionDispatch = DtSdiRx_SetConversionDispatch,
     .CheckFrame = CheckFrame,
     .TakeFrame = TakeFrame,
     .PrepareWait = PrepareWait,
@@ -809,25 +810,39 @@ static const DtRxBackend g_Ops = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The working buffers are one set a band, so they follow a change in the number of bands.
+// A channel without a layout yet takes them from ConfigureChannel instead. Buffers that
+// cannot be had for the bands asked for are taken for one band again, so that the channel
+// is left converting in the reading thread rather than without them.
+static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
+{
+    if (Result != DTAPI_OK || Sdi->LineBuf == NULL)
+        return Result;
+
+    Result = AllocBands(Sdi);
+    if (Result != DTAPI_OK)
+    {
+        DtWork_SetThreads(&Sdi->Work, 1);
+        AllocBands(Sdi);
+    }
+    return Result;
+}
+
 DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
-    DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
 
-    // The working buffers are one set a band, so they follow the number of threads. A
-    // channel without a layout yet takes them from ConfigureChannel instead. Buffers that
-    // cannot be had for the bands asked for are taken for one band again, so that the
-    // channel is left converting in the reading thread rather than without them.
-    if (Result == DTAPI_OK && Sdi->LineBuf != NULL)
-    {
-        Result = AllocBands(Sdi);
-        if (Result != DTAPI_OK)
-        {
-            DtWork_SetThreads(&Sdi->Work, 1);
-            AllocBands(Sdi);
-        }
-    }
-    return Result;
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiRx_SetConversionDispatch(DtRx* Rx, DtDispatchFunc Dispatch, void* User,
+                                          int Pieces)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+
+    return BandsFollow(Sdi, DtWork_SetDispatch(&Sdi->Work, Dispatch, User, Pieces));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

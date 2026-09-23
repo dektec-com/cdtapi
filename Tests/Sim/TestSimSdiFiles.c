@@ -382,6 +382,58 @@ DT_TEST(SourceFollowsTheClock)
     remove(SOURCE_FILE);
 }
 
+// A dispatch function of the kind a program with its own threads writes: it starts a
+// thread per piece but the first, does that one itself, and joins. A real program hands
+// the pieces to a pool it already has; the shape of the call is what matters here.
+typedef struct Piece
+{
+    DtWorkFunc Work;
+    void* Context;
+    int Index;
+    int Count;
+} Piece;
+
+static void RunPiece(void* Arg)
+{
+    const Piece* P = (const Piece*)Arg;
+
+    P->Work(P->Context, P->Index, P->Count);
+}
+
+typedef struct Dispatcher
+{
+    int Calls; // How often the channel asked, which the case checks is not zero
+} Dispatcher;
+
+static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
+{
+    OsThread* Thread[8];
+    Piece Pieces[8];
+    Dispatcher* Me = (Dispatcher*)User;
+    int Started = 0;
+
+    Me->Calls++;
+    for (int i = 1; i < Count && i < 8; i++)
+    {
+        Pieces[i].Work = Work;
+        Pieces[i].Context = Context;
+        Pieces[i].Index = i;
+        Pieces[i].Count = Count;
+        Thread[i] = OsThread_Start(RunPiece, &Pieces[i]);
+        Started = Thread[i] != NULL ? i : Started;
+    }
+    Work(Context, 0, Count);
+
+    // A piece whose thread could not start is done here, so that every one of them runs.
+    for (int i = 1; i < Count && i < 8; i++)
+    {
+        if (i <= Started && Thread[i] != NULL)
+            OsThread_Join(Thread[i]);
+        else
+            Work(Context, i, Count);
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sink +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What an output channel sends lands in the file, frame for frame and padded: the frames
@@ -651,6 +703,77 @@ DT_TEST(FourKOverThreads)
     remove(SINK_FILE);
 }
 
+// A program that has threads of its own gives a dispatch function instead of a count, and
+// gets the same frames: 2160p50 in and out through Dispatch above, byte for byte what one
+// thread gives. The channel must have asked it for every frame, and a null dispatch must
+// put the channel back to converting in the calling thread.
+DT_TEST(FourKThroughDispatch)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_2160P50, 0, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("2160P50", SOURCE_FILE)));
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    size_t Size = 0, Padded = 0;
+    uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
+    char* Buffer = (char*)malloc(Size);
+    DtInpChannel* In = DtInpChannel_Alloc();
+    DtOutpChannel* Out = DtOutpChannel_Alloc();
+    Dispatcher Reading = {0};
+    Dispatcher Writing = {0};
+    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtInpChannel_SetConversionDispatch(In, Dispatch, &Reading, 0),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtInpChannel_SetConversionDispatch(In, Dispatch, &Reading, 4));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+    int FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_EQ((size_t)FrameSize, Size);
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+    DT_ASSERT_EQ(Reading.Calls, 1);
+
+    // A null dispatch converts in the reading thread again, and the frame is still right.
+    DT_ASSERT_OK(DtInpChannel_SetConversionDispatch(In, NULL, NULL, 0));
+    FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+    DT_ASSERT_EQ(Reading.Calls, 1);
+    DtInpChannel_Free(In);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetConversionDispatch(Out, Dispatch, &Writing, 4));
+    DT_ASSERT_OK(
+        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Out, Buffer, (int)Size, 30000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
+    DT_ASSERT(Writing.Calls > 0);
+    DtOutpChannel_Free(Out);
+    DtDevice_Free(Fix.Device);
+    Fix.Device = NULL;
+    SimDtPcie_Reset(); // Closes the file
+
+    size_t FileSize = 0;
+    uint8_t* File = ReadAll(SINK_FILE, &FileSize);
+    DT_ASSERT(File != NULL && FileSize >= Padded);
+    DT_ASSERT_MEM(File, Expected, Size);
+    free(File);
+    free(Expected);
+    free(Buffer);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+    remove(SINK_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For examples +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Leaves three frames of 1080i50 for the CTest run of DtDetectVidStd with
@@ -666,4 +789,4 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
              DT_RUN(FourKThroughFiles), DT_RUN(FourKOverThreads),
-             DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(FourKThroughDispatch), DT_RUN(LeavesAFileForTheExamples))

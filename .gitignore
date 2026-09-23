@@ -40,6 +40,12 @@ Thumbs.db
 # They live in dektec-com/cdtapi-design; see CONTRIBUTING.md.
 Documentation/
 
+# .-.-.- What the tests write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# A suite run from the source directory rather than the build directory leaves its frame
+# files there. They are megabytes of generated pattern and are made again every run.
+*.sdi
+*.raw
+
 # .-.-.- Internal notes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 # Notes for DekTec's own tooling. They name internal machines and repositories, so they
 # stay out of the published sources; Scripts/check_style.sh refuses them as well.

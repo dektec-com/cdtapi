@@ -159,12 +159,13 @@ static DtWorkPool* CreatePool(int Threads)
     return Pool;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PoolExecute -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PoolDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The library's own pool as an executor. The calling thread takes pieces alongside the
-// workers, so a pool of one thread is the calling thread and nothing else.
+// The library's own pool behind the same dispatch function a caller would give. The
+// calling thread takes pieces alongside the workers, so a pool of one thread is the
+// calling thread and nothing else.
 //
-static void PoolExecute(void* User, DtWorkFunc Work, void* Context, int Count)
+static void PoolDispatch(void* User, DtWorkFunc Work, void* Context, int Count)
 {
     DtWorkPool* Pool = (DtWorkPool*)User;
     const int Helpers = Pool->Started;
@@ -217,25 +218,25 @@ DtapiResult DtWork_SetThreads(DtWork* Work, int Threads)
     Work->Pool = CreatePool(Threads);
     if (Work->Pool == NULL)
         return DTAPI_E_OUT_OF_MEM;
-    Work->Execute = PoolExecute;
+    Work->Dispatch = PoolDispatch;
     Work->User = Work->Pool;
     Work->Pieces = Threads;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_SetExecutor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_SetDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtWork_SetExecutor(DtWork* Work, DtExecuteFunc Execute, void* User,
+DtapiResult DtWork_SetDispatch(DtWork* Work, DtDispatchFunc Dispatch, void* User,
                                int Pieces)
 {
-    if (Execute != NULL && Pieces < 1)
+    if (Dispatch != NULL && Pieces < 1)
         return DTAPI_E_INVALID_ARG;
 
     DtWork_Free(Work);
-    if (Execute == NULL)
+    if (Dispatch == NULL)
         return DTAPI_OK;
 
-    Work->Execute = Execute;
+    Work->Dispatch = Dispatch;
     Work->User = User;
     Work->Pieces = Pieces;
     return DTAPI_OK;
@@ -245,13 +246,13 @@ DtapiResult DtWork_SetExecutor(DtWork* Work, DtExecuteFunc Execute, void* User,
 //
 void DtWork_Run(const DtWork* Work, DtWorkFunc Func, void* Context)
 {
-    if (Work->Execute == NULL)
+    if (Work->Dispatch == NULL)
     {
         for (int i = 0; i < Work->Pieces; i++)
             Func(Context, i, Work->Pieces);
         return;
     }
-    Work->Execute(Work->User, Func, Context, Work->Pieces);
+    Work->Dispatch(Work->User, Func, Context, Work->Pieces);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. DtWork_Band -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

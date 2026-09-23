@@ -34,3 +34,9 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
 // DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be had, after which the
 // side converts in the reading thread again.
 DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads);
+
+// Converts a frame's lines on the caller's own threads instead, in Pieces pieces, each
+// given to Dispatch. Dispatch NULL goes back to the reading thread alone. The same rules
+// as DtSdiRx_SetConversionThreads, and DTAPI_E_INVALID_ARG for a Pieces below 1.
+DtapiResult DtSdiRx_SetConversionDispatch(DtRx* Rx, DtDispatchFunc Dispatch, void* User,
+                                          int Pieces);

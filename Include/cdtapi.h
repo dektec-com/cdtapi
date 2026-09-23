@@ -398,6 +398,33 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// Converting a frame between the raw frame a program holds and the coded lines the card
+// carries divides into pieces that do not depend on one another, so it can run on more
+// than one thread. Either the library makes the threads, which
+// DtInpChannel_SetConversionThreads and DtOutpChannel_SetConversionThreads ask for, or a
+// program that has threads of its own runs the pieces on those, which
+// DtInpChannel_SetConversionDispatch and DtOutpChannel_SetConversionDispatch ask for. A
+// channel given neither converts in the thread that calls it, which is the default and
+// what costs nothing.
+//
+// Whichever it is, the bytes are the same.
+//
+
+// Does piece Index of Count pieces of a conversion. The pieces are independent and may
+// run in any order, on any thread. The library gives this to a DtDispatchFunc; a program
+// does not call it itself.
+typedef void (*DtWorkFunc)(void* Context, int Index, int Count);
+
+// Runs Work(Context, Index, Count) for every Index below Count, on whatever threads the
+// program has, and returns only when every one of them has finished. Running them one
+// after another in the calling thread is a correct implementation, only not a fast one.
+//
+// Nothing the library passes outlives the return, so Context may be held on the stack
+// and there is nothing to free. Work must not be called after the return.
+typedef void (*DtDispatchFunc)(void* User, DtWorkFunc Work, void* Context, int Count);
+
 // Sets how many threads the channel converts a frame's lines over. The default is 1: the
 // thread that calls DtInpChannel_ReadFrame does the whole frame itself, as it always has.
 // Any number above that starts threads of the library's own, which live until the channel
@@ -420,6 +447,35 @@ CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
 // again.
 CDTAPI_API DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel,
                                                          int Threads);
+
+// Converts a frame's lines on the program's own threads instead of the library's. The
+// channel cuts each frame into Pieces pieces and calls Dispatch once, which must run
+// every piece and return only when they have all finished. Pieces is the number that
+// would have gone to DtInpChannel_SetConversionThreads; the channel keeps a working
+// buffer for each, so it has to know before the first frame. Which thread takes which
+// piece is the program's business.
+//
+// With OpenMP the whole of it is:
+//
+//     static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
+//     {
+//         (void)User;
+//     #pragma omp parallel for
+//         for (int i = 0; i < Count; i++)
+//             Work(Context, i, Count);
+//     }
+//
+//     DtInpChannel_SetConversionDispatch(Channel, Dispatch, NULL, 4);
+//
+// With a pool of the program's own it is the call that pool already has for running a job
+// and waiting for it, with User whatever the program wants to find there.
+//
+// Dispatch NULL goes back to the reading thread alone, whatever was set before it. The
+// results are those of DtInpChannel_SetConversionThreads, with DTAPI_E_INVALID_ARG for a
+// Pieces below 1.
+CDTAPI_API DtapiResult DtInpChannel_SetConversionDispatch(DtInpChannel* InpChannel,
+                                                          DtDispatchFunc Dispatch,
+                                                          void* User, int Pieces);
 
 // Stops receiving and discards what the channel holds, and clears the overflow flag.
 CDTAPI_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
@@ -626,6 +682,13 @@ CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
 // again.
 CDTAPI_API DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel,
                                                           int Threads);
+
+// Codes a frame's lines on the program's own threads instead of the library's. It is
+// DtInpChannel_SetConversionDispatch for an output channel, and what that one says holds
+// here, including which calls to write can divide anything.
+CDTAPI_API DtapiResult DtOutpChannel_SetConversionDispatch(DtOutpChannel* OutpChannel,
+                                                           DtDispatchFunc Dispatch,
+                                                           void* User, int Pieces);
 
 // Stops transmitting, discards what the channel has not sent, and clears the flags.
 CDTAPI_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
