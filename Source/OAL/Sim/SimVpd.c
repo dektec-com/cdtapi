@@ -50,7 +50,7 @@ void SimVpd_SetTailBlank(bool Blank)
     for (int i = 0; i < SIM_VPD_TAIL_BYTES; i++)
     {
         g_Eeprom[SIM_VPD_TAIL_OFFSET + i] =
-            Blank ? 0xFF : (uint8_t)(0x5A + i * 7 + i / 32);
+            (uint8_t)(Blank ? 0xFF : 0x5A + i * 7 + i / 32);
     }
 }
 
