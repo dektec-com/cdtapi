@@ -20,10 +20,9 @@
 #include "cdtapi_version.h" // The DTAPI version a request speaks for.
 
 // The DTAPI version a property request says it speaks for. The driver can hide or change
-// properties per DTAPI version, so CDTAPI presents itself as the DTAPI whose
-// behaviour it reproduces: the major and minor number of its own version. The driver
-// compares the bug-fix number too (DtPropertiesFind), so that is DTAPI's, 0, and not
-// CDTAPI's patch number, which would show properties of a later DTAPI.
+// properties per DTAPI version, so a request carries the major and minor number of this
+// library's own version. The driver compares the bug-fix number too, and that is 0 and
+// not this library's patch number, which would ask for properties of a later version.
 #define DT_DTAPI_MAJOR CDTAPI_VERSION_MAJOR
 #define DT_DTAPI_MINOR CDTAPI_VERSION_MINOR
 #define DT_DTAPI_BUGFIX 0
@@ -35,7 +34,7 @@
     #define DT_MMAP_PORT_MEM_SEGMENT_SIZE (256ull * 1024 * 1024)
 #endif
 
-// The oldest DtPcie driver DTAPI works with.
+// The oldest DtPcie driver this library works with.
 #define DT_DRIVER_MIN_MAJOR 1
 #define DT_DRIVER_MIN_MINOR 3
 #define DT_DRIVER_MIN_MICRO 1
@@ -101,8 +100,7 @@ DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef P
 //
 // Fills a property request. The filter fields ask for the device behind Drv as it is:
 // type number -1 selects the attached device, and a hardware revision and firmware
-// version of zero with firmware variant -1 leave the driver to use the device's own, as
-// DTAPI's Device::PropertyGet* do by default.
+// version of zero with firmware variant -1 leave the driver to use the device's own.
 //
 static DtapiResult InitPropertyInput(DtIoctlPropCmdCommonInput* In, int Cmd,
                                      const char* Name, int PortIndex)
@@ -131,8 +129,8 @@ static DtapiResult InitPropertyInput(DtIoctlPropCmdCommonInput* In, int Cmd,
 //
 // Reads a property as the raw 64-bit value the driver stores.
 //
-// DTAPI checks the scope and type of the answer only with debug assertions, and so does
-// not reject a mismatch in a release build. Neither does this.
+// The scope and type of the answer are not checked, so a mismatch in either is passed on
+// rather than rejected.
 //
 static DtapiResult GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex,
                                     uint64_t* Value)
@@ -156,8 +154,8 @@ static DtapiResult GetPropertyValue(OsDrv* Drv, const char* Name, int PortIndex,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsBuddyPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True when ParXtra[0] of this configuration names another port, which DTAPI numbers
-// from 1 and the driver from 0 (DriverUtils::PrepIoConfigForDriver).
+// True when ParXtra[0] of this configuration names another port, which this library
+// numbers from 1 and the driver from 0.
 //
 static bool IsBuddyPort(const DtIoConfig* Config)
 {
@@ -183,8 +181,8 @@ static bool IsBuddyPort(const DtIoConfig* Config)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigToDriver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Converts a configuration to the driver's form, in the order DTAPI does and with the
-// same failures: a code without a name, then an ISI out of range.
+// Converts a configuration to the driver's form, failing in this order: a code without a
+// name, then an ISI out of range.
 //
 static DtapiResult ConfigToDriver(const DtIoConfig* Config, DtIoctlIoConfig* Drv)
 {
@@ -203,7 +201,7 @@ static DtapiResult ConfigToDriver(const DtIoConfig* Config, DtIoctlIoConfig* Drv
     if (Result != DTAPI_OK)
         return Result;
 
-    // DTAPI carries two extra parameters; the driver has room for four.
+    // A configuration carries two extra parameters; the driver has room for four.
     Drv->m_ParXtra[0] = Config->ParXtra[0];
     Drv->m_ParXtra[1] = Config->ParXtra[1];
     Drv->m_ParXtra[2] = -1;
@@ -300,7 +298,7 @@ DtapiResult DtPcieCmd_GetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info)
 
     // GET_DEV_INFO2 first. A driver that predates it refuses the command, and then the
     // original is tried, which carries the same common fields and a PCIe part without the
-    // slot power (DtPcieProxyCORE::CopyDeviceTypeSpecificInfo).
+    // slot power.
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In,
                                          sizeof(In), &Out, sizeof(Out));
     bool HasSlotPower = DT_SUCCEEDED(Result);
@@ -360,7 +358,7 @@ DtapiResult DtPcieCmd_GetPropertyInt(OsDrv* Drv, const char* Name, int PortIndex
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    // Truncated to int, as DTAPI casts it; a negative value is stored sign-extended.
+    // Truncated to int; a negative value is stored sign-extended.
     *Value = (int)(int64_t)Raw;
     return DTAPI_OK;
 }
@@ -389,8 +387,7 @@ DtapiResult DtPcieCmd_GetPropertyBool(OsDrv* Drv, const char* Name, int PortInde
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetPropertyStr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The driver fills a fixed field and need not terminate a string that fills it, so the
-// length is taken within the field. DTAPI checks the scope only with a debug assertion,
-// and this does not check it.
+// length is taken within the field. The scope of the answer is not checked.
 //
 DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex,
                                      char* Str, size_t Size)
@@ -426,9 +423,9 @@ DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetIoConfigList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The request and the answer end in an array of one element per configuration, as
-// DtProxyCORE_IOCONFIG::Get lays them out. The answers are converted into a copy first,
-// so that a list the driver answers only in part leaves every entry as it was.
+// The request and the answer each end in an array of one element per configuration. The
+// answers are converted into a copy first, so that a list the driver answers only in part
+// leaves every entry as it was.
 //
 DtapiResult DtPcieCmd_GetIoConfigList(OsDrv* Drv, DtIoConfig* Configs, int Count)
 {
@@ -516,8 +513,8 @@ DtapiResult DtPcieCmd_SetIoConfigList(OsDrv* Drv, const DtIoConfig* Configs, int
         DtIoctlIoConfig* Pars = &In->m_IoCfgPars[i];
         Result = ConfigToDriver(&Configs[i], Pars);
 
-        // DTAPI skips the driver's exclusive-access check when the configured port is
-        // the one its proxy addresses. A device-level request addresses port index -1, so
+        // The driver's exclusive-access check is skipped when the configured port is the
+        // one the request addresses. A device-level request addresses port index -1, so
         // that is only ever the case for a port number of 0, which the device layer has
         // refused before it gets here.
         Pars->m_SkipExclAccessCheck = (Pars->m_PortIndex == -1) ? 1 : 0;
@@ -590,9 +587,9 @@ static int SdiRateFromDriver(int Rate)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SdiRxGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DT_SDIRX_CMD_GET_SDI_STATUS2, converted as DtProxySDIRX::GetSdiStatus does: the flags
-// to booleans, the frame period in nanoseconds to a rate, and an SDI rate the driver does
-// not define to unknown.
+// DT_SDIRX_CMD_GET_SDI_STATUS2, with the answer converted: the flags to booleans, the
+// frame period in nanoseconds to a rate, and an SDI rate the driver does not define to
+// unknown.
 //
 DtapiResult DtPcieCmd_SdiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtSdiRxStatus* Status)
 {
@@ -663,8 +660,8 @@ DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtPartRef Part)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxConfigure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtProxyCHSDIRX::Configure refuses an SDI rate it cannot convert with
-// DTAPI_E_INVALID_RATE before sending anything; so does this.
+// An SDI rate that cannot be converted is refused with DTAPI_E_INVALID_RATE before
+// anything is sent.
 //
 DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtPartRef Part,
                                        const DtChSdiRxConfig* Config)
@@ -824,8 +821,8 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtPartRef Part, DtChSdiRxProps
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxGetSdiStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtProxyCHSDIRX::GetSdiStatus converts the answer as the SDIRX proxy does, except that
-// it leaves the carrier out; so does this.
+// The answer is converted as DtPcieCmd_SdiRxGetStatus converts it, except that the
+// carrier is left out.
 //
 DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtPartRef Part,
                                           DtSdiRxStatus* Status)

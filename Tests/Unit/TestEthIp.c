@@ -15,11 +15,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// A version 1 header as DTAPI builds one for a UDP datagram of 1,200 bytes over IPv4
-// without VLAN: a frame of 1,242 bytes in 158 words, the IP addresses at byte 44 and the
-// UDP header at byte 52; here with substream 2, a valid time stamp and a time of day of
-// 12345678h seconds and 999,999,999 nanoseconds. The bytes were worked out by hand from
-// the bit positions of EthPrtcls.h.
+// A version 1 header for a UDP datagram of 1,200 bytes over IPv4 without VLAN: a frame
+// of 1,242 bytes in 158 words, the IP addresses at byte 44 and the UDP header at byte
+// 52; here with substream 2, a valid time stamp and a time of day of 12345678h seconds
+// and 999,999,999 nanoseconds. The bytes were worked out by hand from the bit positions
+// the header has on the wire.
 static const uint8_t g_V1[DT_ETHIP_HEADER_SIZE] = {
     0xEE, 0xEE, 0x9E, 0xDA, 0x5C, 0x0D, 0x13, 0x02, // Header word
     0xFF, 0xC9, 0x9A, 0x3B, 0x78, 0x56, 0x34, 0x12, // Time of day

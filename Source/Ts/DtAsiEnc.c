@@ -21,9 +21,9 @@ typedef struct Code8b10b
     uint16_t NextRd;
 } Code8b10b;
 
-// DTAPI's table (Asi8b10bTable, AsiSdiOutpChannel_Bb2.cpp): for each byte, its code and
-// the running disparity after it, first for a negative running disparity, then for a
-// positive one. The tests check it against the code's rules rather than trusting it.
+// For each byte, its code and the running disparity after it, first for a negative
+// running disparity, then for a positive one. The tests check the table against the
+// code's rules rather than trusting it.
 static const Code8b10b g_Codes[256][2] = {
     {{0x0B9, 0}, {0x346, 1}}, {{0x0AE, 0}, {0x351, 1}}, {{0x0AD, 0}, {0x352, 1}},
     {{0x363, 1}, {0x0A3, 0}}, {{0x0AB, 0}, {0x354, 1}}, {{0x365, 1}, {0x0A5, 0}},
@@ -153,7 +153,7 @@ static void PutByte(DtAsiEnc* Enc, uint16_t** Out, uint8_t Byte)
 // bits a second has no fraction.
 #define INTERVAL (188 * 8)
 
-// The TXONTIME states of TpToAsiConvertor::ConvertTxOnTime.
+// The states of a DTAPI_TXMODE_TXONTIME conversion.
 enum
 {
     ONTIME_INIT,
@@ -165,8 +165,8 @@ enum
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TpToAsiConvertor::SetBitrate. When the line has no room for even one K28.5 before
-// each packet, DTAPI sends none but still reserves the room of one; that is kept.
+// When the line has no room for even one K28.5 before each packet, none is sent, but the
+// room of one is still reserved.
 //
 static DtapiResult ApplyRate(DtAsiEnc* Enc, int64_t Rate, int OutSize, bool Raw)
 {
@@ -247,7 +247,7 @@ DtapiResult DtAsiEnc_SetTxMode(DtAsiEnc* Enc, int TxMode)
     Enc->TxOnTime = (TxMode & DTAPI_TXMODE_TXONTIME) != 0;
 
     // The rate counts in the new packet size; one the new size does not fit is refused
-    // when the stream starts, as DTAPI refuses it then.
+    // when the stream starts, not here.
     ApplyRate(Enc, Enc->Rate, Out, Raw);
     return DTAPI_OK;
 }
@@ -294,8 +294,8 @@ typedef struct Cursor
 //
 // What comes before a packet's first byte, in normal and burst mode: dropping the bytes
 // MIN16 leaves out of the packet before, finding the sync byte, and the K28.5 before the
-// packet. Returns false when the input or the room ran out first. DTAPI reads one byte
-// past the input when it runs out while searching for a sync byte; this does not.
+// packet. Returns false when the input or the room ran out first. No byte past the end
+// of the input is read while a sync byte is searched for.
 //
 static bool StartPacket(DtAsiEnc* Enc, Cursor* C)
 {
@@ -346,8 +346,8 @@ static void EndPacket(DtAsiEnc* Enc)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertNormal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TpToAsiConvertor::ConvertNormalMode: the rate decides symbol by symbol whether a byte
-// or a K28.5 goes out, so the fill is spread between the bytes.
+// In normal mode the rate decides symbol by symbol whether a byte or a K28.5 goes out,
+// so the fill is spread between the bytes.
 //
 static void ConvertNormal(DtAsiEnc* Enc, Cursor* C)
 {
@@ -392,8 +392,8 @@ static void ConvertNormal(DtAsiEnc* Enc, Cursor* C)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TpToAsiConvertor::ConvertBurstMode: the K28.5 the rate needs go before the packet's
-// bytes, which then go out back to back, and the accumulator is settled per packet.
+// In burst mode the K28.5 the rate needs go before the packet's bytes, which then go out
+// back to back, and the accumulator is settled per packet.
 //
 static void ConvertBurst(DtAsiEnc* Enc, Cursor* C)
 {
@@ -447,9 +447,8 @@ static void ConvertBurst(DtAsiEnc* Enc, Cursor* C)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertOnTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TpToAsiConvertor::ConvertTxOnTime: a symbol is two ticks of 54 MHz; K28.5 go out until
-// a packet's time has come, then the packet. DTAPI reads one byte past the input when it
-// runs out while searching for a sync byte; this does not.
+// A symbol is two ticks of 54 MHz; K28.5 go out until a packet's time has come, then the
+// packet. No byte past the end of the input is read while a sync byte is searched for.
 //
 static void ConvertOnTime(DtAsiEnc* Enc, Cursor* C)
 {

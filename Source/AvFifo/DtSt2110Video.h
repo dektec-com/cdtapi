@@ -18,13 +18,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// DTAPI's VideoTx. A frame, or a field of interlaced and PsF video, is cut into rows of
-// pixel groups and the rows into packets: one row or less per packet, or up to three rows
-// when the payload holds them. The last packet carries the marker. The first packet is
-// sent the transmit offset after the frame's time, less the card's output delay, and the
-// others follow at equal spacing over the frame period, or over its active part for
-// gapped scheduling. The second field of PsF video repeats the first field's RTP
-// timestamp.
+// A frame, or a field of interlaced and PsF video, is cut into rows of pixel groups and
+// the rows into packets: one row or less per packet, or up to three rows when the
+// payload holds them. The last packet carries the marker. The first packet is sent the
+// transmit offset after the frame's time, less the card's output delay, and the others
+// follow at equal spacing over the frame period, or over its active part for gapped
+// scheduling. The second field of PsF video repeats the first field's RTP timestamp.
 //
 
 // The bytes of video a packet holds at most: a UDP datagram less the UDP and RTP headers
@@ -57,8 +56,8 @@ typedef struct DtSt2110VideoTx
     uint32_t PrevRtpTime;
 } DtSt2110VideoTx;
 
-// Configures a packetizer for 8-bit or 10-bit UYVY, with DTAPI's transmit offset and
-// active part for the resolution, scanning and rate. DTAPI_E_INVALID_ARG for a rate or
+// Configures a packetizer for 8-bit or 10-bit UYVY, with the transmit offset and active
+// part for the resolution, scanning and rate. DTAPI_E_INVALID_ARG for a rate or
 // format that is not valid, or a resolution that is not a positive even width and
 // positive height.
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
@@ -88,11 +87,11 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's VideoRx. It learns the frame's size from the stream: waiting for a marker, it
-// counts the rows and bytes of a frame that starts at row 0, and reads the last row
-// number and a row's length from the row headers; an interlaced frame, a field, gets room
-// for one row more. From the first marker on, a frame is the packets up to the next
-// marker, with the RTP timestamp and time of arrival of its first packet.
+// The parser learns the frame's size from the stream: waiting for a marker, it counts
+// the rows and bytes of a frame that starts at row 0, and reads the last row number and
+// a row's length from the row headers; an interlaced frame, a field, gets room for one
+// row more. From the first marker on, a frame is the packets up to the next marker, with
+// the RTP timestamp and time of arrival of its first packet.
 //
 //   a gap in the sequence numbers inside a frame    an incomplete frame, skipped
 //   a gap before a frame's first packet             a gap, and the frame is received

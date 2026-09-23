@@ -4,12 +4,11 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DTAPI transmits through DtOutpChannel, which checks the arguments and admits one caller
-// at a time, and AsiSdiOutpChannel_Bb2, which keeps the implementation of the port's
-// transmitter for its I/O standard. This file does what those two do: the checks in
-// DTAPI's order, the lock, attaching and detaching. The transmitting is the side's, a
-// DtTx behind the functions of DtTxBackend.h: DtSdiTx.c for raw SDI frames, DtAsiTx.c
-// for a transport stream over ASI (0011).
+// An output channel checks the arguments, admits one caller at a time, and keeps the side
+// that transmits for the port's I/O standard. This file holds the checks and the order
+// they are made in, the lock, attaching and detaching. The transmitting is the side's, a
+// DtTx behind the functions of DtTxBackend.h: DtSdiTx.c for raw SDI frames, DtAsiTx.c for
+// a transport stream over ASI (0011).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -29,13 +28,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's values for what CDTAPI.h does not define.
+// Internal names for the values the checks below use.
 //
 
 #define DT_INSTANT_DETACH 1  // DTAPI_INSTANT_DETACH
 #define DT_WAIT_UNTIL_SENT 2 // DTAPI_WAIT_UNTIL_SENT
 
-// How long DtOutpChannel::Detach waits for users of the channel: ten times 10 ms.
+// How long a detach waits for users of the channel: ten times 10 ms.
 #define DT_DETACH_TRIES 10
 #define DT_DETACH_PAUSE_MS 10
 
@@ -57,8 +56,8 @@ struct DtOutpChannel
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LockAttached -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Takes the lock of an attached channel, as DtOutpChannel's DetachLock admits a call.
-// Returns DTAPI_E_NOT_ATTACHED, without the lock, otherwise.
+// Takes the lock of an attached channel, which is what admits a call. Returns
+// DTAPI_E_NOT_ATTACHED, without the lock, otherwise.
 //
 static DtapiResult LockAttached(DtOutpChannel* Chan)
 {
@@ -85,10 +84,10 @@ static void ReleaseAll(DtOutpChannel* Chan)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtOutpChannel::Detach: asks a write on another thread to return and waits for it up to
-// Tries pauses of 10 ms, or without a limit for -1. Then, with DTAPI_WAIT_UNTIL_SENT and
-// while sending, waits until the card has taken what was written; with
-// DTAPI_INSTANT_DETACH forgets it. Stops, and releases everything.
+// Asks a write on another thread to return and waits for it up to Tries pauses of 10 ms,
+// or without a limit for -1. Then, with DTAPI_WAIT_UNTIL_SENT and while sending, waits
+// until the card has taken what was written; with DTAPI_INSTANT_DETACH forgets it. Stops,
+// and releases everything.
 //
 // A detach that gives up with DTAPI_E_TIMEOUT withdraws its request, so the channel stays
 // attached and usable; one that finds the channel detached by another while it waited
@@ -162,9 +161,9 @@ DtOutpChannel* DtOutpChannel_Alloc(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// As DTAPI's destructor: an instant detach whose result is ignored. Unlike a detach, it
-// waits for a write on another thread to return for as long as it takes, so that it does
-// not use the channel after it is gone.
+// An instant detach whose result is ignored. Unlike a detach, it waits for a write on
+// another thread to return for as long as it takes, so that it does not use the channel
+// after it is gone.
 //
 void DtOutpChannel_Free(DtOutpChannel* OutpChannel)
 {
@@ -249,9 +248,8 @@ static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtOutpChannel::AttachToPort, AsiSdiOutpChannel_Bb2::InitOutpChannel, then the side's
-// attach, in their order. A failure after the channel has its own handle lets go of all
-// of it.
+// The channel's checks, the port's, and then the side's attach, in that order. A failure
+// after the channel has its own handle lets go of all of it.
 //
 static DtapiResult Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
 {
@@ -384,8 +382,8 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtOutpChannel::GetIoConfig: -1 in every output first, the group checked, and then what
-// DtDevice_GetIoConfig checks and reads of the channel's port.
+// -1 in every output first, the group checked, and then what DtDevice_GetIoConfig
+// checks and reads of the channel's port.
 //
 DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int Group, int* Value,
                                       int* SubValue, int64_t* ParXtra0, int64_t* ParXtra1)
@@ -424,12 +422,10 @@ DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int Group, int
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtOutpChannel::SetIoConfig's checks, then AsiSdiOutpChannel_Bb2::SetIoConfig's. DTAPI
-// also refuses a configuration the port lacks a capability for; here the driver does.
-// The transmit mode is kept. A standard that crosses between SDI and ASI releases the
-// one side, sets the configuration and attaches the other, with its default transmit
-// mode; when that fails the channel is left detached, where DTAPI leaves it without a
-// side.
+// The channel's checks, then the side's. A configuration the port lacks a capability for
+// is refused by the driver. The transmit mode is kept. A standard that crosses between
+// SDI and ASI releases the one side, sets the configuration and attaches the other, with
+// its default transmit mode; when that fails the channel is left detached.
 //
 DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int Value,
                                       int SubValue, int64_t ParXtra0, int64_t ParXtra1)
@@ -514,9 +510,9 @@ DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtOutpChannel::SetTxMode's checks, then the side's: no 192-byte packets, and an SDI
-// mode with the full frame when it names neither the full frame nor active video, and
-// with compression and network byte order only on a port that has them.
+// The channel's checks, then the side's: no 192-byte packets, and an SDI mode with the
+// full frame when it names neither the full frame nor active video, and with compression
+// and network byte order only on a port that has them.
 //
 DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int StuffMode)
 {
@@ -554,12 +550,11 @@ DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtOutpChannel::Write's checks, the four-byte checks always applied: the buffer's
-// address and the size must be multiples of 4, and a failing check overrides an idle
-// channel, as it does in DTAPI. A null buffer with bytes to write is refused when not
-// idle, where DTAPI would read it. A write while a Write or WriteFrame on another thread
-// has not returned gives DTAPI_E_IN_USE. Then the side takes the bytes, waiting for room
-// without the lock.
+// The write's checks, the four-byte checks always applied: the buffer's address and the
+// size must be multiples of 4, and a failing check overrides an idle channel. A null
+// buffer with bytes to write is refused when not idle. A write while a Write or
+// WriteFrame on another thread has not returned gives DTAPI_E_IN_USE. Then the side takes
+// the bytes, waiting for room without the lock.
 //
 DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
                                 int NumBytesToWrite)

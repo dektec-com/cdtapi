@@ -116,8 +116,8 @@ static void SendPacket(DtAvTxStream* Stream, const DtAvSink* Sink, uint32_t RtpT
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110AudioTx_Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AudioTx::TransferFrame. The time of a packet is kept in thousandths of a nanosecond, as
-// DTAPI keeps it, so that it does not drift from the sample rate.
+// The time of a packet is kept in thousandths of a nanosecond, so that it does not drift
+// from the sample rate.
 //
 DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvSink* Sink)

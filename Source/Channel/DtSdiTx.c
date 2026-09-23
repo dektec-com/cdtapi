@@ -23,7 +23,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// SdiTxImpl_Bb2's typical and maximum FIFO size, reported for a port without a buffer.
+// The typical and maximum FIFO size, reported for a port without a buffer.
 #define DT_FIFO_SIZE_TYP (48 * 1024 * 1024)
 #define DT_FIFO_SIZE_MAX (64 * 1024 * 1024)
 
@@ -33,14 +33,14 @@
 #define DT_BUF_FRAMES 5
 #define DT_BUF_MIN_FRAMES 2
 
-// The format events per frame MxChannelMemlessTx asks for.
+// The format events per frame the channel asks for.
 #define DT_FMT_EVENTS_PER_FRAME 4
 
 // A detach that waits until everything is sent gives up after a second without a format
 // event.
 #define DT_SENT_STALL_MS 1000
 
-// DoStandbyToRunImpl reads the burst FIFO's load at most five times for 75 % full.
+// The burst FIFO's load is read at most five times for 75 % full.
 #define DT_BURST_POLLS 5
 
 // The format event of the first frame of a run from which the thread may write a black
@@ -48,13 +48,13 @@
 // frame. The last quarter of a frame goes out only when data follows it.
 #define DT_FIRST_BLACK_SEQ 2
 
-// The PHY's underflow flag is read every so many format events, as the Matrix does.
+// The PHY's underflow flag is read every so many format events.
 #define DT_PHY_POLL_EVENTS 50
 
 // The largest header with its padding: 20 bytes padded to 512 bits.
 #define DT_MAX_TX_HEADER 64
 
-// SdiTxImpl_Bb2's search for the start of line 1 of an SD frame.
+// The search for the start of line 1 of an SD frame.
 #define DT_SD_IN_SYNC 0
 #define DT_SD_FIND_FIELD2 1
 #define DT_SD_FIND_FRAME_START 2
@@ -407,10 +407,9 @@ static void StopKeeper(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BlocksToIdle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Every block idle, downstream first, as DoStandbyToIdleImpl: the switch from a quad-link
-// master where the port has it, and the demultiplexer and its switches on a port with
-// DT_CAP_QUADLINK. Returns the first failure; the blocks after it are set idle all the
-// same.
+// Every block idle, downstream first: the switch from a quad-link master where the port
+// has it, and the demultiplexer and its switches on a port with DT_CAP_QUADLINK. Returns
+// the first failure; the blocks after it are set idle all the same.
 //
 static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 {
@@ -443,10 +442,9 @@ static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IdleToHold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DoIdleToStandyImpl: the pipeline runs and fills from the start of the buffer, the
-// demultiplexer left out on a single link, and the PHY waits. With 8-bit symbols or a 4K
-// standard holding fails as the Matrix's row validation fails DTAPI's
-// (MxOutpDma::ValidateRowConfigRaw), before a block changes.
+// The pipeline runs and fills from the start of the buffer, the demultiplexer left out on
+// a single link, and the PHY waits. A channel that registered no buffer, which is one
+// whose configuration carries no raw frames, fails here before any block changes.
 //
 static DtapiResult IdleToHold(DtSdiTx* Sdi)
 {
@@ -495,10 +493,9 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HoldToSend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiTxImpl_Bb2::TxHold2Send's check for a frame that has not gone out, then
-// DoStandbyToRunImpl: the burst FIFO is given five reads to fill to 75 %, its and the
-// reorder buffer's statistics are cleared, and the PHY runs. The PHY's underflow flag of
-// an earlier run is cleared too.
+// Refused without a frame that has not gone out. Then the burst FIFO is given five reads
+// to fill to 75 %, its and the reorder buffer's statistics are cleared, and the PHY runs.
+// The PHY's underflow flag of an earlier run is cleared too.
 //
 static DtapiResult HoldToSend(DtSdiTx* Sdi)
 {
@@ -544,8 +541,8 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendToHold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DoRunToStandbyImpl, after the thread has stopped; the underflow status is cleared, the
-// latched flag kept, as TxSend2Hold does.
+// After the thread has stopped: the PHY waits, the underflow status is cleared and the
+// latched flag kept.
 //
 static DtapiResult SendToHold(DtSdiTx* Sdi)
 {
@@ -573,7 +570,7 @@ static DtapiResult HoldToIdle(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiTxImpl_Bb2::SetTxControl: IDLE to SEND goes through HOLD, and SEND to IDLE too.
+// IDLE to SEND goes through HOLD, and SEND to IDLE too.
 //
 static DtapiResult SetTxControl(DtSdiTx* Sdi, int TxControl)
 {
@@ -601,7 +598,7 @@ static DtapiResult SetTxControl(DtSdiTx* Sdi, int TxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiTxImpl_Bb2::Reset: idle, which forgets what the buffer held, and every flag cleared.
+// Idle, which forgets what the buffer held, and every flag cleared.
 //
 static DtapiResult ResetFifo(DtSdiTx* Sdi)
 {
@@ -618,8 +615,8 @@ static DtapiResult ResetFifo(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for five frames plus the raw frames DTAPI's 48 MB FIFO holds, rounded up to a
-// power of two within the Matrix's bounds, and to whole prefetch units of pages.
+// Room for five frames plus the raw frames a 48 MB FIFO holds, rounded up to a power of
+// two within the buffer's bounds, and to whole prefetch units of pages.
 //
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
@@ -636,7 +633,7 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The DMA controller lets go of the buffer, which is then freed, and the standard's
-// buffers go too. Failures are ignored, as DtPalCDMAC_Tx::CleanUp ignores them.
+// buffers go too. Failures are ignored.
 //
 static void FreeBuffer(DtSdiTx* Sdi)
 {
@@ -661,12 +658,11 @@ static void FreeBuffer(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// MxChannelMemlessTx::SetVidStd for the port's I/O standard, while idle: format events,
-// the stream alignment and the format, the start-of-frame offset, the switches around
-// the demultiplexer, and a buffer for the standard, registered anew only when its size
+// Sets the channel up for the port's I/O standard, while idle: format events, the stream
+// alignment and the format, the start-of-frame offset, the switches around the
+// demultiplexer, and a buffer for the standard, registered anew only when its size
 // changes. 2160p over one 6G or 12G link is sent as raw frames (0014); a 4K standard over
-// four links, or of level-B links, which DTAPI's raw row does not take either, leaves the
-// channel without a buffer; see IdleToHold.
+// four links, or of level-B links, leaves the channel without a buffer; see IdleToHold.
 //
 static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 {
@@ -838,11 +834,11 @@ static size_t StartBytes(const DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsFrameStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiTxImpl_Bb2::CheckEav, comparing the upper eight bits of each symbol. HD and 3G start
-// with the EAV and line number of line 1, each word in both streams; 2160p over one link
-// with the same six words in each of its eight streams. SD has no line number: its first
-// frame starts at any line in the vertical blanking of field 1, and after a mismatch the
-// search first needs an active line of field 2 and then again a blanking line of field 1.
+// Checks for an EAV, comparing the upper eight bits of each symbol. HD and 3G start with
+// the EAV and line number of line 1, each word in both streams; 2160p over one link with
+// the same six words in each of its eight streams. SD has no line number: its first frame
+// starts at any line in the vertical blanking of field 1, and after a mismatch the search
+// first needs an active line of field 2 and then again a blanking line of field 1.
 //
 static bool IsFrameStart(DtSdiTx* Sdi, const uint8_t* Bytes)
 {
@@ -895,8 +891,8 @@ static void StartFrame(DtSdiTx* Sdi, size_t Held)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrameBoundary -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiTxImpl_Bb2::FindFrameBoundary: bytes that cannot start a frame are skipped four at a
-// time, and bytes too few to judge are kept for the next write.
+// Bytes that cannot start a frame are skipped four at a time, and bytes too few to judge
+// are kept for the next write.
 //
 static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
 {
@@ -1077,9 +1073,9 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiTxImpl_Bb2::WriteSdi, into the buffer: every byte is taken, a frame at a time. The
-// lock is released after every line, so that the thread is not kept waiting, and the
-// state is looked at again after it was.
+// Into the buffer: every byte is taken, a frame at a time. The lock is released after
+// every line, so that the thread is not kept waiting, and the state is looked at again
+// after it was.
 //
 static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
 {
@@ -1216,11 +1212,10 @@ static void PadToWord(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The parts of AF_ASISDITX and AF_DMA the channel drives, as
-// MxChannelMemlessTx::GetProxies asks for them, and whether the driver is new enough for
-// each: always the DMA controller, the burst FIFO, the formatter, the encoder and the
-// PHY; the demultiplexer and its two switches on a port with DT_CAP_QUADLINK; and the
-// switch from a quad-link master when the port has it.
+// The parts of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is new
+// enough for each: always the DMA controller, the burst FIFO, the formatter, the encoder
+// and the PHY; the demultiplexer and its two switches on a port with DT_CAP_QUADLINK; and
+// the switch from a quad-link master when the port has it.
 //
 static DtapiResult FindParts(DtSdiTx* Sdi)
 {
@@ -1279,9 +1274,8 @@ static DtapiResult FindParts(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Lets go of the buffer and the exclusive access, ignoring failures, as
-// MxChannelMemlessTx::Detach does. Releasing the exclusive access of a part the handle
-// does not hold changes nothing.
+// Lets go of the buffer and the exclusive access, ignoring failures. Releasing the
+// exclusive access of a part the handle does not hold changes nothing.
 //
 static void Release(DtTx* Tx)
 {
@@ -1337,7 +1331,7 @@ static DtapiResult GetFifoLoad(DtTx* Tx, int* FifoLoad)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoSizeOr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The load GetFifoLoad reports for a full buffer. A channel without a buffer, on a 4K
-// port, gives DTAPI's typical size, and its maximum size for GetMaxFifoSize.
+// port, gives the typical FIFO size, and the maximum size for GetMaxFifoSize.
 //
 static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
 {
@@ -1378,9 +1372,8 @@ static DtapiResult GetFlags(DtTx* Tx, int* Status, int* Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiTxImpl_Bb2::SetTxMode, once DtOutpChannel.c has checked the mode: while idle, the
-// full frame only. The mode is kept for the side's life, also across a change of SDI
-// standard.
+// Once DtOutpChannel.c has checked the mode: while idle, the full frame only. The mode is
+// kept for the side's life, also across a change of SDI standard.
 //
 static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
 {
@@ -1422,7 +1415,7 @@ static DtapiResult ApplyIoConfig(DtTx* Tx, const DtIoConfig* Config,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlagsSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiTxImpl_Bb2::ClearFlags.
+// Clears the underflow flags named in Latched.
 //
 static DtapiResult ClearFlagsSdi(DtTx* Tx, int Latched)
 {
@@ -1437,7 +1430,7 @@ static DtapiResult ClearFlagsSdi(DtTx* Tx, int Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxPolarity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiSdiTxImpl_Bb2::SetTxPolarity: SDI takes the normal polarity only.
+// SDI takes the normal polarity only.
 //
 static DtapiResult SetTxPolarity(DtTx* Tx, int TxPolarity)
 {
@@ -1588,8 +1581,8 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     if (Result == DTAPI_OK)
         Result = BlocksToIdle(Sdi);
 
-    // MxChannelMemlessTx::InitChannel: the data comes from the channel, not from a
-    // quad-link master, where the port has that switch.
+    // The data comes from the channel, not from a quad-link master, where the port has
+    // that switch.
     if (Result == DTAPI_OK && Sdi->FromMaster.Uuid != 0)
         Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->FromMaster, 0, 0);
     if (Result == DTAPI_OK)

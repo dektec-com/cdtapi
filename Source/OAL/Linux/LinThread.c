@@ -301,7 +301,7 @@ uint64_t OsTime_MonotonicMs(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Name -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// program_invocation_name, as XpUtil's GetCurrentProcessName on Linux.
+// The name the program was invoked with, from program_invocation_name.
 //
 void OsProcess_Name(char* Buf, size_t Size)
 {

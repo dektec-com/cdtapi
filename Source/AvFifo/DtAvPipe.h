@@ -21,10 +21,10 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipe +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// DTAPI's DtPalPipe_Nw: a pipe of the network function, opened by type with a fallback,
-// and its shared buffer, a whole number of the pipe's prefetch pages, page-aligned, with
-// one data word kept free. The process keeps its own offset in the buffer: the read
-// offset of a receive pipe, the write offset of a transmit pipe.
+// A pipe of the network function, opened by type with a fallback, and its shared buffer,
+// a whole number of the pipe's prefetch pages, page-aligned, with one data word kept
+// free. The process keeps its own offset in the buffer: the read offset of a receive
+// pipe, the write offset of a transmit pipe.
 //
 
 // The largest packet a pipe holds: 2,047 words of a jumbo packet.
@@ -96,10 +96,10 @@ DtapiResult DtAvWriter_Flush(DtAvWriter* Writer);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's RxDataThread, one pass: the packets between the process's read offset and the
-// pipe's write offset, each in one piece, a packet around the end of the buffer copied
-// into a scratch packet. A header that does not check, or a packet larger than a pipe
-// holds, means the process lost the packet boundaries: the read offset jumps to the write
+// One pass over the buffer: the packets between the process's read offset and the pipe's
+// write offset, each in one piece, a packet around the end of the buffer copied into a
+// scratch packet. A header that does not check, or a packet larger than a pipe holds,
+// means the process lost the packet boundaries: the read offset jumps to the write
 // offset and the pass reports it. The read offset moves on after the pass.
 //
 

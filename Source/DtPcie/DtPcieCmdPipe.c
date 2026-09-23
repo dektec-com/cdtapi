@@ -143,7 +143,7 @@ DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtPartRef Part, int Type, int Fallb
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_NwClosePipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtProxyNw::ClosePipe addresses the command to the pipe rather than to the function.
+// The command is addressed to the pipe rather than to the network function.
 //
 DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, DtPartRef Pipe)
 {
@@ -200,8 +200,8 @@ DtapiResult DtPcieCmd_PipeGetStatus(OsDrv* Drv, DtPartRef Pipe, DtPipeStatus* St
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetSharedBufferAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPalPipe_Nw::AllocateSharedBuffer. The answer must hold at least the command's fixed
-// output structure, as for CDMAC's buffer.
+// The answer must hold at least the command's fixed output structure, as for CDMAC's
+// buffer.
 //
 DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtPartRef Pipe,
                                             const OsDmaBuffer* Buf, bool BufferIsOutput)
@@ -264,7 +264,8 @@ DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, DtPartRef Pipe)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_PipeSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPalPipe_Nw::SetOperationalMode refuses a mode it cannot convert; so does this.
+// An operational mode that is none of the driver's own values is refused without a
+// command.
 //
 DtapiResult DtPcieCmd_PipeSetOpMode(OsDrv* Drv, DtPartRef Pipe, int OpMode)
 {

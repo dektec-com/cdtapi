@@ -16,7 +16,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The packet spacing is kept in thousandths of a nanosecond, as DTAPI keeps it.
+// The packet spacing is kept in thousandths of a nanosecond.
 #define SPACING_FRACTION 1000
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PartOfPeriod -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -33,10 +33,10 @@ static int PartOfPeriod(const FrameRate* Rate, int Part, int Whole)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Configure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// VideoTx::VideoTx for TxConfigVideo. The transmit offset is a part of the frame period:
-// 43/1125 for progressive video of 1080 lines and more, 28/750 below; 26/625 for
-// 625-line interlaced video, 20/525 for 525 lines, told apart by a width of 720 and the
-// field rate, and 22/1125 for other interlaced video.
+// The transmit offset is a part of the frame period: 43/1125 for progressive video of
+// 1080 lines and more, 28/750 below; 26/625 for 625-line interlaced video, 20/525 for
+// 525 lines, told apart by a width of 720 and the field rate, and 22/1125 for other
+// interlaced video.
 //
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
@@ -141,8 +141,6 @@ DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketsPerFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// VideoTx::CalcNumberOfIpPacketsPerFrame.
-//
 static int PacketsPerFrame(const DtSt2110VideoTx* Tx)
 {
     int64_t Rows = Tx->NumRows;
@@ -157,8 +155,6 @@ static int PacketsPerFrame(const DtSt2110VideoTx* Tx)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// VideoTx::Init.
 //
 DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Stream)
 {
@@ -228,9 +224,9 @@ int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// VideoTx::TransferFrame. A packet takes a second row header when the rest of its row
-// leaves room in the payload and more rows follow, and a third when the room after the
-// rest of the row exceeds a whole row and more than two rows follow.
+// A packet takes a second row header when the rest of its row leaves room in the payload
+// and more rows follow, and a third when the room after the rest of the row exceeds a
+// whole row and more than two rows follow.
 //
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvSink* Sink)
@@ -328,7 +324,7 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetSizes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// VideoRx::ResetFrameSizeCalculations, and the frame being received back to the pool.
+// Forgets the learned frame sizes and returns the frame being received to the pool.
 //
 static void ResetSizes(DtSt2110VideoRx* Rx)
 {
@@ -370,9 +366,9 @@ void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// VideoRx::ParsePayloadHeader: the row headers up to one without continuation or of
-// length 0, at most three, with bounds checks DTAPI leaves out. Sets the offset of the
-// data. False when the packet is to be skipped.
+// The row headers up to one without continuation or of length 0, at most three, each
+// checked against the payload size. Sets the offset of the data. False when the packet
+// is to be skipped.
 //
 static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSize,
                      DtAvSrd* Srd, int* NumRows, bool* Field1, int* DataOffset)
@@ -434,9 +430,9 @@ static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSiz
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CountFrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// VideoRx::CountFrameSize: counts the bytes and rows of a frame from its row 0 while its
-// packets follow each other, and takes the last row number, whether rows step by two,
-// and a row's length from every packet.
+// Counts the bytes and rows of a frame from its row 0 while its packets follow each
+// other, and takes the last row number, whether rows step by two, and a row's length
+// from every packet.
 //
 static void CountFrameSize(DtSt2110VideoRx* Rx, int NumRows, const DtAvSrd* Srd,
                            uint32_t SeqNum)
@@ -485,8 +481,8 @@ static void CountFrameSize(DtSt2110VideoRx* Rx, int NumRows, const DtAvSrd* Srd,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CalculateFrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// VideoRx::CalculateFrameSize: rows times their length, a row more for a field, or the
-// counted size when that is larger.
+// The frame size: rows times their length, a row more for a field, or the counted size
+// when that is larger.
 //
 static void CalculateFrameSize(DtSt2110VideoRx* Rx)
 {
@@ -559,8 +555,6 @@ static void Finish(DtSt2110VideoRx* Rx, bool Field1)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoRx_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// VideoRx::ParseData.
 //
 void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
 {

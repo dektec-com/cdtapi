@@ -134,8 +134,8 @@ static size_t MakeFrame(uint8_t* Frame, uint16_t SrcPort, uint16_t DstPort, int 
     return (size_t)(42 + Payload);
 }
 
-// Writes a packet of Frame, to be sent at TodNs, into a transmit buffer at Offset, as
-// DTAPI builds one. Returns the packet's size.
+// Writes a packet of Frame, to be sent at TodNs, into a transmit buffer at Offset, in
+// the layout the card takes. Returns the packet's size.
 static size_t PutPacket(OsDmaBuffer* Buf, size_t Offset, const uint8_t* Frame,
                         size_t Size, uint64_t TodNs)
 {
@@ -367,8 +367,8 @@ DT_TEST(SoftwarePipesRunOut)
     FINISH(Fix);
 }
 
-// Closing checks the pipe as DtDfNw_PipeClose does, and a closing handle closes its
-// pipes.
+// Closing checks that the pipe is one this handle opened, and a closing handle closes
+// its pipes.
 DT_TEST(ClosingPipes)
 {
     Fixture Fix;
@@ -950,7 +950,7 @@ DT_TEST(OverflowLosesAndClears)
     FINISH(Fix);
 }
 
-// The filter as DtPipe_IsPacketForPipe applies it: addresses, their version, the source
+// The filter as the emulated pipe applies it: addresses, their version, the source
 // port of substream 0, and VLAN tags.
 DT_TEST(SoftwareFilter)
 {

@@ -82,8 +82,8 @@ static DtapiResult GetInt(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part, In
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetOneOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads one Int that must be one of the Count values in Allowed, as DTAPI's proxy
-// converts it; any other answer is DTAPI_E_DEV_DRIVER, and *Value is then 0.
+// Reads one Int that must be one of the Count values in Allowed; any other answer is
+// DTAPI_E_DEV_DRIVER, and *Value is then 0.
 //
 static DtapiResult GetOneOf(OsDrv* Drv, uint32_t Code, int Cmd, DtPartRef Part,
                             int* Value, const int* Allowed, int Count)
@@ -208,8 +208,8 @@ DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, DtPartRef Part, int* Mode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_AsiRxGetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtProxyASIRX::GetStatus: a packet size or polarity the proxy does not know is the
-// driver's fault. The status is cleared after a failure.
+// A packet size or polarity that is none of the driver's own values is the driver's
+// fault. The status is cleared after a failure.
 //
 DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtAsiRxStatus* Status)
 {

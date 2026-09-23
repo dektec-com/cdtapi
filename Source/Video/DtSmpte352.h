@@ -15,11 +15,10 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Payload fields +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A VPID is the four bytes of the payload identifier as the SDI receiver reports them,
-// the first byte in the least significant bits. The decoding is that of DTAPI's
-// DtMxSmpte352.
+// the first byte in the least significant bits.
 //
 
-// The payload identifiers, byte 1, that DTAPI knows.
+// The payload identifiers, byte 1, that are recognised.
 #define DT_S352_ID_S259 0x81          // 525 and 625 lines, SMPTE ST 259
 #define DT_S352_ID_S292_720 0x84      // 720 lines, SMPTE ST 292
 #define DT_S352_ID_S292_1080 0x85     // 1080 lines, SMPTE ST 292
@@ -33,7 +32,7 @@
 // The payload identifier.
 int DtSmpte352_PayloadId(uint32_t Vpid);
 
-// The picture rate as a reduced fraction; 0/0 for a rate code DTAPI does not know.
+// The picture rate as a reduced fraction; 0/0 for a rate code that is not recognised.
 void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den);
 
 // Whether the transport is interlaced, and whether the picture structure is. Progressive

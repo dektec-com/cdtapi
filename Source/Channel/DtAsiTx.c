@@ -21,14 +21,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The pages DtPalCDMAC_Tx::Init rounds a buffer to, times the prefetch size.
+// The page a transmit buffer's size is rounded to, times the prefetch size.
 #define DT_ASITX_PAGE 4096
 
 // A data word of 256 bits, which the card reads the buffer in: the load below which the
-// last symbols wait for more (GetExitLoad).
+// last symbols wait for more.
 #define DT_ASITX_EXIT_LOAD 32
 
-// ConvertTsToAsi converts only while the buffer has this much room.
+// Convert codes into the buffer only while it has this much room.
 #define DT_ASITX_MIN_OUTPUT_FREE (1024 * 1024)
 
 // A write wakes the converter for 100 packets or 5 ms of data; the converter wakes
@@ -45,7 +45,7 @@
 #define DT_ASITX_WRITE_BLOCK (1024 * 1024)
 #define DT_ASITX_WRITE_POLL_MS 5
 
-// WaitForBurstFifoFilled reads the burst FIFO's load five times, a millisecond apart.
+// WaitForBurstFifo reads the burst FIFO's load five times, a millisecond apart.
 #define DT_ASITX_BURST_POLLS 5
 
 // A detach waiting until everything is sent looks every 10 ms, and gives up after a
@@ -110,9 +110,9 @@ typedef struct DtAsiTx
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DmaLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPalCDMAC_Tx::GetLoad: the bytes of symbols the card has not yet taken, 0 while idle.
-// Right after CDMAC is set running a DTA-2178 reports a read offset of an earlier run for
-// a while; the load is therefore never more than what was committed since.
+// The bytes of symbols the card has not yet taken, 0 while idle. Right after CDMAC is set
+// running a DTA-2178 reports a read offset of an earlier run for a while; the load is
+// therefore never more than what was committed since.
 //
 static DtapiResult DmaLoad(DtAsiTx* Tx, size_t* Load)
 {
@@ -137,7 +137,7 @@ static DtapiResult DmaLoad(DtAsiTx* Tx, size_t* Load)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Commit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtPalCDMAC_Tx::Seek: Bytes more of the buffer hold symbols for the card.
+// Bytes more of the buffer hold symbols for the card.
 //
 static DtapiResult Commit(DtAsiTx* Tx, size_t Bytes)
 {
@@ -167,8 +167,7 @@ static uint16_t* OutAt(const DtAsiTx* Tx, size_t Free, size_t* Syms)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InsertNulls -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::InsertNullPackets: Count null packets coded into the buffer as far as
-// Free bytes allow.
+// Count null packets coded into the buffer as far as Free bytes allow.
 //
 static DtapiResult InsertNulls(DtAsiTx* Tx, int64_t Count, size_t Free)
 {
@@ -198,9 +197,9 @@ static DtapiResult InsertNulls(DtAsiTx* Tx, int64_t Count, size_t Free)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::ConvertTsToAsi: while the buffer has 1 MB of room, what the FIFO holds
-// is coded into it. With the FIFO empty and less than a data word left in the buffer,
-// K28.5 fill that word, so that the last symbols go out.
+// While the buffer has 1 MB of room, what the FIFO holds is coded into it. With the FIFO
+// empty and less than a data word left in the buffer, K28.5 fill that word, so that the
+// last symbols go out.
 //
 static DtapiResult Convert(DtAsiTx* Tx)
 {
@@ -274,8 +273,8 @@ static DtapiResult Stuff(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Converter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::TsToAsiThreadEntry: every 10 ms, or when woken, converts, and stuffs
-// while sending with stuffing. Wakes a write that waits for room after each pass.
+// Every 10 ms, or when woken, converts, and stuffs while sending with stuffing. Wakes a
+// write that waits for room after each pass.
 //
 static void Converter(void* Context)
 {
@@ -330,9 +329,9 @@ static DtAsiTxSlave* SlaveAt(const DtAsiTx* Tx, size_t i)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SlavesToMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiSdiTxSlavePorts_Bb2::SetOperationalMode: each slave's PHY to OpMode, a
-// DT_FUNC_OPMODE_ value; the encoder, which has no standby, runs for STANDBY, but only on
-// a slave whose direction's sub-value is an output, which a slave's never is.
+// Each slave's PHY to OpMode, a DT_FUNC_OPMODE_ value; the encoder, which has no standby,
+// runs for STANDBY, but only on a slave whose direction's sub-value is an output, which a
+// slave's never is.
 //
 static DtapiResult SlavesToMode(DtAsiTx* Tx, int OpMode)
 {
@@ -360,7 +359,7 @@ static DtapiResult SlavesToMode(DtAsiTx* Tx, int OpMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseSlaves -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiSdiTxSlavePorts_Bb2::CleanUp: every PHY and encoder idle, the functions released.
+// Every PHY and encoder idle, the functions released.
 //
 static void ReleaseSlaves(DtAsiTx* Tx)
 {
@@ -380,10 +379,10 @@ static void ReleaseSlaves(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindSlaves -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiSdiTxSlavePorts_Bb2::GetDblBufPorts and Init: every port whose direction is a
-// double-buffered output or a monitor naming this port in ParXtra[0], taken exclusively
-// through the function its direction gives, with its PHY and, when it has one, its
-// encoder. A slave another user holds fails the attach with the driver's result.
+// Every port whose direction is a double-buffered output or a monitor naming this port in
+// ParXtra[0], taken exclusively through the function its direction gives, with its PHY
+// and, when it has one, its encoder. A slave another user holds fails the attach with the
+// driver's result.
 //
 static DtapiResult FindSlaves(DtAsiTx* Tx)
 {
@@ -442,7 +441,7 @@ static DtapiResult FindSlaves(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SlavesToAsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiSdiTxSlavePorts_Bb2::SetIoConfig for the I/O standard ASI: one list for all slaves.
+// The slaves set to the I/O standard ASI: one list for all of them.
 //
 static DtapiResult SlavesToAsi(DtAsiTx* Tx)
 {
@@ -468,7 +467,7 @@ static DtapiResult SlavesToAsi(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateUfl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPalBURSTFIFO_Tx::UpdateFlags: an underflow while the count moved since the last look.
+// An underflow while the burst FIFO's count moved since the last look.
 //
 static DtapiResult UpdateUfl(DtAsiTx* Tx)
 {
@@ -484,8 +483,8 @@ static DtapiResult UpdateUfl(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiTxImpl_Bb2::ClearFlags: DTAPI_TX_FIFO_UFL takes the burst FIFO's count as it is now
-// and clears stuffing; DTAPI_TX_SYNC_ERR the converter's.
+// DTAPI_TX_FIFO_UFL takes the burst FIFO's count as it is now and clears stuffing;
+// DTAPI_TX_SYNC_ERR the converter's.
 //
 static DtapiResult ClearFlags(DtTx* Base, int Flags)
 {
@@ -526,10 +525,9 @@ static DtapiResult GetFlags(DtTx* Base, int* Status, int* Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoLoadOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiTxImpl_Bb2::GetFifoLoad: while holding what was written; while sending the FIFO and
-// what the symbols in the buffer and the burst FIFO carry, at most the FIFO's size. With
-// DTAPI_TXMODE_TXONTIME only the FIFO counts, where DTAPI adds the packets whose time
-// has not yet come.
+// While holding, what was written; while sending, the FIFO and what the symbols in the
+// buffer and the burst FIFO carry, at most the FIFO's size. With DTAPI_TXMODE_TXONTIME
+// only the FIFO counts, and the packets whose time has not yet come are left out.
 //
 static DtapiResult FifoLoadOf(DtAsiTx* Tx, size_t* Load)
 {
@@ -620,9 +618,8 @@ static DtapiResult IdleToHold(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForBurstFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiTxImpl_Bb2::WaitForBurstFifoFilled: five reads a millisecond apart for the burst
-// FIFO to hold three quarters of itself, or of what the buffer holds when that is less;
-// DTAPI_E_TIMEOUT otherwise.
+// Five reads a millisecond apart for the burst FIFO to hold three quarters of itself, or
+// of what the buffer holds when that is less; DTAPI_E_TIMEOUT otherwise.
 //
 static DtapiResult WaitForBurstFifo(DtAsiTx* Tx)
 {
@@ -737,7 +734,7 @@ static DtapiResult HoldToIdle(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiTxImpl_Bb2::SetTxControl: IDLE to SEND goes through HOLD, and SEND to IDLE too.
+// IDLE to SEND goes through HOLD, and SEND to IDLE too.
 //
 static DtapiResult SetTxControl(DtTx* Base, int TxControl)
 {
@@ -763,7 +760,7 @@ static DtapiResult SetTxControl(DtTx* Base, int TxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::Reset for DTAPI_FIFO_RESET: idle, and DTAPI_TX_FIFO_UFL cleared.
+// Idle, and DTAPI_TX_FIFO_UFL cleared.
 //
 static DtapiResult ClearFifo(DtTx* Base)
 {
@@ -777,8 +774,7 @@ static DtapiResult ClearFifo(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::SetTxMode, in any state: stuffing 0 or 1, and not with
-// DTAPI_TXMODE_RAW.
+// In any state: stuffing 0 or 1, and not with DTAPI_TXMODE_RAW.
 //
 static DtapiResult SetTxMode(DtTx* Base, int TxMode, int StuffMode)
 {
@@ -828,8 +824,8 @@ static DtapiResult SetTxPolarity(DtTx* Base, int TxPolarity)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForceBlocksToIdle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::ForceBlocksToIdle, around an I/O configuration: the serialiser, the
-// PHYs and the gate idle; afterwards back to sending K28.5, as the attach starts it.
+// Around an I/O configuration: the serialiser, the PHYs and the gate idle; afterwards
+// back to sending K28.5, as the attach starts it.
 //
 static DtapiResult ForceBlocksToIdle(DtAsiTx* Tx, bool ToIdle)
 {
@@ -872,8 +868,8 @@ static DtapiResult BeforeIoConfig(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiSdiOutpChannel_Bb2::SetIoConfig: the blocks back to sending K28.5 whatever the
-// setting gave, and the transmit mode applied again.
+// The blocks back to sending K28.5 whatever the setting gave, and the transmit mode
+// applied again.
 //
 static DtapiResult ApplyIoConfig(DtTx* Base, const DtIoConfig* Config,
                                  DtapiResult SetResult)
@@ -920,10 +916,10 @@ static DtapiResult HasRoom(DtAsiTx* Tx, size_t Size, bool* Room)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::Write: what fits goes into the FIFO at once; otherwise 1 MB at a time,
-// waiting for room without the lock, which a detach ends with DTAPI_E_CANCELLED and a
-// return to idle with DTAPI_E_IDLE. While holding the bytes are converted at once; while
-// sending the thread is woken for 100 packets or 5 ms of data.
+// What fits goes into the FIFO at once; otherwise 1 MB at a time, waiting for room
+// without the lock, which a detach ends with DTAPI_E_CANCELLED and a return to idle with
+// DTAPI_E_IDLE. While holding the bytes are converted at once; while sending the thread
+// is woken for 100 packets or 5 ms of data.
 //
 static DtapiResult Write(DtTx* Base, const uint8_t* Data, size_t Size)
 {
@@ -979,11 +975,10 @@ static void Wake(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitUntilSent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// OutpChannel::WaitUntilSend: until the load is a data word or less, looking every
-// 10 ms without the lock. The load leaves out the burst FIFO once the buffer is empty, so
-// DTAPI stops there with up to half a megabyte of symbols, some 10 ms of the line, still
-// to go, which its detach then discards; this waits for the burst FIFO to empty as well.
-// Unlike DTAPI it gives up when the load has not gone down for a second.
+// Until the load is a data word or less, looking every 10 ms without the lock. The load
+// leaves out the burst FIFO once the buffer is empty, where up to half a megabyte of
+// symbols, some 10 ms of the line, is still to go, so the burst FIFO is waited for as
+// well. The wait gives up when the load has not gone down for a second.
 //
 static void WaitUntilSent(DtTx* Base)
 {
@@ -1025,8 +1020,8 @@ static void WaitUntilSent(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2's destructor: idle, the thread stopped, the buffer let go of, every
-// block idle, the functions and the slaves released. Failures are ignored.
+// Idle, the thread stopped, the buffer let go of, every block idle, the functions and the
+// slaves released. Failures are ignored.
 //
 static void Release(DtTx* Base)
 {
@@ -1064,9 +1059,9 @@ static void Release(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindParts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiTxImpl_Bb2::InitOutpChannel's proxies: CDMAC and BURSTFIFO of AF_DMA, ASITXG of
-// AF_ASISDITX, and the port's SDITXPHY or ASITXSER, one of which it must have; and
-// whether the driver is new enough for each.
+// The parts the side drives: CDMAC and BURSTFIFO of AF_DMA, ASITXG of AF_ASISDITX, and
+// the port's SDITXPHY or ASITXSER, one of which it must have; and whether the driver is
+// new enough for each.
 //
 static DtapiResult FindParts(DtAsiTx* Tx)
 {
@@ -1107,8 +1102,8 @@ static DtapiResult FindParts(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RegisterBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtPalCDMAC_Tx::Init: CDMAC idle, a transmit buffer of whole pages times the prefetch
-// size, registered, and the test mode off. One data word stays free.
+// CDMAC idle, a transmit buffer of whole pages times the prefetch size, registered, and
+// the test mode off. One data word stays free.
 //
 static DtapiResult RegisterBuffer(DtAsiTx* Tx)
 {
@@ -1217,7 +1212,7 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     if (Result == DTAPI_OK)
         Result = ForceBlocksToIdle(Tx, false);
 
-    // DTAPI's defaults, and the flags cleared.
+    // The defaults, and the flags cleared.
     if (Result == DTAPI_OK)
         Result = SetTxPolarity(&Tx->Base, DTAPI_TXPOL_NORMAL);
     if (Result == DTAPI_OK)

@@ -16,9 +16,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Arithmetic +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A time of day here is a count of nanoseconds since the epoch. The conversions follow
-// DTAPI's, which compute in 128 bits: MSVC has no 128-bit integer, so the one step that
-// needs it, a product of two 64-bit numbers divided by a third, is done by hand.
+// A time of day here is a count of nanoseconds since the epoch. The conversions compute
+// in 128 bits: MSVC has no 128-bit integer, so the one step that needs it, a product of
+// two 64-bit numbers divided by a third, is done by hand.
 //
 
 #define DT_AV_NS_PER_SEC UINT64_C(1000000000)

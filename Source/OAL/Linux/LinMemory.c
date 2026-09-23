@@ -28,8 +28,7 @@ size_t OsPlatform_PageSize(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsPlatform_DontFork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtProxy.cpp does the same after allocating each DMA buffer. The range is page-aligned
-// and covers whole pages, which madvise requires.
+// The range is page-aligned and covers whole pages, which madvise requires.
 //
 int OsPlatform_DontFork(uint8_t* Data, size_t Size)
 {

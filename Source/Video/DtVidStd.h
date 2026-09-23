@@ -17,9 +17,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Link standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// How a 4K picture is carried. CDTAPI.h does not define these, so its users pass the
-// numbers directly; the values are DTAPI's (DTAPI.h.tpl:4380-4384) and are kept private
-// here rather than added to the public header.
+// How a 4K picture is carried. The public header names none of these, so a program
+// passes the numbers themselves, which fixes their values. They stay here rather than
+// being published.
 //
 
 #define DT_VIDLNK_NONE -1        // Not a multi-link standard
@@ -55,18 +55,18 @@ typedef struct DtVidStdInfo
 // The information of a video standard; NULL for a code that is no standard.
 const DtVidStdInfo* DtVidStd_Find(int VidStd);
 
-// The standards in the order MxFramePropsSdi::Deduce tries them: DtVidStd_At(Index) for
-// an Index from 0 to DtVidStd_Count() - 1, NULL outside that range.
+// The standards in the order deduction tries them: DtVidStd_At(Index) for an Index from
+// 0 to DtVidStd_Count() - 1, NULL outside that range.
 int DtVidStd_Count(void);
 const DtVidStdInfo* DtVidStd_At(int Index);
 
-// True for the eleven 2160p standards, as HdSdiUtil::Is4k in DTAPI.
+// True for the eleven 2160p standards.
 bool DtVidStd_Is4k(int VidStd);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standard properties +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// What DTAPI's MxVidStdPropsSdi holds: a video standard, how it is carried, and the frame
-// of one link. For a 2160p standard that frame is the 1080p frame of the same rate.
+// A video standard, how it is carried, and the frame of one link. For a 2160p standard
+// that frame is the 1080p frame of the same rate.
 //
 
 typedef struct DtVidStdProps
@@ -76,16 +76,16 @@ typedef struct DtVidStdProps
     DtFrameProps Frame; // The frame of one link
 } DtVidStdProps;
 
-// Fills Props for a video standard carried as LinkStd, as MxVidStdPropsSdi::Init. Returns
-// false, with Props->VidStd DTAPI_VIDSTD_UNKNOWN, for an unknown video or link standard
-// and for a 2160p standard without a link standard.
+// Fills Props for a video standard carried as LinkStd. Returns false, with Props->VidStd
+// DTAPI_VIDSTD_UNKNOWN, for an unknown video or link standard and for a 2160p standard
+// without a link standard.
 bool DtVidStdProps_Init(DtVidStdProps* Props, int VidStd, int LinkStd);
 
-// The standard a VPID describes, as MxVidStdPropsSdi::FromSmpte352.
+// The standard a VPID describes.
 void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid);
 
-// Finds the standard of a signal from what an SDI receiver reports, as
-// MxVidStdPropsSdi::Deduce; the arguments are those of DtFrameProps_Deduce.
+// Finds the standard of a signal from what an SDI receiver reports; the arguments are
+// those of DtFrameProps_Deduce.
 void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
                           int LineNumSymHanc, int LineNumSymVanc, double Fps,
                           bool Is3gLevelB, uint32_t Vpid, int SdiRate);

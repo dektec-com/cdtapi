@@ -4,8 +4,8 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DtProxyCORE_VPD's GetProperties and ReadRaw. The commands go to the device, as the
-// EEPROM belongs to the card and not to one of its ports.
+// Reading the properties of the VPD and the raw bytes of the EEPROM. The commands go to
+// the device, as the EEPROM belongs to the card and not to one of its ports.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -24,7 +24,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The VPD commands go to the device: UUID 0 and no port, as DtProxyCORE addresses them.
+// The VPD commands go to the device rather than to a part of it: UUID 0 and no port.
 //
 static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {

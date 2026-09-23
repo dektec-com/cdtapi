@@ -594,7 +594,7 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What the driver's I/O stub knows of a command: its sizes, whether it needs exclusive
-// access (DtIoctlProperties.h), and whether the block must be enabled.
+// access, and whether the block must be enabled.
 typedef struct SimTxCmdProps
 {
     int FunctionCode;
@@ -709,7 +709,7 @@ static int OpModeOf(const void* In)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocateBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtIoStubBcCDMAC_OnCmd and DtBcCDMAC_AllocateBuffer, for a buffer of the process.
+// Registers the CDMAC buffer the request names, which is a buffer of the process.
 //
 static uint32_t AllocateBuffer(SimTxPort* Port, void* Handle, const void* In, void* Out,
                                size_t* OutSize)
@@ -727,7 +727,7 @@ static uint32_t AllocateBuffer(SimTxPort* Port, void* Handle, const void* In, vo
     }
     else
     {
-        // The output grows by the buffer's size (DtIoStubBcCDMAC_AppendDynamicSize).
+        // The output grows by the buffer's size, as the driver's answer does.
         if (Request->m_BufferSize <= 0 || *OutSize < (size_t)Request->m_BufferSize)
             return DT_STATUS_INVALID_PARAMETER;
         Buffer = (uint8_t*)Out;
@@ -965,11 +965,11 @@ static double PartPeriodMs(const SimTxPort* Port, int VidStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxFCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A wait with a time-out outside -1 to 1000 ms is refused, as DtBcSDITXF_WaitForFmtEvent
-// refuses it, and so is a wait while the formatter is not running. On the clock, a wait
-// that comes before the next part is due sends it and returns when it is due, or, when
-// the time-out ends earlier, times out without sending; a late part is due at once, and
-// the parts after it follow from then on.
+// A wait with a time-out outside -1 to 1000 ms is refused, as the driver refuses it, and
+// so is a wait while the formatter is not running. On the clock, a wait that comes
+// before the next part is due sends it and returns when it is due, or, when the time-out
+// ends earlier, times out without sending; a late part is due at once, and the parts
+// after it follow from then on.
 //
 static uint32_t SdiTxFCmd(SimTxPort* Port, int Cmd, int VidStd, const void* In, void* Out,
                           size_t* OutSize, int* SleepMs)
@@ -1057,7 +1057,7 @@ static uint32_t SdiTxFCmd(SimTxPort* Port, int Cmd, int VidStd, const void* In, 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SwitchCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // SDI_DEMUX_IN has one input and two outputs, SDI_DEMUX_OUT two inputs and one output; a
-// position outside them is refused, as DtBcSWITCH_SetPosition refuses it.
+// position outside them is refused, as the driver refuses it.
 //
 static uint32_t SwitchCmd(SimTxPort* Port, bool IsIn, int Cmd, const void* In)
 {
@@ -1331,7 +1331,8 @@ uint32_t SimSdiTx_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_CloseHandle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtBcCDMAC_OnCloseFile: the controller goes idle and lets go of the buffer.
+// For every port whose buffer the handle registered, the controller goes idle and lets
+// go of the buffer, as the driver does when a file handle closes.
 //
 void SimSdiTx_CloseHandle(void* Handle)
 {

@@ -43,7 +43,7 @@ static void Build(uint8_t* P, uint32_t Seconds, uint32_t Nanoseconds, int Seed, 
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The modes AsiRxImpl_Bb2::SetRxMode takes.
+// The modes an input channel's SetRxMode takes.
 DT_TEST(Modes)
 {
     DT_ASSERT_OK(DtTsTrp_CheckMode(DTAPI_RXMODE_ST188));

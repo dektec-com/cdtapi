@@ -216,8 +216,8 @@ uint64_t OsTime_MonotonicMs(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsProcess_Name -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The file name of the executable, as GetModuleBaseName gives it to XpUtil's
-// GetCurrentProcessName on Windows.
+// The file name of the executable: what GetModuleFileNameA gives, with the path
+// stripped from it.
 //
 void OsProcess_Name(char* Buf, size_t Size)
 {

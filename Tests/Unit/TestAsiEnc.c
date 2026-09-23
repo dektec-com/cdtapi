@@ -226,7 +226,7 @@ static uint16_t* EncodeAll(DtAsiEnc* Enc, const uint8_t* Ts, size_t Size, size_t
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// DTAPI's table is the 8b/10b code, bit for bit, for both running disparities, and so is
+// The table is the 8b/10b code, bit for bit, for both running disparities, and so is
 // K28.5.
 DT_TEST(TableIsThe8b10bCode)
 {
@@ -264,7 +264,8 @@ DT_TEST(TableIsThe8b10bCode)
     DT_ASSERT_EQ((uint16_t)(~K28 & 0x3FF), DT_ASI_K28_5_RDPOS);
 }
 
-// The modes and rates DTAPI accepts, and what it refuses without changing anything.
+// The modes and rates the encoder accepts, and what it refuses without changing
+// anything.
 DT_TEST(ModesAndRates)
 {
     DtAsiEnc Enc;
@@ -306,7 +307,7 @@ DT_TEST(ModesAndRates)
     DT_ASSERT_EQ(Enc.K28BeforePacket, 2);
 
     // 204-byte packets at a rate counted in 188-byte packets: the mode is taken, and a
-    // rate that does not fit it is refused when the stream starts, as in DTAPI.
+    // rate that does not fit it is refused when the stream starts.
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_204));
     DT_ASSERT_EQ(DtAsiEnc_Start(&Enc), DTAPI_E_INVALID_RATE);
     DT_ASSERT_EQ(DtAsiEnc_SetRate(&Enc, 200000000), DTAPI_E_INVALID_RATE);
@@ -432,7 +433,7 @@ DT_TEST(CommasBeforePackets)
 
 // ADD16 adds 16 zeros to each 188-byte packet, in burst and in normal mode, also when the
 // room for symbols runs out among the zeros; the zeros of the last packet wait for more
-// input, as in DTAPI. MIN16 drops the last 16 bytes of each 204.
+// input. MIN16 drops the last 16 bytes of each 204.
 DT_TEST(SixteenBytesMoreOrLess)
 {
     BuildDecoder();
@@ -575,8 +576,8 @@ DT_TEST(PaddingAndLoad)
     DT_ASSERT_EQ(Pad[2], DT_ASI_K28_5_RDPOS);
     DT_ASSERT_EQ(Enc.Rd, 1);
 
-    // A second of symbols at 10 Mbit/s carries 1.25 MB. DTAPI's estimate is a little
-    // more, about 1,250,616 bytes, since it divides by the symbols left after the K28.5
+    // A second of symbols at 10 Mbit/s carries 1.25 MB. The estimate is a little more,
+    // about 1,250,616 bytes, since it divides by the symbols left after the K28.5
     // before each packet.
     int64_t Bytes = DtAsiEnc_BytesOf(&Enc, DT_ASI_SYMBOL_RATE);
     DT_ASSERT(Bytes >= 1250614 && Bytes <= 1250617);

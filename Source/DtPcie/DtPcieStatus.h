@@ -16,8 +16,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Status +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The results match DTAPI's own translation, so that a failing command reports the same
-// code through CDTAPI as through CDTAPI.
+// Every driver status maps to the result code that stands for the same failure, so that
+// a caller sees one vocabulary of results wherever a failure comes from.
 //
 
 // Translates a driver's DtStatus. DT_STATUS_OK becomes DTAPI_OK; a status without a

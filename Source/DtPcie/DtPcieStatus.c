@@ -17,8 +17,8 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieStatus_ToResult -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The DT_STATUS_ values are encoded differently on Windows and on Linux, so the cases are
-// written with the vendored names and never with numbers. Statuses DTAPI deliberately
-// reports as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
+// written with the vendored names and never with numbers. Statuses that are deliberately
+// reported as a driver failure, such as DT_STATUS_IO_PENDING and DT_STATUS_FAIL, have no
 // case of their own and fall to the default.
 //
 DtapiResult DtPcieStatus_ToResult(uint32_t Status)

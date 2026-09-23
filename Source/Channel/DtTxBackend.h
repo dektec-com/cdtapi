@@ -21,14 +21,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtTxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's AsiSdiOutpChannel_Bb2 keeps one implementation of the port's transmitter, an
-// AsiTxImpl_Bb2 or an SdiTxImpl_Bb2 by the I/O standard, as its input channel does. Here
-// the implementation is a DtTx, a struct that each side's own begins with, and its
-// functions are the side's DtTxBackend, as DtRxBackend.h describes for the input.
-// DtOutpChannel.c keeps the checks that do not depend on the side, the lock and
-// detaching, and calls these with the lock held. A side may release the lock while it
-// waits, and has the channel's lock and its count of waiting detaches for that; after a
-// wait it gives DTAPI_E_CANCELLED while a detach waits.
+// An output channel keeps one side that transmits, chosen by the port's I/O standard:
+// DtAsiTx.c for ASI, DtSdiTx.c for raw SDI frames. The side is a DtTx, a struct that each
+// side's own begins with, and its functions are the side's DtTxBackend, as DtRxBackend.h
+// describes for the input. DtOutpChannel.c keeps the checks that do not depend on the
+// side, the lock and detaching, and calls these with the lock held. A side may release
+// the lock while it waits, and has the channel's lock and its count of waiting detaches
+// for that; after a wait it gives DTAPI_E_CANCELLED while a detach waits.
 //
 // A function that is NULL gives the default the function says.
 //

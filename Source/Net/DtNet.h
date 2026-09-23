@@ -19,7 +19,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Addresses +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // An address is 16 bytes in network byte order, an IPv4 address in the first 4, as in
-// OsNet.h. The kinds are DTAPI's (NwUtility).
+// OsNet.h.
 //
 
 // All zero.
@@ -78,49 +78,47 @@ typedef struct DtNetOwn
 // interface's default gateway and the interface; for DT_NET_ADDR_OTHER an address in the
 // subnet of Hint, or, when Hint is all zero, one of no other kind. The failures are
 // DTAPI_E_NW_DRIVER when the operating system has no interface with the MAC address,
-// DTAPI_E_VLAN_NOT_FOUND when it has no VLAN interface with the ID on it or, as DTAPI has
-// it, when the VLAN interface has no such address, and DTAPI_E_NO_ADAPTER_IP_ADDR when
-// the interface has none.
+// DTAPI_E_VLAN_NOT_FOUND when it has no VLAN interface with the ID on it and also when
+// the VLAN interface has no such address, and DTAPI_E_NO_ADAPTER_IP_ADDR when the
+// interface has none.
 DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
                                 const uint8_t* Hint, DtNetOwn* Own);
 
-// The own address to receive a stream to Stream from, as DTAPI's PrepareInputChannel
-// chooses it: IPv4's address; for IPv6 multicast or the any address link-local, then
-// site-local, then global, then any other; for IPv6 unicast the interface's address of
-// Stream's kind, which must exist, taking Stream itself as the own address.
+// The own address to receive a stream to Stream from: IPv4's address; for IPv6 multicast
+// or the any address link-local, then site-local, then global, then any other; for IPv6
+// unicast the interface's address of Stream's kind, which must exist, taking Stream
+// itself as the own address.
 DtapiResult DtNet_ChooseInputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
                                      const uint8_t* Stream, DtNetOwn* Own);
 
-// The own address to send to Dst from, as DTAPI's PrepareOutputChannel chooses it: IPv4's
-// address; for IPv6 the kind of Dst first, a multicast group's kind being its scope, and
-// the other kinds after it in DTAPI's order.
+// The own address to send to Dst from: IPv4's address; for IPv6 the kind of Dst first, a
+// multicast group's kind being its scope, and the other kinds after it in a fixed order.
 DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
                                       const uint8_t* Dst, DtNetOwn* Own);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Neighbours +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The MAC address to send to Dst from Own, as DTAPI's TxFifo finds it: a multicast
-// group's own, the broadcast address for an IPv4 broadcast, the neighbour Dst in Own's
-// subnet or link-local, and otherwise the gateway: Gateway when it is not NULL or all
-// zero, else the one of the operating system's best route, or Dst itself when that route
-// has none, else Own's default gateway.
+// The MAC address to send to Dst from Own: a multicast group's own, the broadcast address
+// for an IPv4 broadcast, the neighbour Dst in Own's subnet or link-local, and otherwise
+// the gateway: Gateway when it is not NULL or all zero, else the one of the operating
+// system's best route, or Dst itself when that route has none, else Own's default
+// gateway.
 // DTAPI_E_DST_MAC_ADDR when there is no gateway or the neighbour does not answer.
 DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
                                 const uint8_t* Gateway, uint8_t* Mac);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Operation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Whether the port can be used for IPv4 and for IPv6, as DTAPI's
-// DtDevice::IsNetworkCardOperational checks it once the link is up: each asked for needs
-// an own address, a socket bound to it, and an enabled interface. Otherwise
-// DTAPI_E_NO_ADAPTER_IP_ADDR, DTAPI_E_BIND or DTAPI_E_DISABLED, or a failure of
-// DtNet_GetOwnAddress.
+// Whether the port can be used for IPv4 and for IPv6, checked once the link is up: each
+// asked for needs an own address, a socket bound to it, and an enabled interface.
+// Otherwise DTAPI_E_NO_ADAPTER_IP_ADDR, DTAPI_E_BIND or DTAPI_E_DISABLED, or a failure
+// of DtNet_GetOwnAddress.
 DtapiResult DtNet_CheckOperational(const uint8_t* Mac, int VlanId, bool IpV4, bool IpV6);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Groups +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Joins Group on the socket, as DTAPI's AddMultiCastMemberShip does: from any source
-// without sources or for an all-zero one, and from each distinct source otherwise.
+// Joins Group on the socket: from any source without sources or for an all-zero one, and
+// from each distinct source otherwise.
 // Sources holds NumSources addresses of 16 bytes each.
 // DTAPI_E_MULTICASTJOIN when a join fails; the joins before it stay.
 DtapiResult DtNet_Join(OsNetSocket* Socket, uint32_t IfIndex, bool IpV6,

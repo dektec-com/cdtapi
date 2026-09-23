@@ -15,7 +15,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Expected +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Every video standard CDTAPI.h defines, with the I/O standard DTAPI maps it to and the
+// Every video standard cdtapi.h defines, with the I/O standard it maps to and the
 // link standard that selects that mapping. Each entry names the standard once, and the
 // macro and its string are expanded from that one token.
 //
@@ -256,7 +256,7 @@ DT_TEST(PropertiesHoldTheFrameOfOneLink)
 }
 
 // An unknown video or link standard gives invalid properties. A link standard on a
-// standard that is not 2160p is accepted, as DTAPI does.
+// standard that is not 2160p is accepted.
 DT_TEST(PropertiesRefuseUnknownStandards)
 {
     DtVidStdProps Props;
@@ -472,8 +472,8 @@ DT_TEST(UnknownVideoStandardIsRefused)
     DT_ASSERT_EQ(DtapiVidStd2IoStd(12345, -1, &Value, &SubValue), DTAPI_E_INVALID_VIDSTD);
 }
 
-// With both the link standard and the video standard wrong, DTAPI reports the link
-// standard, because it checks that first.
+// With both the link standard and the video standard wrong, the link standard is
+// reported, because it is checked first.
 DT_TEST(LinkStandardIsCheckedFirst)
 {
     int Value;

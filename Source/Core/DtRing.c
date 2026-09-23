@@ -91,8 +91,8 @@ size_t DtRing_Free(const DtRing* Ring)
     if (Ring == NULL || Ring->Base == NULL)
         return 0;
 
-    // Equal to DTAPI's (Read + MaxLoad - Write) % Size whenever the load is within
-    // MaxLoad, which SetWriteOffset guarantees; written this way it cannot wrap.
+    // Equal to (Read + MaxLoad - Write) % Size whenever the load is within MaxLoad,
+    // which DtRing_SetWriteOffset guarantees; written this way it cannot wrap.
     size_t Load = DtRing_Load(Ring);
     return Load >= Ring->MaxLoad ? 0 : Ring->MaxLoad - Load;
 }

@@ -153,7 +153,7 @@ static bool LastWas(int FunctionCode, DtPartRef Part, int Cmd, size_t Size,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Every command goes to its part as DTAPI's proxies send it, and what is set reads back.
+// Every command goes to its part with the fields it carries, and what is set reads back.
 DT_TEST(RequestsCarryTheirFields)
 {
     Fixture Fix;
@@ -243,7 +243,7 @@ DT_TEST(RequestsCarryTheirFields)
     DT_ASSERT_EQ(State.RxMode, DT_FUNC_OPMODE_RUN);
     DT_ASSERT_EQ(State.RxPacketMode, DT_ASIRX_PCKMODE_RAW);
 
-    // The DTA-2178 has no serialiser; the request is still DTAPI's.
+    // The DTA-2178 has no serialiser; the request is still made.
     DT_ASSERT_EQ(DtPcieCmd_AsiTxSerSetOpMode(Fix.Drv, TxG, Standby),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT(LastWas(DT_FUNC_CODE_ASITXSER_CMD, TxG,
@@ -257,7 +257,8 @@ DT_TEST(RequestsCarryTheirFields)
     FINISH(Fix);
 }
 
-// A value DTAPI's proxy would not send is refused here, and nothing reaches the driver.
+// A value outside the range a command takes is refused here, and nothing reaches the
+// driver.
 DT_TEST(InvalidValuesSendNothing)
 {
     Fixture Fix;
@@ -374,7 +375,7 @@ DT_TEST(StatusComesFromTheSignal)
         LastWas(DT_FUNC_CODE_ASIRX_CMD, Rx, DT_ASIRX_CMD_GET_VIOL_COUNT, HDR, NULL));
     DT_ASSERT_EQ(Viol, 3);
 
-    // A packet size DTAPI does not know is the driver's fault.
+    // A packet size that is not one of the known ones is the driver's fault.
     Signal.PacketSize = 7;
     SimDtPcie_SetAsiSignal(RX, &Signal);
     DT_ASSERT_EQ(DtPcieCmd_AsiRxGetStatus(Fix.Drv, Rx, &Status), DTAPI_E_DEV_DRIVER);

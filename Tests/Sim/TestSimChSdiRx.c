@@ -583,7 +583,7 @@ DT_TEST(RefusesAndReportsStatus)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbols +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// SD's timing references on the first and last line, as DTAPI's frame check expects them.
+// SD's timing references on the first and last line, as a frame check expects them.
 DT_TEST(SdTimingReferences)
 {
     uint16_t Symbols[8250];

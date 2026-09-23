@@ -4,8 +4,8 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The expected results are written out again here, from DTAPI's DtResultToDtapiResult,
-// rather than taken from the implementation, so that a wrong row fails.
+// The expected results are written out again here, rather than taken from the
+// implementation, so that a wrong row fails.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -59,13 +59,13 @@ static const StatusCase MappedCases[] = {
     CASE(EEPROM_FULL, EEPROM_FULL),
     CASE(ALREADY_OPEN_EXCL, ALREADY_EXCL_ACCESS),
 
-    // DTAPI names these four explicitly, and reports each as a driver failure.
+    // These four are named explicitly, and each is reported as a driver failure.
     CASE(IO_PENDING, DEV_DRIVER),
     CASE(CANCELLED, DEV_DRIVER),
     CASE(REQUEUE, DEV_DRIVER),
     CASE(FAIL, DEV_DRIVER),
 
-    // Not named by DTAPI, and so reported through its default.
+    // Not named, and so reported through the default.
     CASE(EOF, DEV_DRIVER),
     CASE(NOT_ENOUGH_RIGHTS, DEV_DRIVER),
     CASE(READ_WRITE_ERROR, DEV_DRIVER),

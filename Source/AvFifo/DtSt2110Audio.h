@@ -16,11 +16,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// DTAPI's AudioTx. A frame of L16 or L24 samples is cut into packets of the configured
-// number of samples; the samples that do not fill a packet wait for the next frame, and
-// that packet gets the time of day and RTP timestamp of its first sample. Each packet's
-// time and timestamp advance by its samples, and its time is sent earlier by the card's
-// output delay. A raw frame is one packet of its bytes, at the frame's own time.
+// A frame of L16 or L24 samples is cut into packets of the configured number of samples;
+// the samples that do not fill a packet wait for the next frame, and that packet gets
+// the time of day and RTP timestamp of its first sample. Each packet's time and
+// timestamp advance by its samples, and its time is sent earlier by the card's output
+// delay. A raw frame is one packet of its bytes, at the frame's own time.
 //
 
 // The audio bytes a packet holds at most: a standard UDP datagram less the UDP and RTP
@@ -61,8 +61,8 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's AudioRx: every packet is a frame of its payload, with its RTP timestamp and its
-// time of arrival, whatever the format.
+// Every packet is a frame of its payload, with its RTP timestamp and its time of
+// arrival, whatever the format.
 //
 
 typedef struct DtSt2110AudioRx

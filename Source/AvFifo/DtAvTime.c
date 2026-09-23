@@ -94,8 +94,7 @@ DtTimeOfDay DtAvTime_FromNs(uint64_t Ns)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTime_Align -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TimeConversion::AlignTimestamp: the number of whole periods, rounded, and their time,
-// rounded.
+// The number of whole periods, rounded, and their time, rounded.
 //
 uint64_t DtAvTime_Align(uint64_t Ns, int Numerator, int Denominator)
 {
@@ -109,10 +108,10 @@ uint64_t DtAvTime_Align(uint64_t Ns, int Numerator, int Denominator)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTime_Tod2Rtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TimeConversion::Tod2Rtp. A video time on the grid of a fractional frame rate lies a
-// quarter, a half or three quarters of a tick after the timestamp it has, and its
-// rounding to a nanosecond moves it by half a nanosecond: adding an eighth of a tick
-// before truncating gives the timestamp for each of those. Audio rounds.
+// A video time on the grid of a fractional frame rate lies a quarter, a half or three
+// quarters of a tick after the timestamp it has, and its rounding to a nanosecond moves
+// it by half a nanosecond: adding an eighth of a tick before truncating gives the
+// timestamp for each of those. Audio rounds.
 //
 uint32_t DtAvTime_Tod2Rtp(int RtpRate, uint64_t Ns)
 {
@@ -126,9 +125,9 @@ uint32_t DtAvTime_Tod2Rtp(int RtpRate, uint64_t Ns)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTime_Rtp2Tod -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TimeConversion::Rtp2Tod: the wraps of the timestamp up to ApproxNs, one more or one
-// less when RtpTime lies half a wrap or more from ApproxNs's own timestamp, and the time
-// of the full count of ticks, truncated.
+// The wraps of the timestamp up to ApproxNs, one more or one less when RtpTime lies half
+// a wrap or more from ApproxNs's own timestamp, and the time of the full count of ticks,
+// truncated.
 //
 uint64_t DtAvTime_Rtp2Tod(int RtpRate, uint32_t RtpTime, uint64_t ApproxNs)
 {

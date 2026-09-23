@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiFrame.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
+// CDTAPI - The firmware's coded SDI frames, the raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -19,9 +19,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The firmware exchanges SDI frames with the DMA buffers in two formats: "SDI RX simple"
-// from a receiver (DTAPI: MxChannelMemlessRx::SdiRxSimpleProps) and "SDI TX simple" to a
-// transmitter (MxChannelMemlessTx::SdiTxSimpleProps). They differ only in the header. Per
-// frame:
+// from a receiver and "SDI TX simple" to a transmitter. They differ only in the header.
+// Per frame:
 //
 //   header      padded to the stream alignment
 //                 receive, 16 bytes
@@ -49,17 +48,16 @@
 // 2160p over one 6G or 12G link carries four links, each a 1080p stream of the same
 // rate, divided by two-sample interleave: the pixel pairs of an even picture line go to
 // links 1 and 2 in turn, those of an odd one to 3 and 4. The receiver undoes it, and a
-// 4K frame has two coded lines per link line (MxHdChannelMemless.cpp:1051-1116, 0014):
+// 4K frame has two coded lines per link line (0014):
 //
 //   coded line 2n-1   HANC section of link 1, HANC section of link 2, video section
 //   coded line 2n     HANC section of link 3, HANC section of link 4, video section
 //
 // A HANC section is one link's EAV, HANC and SAV, its C and Y words interleaved, C first.
 // On a picture line the video section is the picture line itself, 3840 pixels, C Y C Y;
-// on a blanking line it is the two links' own active parts side by side, as DTAPI's
-// Matrix API has them (MxPreProcessMemless.cpp:1503-1529). A transmitter takes the same
-// lines, each after a line header of 4 bytes padded to the alignment, whose first byte
-// is 1 for a blanking line and 0 for a picture line (MxPostProcessMemless.cpp:2564-2572).
+// on a blanking line it is the two links' own active parts side by side. A transmitter
+// takes the same lines, each after a line header of 4 bytes padded to the alignment,
+// whose first byte is 1 for a blanking line and 0 for a picture line.
 //
 
 // The first word of every header.
@@ -98,10 +96,9 @@ typedef struct DtSdiFrameLayout
     int SdiRate;           // DT_SDIRATE_ value of the standard
 } DtSdiFrameLayout;
 
-// Fills Layout for a video standard and a stream alignment in bits, as
-// SdiRxSimpleProps::Init and SdiTxSimpleProps::Init. Returns false for an unknown
-// standard, a 4K standard made of level-B links, and an alignment that is not a positive
-// number of whole bytes.
+// Fills Layout for a video standard and a stream alignment in bits. Returns false for an
+// unknown standard, a 4K standard made of level-B links, and an alignment that is not a
+// positive number of whole bytes.
 bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits);
 
 // The bytes one coded frame takes: its header and its lines, for reception and for
@@ -141,8 +138,8 @@ void DtSdiFrame_DecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header);
 // Encodes Header into DT_SDIFRAME_HEADER_BYTES bytes at Bytes. The reserved bits are 0.
 void DtSdiFrame_EncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
 
-// Checks a header as MxChannelMemlessRx::CheckFrameHeader does: DTAPI_E_OUT_OF_SYNC for
-// a wrong sync word; DTAPI_E_INVALID when ExpectedId is not -1 and the frame ID differs;
+// Checks a header: DTAPI_E_OUT_OF_SYNC for a wrong sync word; DTAPI_E_INVALID when
+// ExpectedId is not -1 and the frame ID differs;
 // DTAPI_E_INVALID_FORMAT for a format the layout does not expect; otherwise DTAPI_OK.
 DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
                                    const DtSdiFrameHeader* Header, int ExpectedId);
@@ -163,9 +160,9 @@ typedef struct DtSdiFrameTxHeader
     int NumSymsVideo;
 } DtSdiFrameTxHeader;
 
-// Fills Header for a frame of Layout with frame ID FrameId, as
-// MxChannelMemlessTx::SetVidStd does: protocol version 0 and a valid SDI rate, and the
-// coded lines and the sizes of one HANC section and of the video section.
+// Fills Header for a frame of Layout with frame ID FrameId: protocol version 0 and a
+// valid SDI rate, and the coded lines and the sizes of one HANC section and of the video
+// section.
 void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
                              DtSdiFrameTxHeader* Header);
 
@@ -175,9 +172,8 @@ void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
 bool DtSdiFrame_IsBlankingLine(const DtSdiFrameLayout* Layout, int LineIndex);
 
 // Writes the Layout->TxLineHeaderBytes bytes of the line header before coded line
-// CodedIndex, from 0, of a frame sent, as LineProcessor::WriteCodedLineHeader does: 1 for
-// a blanking line, 0 for a picture line, then zeros. Writes nothing for a standard that
-// is not 4K.
+// CodedIndex, from 0, of a frame sent: 1 for a blanking line, 0 for a picture line, then
+// zeros. Writes nothing for a standard that is not 4K.
 void DtSdiFrame_EncodeTxLineHeader(const DtSdiFrameLayout* Layout, int CodedIndex,
                                    uint8_t* Bytes);
 
@@ -191,22 +187,20 @@ void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 // twelve symbols.
 #define DT_SDIFRAME_LINE_START_BYTES 15
 
-// Checks that a frame's lines start and end where they should, as HdSdiUtil::
-// CheckFrameSync does for a raw frame: in HD the first line has line number 1 and the
-// last the frame's number of lines, in both channels and after a valid EAV; in SD the
-// first line's EAV has the XYZ of line 1 and the last line's that of the last line, in
-// their upper eight bits. FirstLine and LastLine point to DT_SDIFRAME_LINE_START_BYTES
-// bytes at the start of the first and the last coded line. Returns DTAPI_OK or
-// DTAPI_E_OUT_OF_SYNC.
+// Checks that a frame's lines start and end where they should: in HD the first line has
+// line number 1 and the last the frame's number of lines, in both channels and after a
+// valid EAV; in SD the first line's EAV has the XYZ of line 1 and the last line's that of
+// the last line, in their upper eight bits. FirstLine and LastLine point to
+// DT_SDIFRAME_LINE_START_BYTES bytes at the start of the first and the last coded line.
+// Returns DTAPI_OK or DTAPI_E_OUT_OF_SYNC.
 DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
                                   const uint8_t* FirstLine, const uint8_t* LastLine);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Raw frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// DTAPI's raw SDI frame, as ReadFrame delivers it and Write takes it in
+// The raw SDI frame, as a receive channel delivers it and a transmit channel takes it in
 // DTAPI_RXMODE_SDI_FULL and DTAPI_TXMODE_SDI_FULL: every line of the frame, EAV first, as
-// one stream of symbols, padded with zero bits to a 64-bit boundary
-// (SdiRxImpl_Bb2::RxIdle2Receive, PxCnvTaskRaw::Run). A symbol takes
+// one stream of symbols, padded with zero bits to a 64-bit boundary. A symbol takes
 //
 //   8 bits    its upper eight bits
 //   10 bits   packed, least significant bit first, as in the coded frame
@@ -233,23 +227,22 @@ size_t DtSdiFrame_RawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits);
 void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                             const uint8_t* CodedLine, int LineIndex, uint8_t* Raw);
 
-// Codes one raw line into the coded line at CodedLine, Layout->Stride bytes, as
-// PxCnvTaskRaw::Run does: the HANC section and the video section, each padded with zero
-// bits. The symbols take SymbolBits, 8, 10 or 16; a 16-bit symbol gives its lower ten
-// bits, and an 8-bit one its eight bits shifted up by two. The line's first bit is bit
-// Phase, from 0 for the least significant to 7, of the byte at RawLine, and no byte after
-// the one holding its last bit is read. Returns false, writing nothing, for another
-// symbol size, for a Phase outside 0 to 7, and for a Phase other than 0 with 8 or 16
-// bits.
+// Codes one raw line into the coded line at CodedLine, Layout->Stride bytes: the HANC
+// section and the video section, each padded with zero bits. The symbols take SymbolBits,
+// 8, 10 or 16; a 16-bit symbol gives its lower ten bits, and an 8-bit one its eight bits
+// shifted up by two. The line's first bit is bit Phase, from 0 for the least significant
+// to 7, of the byte at RawLine, and no byte after the one holding its last bit is read.
+// Returns false, writing nothing, for another symbol size, for a Phase outside 0 to 7,
+// and for a Phase other than 0 with 8 or 16 bits.
 bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
 
 // A raw 4K line is the link's data stream as a 6G or 12G link carries it (SMPTE ST
 // 2081-10 and 2082-10, and DekTec's SDI File Format Specification): the eight streams of
 // the four links, C and Y of each, word by word. Per eight words, the C words of links 4,
-// 2, 3 and 1, then their Y words (PxCnvRef.cpp:345-400). Each link's stream is its HANC
-// section followed by its active part, the pixel pairs of the picture line that are its
-// own. A raw 4K line takes whole bytes in every symbol size.
+// 2, 3 and 1, then their Y words. Each link's stream is its HANC section followed by its
+// active part, the pixel pairs of the picture line that are its own. A raw 4K line takes
+// whole bytes in every symbol size.
 //
 // The conversions work through a scratch buffer of DtSdiFrame_ScratchSymbols(Layout)
 // 16-bit symbols the caller provides, so that they allocate nothing per line.

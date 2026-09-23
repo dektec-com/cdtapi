@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DtIoStubBcIPSECG as far as the library uses it: the part reports whether it is ready,
+// As much of the part as the library uses: it reports whether it is ready,
 // and is given data to become ready. The data it accepts is what its own EEPROM holds
 // behind the sections, most significant byte first, which is the order the library hands
 // it over in.

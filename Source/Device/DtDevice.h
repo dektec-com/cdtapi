@@ -19,13 +19,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// What DTAPI's DtDevice keeps of an attached device and CDTAPI needs: the driver
-// handle and its version, the device's identity, its port counts and, per port, the
-// capabilities CDTAPI looks at. Everything is read once, at attach, as DTAPI does;
-// the capabilities do not depend on the I/O configuration.
+// What is kept of an attached device: the driver handle and its version, the device's
+// identity, its port counts and, per port, the capabilities CDTAPI looks at. Everything
+// is read once, at attach; the capabilities do not depend on the I/O configuration.
 //
-// DTAPI also caches each port's channel type, which follows the I/O direction, and
-// re-reads it after a configuration change; this does not.
+// A port's channel type, which follows the I/O direction and would have to be re-read
+// after every configuration change, is not kept here.
 //
 
 // The capabilities of a port that a hardware function description reports.
@@ -50,7 +49,7 @@
 #define DT_CAP_IP UINT64_C(0x2000) // Transport-stream-over-IP port
 
 // The capabilities an input channel looks at.
-#define DT_CAP_ASI UINT64_C(0x4000)      // ASI, which DTAPI's ASI/SDI receiver implies
+#define DT_CAP_ASI UINT64_C(0x4000)      // ASI, which the ASI/SDI receiver implies
 #define DT_CAP_MATRIX UINT64_C(0x8000)   // The frame-buffer Matrix API of older cards
 #define DT_CAP_TS UINT64_C(0x10000)      // Transport-stream receive modes
 #define DT_CAP_HUFFMAN UINT64_C(0x20000) // Compressed SDI
@@ -97,19 +96,17 @@ void DtDevice_Release(DtDevice* Device);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Writes DTAPI's description of a port, its DTAPI_HWF2STR_TYPE_AND_PORT2 format for a PCI
-// device: "DTA-" and the type number, the sub-type as a letter, and " port " with the
-// port number, as "DTA-2178 port 1" or "DTA-2172A port 3". For a DTA-2178 with sub-type
-// 1, DTAPI writes the full name after the type number: "DTA-2178DTA-2178-ASI port 1".
-// Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf, when Size cannot hold it.
+// Writes the description of a port in the type-and-port format of a PCI device: "DTA-"
+// and the type number, the sub-type as a letter, and " port " with the port number, as
+// "DTA-2178 port 1" or "DTA-2172A port 3". For a DTA-2178 with sub-type 1, the full name
+// follows the type number: "DTA-2178DTA-2178-ASI port 1". Returns DTAPI_E_BUF_TOO_SMALL,
+// with an empty Buf, when Size cannot hold it.
 DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
                               size_t Size);
 
-// Fills Desc for a port of an attached Device, numbered from 1, as CDTAPI converts
-// DTAPI's hardware function descriptor.
+// Fills Desc for a port of an attached Device, numbered from 1.
 void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
-// Fills Desc for an attached Device, as DTAPI's Device::GetDescriptor and
-// PcieDevice::GetDescriptor do. Reads the I/O direction of each port that can be both an
-// input and an output.
+// Fills Desc for an attached Device. Reads the I/O direction of each port that can be
+// both an input and an output.
 void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);

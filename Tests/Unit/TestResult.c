@@ -31,7 +31,7 @@ static const HeaderCode g_HeaderCodes[] = {
 #undef R
 };
 
-// The name DTAPI gives a code defined in the public header under Macro.
+// The name the library gives a code defined in the public header under Macro.
 static const char* ExpectedName(const char* Macro)
 {
     if (strcmp(Macro, "DTAPI_E_NO_TS_OUTPUT") == 0)

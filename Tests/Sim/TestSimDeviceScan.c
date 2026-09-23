@@ -234,7 +234,8 @@ DT_TEST(OlderDeviceInfoHasNoSlotPower)
     DT_ASSERT_EQ(Desc.PcieMaxSlotPower, 0);
 }
 
-// The driver's firmware status numbers are DTAPI's; a value outside them is undefined.
+// The driver's firmware status numbers are the public ones; a value outside them is
+// undefined.
 DT_TEST(ConvertsTheFirmwareStatus)
 {
     static const struct
@@ -348,7 +349,8 @@ DT_TEST(LeavesOutADeviceThatCannotBeRead)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Types +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The fields are in DTAPI's order, and the address fields have DTAPI's sizes.
+// The fields of the descriptor are declared in this order, and the address fields have
+// these sizes.
 DT_TEST(TypesFollowDtapi)
 {
     static const size_t Offsets[] = {

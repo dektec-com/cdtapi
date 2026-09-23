@@ -200,10 +200,9 @@ FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 // For the emulated functions, not for tests.
 //
 
-// Whether Handle holds the part whose UUID has index PartIndex plus one, as
-// DtBc_ExclAccessCheck answers: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD
-// when nobody does, DT_STATUS_IN_USE when another handle does. Called with the
-// emulator's lock held.
+// Whether Handle holds the part whose UUID has index PartIndex plus one, as the driver
+// answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when nobody does,
+// DT_STATUS_IN_USE when another handle does. Called with the emulator's lock held.
 uint32_t SimDtPcie_CheckAccess(void* Handle, int PartIndex);
 
 // Takes and releases the emulator's lock, for a test control that reads or changes state

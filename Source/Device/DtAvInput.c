@@ -46,9 +46,9 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
     if ((Caps & DT_CAP_MATRIX2) == 0)
         return DTAPI_E_NOT_SUPPORTED;
 
-    // AvInputStatusProxy::Init makes the proxies of the ASI/SDI receiver function with
-    // the empty role. DtPalSDIRX then takes the SDI receiver with the empty role from
-    // them, which DTAPI only does when it detects.
+    // The ASI/SDI receiver API function with the empty role holds the parts; the SDI
+    // receiver with the empty role is taken from them here, at attach, rather than at
+    // detection.
     DtFuncInstance Func;
     DtapiResult Result = DtFunc_Find(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
     if (Result != DTAPI_OK)

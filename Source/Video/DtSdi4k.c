@@ -22,7 +22,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasSsse3 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// CPUID leaf 1, ECX bit 9, as DtAvPixConv reads it.
+// CPUID leaf 1, ECX bit 9.
 //
 #if defined(CDTAPI_HAVE_SSSE3)
 static bool HasSsse3(void)

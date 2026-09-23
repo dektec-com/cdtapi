@@ -20,7 +20,7 @@
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Raw IOCTLs.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
-#include "cdtapi_version.h"         // The DTAPI version requests speak for.
+#include "cdtapi_version.h"         // The CDTAPI version requests speak for.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -388,7 +388,8 @@ DT_TEST(ConfigurationRoundTrips)
     OsDrv_Close(Drv);
 }
 
-// DTAPI numbers the buddy port of a double-buffered output from 1, the driver from 0.
+// The public interface numbers the buddy port of a double-buffered output from 1, the
+// driver from 0.
 DT_TEST(BuddyPortIsConvertedBothWays)
 {
     DtIoConfig Set =
@@ -508,7 +509,7 @@ DT_TEST(DirectionsThatNamePortsAreConverted)
     OsDrv_Close(Drv);
 }
 
-// DTAPI skips the driver's exclusive-access check for the port its proxy addresses,
+// The driver's exclusive-access check is skipped for the port a request addresses,
 // which for a device-level request is port index -1.
 DT_TEST(ExclusiveAccessCheckIsSkippedOnlyForTheDevice)
 {

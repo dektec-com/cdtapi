@@ -20,8 +20,8 @@ DT_TEST(PayloadIdIsTheFirstByte)
     DT_ASSERT_EQ(DtSmpte352_PayloadId(0xFFFFFF00), 0);
 }
 
-// The picture rate codes of SMPTE ST 352 table 2 that DTAPI knows; the others, reserved
-// or not supported, give 0/0. Only byte 2 bits 3..0 count.
+// The picture rate codes of SMPTE ST 352 table 2 that the library knows; the others,
+// reserved or not supported, give 0/0. Only byte 2 bits 3..0 count.
 DT_TEST(PictureRateCodes)
 {
     static const struct

@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DTAPI's RxFifoMain: a pipe of the port whose filter takes the stream, a thread that
-// hands the packets in the pipe's buffer to the parser of the substandard, and a FIFO of
-// the frames the parser completes. The thread polls the pipe instead of waiting for the
-// driver's event (plan 0009, question 2).
+// A pipe of the port whose filter takes the stream, a thread that hands the packets in
+// the pipe's buffer to the parser of the substandard, and a FIFO of the frames the
+// parser completes. The thread polls the pipe instead of waiting for the driver's event
+// (plan 0009, question 2).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -28,11 +28,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// DTAPI's shared buffer sizes: 64 MB for video, 4 MB for audio.
+// The shared buffer sizes: 64 MB for video, 4 MB for audio.
 #define RX_BUFFER_VIDEO (64 * 1024 * 1024)
 #define RX_BUFFER_AUDIO (4 * 1024 * 1024)
 
-// DTAPI's FIFO size for audio, 50 ms of 125 us packets.
+// The FIFO size for audio, 50 ms of 125 us packets.
 #define RX_AUDIO_MAX_SIZE 400
 
 #define KIND_NONE 0
@@ -92,8 +92,8 @@ static void Parse(void* Context, const uint8_t* Packet, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// RxFifoMain::RxDataThread: pass after pass over the buffer, a short sleep when a pass
-// found nothing. Lost packet boundaries count a synchronisation error.
+// Pass after pass over the buffer, with a short sleep when a pass found nothing. Lost
+// packet boundaries count a synchronisation error.
 //
 static void ReceiveThread(void* Context)
 {
@@ -121,9 +121,8 @@ static void ReceiveThread(void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// RxFifoMain::ProgramIpFilter and DtPalPipe_Nw::SetIpFilter: the destination address and
-// port, the sources' address and each source's port but -1, and the VLAN ID, which the
-// filter's flags do not enable.
+// The filter takes the destination address and port, the sources' address and each
+// source's port but -1, and the VLAN ID, which the filter's flags do not enable.
 //
 static DtapiResult SetFilter(AvFifo_RxFifo* Fifo, bool Enable)
 {
@@ -158,8 +157,8 @@ static DtapiResult SetFilter(AvFifo_RxFifo* Fifo, bool Enable)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Teardown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// RxFifoMain::Stop: the thread, the group, the filter, the pipe and the socket, as far as
-// they are there. The frame the parser was filling goes back to the pool.
+// Stopping: the thread, the group, the filter, the pipe and the socket, as far as they
+// are there. The frame the parser was filling goes back to the pool.
 //
 static void Teardown(AvFifo_RxFifo* Fifo)
 {
@@ -188,9 +187,9 @@ static void Teardown(AvFifo_RxFifo* Fifo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// RxFifoMain::Start in its order: the network, the pipe and its buffer, the own address
-// and a socket bound to it, an empty FIFO and statistics, the pipe running with its
-// filter, the thread, and the multicast group last.
+// Starting, in its order: the network, the pipe and its buffer, the own address and a
+// socket bound to it, an empty FIFO and statistics, the pipe running with its filter,
+// the thread, and the multicast group last.
 //
 static DtapiResult Start(AvFifo_RxFifo* Fifo)
 {

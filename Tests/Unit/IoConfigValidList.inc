@@ -6,9 +6,9 @@
 //
 // Each entry is V(Group, Value, SubValue), -1 for no sub-value. The list is printed by
 // Scripts/extract_ioconfig_relation.py --valid, which works the combinations out on the
-// children of each code, the way DTAPI's IsValidConfig does. The library encodes the same
-// relation the other way round, as parents, so comparing the two over every combination
-// checks that encoding rather than restating it.
+// children of each code. The library encodes the same relation the other way round, as
+// parents, so comparing the two over every combination checks that encoding rather than
+// restating it.
 //
 // No include guard: the file is meant to be included more than once.
 

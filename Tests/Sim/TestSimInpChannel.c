@@ -282,7 +282,8 @@ DT_TEST(NullAndDetached)
     FINISH(Fix);
 }
 
-// The checks of DtInpChannel::AttachToPort and the input channel, in their order.
+// The checks DtInpChannel_AttachToPort makes, and those of the input channel, in their
+// order.
 DT_TEST(AttachChecks)
 {
     Fixture Fix;
@@ -359,7 +360,7 @@ DT_TEST(AttachRefusals)
                  DTAPI_E_DRIVER_INCOMP);
 
     // 2160p over one 12G link receives (0014), but a 4K standard of level-B links
-    // attaches without receiving, as with DTAPI.
+    // attaches without receiving.
     SimDtPcie_Reset();
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
@@ -830,7 +831,7 @@ DT_TEST(FifoLoadBeforeTheFirstRead)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ReadFrame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// DtInpChannel::ReadFrame's checks in their order, and the frame size after them.
+// DtInpChannel_ReadFrame's checks in their order, and the frame size after them.
 DT_TEST(ReadFrameChecks)
 {
     Fixture Fix;
@@ -1092,7 +1093,7 @@ DT_TEST(ReadAfterAModeChangeChecksTheBuffer)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// SdiRxImpl_Bb2's receive modes: the full frame only, in 8, 10 or 16 bits, while idle.
+// An SDI port's receive modes: the full frame only, in 8, 10 or 16 bits, while idle.
 DT_TEST(ReceiveModes)
 {
     Fixture Fix;

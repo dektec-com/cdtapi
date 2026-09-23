@@ -19,9 +19,8 @@
 //
 // The API takes I/O configuration as integers, DTAPI_IOCONFIG_IODIR and so on. The driver
 // takes names: DtIoctlIoConfig carries its group, value and sub-value as strings. These
-// two functions translate between the two, with the same results DTAPI gives
-// (DtConfigDefStore.cpp, GetCode and GetName), including its special case: -1 means "no
-// value" and corresponds to the empty name.
+// two functions translate between the two, with one special case: -1 means "no value"
+// and corresponds to the empty name.
 //
 // Both return a DTAPI result code.
 //
@@ -41,9 +40,9 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Validation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Which combinations of group, value and sub-value make a configuration. DTAPI checks a
-// configuration against this relation before it sends one to the driver, and so does
-// CDTAPI. Whether a port supports the configuration is for the driver to decide.
+// Which combinations of group, value and sub-value make a configuration. A configuration
+// is checked against this relation before it is sent to the driver. Whether a port
+// supports the configuration is for the driver to decide.
 //
 
 // What a code can be in a configuration; a code can be more than one. These are the
@@ -60,15 +59,14 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 
 // Returns DTAPI_OK when Value belongs to Group and SubValue to Value, SubValue -1 being
 // required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
-// checks and their order are those of DTAPI's DtConfigDefs::IsValidConfig.
+// group is checked first, then the value, then the sub-value.
 DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue);
 
 // Returns DTAPI_OK when Group is a group or a boolean I/O capability, which is what
-// configurations can be read of, and DTAPI_E_INVALID_ARG otherwise, as DTAPI's
-// DtConfigDefs::GetGroupCaps checks.
+// configurations can be read of, and DTAPI_E_INVALID_ARG otherwise.
 DtapiResult DtIoConfig_CheckGroup(int Group);
 
 // True when a port with the capability named after Code, CAP_ and the code's name, has
-// Group, as GetGroupCaps collects a group's capabilities: a boolean I/O capability is its
-// own, a group has those of its values.
+// Group, which is how a group's capabilities are collected: a boolean I/O capability is
+// its own, a group has those of its values.
 bool DtIoConfig_IsCapOfGroup(int Code, int Group);

@@ -322,8 +322,10 @@
 #define DTAPI_E_INVALID_MIMO          (DTAPI_E + 285)
 #define DTAPI_E_NO_GATEWAY            (DTAPI_E + 286)
 
-// Reported for failures inside the AV FIFO API, which CDTAPI does not provide.
-#define DTAPI_E_EXCEPTION (DTAPI_E + 300) // For AvFifo exceptions see GetLastException
+// Defined so that code that names it still compiles; nothing here returns it. A failure
+// gives the result that says what went wrong, and the AV FIFO its text through
+// GetLastException.
+#define DTAPI_E_EXCEPTION (DTAPI_E + 300)
 // clang-format on
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

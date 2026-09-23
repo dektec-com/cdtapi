@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DTAPI's TxFifoMain: a FIFO of the application's frames, a thread that packetizes each
-// into the shared buffer of a pipe of the port once it has room, and the card's
-// scheduler, which sends every packet at its time of day. The thread polls the pipe for
-// room instead of waiting for the driver's event (plan 0009, question 2).
+// A FIFO of the application's frames, a thread that packetizes each into the shared
+// buffer of a pipe of the port once it has room, and the card's scheduler, which sends
+// every packet at its time of day. The thread polls the pipe for room instead of waiting
+// for the driver's event (plan 0009, question 2).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -28,7 +28,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// DTAPI's FIFO size for audio, 50 ms of 125 us packets.
+// The FIFO size for audio, 50 ms of 125 us packets.
 #define TX_AUDIO_MAX_SIZE 400
 
 // How long the thread waits for a frame before it looks at its stop flag again.
@@ -87,9 +87,9 @@ static int BytesNeeded(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TransmitThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TxFifoMain::TxWriteThread: takes the oldest frame, waits until the buffer has room for
-// its packets, packetizes it and returns it to the pool. A frame that no buffer's worth
-// of room can hold, or that fails to go out, returns to the pool unsent.
+// Takes the oldest frame, waits until the buffer has room for its packets, packetizes it
+// and returns it to the pool. A frame that no buffer's worth of room can hold, or that
+// fails to go out, returns to the pool unsent.
 //
 static void TransmitThread(void* Context)
 {
@@ -137,7 +137,7 @@ static void TransmitThread(void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RoundToPages -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DTAPI's RoundToPageSize: up to whole 4 KB pages, and one page more.
+// Rounds up to whole 4 KB pages, and adds one page more.
 //
 static size_t RoundToPages(uint64_t Size)
 {
@@ -146,8 +146,8 @@ static size_t RoundToPages(uint64_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DTAPI's GetSharedBufferSize: 80 ms of video, at least two frames of it, or 80 ms of
-// audio samples; and at least the room a frame's packets need.
+// The shared buffer size: 80 ms of video, at least two frames of it, or 80 ms of audio
+// samples; and at least the room a frame's packets need.
 //
 static size_t BufferSize(AvFifo_TxFifo* Fifo)
 {
@@ -178,7 +178,7 @@ static size_t BufferSize(AvFifo_TxFifo* Fifo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Teardown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// TxFifoMain::Stop: the thread, the pipe and the socket, as far as they are there.
+// Stopping: the thread, the pipe and the socket, as far as they are there.
 //
 static void Teardown(AvFifo_TxFifo* Fifo)
 {
@@ -201,10 +201,10 @@ static uint32_t ByteSwapped(uint32_t Value)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TxFifoMain::Start in its order: the network, the pipe and its buffer, the own address
-// and a socket bound to it, the destination's MAC address, the stream, an empty FIFO and
+// Starting, in its order: the network, the pipe and its buffer, the own address and a
+// socket bound to it, the destination's MAC address, the stream, an empty FIFO and
 // statistics, the pipe running, and the thread. The synchronisation source is the pipe's
-// UUID in the bytes DTAPI sends it in, the processor's order.
+// UUID with its bytes in the processor's order.
 //
 static DtapiResult Start(AvFifo_TxFifo* Fifo)
 {
@@ -304,8 +304,8 @@ static DtapiResult CheckStopped(const AvFifo_TxFifo* Fifo, const char* Where)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The size checks of VideoTx::TransferFrame and AudioTx::TransferFrame, made when the
-// frame is written.
+// The size checks the video and audio packetizers make, applied here when the frame is
+// written.
 //
 static bool CheckFrame(const AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 {

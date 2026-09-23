@@ -19,7 +19,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// DTAPI's output delay of the DTA-2110: how much later than its time a packet leaves the
+// The output delay of the DTA-2110: how much later than its time a packet leaves the
 // card. The 25G card uses the same until its own is known.
 #define DT_AV_OUTPUT_DELAY_NS 14800
 
@@ -43,8 +43,8 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
 // Closes the port's handle, which closes the pipes it opened.
 void DtAvPort_Detach(DtAvPort* Port);
 
-// DTAPI's CheckNetworkUp: the link, the MAC address and the operating system's interface
-// for the IP version of Pars.
+// Checks the link, the MAC address and the operating system's interface for the IP
+// version of Pars.
 DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
                                   const char* Where);
 

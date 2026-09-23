@@ -18,16 +18,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI reaches the hardware of a DtPcie card through API functions, such as the
-// ASI/SDI receiver of a port. The driver describes each as properties of the port:
-// instances AF_<name>#1, #2 and so on, each with a role; and per instance its parts,
-// #<n>.1, .2 and so on, each a driver function (DF_) or building block (BC_) with a role,
-// a type and a UUID that commands are addressed to. DTAPI's DtAf and DtProxyFactory read
-// these and make a proxy of each part; DtAf::GetPal then asks for the proxy of a type and
-// role.
+// The hardware of a DtPcie card is reached through API functions, such as the ASI/SDI
+// receiver of a port. The driver describes each as properties of the port: instances
+// AF_<name>#1, #2 and so on, each with a role; and per instance its parts, #<n>.1, .2 and
+// so on, each a driver function (DF_) or building block (BC_) with a role, a type and a
+// UUID that commands are addressed to.
 //
-// Here a part is plain data, and the proxy is the DtPartRef a driver command takes. What
-// DTAPI's PALs do with a proxy is done by the device layer that needs it.
+// Here a part is plain data, and what a driver command is addressed to is its DtPartRef.
+// What is then done with a part is the business of the device layer that needs it.
 //
 
 typedef struct DtFuncPart
@@ -46,15 +44,13 @@ typedef struct DtFuncInstance
 } DtFuncInstance;
 
 // Finds the instance of API function Name, such as "AF_ASISDIRX", with role Role on the
-// port at PortIndex, and reads its parts, as DtAfUtility::CreateProxies and
-// DtProxyFactory::CreateProxies do.
+// port at PortIndex, and reads its parts.
 //
 // Instances are read until one has the role; failing to read one is returned, so a
 // function without an instance of the role ends in DTAPI_E_NOT_FOUND. Parts are read
 // until one is not found; any other failure to read a part's name is returned. A part
 // whose name starts neither with DF_ nor BC_, or whose role, type or UUID cannot be read,
-// is left out, as DTAPI makes no proxy of it. Returns DTAPI_E_OUT_OF_MEM when the parts
-// do not fit in memory.
+// is left out. Returns DTAPI_E_OUT_OF_MEM when the parts do not fit in memory.
 //
 // Instance is empty after a failure. Release it with DtFunc_Release after a success.
 DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
@@ -64,22 +60,20 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
 void DtFunc_Release(DtFuncInstance* Instance);
 
 // The part of the instance that is a driver function when IsDf, or a building block
-// otherwise, of Type and with Role; NULL when there is none. When parts are alike the
-// last is returned, because DTAPI's proxy collection keeps the last one it adds for a
-// type and role.
+// otherwise, of Type and with Role; NULL when there is none. The parts are walked from
+// the back, so a later part of the same type and role wins.
 const DtFuncPart* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
                              const char* Role);
 
 // Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every part
-// of the instance, as DtAf::ExclAccess does. A part that does not support it is passed
-// over. The first other failure stops the command and is returned; when acquiring, the
+// of the instance. A part that does not support it is passed over. The first other
+// failure stops the command and is returned; when acquiring, the
 // parts acquired before it are released again. Releasing goes on past failures, and
 // returns the first.
 DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
 
-// Checks that the driver is new enough for a part's proxy, as DtAf::GetPal does before
-// using it (DtProxy.cpp, PROXY_MIN_DRV_VERSIONS): DTAPI_OK, DTAPI_E_DRIVER_INCOMP when it
-// is older, and DTAPI_E_INTERNAL for a type the table does not have. The table holds the
-// types CDTAPI uses.
+// Checks that the driver is new enough for a part before it is used: DTAPI_OK,
+// DTAPI_E_DRIVER_INCOMP when it is older, and DTAPI_E_INTERNAL for a type the table does
+// not have. The table holds the types CDTAPI uses.
 DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
                                       int Type);

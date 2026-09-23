@@ -266,17 +266,16 @@ int DtVidStd_NumPhysicalLinks(int LinkStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiVidStd2IoStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Follows DtapiVidStd2IoStd in DTAPI's Dtapi.cpp, including the order of its checks,
-// since that order decides which error a caller sees when more than one thing is wrong:
-// first the output pointers, then the link standard, then the video standard.
+// The order of the checks decides which error a caller sees when more than one thing is
+// wrong: first the output pointers, then the link standard, then the video standard.
 //
 // The sub-value is always the video standard itself, because every video standard shares
 // its number with the I/O configuration sub-value of the same name.
 //
 // A 2160p standard that is not on the one link of its rate class, 6G up to 30 frames and
 // 12G from 50, is configured as the standard of one of its links, the 1080p standard of
-// the same rate. DTAPI decides this by the rate class alone, so a 50 Hz and up standard
-// on 6G is taken as that too: 2160p50 with SMPTE 2081 gives 3G-SDI 1080p50.
+// the same rate. The rate class alone decides this, so a 50 Hz and up standard on 6G is
+// taken as that too: 2160p50 with SMPTE 2081 gives 3G-SDI 1080p50.
 //
 DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
                               int* SubValue)

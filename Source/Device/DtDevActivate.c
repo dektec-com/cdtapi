@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DtPalIPSECG::Check as Device.cpp calls it at attach: the part is handed the data the
-// card's own EEPROM holds for it, and reports itself ready. Until it does, the firmware
-// does not do its work: the card carries nothing, in either direction, whether over SDI,
-// ASI or IP. Every card that has the part needs this; a card without it needs none of it.
+// At attach the part is handed the data the card's own EEPROM holds for it, and reports
+// itself ready. Until it does, the firmware does not do its work: the card carries
+// nothing, in either direction, whether over SDI, ASI or IP. Every card that has the part
+// needs this; a card without it needs none of it.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -41,7 +41,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Acquire -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The part answers nothing without exclusive access, so it is taken for the whole pass
-// and released again, as DtPalIPSECG does with AutoExclAcces.
+// and released again.
 //
 static DtapiResult Acquire(OsDrv* Drv, DtPartRef Part)
 {

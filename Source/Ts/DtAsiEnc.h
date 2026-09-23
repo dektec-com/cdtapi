@@ -20,9 +20,8 @@
 //
 // A DtPcie card sends what its DMA buffer holds as 10-bit 8b/10b symbols, one in each
 // 16-bit word, at the ASI line rate of 27 M symbols a second; the process makes them.
-// This is DTAPI's TpToAsiConvertor (AsiSdiOutpChannel_Bb2.cpp): every byte of the
-// transport stream becomes its 8b/10b code for the running disparity, and K28.5 comma
-// symbols fill the line so that the stream has the rate asked for.
+// Every byte of the transport stream becomes its 8b/10b code for the running disparity,
+// and K28.5 comma symbols fill the line so that the stream has the rate asked for.
 //
 // The rate is kept as an accumulator over an interval of 188 x 8 symbol times, so that a
 // rate in whole bits a second has no fraction. Before each packet go two K28.5, one when
@@ -81,14 +80,13 @@ typedef struct DtAsiEnc
     bool First;
 } DtAsiEnc;
 
-// A stream in DTAPI's defaults: DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST at 10 Mbit/s.
+// A stream with the default settings: DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST at 10 Mbit/s.
 void DtAsiEnc_Init(DtAsiEnc* Enc);
 
 // Sets the transmit mode, a DTAPI_TXMODE_ of the transport-stream group with
 // DTAPI_TXMODE_BURST or DTAPI_TXMODE_TXONTIME. Returns DTAPI_E_NOT_IMPLEMENTED for
-// DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another mode, as
-// TpToAsiConvertor::SetTxMode does, and then changes nothing. A rate the new packet size
-// does not fit is not refused here but by Start, as in DTAPI.
+// DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another mode, and then changes
+// nothing. A rate the new packet size does not fit is not refused here but by Start.
 DtapiResult DtAsiEnc_SetTxMode(DtAsiEnc* Enc, int TxMode);
 
 // Sets the rate in bits a second, counted in 188-byte packets whatever the packet size.
@@ -108,12 +106,11 @@ DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc);
 void DtAsiEnc_Convert(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
                       size_t OutSyms, size_t* Taken, size_t* Written);
 
-// Writes Syms K28.5 symbols into Out, keeping the running disparity, as
-// TpToAsiConvertor::AddPadding does to fill the card's last data word.
+// Writes Syms K28.5 symbols into Out, keeping the running disparity, to fill the card's
+// last data word.
 void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Syms);
 
-// The transport-stream bytes that Syms symbols carry at the current rate, as
-// TpToAsiConvertor::ComputeTspLoad estimates them, rounded down.
+// The transport-stream bytes that Syms symbols carry at the current rate, rounded down.
 int64_t DtAsiEnc_BytesOf(const DtAsiEnc* Enc, int64_t Syms);
 
 // DTAPI_TX_SYNC_ERR in *Flags and *Latched when set; ClearFlags clears it when Flags has

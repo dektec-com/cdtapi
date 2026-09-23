@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // The reference values in AvTimeCases.inc come from AvTimeCases.py, which evaluates the
-// formulas of DTAPI's TimeConversion with Python's integers of any size.
+// timing formulas with Python's integers of any size.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

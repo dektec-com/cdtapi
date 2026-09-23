@@ -24,8 +24,8 @@
 //   UYVY 8       4 bytes, one per sample; also ST 2110-20's 8-bit pixel group
 //   YUV 4:2:2p   8-bit planes: two Y bytes, one U and one V per pixel group
 //
-// A 10-bit sample becomes 8 bits by dropping its two least significant bits, as DTAPI
-// does. The conversions read and write only the pixel groups they are given.
+// A 10-bit sample becomes 8 bits by dropping its two least significant bits. The
+// conversions read and write only the pixel groups they are given.
 //
 
 // Converts NumPgroups pixel groups from Src to Dst, which must not overlap.

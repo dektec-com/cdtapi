@@ -179,11 +179,11 @@ static void FreeFrames(Frames* Set)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A raw frame holds every line, EAV first, as DTAPI numbers the lines: in HD each word
-// once for the colour difference and once for the luma, colour difference first, and
-// after the EAV the line number and the line's CRC; in SD the samples as SMPTE 259 orders
-// them. Symbols are packed as the transmit mode says, 10-bit ones least significant bit
-// first, and the frame is padded with zeros to a multiple of 8 bytes.
+// A raw frame holds every line, EAV first, in the order the lines are numbered: in HD
+// each word once for the colour difference and once for the luma, colour difference
+// first, and after the EAV the line number and the line's CRC; in SD the samples as
+// SMPTE 259 orders them. Symbols are packed as the transmit mode says, 10-bit ones least
+// significant bit first, and the frame is padded with zeros to a multiple of 8 bytes.
 //
 
 // The layout of a video standard's lines.
@@ -236,8 +236,8 @@ typedef struct Pattern
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatternInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The layout of the pattern for VidStd, as DTAPI's MxFramePropsSdi describes the
-// standard. False for a standard the pattern does not know or when memory runs out.
+// The layout of the pattern for VidStd, from the geometry of the video standard. False
+// for a standard the pattern does not know or when memory runs out.
 //
 static bool PatternInit(Pattern* Pat, int VidStd, int SymbolBits)
 {
@@ -576,9 +576,10 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches the device and the channel to Port, sets the I/O standard when asked and the
-// transmit mode, in that order, as DTAPI sets a channel back to 10-bit symbols when its
-// I/O standard is set, and transmits. Returns the exit code.
+// Attaches the device and the channel to Port, sets the I/O standard when asked and then
+// the transmit mode, in that order, since a standard that crosses between SDI and ASI
+// gives the channel that side's default transmit mode, and transmits. Returns the exit
+// code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              const DtHwFuncDesc* Port, int TxMode, int VidStd,

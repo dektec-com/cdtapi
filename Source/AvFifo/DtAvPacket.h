@@ -26,18 +26,16 @@
 #define DT_AV_ESN_SIZE 2
 #define DT_AV_SRD_SIZE 6
 
-// UDP datagrams of a standard and of a jumbo frame, their headers included, as DTAPI
-// sizes them.
+// UDP datagrams of a standard and of a jumbo frame, their headers included.
 #define DT_AV_UDP_STANDARD 1460
 #define DT_AV_UDP_JUMBO 8960
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A transmitted packet, as DTAPI's TxFifo builds it: the DtEthIp header with the time to
-// send it, an Ethernet header with a VLAN tag when an ID or priority is given, an IPv4
-// header of 20 bytes that may not be fragmented or an IPv6 header, and a UDP header, all
-// checksums zero for the card to insert; then the UDP payload, and zero bytes up to the
-// pipe's alignment.
+// A transmitted packet: the DtEthIp header with the time to send it, an Ethernet header
+// with a VLAN tag when an ID or priority is given, an IPv4 header of 20 bytes that may
+// not be fragmented or an IPv6 header, and a UDP header, all checksums zero for the card
+// to insert; then the UDP payload, and zero bytes up to the pipe's alignment.
 //
 
 // Where a stream goes and how it gets there.

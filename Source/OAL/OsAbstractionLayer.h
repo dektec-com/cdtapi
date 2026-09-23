@@ -87,7 +87,7 @@ int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* 
 // on Linux as the negated return value of ioctl itself. Each backend recognises its own
 // form, so that the layer above sees one outcome and one status, and translates only the
 // status. Everything else is a failure of the operating system rather than of the
-// driver, and is kept apart because DTAPI reports it differently.
+// driver, and is kept apart because it maps to a different result.
 //
 #define OS_IOCTL_OK 0             // The driver carried out the command.
 #define OS_IOCTL_DRIVER_STATUS -1 // The driver refused it; see the DtStatus.

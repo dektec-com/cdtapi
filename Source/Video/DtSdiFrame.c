@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiFrame.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - The firmware's coded SDI frames, DTAPI's raw SDI frame, and black frames
+// CDTAPI - The firmware's coded SDI frames, the raw SDI frame, and black frames
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -21,8 +21,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PaddedBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The bytes Symbols 10-bit symbols take, padded to Alignment bytes, as
-// DtMxPlaneProps::NumBytesPerLine computes it for a 10-bit plane.
+// The bytes Symbols 10-bit symbols take, padded to Alignment bytes.
 //
 static int PaddedBytes(int Symbols, int Alignment)
 {
@@ -43,8 +42,7 @@ static int AlignedBytes(int Bytes, int Alignment)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_LayoutInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The frame properties of a 2160p standard describe one of its links
-// (MxCodedFramePropsSdi::Init, MxProcessMemless.cpp:226-245).
+// The frame properties of a 2160p standard describe one of its links.
 //
 bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits)
 {
@@ -131,8 +129,7 @@ static void Write32(uint8_t* Bytes, uint32_t Value)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_DecodeHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The second word is declared in DTAPI as bit-fields, which the compilers DTAPI is built
-// with allocate from the least significant bit.
+// The second word's fields are packed from the least significant bit upwards.
 //
 void DtSdiFrame_DecodeHeader(const uint8_t* Bytes, DtSdiFrameHeader* Header)
 {
@@ -178,7 +175,7 @@ DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
 //
 // The header's SDI rate takes the driver's DT_DRV_SDIRATE_ values, which DT_SDIRATE_
 // equals. A 4K header counts the coded lines and gives the sizes of one HANC section
-// and of the video section (MxHdChannelMemless.cpp:1953-1985).
+// and of the video section.
 //
 void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
                              DtSdiFrameTxHeader* Header)
@@ -262,7 +259,7 @@ void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_RawSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// HdSdiUtil::NumSymbols2DmaSize with an alignment of 64 bits.
+// The frame's symbols, at SymbolBits each, padded to an alignment of 64 bits.
 //
 size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
@@ -324,8 +321,7 @@ static void OrBits(uint8_t* Raw, size_t Bit, uint32_t Value, uint32_t Count)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopySection10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A packed section to its bit position in a 10-bit raw frame. Whole bytes are copied
-// when the position is on a byte boundary, as PxCnv::Concat_Uyvy10 does; the rest goes
-// bit by bit.
+// when the position is on a byte boundary; the rest goes bit by bit.
 //
 static void CopySection10(const uint8_t* Section, size_t Symbols, uint8_t* Raw,
                           size_t Bit)
@@ -348,8 +344,8 @@ static void CopySection10(const uint8_t* Section, size_t Symbols, uint8_t* Raw,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopySection8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Four symbols take five bytes, so the section is taken five bytes at a time, as
-// Cnv10_8_OptC does, and the symbols left over one by one.
+// Four symbols take five bytes, so the section is taken five bytes at a time, and the
+// symbols left over one by one.
 //
 static void CopySection8(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 {
@@ -374,7 +370,7 @@ static void CopySection8(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopySection16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Five bytes at a time as well, as Cnv10_16_OptC does.
+// Five bytes at a time as well.
 //
 static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 {
@@ -410,7 +406,7 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The line starts at LineIndex times the bits of a line, as PxCnvTaskRaw::Run places it.
+// The line starts at LineIndex times the bits of a line.
 //
 void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                             const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
@@ -443,9 +439,8 @@ void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 //
 // Copies Count bits, from bit Bit of In, to the start of the Bytes bytes at Out, and
 // clears the bits of Out after them. Whole bytes are copied when Bit is on a byte
-// boundary, as PxCnv::Split_Uyvy10 does; otherwise each byte of Out takes the upper bits
-// of one byte of In and the lower bits of the next. No byte of In after the one holding
-// the last bit is read.
+// boundary; otherwise each byte of Out takes the upper bits of one byte of In and the
+// lower bits of the next. No byte of In after the one holding the last bit is read.
 //
 static void CopyBits(const uint8_t* In, size_t Bit, size_t Count, uint8_t* Out,
                      size_t Bytes)
@@ -838,8 +833,8 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// HdSdiUtil::GetLineNumber: the line number of an HD line, from its chrominance and
-// luminance words; -1 without a valid EAV or when the two differ.
+// The line number of an HD line, from its chrominance and luminance words; -1 without a
+// valid EAV or when the two differ.
 //
 static int LineNumber(const uint8_t* Line)
 {

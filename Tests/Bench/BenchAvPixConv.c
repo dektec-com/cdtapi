@@ -50,7 +50,7 @@
 // 8.
 #define PACKET_HEADERS 78
 
-// The pixel groups in a packet of DTAPI's default payload of 1,420 bytes, less the
+// The pixel groups in a packet of the default payload of 1,420 bytes, less the
 // extended sequence number and a row header: 282 of 5 bytes, 353 of 4.
 #define PACKET_PGROUPS_10 282
 #define PACKET_PGROUPS_8 353

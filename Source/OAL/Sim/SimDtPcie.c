@@ -247,9 +247,8 @@ static int SimFail(SimDevice* Dev, DtStatus Status, uint32_t* DrvStatus)
 //
 // The driver refuses a request whose input is shorter than the command's input
 // structure, or whose output buffer cannot hold the answer, both with
-// DT_STATUS_INVALID_PARAMETER and in that order (DtIoStub_IoctlCheckAndReport). Doing
-// the same here is what makes the emulator a test of the wire format rather than a stub
-// that accepts anything.
+// DT_STATUS_INVALID_PARAMETER and in that order. Doing the same here is what makes the
+// emulator a test of the wire format rather than a stub that accepts anything.
 //
 // Returns OS_IOCTL_OK when the sizes are acceptable.
 //
@@ -499,8 +498,8 @@ static int PropertyCmd(SimDevice* Dev, int Cmd, const void* In, size_t InSize, v
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The request ends in a flexible array whose length it gives itself, so the sizes are
-// checked in two steps, as the driver does (DtIoStubCfIoCfg_AppendDynamicSize). A port
-// index or group out of range is an invalid parameter, as in DtCfIoCfg_Get.
+// checked in two steps, as the driver expects. A port index or group out of range is an
+// invalid parameter, as it is in the driver.
 //
 static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
                        size_t* OutSize, uint32_t* DrvStatus)
@@ -557,9 +556,9 @@ static int GetIoConfig(SimDevice* Dev, const void* In, size_t InSize, void* Out,
 //
 // Every configuration in the request is checked before any is applied, so a request
 // that fails changes nothing. A port index or group out of range is an invalid parameter,
-// as in DtCfIoCfg_Set; a combination the port cannot take is a configuration error, the
-// status of the driver's per-group validation. An unknown name, which the driver only
-// asserts on, is treated as an invalid parameter.
+// as it is in the driver; a combination the port cannot take is a configuration error,
+// the status of the driver's per-group validation. An unknown name, which the driver
+// only asserts on, is treated as an invalid parameter.
 //
 static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* DrvStatus)
 {
@@ -677,7 +676,7 @@ static int TodCmd(SimDevice* Dev, int Cmd, size_t InSize, void* Out, size_t* Out
 //
 // The SDI receiver of the port at PortIndex. Only reading its status is modelled. Its
 // sizes are checked first, then whether the function is enabled, which it is while the
-// port is an input (DtDfSdiRx_GetSdiStatus). In ASI mode only the carrier is reported.
+// port is an input. In ASI mode only the carrier is reported.
 //
 static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void* Out,
                     size_t* OutSize, uint32_t* DrvStatus)
@@ -765,7 +764,7 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
 //
 // A command for a transmit block of the port at PortIndex. The blocks are enabled while
 // the port is an output with an SDI I/O standard, but for the PHY, which an ASI output
-// uses too (DtPtAsiSdiRxTx).
+// uses too.
 //
 static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int Type,
                     const char* Role, int Cmd, const void* In, size_t InSize, void* Out,
@@ -810,8 +809,8 @@ static int AsiCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExclAccessCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// EXCL_ACCESS_CMD for the part at PartIndex, with the rules of DtBc_ExclAccess* and
-// DtDf_ExclAccess*, the owner being the handle.
+// EXCL_ACCESS_CMD for the part at PartIndex, with the driver's rules for a building
+// block or a driver function, the owner being the handle.
 //
 static int ExclAccessCmd(SimDevice* Dev, int PartIndex, int Cmd, uint32_t* DrvStatus)
 {
@@ -899,7 +898,7 @@ static void SimClose(void* State)
 // driver does. On Linux the number also encodes the argument size, so matching on it
 // would accept only the one structure size this build happened to be compiled with.
 //
-// The header's UUID picks the target first, as in DtCore_Ioctl: 0 is the device itself,
+// The header's UUID picks the target first, as in the driver: 0 is the device itself,
 // which must be addressed with port index -1; a UUID flagged as a building block or
 // driver function is looked up by its flags and index, whatever the port index and the
 // bits above the flags say; anything else, and a UUID the card does not have, has no I/O
@@ -1013,7 +1012,7 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimIoCtlLocked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The driver refuses an input too short to hold the common header before it looks at
-// anything else (DtCore_Ioctl). OsDrv_IoCtl has already refused a request without input.
+// anything else. OsDrv_IoCtl has already refused a request without input.
 //
 static int SimIoCtlLocked(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
                           void* Out, size_t* OutSize, uint32_t* DrvStatus)

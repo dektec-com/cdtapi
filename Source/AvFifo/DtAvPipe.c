@@ -16,7 +16,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipe +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// DTAPI rounds a buffer to 4 KB pages, whatever the operating system's page size.
+// A buffer is rounded to 4 KB pages, whatever the operating system's page size.
 #define PIPE_PAGE 4096
 
 // A transmit pipe keeps this many bytes free before its read offset.
@@ -46,7 +46,7 @@ DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtPartRef Nw, int Type,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_SetBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtPalPipe_Nw::AllocateSharedBuffer: idle, a whole number of prefetch sizes, handed to
+// Idles the pipe, allocates a whole number of prefetch sizes, and hands the buffer to
 // the driver.
 //
 DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)

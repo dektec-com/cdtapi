@@ -123,8 +123,8 @@ DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtPartRef Part, DtCdmacProps* Pr
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacAllocateBufferAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtProxyCDMAC::AllocateBuffer. The answer must hold at least the command's fixed output
-// structure; on Linux that is all there is, and the driver writes nothing into it.
+// The answer must hold at least the command's fixed output structure; on Linux that is
+// all there is, and the driver writes nothing into it.
 //
 DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtPartRef Part, int Direction,
                                             const OsDmaBuffer* Buf, bool BufferIsOutput)
@@ -198,7 +198,7 @@ DtapiResult DtPcieCmd_CdmacSetOpMode(OsDrv* Drv, DtPartRef Part, int OpMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacSetTestMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtProxyCDMAC::SetTestMode refuses a mode it cannot convert; so does this.
+// A test mode that is none of the driver's own values is refused without a command.
 //
 DtapiResult DtPcieCmd_CdmacSetTestMode(OsDrv* Drv, DtPartRef Part, int TestMode)
 {

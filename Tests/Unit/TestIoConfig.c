@@ -17,7 +17,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Completeness +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The highest code in CDTAPI.h is TODREF_STEADYCLOCK. A constant added to the public
+// The highest code in cdtapi.h is TODREF_STEADYCLOCK. A constant added to the public
 // header without an entry in the X-macro list changes this relation and fails here.
 DT_TEST(TableCoversEveryCode)
 {
@@ -58,7 +58,7 @@ DT_TEST(EveryNameFitsTheDriverField)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Known values +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Spot checks against CDTAPI.h, chosen where the numbering is least obvious: the
+// Spot checks against cdtapi.h, chosen where the numbering is least obvious: the
 // pseudo-values, the first value after the groups, and SDIRX before SDI, which only file
 // order explains.
 //
@@ -181,8 +181,8 @@ static bool IsListedValid(int Group, int Value, int SubValue)
 }
 
 // Every combination of codes, including -1 and one past the last code in each position,
-// against the list worked out the way DTAPI does. This is the check on the parent
-// encoding: any wrong kind or parent makes some combination disagree.
+// against the list worked out on the children of each code. This is the check on the
+// parent encoding: any wrong kind or parent makes some combination disagree.
 DT_TEST(EveryCombinationMatchesDtapi)
 {
     int Count = DtIoConfig_Count();

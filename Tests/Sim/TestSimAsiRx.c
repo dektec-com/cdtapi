@@ -122,8 +122,8 @@ static uint32_t NumberOf(const uint8_t* P)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// An ASI port attaches with DTAPI's defaults; the SDI functions are refused and Read's
-// arguments are checked in DTAPI's order.
+// An ASI port attaches with its defaults; the SDI functions are refused and Read's
+// arguments are checked in their order.
 DT_TEST(AttachesWithDefaults)
 {
     Fixture Fix;
@@ -167,9 +167,9 @@ DT_TEST(AttachesWithDefaults)
     FINISH(Fix);
 }
 
-// Every receive mode delivers what DTAPI's converter does of the packets the card
-// received: whole packets, 204-byte ones, the valid bytes, the card's pieces as they
-// came, or the transparent packets, with a time stamp before each when asked.
+// Every receive mode delivers what the mode makes of the packets the card received:
+// whole packets, 204-byte ones, the valid bytes, the card's pieces as they came, or the
+// transparent packets, with a time stamp before each when asked.
 DT_TEST(ReadsEveryMode)
 {
     Fixture Fix;
@@ -332,7 +332,7 @@ DT_TEST(RecoversFromFaults)
     FINISH(Fix);
 }
 
-// The load never exceeds DTAPI's FIFO: what does not fit is dropped with
+// The load never exceeds the FIFO's size: what does not fit is dropped with
 // DTAPI_RX_FIFO_OVF, and so is what the card could not write. Stopping clears the flag.
 DT_TEST(OverflowsAsDtapi)
 {
@@ -365,8 +365,8 @@ DT_TEST(OverflowsAsDtapi)
     FINISH(Fix);
 }
 
-// The status in DTAPI's values, the rate of 188-byte packets but in raw mode, the
-// violations, and the polarity control.
+// The status in the public header's values, the rate of 188-byte packets but in raw
+// mode, the violations, and the polarity control.
 DT_TEST(StatusAndRate)
 {
     Fixture Fix;

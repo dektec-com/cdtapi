@@ -20,7 +20,7 @@
 //
 // A frame is the application's AvFifo_Frame itself, followed by what the pool keeps: the
 // application gets a pointer to the first member and gives it back. Its data starts on a
-// 32-byte boundary, as DTAPI's frames do, and holds Size bytes.
+// 32-byte boundary and holds Size bytes.
 //
 
 // The boundary a frame's data starts on.

@@ -52,9 +52,9 @@ void OsDmaBuffer_Free(OsDmaBuffer* Buf);
 //   Linux    as a virtual address in the input structure's m_BufferAddr field. The
 //            output buffer is the command's small fixed-size output structure.
 //
-// That is DtProxy.cpp:3417-3434. If callers branched on the platform themselves, the
-// difference would leak into every command that registers a buffer, so it is resolved
-// here once, into the three values a caller needs.
+// If callers branched on the platform themselves, the difference would leak into every
+// command that registers a buffer, so it is resolved here once, into the three values a
+// caller needs.
 //
 
 typedef struct OsDmaHandOff

@@ -392,7 +392,7 @@ DT_TEST(NullAndDetached)
     DT_ASSERT_EQ(DtOutpChannel_Write(NULL, Data, 8), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtOutpChannel_WriteFrame(NULL, Data, 8, 10), DTAPI_E_INVALID_ARG);
 
-    // Detached: the checks DTAPI makes before it looks first.
+    // Detached: the checks the arguments get before the channel is looked at.
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Data, -4), DTAPI_E_INVALID_SIZE);
     DT_ASSERT_EQ(DtOutpChannel_SetTxMode(Fix.Channel, 0x10 | DTAPI_TXMODE_SDI_FULL, 0),
                  DTAPI_E_INVALID_MODE);
@@ -503,7 +503,7 @@ DT_TEST(AttachRefusals)
 
     // The exclusive access was released: another attach succeeds. 2160p over one 12G
     // link sends (0014), but a 4K standard of level-B links holds no buffer and does not
-    // leave idle, as with DTAPI.
+    // leave idle.
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50B", PORT - 1, true, 1);
@@ -554,7 +554,7 @@ DT_TEST(TransmitModes)
                  DTAPI_E_INVALID_MODE);
 
     // DTAPI_TXMODE_SDI alone is the full frame in 8 bits, which holds and takes frames
-    // but does not send them, as DTAPI does on the card: the load is checked first.
+    // but does not send them: the load is checked first.
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel, DTAPI_TXMODE_SDI, 0));
     DT_ASSERT_EQ(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND),
                  DTAPI_E_INSUF_LOAD);
@@ -780,7 +780,7 @@ DT_TEST(WriteChecks)
     DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
-    // A misaligned buffer or size overrides idle, as in DTAPI.
+    // A misaligned buffer or size overrides idle.
     uint8_t Data[16];
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, (char*)Data + 1, 8),
                  DTAPI_E_INVALID_BUF);

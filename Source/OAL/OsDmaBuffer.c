@@ -30,9 +30,9 @@ size_t OsDmaBuffer_PageSize(void)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Allocates one block large enough to contain a page-aligned region of the rounded size
-// wherever the allocator happens to place it, then carves that region out. This is the
-// scheme DTAPI uses in Utility::MallocAligned, which is known to work with these drivers;
-// here the original block is kept in the structure instead of in front of the data.
+// wherever the allocator happens to place it, then carves that region out. That scheme
+// is known to work with these drivers; the original block is kept in the structure
+// instead of in front of the data.
 //
 // It goes through the allocation seam, so a test can make it fail.
 //
@@ -119,8 +119,8 @@ void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
     }
 
     // Converted through uintptr_t, which is unsigned, so a 32-bit address is
-    // zero-extended into the 64-bit field. DTAPI masks off the upper half on 32-bit
-    // Linux for the same reason; the unsigned conversion makes that mask unnecessary.
+    // zero-extended into the 64-bit field. That makes a mask over the upper half on
+    // 32-bit Linux unnecessary.
     HandOff->BufferAddr = (uint64_t)(uintptr_t)Buf->Data;
     HandOff->Out = Fixed;
     HandOff->OutSize = FixedSize;

@@ -188,8 +188,8 @@ DT_TEST(NullArgumentsAreRefused)
     FINISH(Device, Live);
 }
 
-// A device object that is not attached is no device to detect on, rather than a device
-// that is not attached, as DtAvInputStatus::AttachToPort has it.
+// A device object that is not attached is no device to detect on: DTAPI_E_DEVICE, and
+// not an error saying that it is not attached.
 DT_TEST(DetachedDeviceIsNoDevice)
 {
     int VidStd = 12345;
@@ -491,9 +491,9 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
     FINISH(Device, Live);
 }
 
-// Of two SDI receivers the last is used, because DTAPI's proxy collection keeps the last
-// proxy it adds for a type and role. The extra receiver is that of port 3, which has no
-// signal: listed after the input port's own, it is used; listed before, it is not.
+// Of two SDI receivers the last is used, because the last part found for a type and
+// role wins. The extra receiver is that of port 3, which has no signal: listed after
+// the input port's own, it is used; listed before, it is not.
 static DtapiResult DetectWithSecondReceiver(int* DtFailures, const char* Position,
                                             DtDevice** Device, int* VidStd)
 {
@@ -731,7 +731,7 @@ DT_TEST(OutputPortIsInTheWrongMode)
 }
 
 // A driver older than the SDI receiver needs is found out when detecting, after the
-// down-scaling configuration is read, as DTAPI does. The build number counts.
+// down-scaling configuration is read. The build number counts.
 DT_TEST(OldDriverIsFoundWhenDetecting)
 {
     int VidStd = 12345;

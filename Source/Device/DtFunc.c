@@ -42,9 +42,8 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadPart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtProxyFactory::CreateProxy: the role, the type and the UUID, in that order, and a
-// name that says which kind of part it is. False when any of it cannot be had, in which
-// case DTAPI makes no proxy.
+// Reads the role, the type and the UUID, in that order, and a name that says which kind
+// of part it is. False when any of it cannot be had, in which case the part is left out.
 //
 static bool ReadPart(OsDrv* Drv, int PortIndex, DtFuncPart* Part)
 {
@@ -179,7 +178,7 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The oldest DtPcie driver each proxy works with, from DTAPI's PROXY_MIN_DRV_VERSIONS.
+// The oldest DtPcie driver each part works with.
 static const struct
 {
     bool IsDf;

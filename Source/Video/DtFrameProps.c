@@ -19,7 +19,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_Fps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// MxVidStdPropsSdi::Fps.
+// The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
 //
 void DtVidStd_Fps(int VidStd, int* Num, int* Den)
 {
@@ -45,9 +45,9 @@ static void SetField(DtFieldProps* Field, int Start, int End, int VidStart, int 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// MxFramePropsSdi::Init, for the default variant of each standard. The fields and the
-// widths follow from the number of lines and the scan; the line numbers are DTAPI's
-// (MxVideoProps.cpp:1252-1460). A 2160p standard has the geometry of one of its links.
+// The geometry of the default variant of each standard. The fields and the widths follow
+// from the number of lines and the scan, and the line numbers are tabulated per line
+// count. A 2160p standard has the geometry of one of its links.
 //
 bool DtFrameProps_Init(DtFrameProps* Props, int VidStd)
 {
@@ -208,7 +208,7 @@ bool DtFrameProps_MatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Matches -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The tests of MxFramePropsSdi::Deduce for one candidate, in DTAPI's order.
+// The tests one candidate standard must pass, in the order they are made.
 //
 static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
                     int LineNumSymHanc, int LineNumSymVanc, double Fps, bool Is3gLevelB,
@@ -267,7 +267,7 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Deduce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The standards are tried in the order of Tables/DtVidStdList.inc, which is DTAPI's.
+// The standards are tried in the order of Tables/DtVidStdList.inc.
 // When none matches, a VPID that decodes to a standard whose geometry matches still gives
 // one; then the properties are those of one link.
 //

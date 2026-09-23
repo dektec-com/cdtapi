@@ -11,7 +11,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Formats +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// CDTAPI's table: 4:2:2 in 8, 10, 12 and 16 bits for each size. An interlaced frame is a
+// The table: 4:2:2 in 8, 10, 12 and 16 bits for each size. An interlaced frame is a
 // field of half the lines.
 //
 

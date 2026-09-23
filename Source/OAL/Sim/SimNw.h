@@ -15,8 +15,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Network function +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The NW driver function of the emulated DTA-2110's IP port, as the driver's DtDfNw.c
-// and DtPipe.c have it:
+// The NW driver function of the emulated DTA-2110's IP port, as the driver's network
+// function and its pipes have it:
 //
 //   EMAC        the MAC address and the PHY speed are answered; the other commands are
 //               refused as not supported

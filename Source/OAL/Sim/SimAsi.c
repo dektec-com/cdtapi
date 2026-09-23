@@ -113,7 +113,7 @@ static void NoSignal(SimAsiSignal* Signal)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What a command is like to the driver: the sizes of its input and output, and whether
-// it needs exclusive access (DtIoctlProperties.h). Every command needs its part enabled.
+// it needs exclusive access. Every command needs its part enabled.
 typedef struct SimAsiCmdProps
 {
     int FunctionCode;

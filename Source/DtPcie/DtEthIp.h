@@ -15,11 +15,10 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtEthIp +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A pipe's shared buffer holds packets, each an 18-byte header followed by an Ethernet
-// frame and padded to a whole number of 64-bit words: the DtEthIp structure of the SDK's
-// EthPrtcls.h. There the header is bit fields of 64-bit words, whose layout the C
-// standard leaves to the compiler; here it is written and read with shifts, in the layout
-// MSVC and GCC give those bit fields on x86 and ARM, least significant bit first in a
-// little-endian word:
+// frame and padded to a whole number of 64-bit words. The header is a row of bit fields
+// of 64-bit words, whose layout the C standard leaves to the compiler; here it is written
+// and read with shifts, in the layout MSVC and GCC give those bit fields on x86 and ARM,
+// least significant bit first in a little-endian word:
 //
 //   bytes 0-7    bits 0-15 sync word, EEEEh for version 1 and EFEFh for version 2;
 //                version 1: bits 16-23 size in words, 24-34 frame size in bytes;

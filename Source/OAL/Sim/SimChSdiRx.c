@@ -24,7 +24,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The users one channel accepts, as DtDfChSdiRx's MaxNumUsersSupported.
+// The users one channel accepts, as many as the driver's SDI receive channel does.
 #define SIM_RX_MAX_USERS 8
 
 // The largest ring the driver allocates.
@@ -618,7 +618,7 @@ static uint32_t Attach(SimRxChannel* Channel, void* Handle,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The last user takes the configuration with it (DtDfChSdiRx_OnDetachLastUser).
+// The last user takes the configuration with it, as it does in the driver.
 //
 static void Detach(SimRxChannel* Channel, SimRxUser* User)
 {

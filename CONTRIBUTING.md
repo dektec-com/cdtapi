@@ -81,13 +81,22 @@ fails halfway. Two things keep that from happening:
 Git ignores what belongs to Surround, `.MySCMServerInfo` and the `*.vssscc` files, and
 `.sscmignore` keeps `.git`, `.github` and the build directories out of Surround.
 
-## What a comment may say about DTAPI
+## A comment describes this code
 
-CDTAPI reproduces DTAPI's behaviour, and a comment that says which behaviour is being
-reproduced is what makes the code maintainable: "the order DTAPI's receive FIFO starts
-in", or the value of an output delay. What a comment must not carry is DTAPI's own
-source: no code, no file names, no line numbers. Behaviour is what this library
-implements; the code that implements it elsewhere is not ours to publish.
+A comment says what the code it stands over does, and why it does it that way. It does
+not say what the code used to do, and it does not describe code outside this project.
+
+CDTAPI reproduces behaviour that other software has too, and the behaviour itself belongs
+in a comment whenever it explains a choice: the order a receive FIFO is started in, why a
+buffer is the size it is, the value of an output delay. State it as a fact about this
+code. What must not appear is another project's source: no class, function or file names
+from DTAPI or from the driver, no code, no line numbers. A reader of this repository has
+none of that to look at, so a name from it explains nothing; and the code that implements
+the behaviour elsewhere is not ours to publish.
+
+The names the driver's interface itself uses — the commands, structures and properties in
+`Source/DtPcie/Abi/` that travel over the wire — are this library's own vocabulary and
+belong wherever they are needed.
 
 ## How the rules are enforced
 

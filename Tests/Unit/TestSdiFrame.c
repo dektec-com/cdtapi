@@ -1097,9 +1097,9 @@ DT_TEST(BlackFrameRoundTrip)
 // A 4K frame is built here from four links whose lines the tests make up: each link line
 // has an EAV with its line number and each stream's CRC-18 over the active part of the
 // line before, a SAV, and HANC and active symbols of its own. The coded lines are packed
-// bit by bit, by the two-sample interleave as DTAPI and the card have it (0014, step A),
-// and the raw line is checked word by word against the order of PxCnvRef.cpp's
-// Mux4k2si_Uyvy10_Ref, independently of the module's own permutation.
+// bit by bit, by the two-sample interleave the card has (0014, step A), and the raw
+// line is checked word by word against that order, worked out again here and
+// independently of the module's own permutation.
 
 // The 4K standards tested, 12G and 6G, with the three HANC sizes.
 static const int g_Standards4k[] = {DTAPI_VIDSTD_2160P50, DTAPI_VIDSTD_2160P60,
@@ -1276,7 +1276,7 @@ static uint32_t RawSymbol(const uint8_t* Line, int SymbolBits, size_t Index)
     return SymbolBits == 8 ? Value << 2 : Value & 0x3FF;
 }
 
-// Checks that the raw line at Raw holds L's links in the order of Mux4k2si_Uyvy10_Ref.
+// Checks that the raw line at Raw holds L's links in the two-sample interleave order.
 // Returns false, having reported the first difference, when it does not.
 static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* Raw, const Line4k* L, int* DtFailures)
@@ -1355,7 +1355,7 @@ DT_TEST(Layout4k)
     DT_ASSERT_EQ((long)DtSdiFrame_ScratchSymbols(&L), 0L);
 }
 
-// Each raw 4K line holds the four links' words in the order of Mux4k2si_Uyvy10_Ref, in
+// Each raw 4K line holds the four links' words in the two-sample interleave order, in
 // every symbol size, on blanking and picture lines alike.
 DT_TEST(Converts4k)
 {

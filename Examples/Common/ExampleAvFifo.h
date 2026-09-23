@@ -41,8 +41,8 @@ bool ExampleAv_Config(int Argc, char** Argv, ExampleAvConfig* Config);
 // True for a port with an AV FIFO.
 bool ExampleAv_IsIpPort(const DtHwFuncDesc* Port);
 
-// The IP parameters of the stream: the destination, the payload type and the rest as
-// DTAPI's defaults have them.
+// The IP parameters of the stream: the destination, the payload type, and IPv4, a time
+// to live of 32, DiffServ 0x88 and RTP over UDP.
 void ExampleAv_IpPars(const ExampleAvConfig* Config, AvFifo_IpPars* Pars);
 
 // Prints "<serial>:<port>  <pipe>  <address>:<port>  <format>".

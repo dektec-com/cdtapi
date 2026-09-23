@@ -180,8 +180,7 @@ DT_TEST(NullEventIsAccepted)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Kill pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The shape a channel's receive thread will take: poll on a short timeout, do some work
-// each time round, and stop when the kill event is set. DTAPI's DMA thread in
-// AsiSdiInpChannel_Bb2.cpp has exactly this loop.
+// each time round, and stop when the kill event is set.
 //
 
 typedef struct Worker

@@ -14,10 +14,10 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame geometry +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// What DTAPI's MxFramePropsSdi holds of a frame, without its audio properties: the lines
-// of each field, where the active video and the switching line are, and how many symbols
-// each part of a line has. For a 2160p standard these are the properties of one link,
-// the 1080p frame of the same rate, as in DTAPI.
+// What is held of a frame, without its audio properties: the lines of each field, where
+// the active video and the switching line are, and how many symbols each part of a line
+// has. For a 2160p standard these are the properties of one link, the 1080p frame of the
+// same rate.
 //
 // Symbol counts count both components, so a 1920-sample active line is 3840 symbols.
 //
@@ -44,7 +44,7 @@ typedef struct DtFrameProps
     int LineNumSymVanc; // Symbols in the active part of a line, video or VANC
 } DtFrameProps;
 
-// The SDI rates DTAPI distinguishes, with DTAPI's values.
+// The SDI rates that are distinguished, with the driver's DT_DRV_SDIRATE_ values.
 #define DT_SDIRATE_UNKNOWN -1
 #define DT_SDIRATE_SD 0
 #define DT_SDIRATE_HD 1
@@ -52,9 +52,8 @@ typedef struct DtFrameProps
 #define DT_SDIRATE_6G 3
 #define DT_SDIRATE_12G 4
 
-// Fills Props for a video standard, as MxFramePropsSdi::Init. Returns false, with
-// Props->VidStd DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is no
-// standard.
+// Fills Props for a video standard. Returns false, with Props->VidStd
+// DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is no standard.
 bool DtFrameProps_Init(DtFrameProps* Props, int VidStd);
 
 // The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
@@ -73,7 +72,7 @@ int DtFrameProps_LineSymbolsHanc(const DtFrameProps* Props);
 bool DtFrameProps_MatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
                                   int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc);
 
-// The classifications MxFramePropsSdi makes. All are false for invalid properties.
+// The classifications of a frame. All are false for invalid properties.
 bool DtFrameProps_IsSd(const DtFrameProps* Props);
 bool DtFrameProps_IsHd(const DtFrameProps* Props);
 bool DtFrameProps_Is3g(const DtFrameProps* Props);
@@ -81,10 +80,10 @@ bool DtFrameProps_Is3gLevelB(const DtFrameProps* Props);
 bool DtFrameProps_IsInterlaced(const DtFrameProps* Props);
 bool DtFrameProps_IsPsF(const DtFrameProps* Props);
 
-// Finds the video standard of a frame from what an SDI receiver reports, as
-// MxFramePropsSdi::Deduce: the lines of each field, the symbols per line in HANC (EAV and
-// SAV included) and in the active part, the frame rate, whether 3G is level B, the VPID
-// and the SDI rate. Props->VidStd is DTAPI_VIDSTD_UNKNOWN when no standard matches.
+// Finds the video standard of a frame from what an SDI receiver reports: the lines of
+// each field, the symbols per line in HANC (EAV and SAV included) and in the active part,
+// the frame rate, whether 3G is level B, the VPID and the SDI rate. Props->VidStd is
+// DTAPI_VIDSTD_UNKNOWN when no standard matches.
 void DtFrameProps_Deduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
                          int LineNumSymHanc, int LineNumSymVanc, double Fps,
                          bool Is3gLevelB, uint32_t Vpid, int SdiRate);

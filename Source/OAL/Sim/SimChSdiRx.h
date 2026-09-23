@@ -16,7 +16,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Channels +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // Each SDI port of the emulated card has a CHSDIRX channel that behaves as the driver's
-// DtDfChSdiRx and as a DTA-2178 was seen to answer:
+// does and as a DTA-2178 was seen to answer:
 //
 //   users        up to eight handles attach, each with a friendly name; an exclusive user
 //                excludes every other, and a handle that is no user is not found

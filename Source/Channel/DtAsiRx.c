@@ -25,10 +25,10 @@
 // The bytes the stream is searched in at a time.
 #define DT_ASIRX_SEARCH_SIZE (64 * 1024)
 
-// The pages DtPalCDMAC_Rx::Init rounds a buffer to, times the prefetch size.
+// The page a receive buffer's size is rounded to, times the prefetch size.
 #define DT_ASIRX_PAGE 4096
 
-// How often a read looks for more, as AsiRxImpl_Bb2::Read.
+// How often a read looks for more.
 #define DT_ASIRX_POLL_MS 5
 
 // Bytes a scan passed over, which a take passes over too: a packet dropped for want of
@@ -152,7 +152,7 @@ static DtapiResult Skip(DtAsiRx* Rx, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPalBURSTFIFO_Rx::UpdateFlags: an overflow while the count moved since the last look.
+// An overflow while the burst FIFO's count moved since the last look.
 //
 static DtapiResult UpdateBurst(DtAsiRx* Rx)
 {
@@ -168,12 +168,12 @@ static DtapiResult UpdateBurst(DtAsiRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScanBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiRxImpl_Bb2::ProcessDmaBuf and TrpFmtConverter::Convert, over what the card wrote
-// since the last scan. In sync, each packet is converted to count its output; out of
-// sync, the stream is searched for in what three packets or more fill, and what was
-// searched without finding it is passed over but for the last three packets' worth. When
-// nothing is left to deliver, what was scanned is released at once, so that a stream the
-// application does not want does not fill the buffer.
+// Walks what the card wrote since the last scan, converting it. In sync, each packet is
+// converted to count its output; out of sync, the stream is searched for in what three
+// packets or more fill, and what was searched without finding it is passed over but for
+// the last three packets' worth. When nothing is left to deliver, what was scanned is
+// released at once, so that a stream the application does not want does not fill the
+// buffer.
 //
 static DtapiResult ScanBuffer(DtAsiRx* Rx)
 {
@@ -243,8 +243,7 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DTAPI_RX_FIFO_OVF takes the burst FIFO's count as it is now, as
-// DtPalBURSTFIFO_Rx::ClearFlags does.
+// DTAPI_RX_FIFO_OVF takes the burst FIFO's count as it is now.
 //
 static DtapiResult ClearFlags(DtRx* Base, int Flags)
 {
@@ -264,8 +263,8 @@ static DtapiResult ClearFlags(DtRx* Base, int Flags)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiRxImpl_Bb2::SetRxControl to RCV: the buffer empty, DTAPI_RX_FIFO_OVF cleared, and
-// CDMAC, the burst FIFO and ASIRX running. A start that fails leaves everything idle.
+// To RCV: the buffer empty, DTAPI_RX_FIFO_OVF cleared, and CDMAC, the burst FIFO and
+// ASIRX running. A start that fails leaves everything idle.
 //
 static DtapiResult Start(DtAsiRx* Rx)
 {
@@ -302,9 +301,9 @@ static DtapiResult Start(DtAsiRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Stop -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiRxImpl_Bb2::SetRxControl to IDLE: ASIRX, the burst FIFO and CDMAC stopped in that
-// order, CDMAC flushed, the buffer empty and DTAPI_RX_FIFO_OVF cleared. Every step is
-// taken whatever the one before gave; the first failure is returned.
+// To IDLE: ASIRX, the burst FIFO and CDMAC stopped in that order, CDMAC flushed, the
+// buffer empty and DTAPI_RX_FIFO_OVF cleared. Every step is taken whatever the one before
+// gave; the first failure is returned.
 //
 static DtapiResult Stop(DtAsiRx* Rx)
 {
@@ -328,7 +327,7 @@ static DtapiResult Stop(DtAsiRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiRxImpl_Bb2::SetRxControl takes IDLE and RCV, and is idle after a stop that failed.
+// Takes IDLE and RCV, and is idle after a stop that failed.
 //
 static DtapiResult SetRxControl(DtRx* Base, int RxControl)
 {
@@ -351,8 +350,8 @@ static DtapiResult SetRxControl(DtRx* Base, int RxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiRxImpl_Bb2::SetRxMode: one of the ASI modes while idle, and ASIRX's packet mode for
-// it, raw for DTAPI_RXMODE_STRAW.
+// One of the ASI modes while idle, and ASIRX's packet mode for it, raw for
+// DTAPI_RXMODE_STRAW.
 //
 static DtapiResult SetRxMode(DtRx* Base, int RxMode)
 {
@@ -375,7 +374,7 @@ static DtapiResult SetRxMode(DtRx* Base, int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiRxImpl_Bb2::Reset for DTAPI_FIFO_RESET: stop, and clear DTAPI_RX_FIFO_OVF.
+// Stops, and clears DTAPI_RX_FIFO_OVF.
 //
 static DtapiResult ClearFifo(DtRx* Base)
 {
@@ -387,7 +386,7 @@ static DtapiResult ClearFifo(DtRx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AsiRxImpl_Bb2::GetFlags: the scan, the burst FIFO's flag, and the converter's.
+// The scan, the burst FIFO's flag, and the converter's.
 //
 static DtapiResult GetFlags(DtRx* Base, int* Flags, int* Latched)
 {
@@ -449,8 +448,7 @@ static DtapiResult GetMaxFifoSize(DtRx* Base, int* MaxFifoSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// AsiSdiInpChannel_Bb2::SetIoConfig applies the receive mode again, which sets ASIRX's
-// packet mode.
+// Applies the receive mode again, which sets ASIRX's packet mode.
 //
 static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
 {
@@ -575,7 +573,7 @@ static DtapiResult GetTsRateBps(DtRx* Base, int* TsRate)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtProxyASIRX::GetStatus's values in DTAPI's, and the rate as good above 900 bit/s.
+// The receiver's values as the public ones, and the rate as good above 900 bit/s.
 //
 static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkDet,
                              int* AsiLock, int* RateOk, int* AsiInv)
@@ -619,7 +617,7 @@ static DtapiResult GetViolCount(DtRx* Base, int* ViolCount)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PolarityControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DTAPI's polarity values are the driver's.
+// The public polarity values are the driver's.
 //
 static DtapiResult PolarityControl(DtRx* Base, int Polarity)
 {
@@ -696,8 +694,8 @@ static DtapiResult FindParts(DtAsiRx* Rx, const DtDriverVersion* Version)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RegisterBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtPalCDMAC_Rx::Init: CDMAC idle, a receive buffer of whole pages times the prefetch
-// size, registered, and the test mode off. One data word stays free.
+// CDMAC idle, a receive buffer of whole pages times the prefetch size, registered, and
+// the test mode off. One data word stays free.
 //
 static DtapiResult RegisterBuffer(DtAsiRx* Rx)
 {

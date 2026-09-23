@@ -21,7 +21,7 @@
 //   commands    refused in the driver's order: a command the part does not have, the
 //               sizes, exclusive access for the commands that change the part, and a
 //               part that is not enabled; ASIRX is enabled while the port is an ASI
-//               input, ASITXG while it is an ASI output (DtPtAsiSdiRxTx)
+//               input, ASITXG while it is an ASI output
 //   settings    ASIRX's operational mode, IDLE or RUN, its packet mode, polarity control
 //               and synchronisation mode, and ASITXG's operational mode and polarity, are
 //               kept and read back; a value the driver does not define is an invalid

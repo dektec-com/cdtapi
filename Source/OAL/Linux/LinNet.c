@@ -41,7 +41,7 @@
 // The bytes of one receive from the kernel.
 #define LIN_NET_BUFFER 32768
 
-// How often and how long to wait for a neighbour to answer, as DTAPI does.
+// How often and how long to wait for a neighbour to answer.
 #define LIN_NET_RESOLVE_TRIES 10
 #define LIN_NET_RESOLVE_WAIT_V4_MS 200
 #define LIN_NET_RESOLVE_WAIT_V6_MS 250
@@ -515,7 +515,7 @@ typedef struct LinNeighbour
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OnNeighbour -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The neighbour when its link-layer address counts: for IPv4 any complete entry, as
-// SIOCGARP gives, for IPv6 a reachable one or one being confirmed, as DTAPI takes.
+// SIOCGARP gives, for IPv6 a reachable one or one being confirmed.
 //
 static bool OnNeighbour(const struct nlmsghdr* Msg, void* Context)
 {

@@ -19,10 +19,10 @@
 // it are in SimDtPcie.c.
 //
 
-// Looks up a property as the DtPcie driver does (DtPropertiesGet): by name and port
-// index, -1 for the device. A capability, a name starting with CAP_, that the port does
-// not have is found with the value false rather than not found. Returns false only when
-// there is no such property; *Type is then untouched.
+// Looks up a property as the DtPcie driver does: by name and port index, -1 for the
+// device. A capability, a name starting with CAP_, that the port does not have is found
+// with the value false rather than not found. Returns false only when there is no such
+// property; *Type is then untouched.
 bool SimDta2178_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t* Value);
 
 // Looks up a string property the same way. Returns false when there is no such string

@@ -113,7 +113,7 @@ DT_TEST(ScanCountsThePorts)
     DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
-// Every port of the card, as CDTAPI converts DTAPI's hardware functions: capabilities,
+// Every port of the card, as the scan describes a hardware function: capabilities,
 // not the current direction, decide IsInput and IsOutput.
 DT_TEST(ScanDescribesEveryPort)
 {
@@ -147,8 +147,8 @@ DT_TEST(ScanDescribesEveryPort)
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
 
-// Descriptors beyond the last port are filled as CDTAPI fills them from DTAPI's
-// value-initialised ones.
+// Descriptors beyond the last port are filled as a descriptor of no port is: all zeros,
+// with the name and description that a device and port of 0 make.
 DT_TEST(ScanFillsTheRestOfTheArray)
 {
     int Count = -1;
@@ -444,7 +444,7 @@ DT_TEST(PublicPortsComeFromMainPortCount)
     DtDevice_Free(Device);
 }
 
-// A capability the driver cannot report counts as absent, as in DTAPI.
+// A capability the driver cannot report counts as absent.
 DT_TEST(UnreadableCapabilityIsAbsent)
 {
     int Count = -1;
@@ -563,7 +563,7 @@ DT_TEST(DirectionsReachTheCard)
     DtDevice_Free(Device);
 }
 
-// The checks before the driver is asked, in DTAPI's order: the port, then the
+// The checks before the driver is asked, in their order: the port, then the
 // combination.
 DT_TEST(ConfigurationIsCheckedFirst)
 {
@@ -681,7 +681,7 @@ DT_TEST(ABadEntryRefusesTheWholeList)
     DtDevice_Free(Device);
 }
 
-// DtDevice::GetIoConfig's checks, per entry and in its order: the port, the group, and
+// DtDevice_GetIoConfig's checks, per entry and in its order: the port, the group, and
 // whether the port has a capability of the group. The values stay -1 on a failure.
 DT_TEST(ReadingIsCheckedFirst)
 {

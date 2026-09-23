@@ -20,6 +20,5 @@
 // activate needs none, and gives DTAPI_OK.
 //
 // Attaching calls this once. Its failure is not a reason to refuse the attach: the device
-// is there and answers for itself, so the result is for the caller to log or ignore, as
-// DTAPI does.
+// is there and answers for itself, so the result is for the caller to log or ignore.
 DtapiResult DtDevActivate_OnAttach(OsDrv* Drv);

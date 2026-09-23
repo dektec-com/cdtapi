@@ -234,9 +234,9 @@ static void CopyOut(const SimPipe* Pipe, size_t Offset, uint8_t* To, size_t Coun
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WritePacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes a packet of Size bytes into a receive pipe at its write offset, as
-// DtPipe_CopyData does: one data word stays free, a packet that does not fit sets the
-// overflow error and is lost, and one that fits clears it.
+// Writes a packet of Size bytes into a receive pipe at its write offset, as the driver
+// does: one data word stays free, a packet that does not fit sets the overflow error and
+// is lost, and one that fits clears it.
 //
 static bool WritePacket(SimPipe* Pipe, const uint8_t* Packet, size_t Size)
 {
@@ -269,7 +269,7 @@ static bool WritePacket(SimPipe* Pipe, const uint8_t* Packet, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClosePipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPipe_ReleaseResources, and for a software pipe its end.
+// Releases what the pipe holds, and for a software pipe its end.
 //
 static void ClosePipe(SimPipe* Pipe)
 {
@@ -463,8 +463,8 @@ static bool HwPipeTakes(const SimPipe* Pipe, const SimFrameInfo* Info, int* SubS
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SwPipeTakes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPipe_IsPacketForPipe for a frame of the common receive queue, which is of substream
-// 0, found through the destination ports the pipe listens on.
+// Whether the pipe's filter takes a frame of the common receive queue, which is of
+// substream 0, found through the destination ports the pipe listens on.
 //
 static bool SwPipeTakes(const SimPipe* Pipe, const SimFrameInfo* Info)
 {
@@ -734,7 +734,8 @@ static void Deliver(uint64_t NowNs)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interval -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The periodic interval at TickNs: DtDfNw_TxRtHwqThread, then DtDfNw_RxHwqThread.
+// The periodic interval at TickNs: the real-time transmit queues first, then the
+// receive queues.
 //
 static void Interval(uint64_t TickNs)
 {
@@ -892,7 +893,7 @@ static void Run(void)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // What the driver's I/O stub knows of a command: its sizes. None of the modelled commands
-// needs exclusive access (DtIoctlProperties.h).
+// needs exclusive access.
 typedef struct SimNwCmdProps
 {
     int FunctionCode;
@@ -953,7 +954,9 @@ static const SimNwCmdProps* FindCmd(int FunctionCode, int Cmd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtDfNw_PipeOpen for one type. *Id receives the pipe's number.
+// Opens a pipe of one type: the types the driver keeps for its own queues are in use, a
+// hardware pipe is the first free one of its kind, and a software pipe is allocated. *Id
+// receives the pipe's number.
 //
 static uint32_t OpenPipe(void* Handle, int Type, int* Id)
 {
@@ -1032,7 +1035,7 @@ static uint32_t NwCmd(void* Handle, int Uuid, int Cmd, const void* In, void* Out
         return DT_STATUS_OK;
     }
 
-    // DT_NW_CMD_PIPE_CLOSE, with DtDfNw_PipeClose's checks.
+    // DT_NW_CMD_PIPE_CLOSE, with the checks the driver makes.
     int Id = (int)((UInt)Uuid >> 20);
     if (Id == 0 || Id > SIM_NW_MAX_PIPES)
         return DT_STATUS_INVALID_PARAMETER;
@@ -1051,7 +1054,7 @@ static uint32_t NwCmd(void* Handle, int Uuid, int Cmd, const void* In, void* Out
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPipe_SetSharedBuffer, for a buffer of the process.
+// Registers the pipe's shared buffer, which is a buffer of the process.
 //
 static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutSize)
 {
@@ -1135,9 +1138,9 @@ static int Scheduled(int Id)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtPipe_SetOperationalMode. A software pipe takes any value; a hardware pipe's DMA
-// controller only the three modes, and running only with a buffer. A hardware transmit
-// pipe going from STANDBY to RUN applies the write offset it kept.
+// Sets the pipe's operational mode. A software pipe takes any value; a hardware pipe's
+// DMA controller only the three modes, and running only with a buffer. A hardware
+// transmit pipe going from STANDBY to RUN applies the write offset it kept.
 //
 static uint32_t SetOpMode(SimPipe* Pipe, int OpMode)
 {
@@ -1334,7 +1337,7 @@ uint32_t SimNw_Cmd(void* Handle, int Uuid, int FunctionCode, int Cmd, const void
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimNw_CloseHandle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtDfNw_OnCloseFile.
+// Closes every pipe the handle owns, as the driver does when a file handle closes.
 //
 void SimNw_CloseHandle(void* Handle)
 {

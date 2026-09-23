@@ -20,9 +20,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPort_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// RxFifoMain::Attach and TxFifoMain::Attach: the device must be attached, and the port's
-// network function found through AF_NW. No exclusive access is taken: a receive and a
-// transmit FIFO share the port.
+// The device must be attached, and the port's network function is found through AF_NW.
+// No exclusive access is taken: a receive and a transmit FIFO share the port.
 //
 DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortIndex,
                             HwOrSwPipe Preference, const char* Where)
@@ -74,7 +73,8 @@ void DtAvPort_Detach(DtAvPort* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPort_CheckNetwork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtDevice::IsNetworkCardOperational, and CheckNetworkUp's texts for its results.
+// The link, the MAC address and the operating system's interface, with a failure text
+// for each result.
 //
 DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
                                   const char* Where)
@@ -172,7 +172,7 @@ DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPi
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_Copy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The checks of DTAPI's SetIpPars and ProgramIpFilter.
+// The checks the IP parameters must pass before a FIFO keeps them.
 //
 DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
                             const char* Where)

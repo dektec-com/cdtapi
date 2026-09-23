@@ -24,8 +24,8 @@
 //                   carries the standard: the 2160p standards are on 6G (ST 2081-10) or
 //                   12G (ST 2082-10), and the level-B ones on four 3G links (ST 425-5).
 //   Rate            The SDI rate that carries it; a 2160p link carries a 1080p frame.
-//   NoVpid          The standard DTAPI finds from the counters alone: it cannot see PsF
-//                   at 25 frames and up, and does not see four links.
+//   NoVpid          The standard a receiver finds from the counters alone: it cannot
+//                   see PsF at 25 frames and up, and does not see four links.
 //
 // No include guard: the file is meant to be included more than once.
 

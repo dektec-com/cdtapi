@@ -60,7 +60,7 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TrpFmtConverter::ConvertTrpPacket, but for the FIFO, which the channel keeps.
+// One packet converted on its own; the FIFO it goes into is the channel's.
 //
 int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
 {
@@ -105,7 +105,7 @@ int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
         n = 4;
     else if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0)
     {
-        // Ticks of a 54 MHz clock, as DTAPI counts them from the time of day.
+        // Ticks of a 54 MHz clock, counted from the time of day.
         uint32_t Seconds = (uint32_t)P[0] | (uint32_t)P[1] << 8 | (uint32_t)P[2] << 16 |
                            (uint32_t)P[3] << 24;
         uint32_t Nanoseconds = (uint32_t)P[4] | (uint32_t)P[5] << 8 |
@@ -132,7 +132,7 @@ int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_FindSync -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The search runs over the trailers: Pos is where a trailer would start, and the first
-// packet's valid count is taken as any up to 204, as DTAPI takes it.
+// packet's valid count is taken as any up to 204.
 //
 bool DtTsTrp_FindSync(const DtTsTrp* Trp, const uint8_t* Buf, size_t Size, size_t* Offset)
 {

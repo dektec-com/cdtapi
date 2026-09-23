@@ -20,8 +20,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Formats +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The fields are those of SdiFormats.inc, which says where each number comes from. The
-// numbers are the standards', not DTAPI's, so that the library is checked against them
-// rather than against a copy of its own tables.
+// numbers are the standards' own, so that the library is checked against them rather
+// than against a copy of its own tables.
 //
 
 #define SDI_SCAN_P 0 // Progressive

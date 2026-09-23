@@ -17,8 +17,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Description +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The emulated card has no sub-type, so the sub-type cases of DTAPI's description are
-// checked here, against the strings DtapiDtHwFuncDesc2String builds.
+// The emulated card has no sub-type, so the sub-type cases of a device's description
+// are checked here, with the type number and the sub-type given directly.
 //
 
 static const char* Describe(int TypeNumber, int SubType, int Port)
@@ -45,14 +45,14 @@ DT_TEST(SubTypeIsALetter)
     DT_ASSERT_STR(Describe(2174, -1, 2), "DTA-2174 port 2");
 }
 
-// DTAPI's special case, repeated type name included.
+// A special case, with the type name repeated.
 DT_TEST(Dta2178AsiRepeatsTheName)
 {
     DT_ASSERT_STR(Describe(2178, 1, 1), "DTA-2178DTA-2178-ASI port 1");
     DT_ASSERT_STR(Describe(2179, 1, 1), "DTA-2179A port 1");
 }
 
-// DTAPI refuses a buffer that cannot also hold the terminator, and leaves it empty.
+// A buffer that cannot also hold the terminator is refused, and left empty.
 DT_TEST(DescriptionMustFit)
 {
     char Buf[16];
@@ -78,7 +78,7 @@ static bool Supported(int Major, int Minor, int Micro, int Build)
     return DtPcieCmd_VersionIsSupported(&Version);
 }
 
-// 1.3.1 is the oldest DtPcie driver DTAPI accepts; each part decides only when the parts
+// 1.3.1 is the oldest DtPcie driver accepted; each part decides only when the parts
 // before it are equal.
 DT_TEST(DriverVersionFrom131)
 {

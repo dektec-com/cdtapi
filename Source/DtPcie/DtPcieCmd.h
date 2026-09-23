@@ -86,12 +86,12 @@ typedef struct DtDeviceInfo
 // Reads the version of the driver behind Drv.
 DtapiResult DtPcieCmd_GetDriverVersion(OsDrv* Drv, DtDriverVersion* Version);
 
-// True when a DtPcie driver of this version is new enough: 1.3.1 or later, the minimum
-// DTAPI accepts (Utility.h, DtPcieMin*). The build number does not count.
+// True when a DtPcie driver of this version is new enough: 1.3.1 or later. The build
+// number does not count.
 bool DtPcieCmd_VersionIsSupported(const DtDriverVersion* Version);
 
 // True when Version is Major.Minor.Micro.Build or later, comparing the four numbers in
-// that order, as DTAPI's DtVersion does.
+// that order.
 bool DtPcieCmd_VersionAtLeast(const DtDriverVersion* Version, int Major, int Minor,
                               int Micro, int Build);
 
@@ -103,7 +103,7 @@ DtapiResult DtPcieCmd_GetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
 //
 // A property is a named value the driver holds for the device, such as PORT_COUNT, or
 // for one of its ports, such as the capability 3GSDI. It is always read for the device
-// behind Drv, with its own hardware revision and firmware, as DTAPI's Device class does.
+// behind Drv, with its own hardware revision and firmware.
 //
 // The functions clear their output first, and fail with DTAPI_E_BUF_TOO_SMALL for a name
 // longer than the driver accepts and with DTAPI_E_NOT_FOUND for a property the device
@@ -138,8 +138,8 @@ DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex
 // driver takes: a port index from 0, the codes as names, and, for the I/O direction
 // values that name another port in ParXtra[0], that port as an index as well.
 //
-// The driver takes a list in one command, as DtProxyCORE_IOCONFIG sends it. A list of one
-// is the request the single forms send.
+// The driver takes a list in one command. A list of one is the request the single forms
+// send.
 //
 
 // Reads the configurations of Configs[i].Group on Configs[i].Port, and fills in the other
@@ -149,7 +149,7 @@ DtapiResult DtPcieCmd_GetIoConfigList(OsDrv* Drv, DtIoConfig* Configs, int Count
 
 // Applies Count configurations together, Count at least 1. The driver validates them;
 // this layer only converts them, and refuses a LOOPS2TS output whose ParXtra[1], the
-// ISI, is outside 0 to 255 with DTAPI_E_INVALID_ISI, as DTAPI does before sending it.
+// ISI, is outside 0 to 255 with DTAPI_E_INVALID_ISI, before sending anything.
 DtapiResult DtPcieCmd_SetIoConfigList(OsDrv* Drv, const DtIoConfig* Configs, int Count);
 
 // The same for one configuration.
@@ -168,7 +168,7 @@ DtapiResult DtPcieCmd_GetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nano
 // port the function belongs to.
 //
 
-// What an SDI receiver reports of its input, converted as DTAPI's SDIRX proxy does.
+// What an SDI receiver reports of its input, converted from the driver's own fields.
 typedef struct DtSdiRxStatus
 {
     bool CarrierDetect;
@@ -233,7 +233,7 @@ typedef struct DtChSdiRxEvent
 
 // Attaches to the channel, exclusively or shared, under a friendly name of at most
 // DT_CHAN_FRIENDLY_NAME_MAX_LENGTH characters. A longer or empty name gives
-// DTAPI_E_INVALID_ARG, as DTAPI's proxy refuses one.
+// DTAPI_E_INVALID_ARG without a command.
 DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, DtPartRef Part, bool Exclusive,
                                     const char* FriendlyName);
 
@@ -270,8 +270,8 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtPartRef Part,
 // Maps the configured ring into the process. On Windows the driver maps it during the
 // command and returns its address; on Linux the driver returns address 0, and the ring
 // is then mapped from the device at offset DT_MMAP_PORT_MEM_SEGMENT_SIZE times the port
-// index plus one, as DtProxyCHSDIRX::MapDmaBufferToUser does. *Mapped is true in the
-// second case, in which DtPcieCmd_ChSdiRxUnmapDmaBuf must release the mapping.
+// index plus one. *Mapped is true in the second case, in which
+// DtPcieCmd_ChSdiRxUnmapDmaBuf must release the mapping.
 DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtPartRef Part, uint8_t** Buffer,
                                        int* BufSize, int* MaxLoad, bool* Mapped);
 
@@ -302,8 +302,7 @@ DtapiResult DtPcieCmd_ExclAccess(OsDrv* Drv, DtPartRef Part, int Cmd);
 // the driver function SDITXPHY. Every command goes to the part's UUID and port index.
 //
 // Operational modes are DT_BLOCK_OPMODE_ values, and DT_FUNC_OPMODE_ values for SDITXPHY;
-// any other value gives DTAPI_E_INVALID_ARG without a command, as DTAPI's proxies refuse
-// a mode they cannot convert.
+// any other value gives DTAPI_E_INVALID_ARG without a command.
 //
 
 // What a DMA controller is like, as DT_CDMAC_CMD_GET_PROPERTIES reports.
@@ -447,8 +446,8 @@ DtapiResult DtPcieCmd_SdiTxPhySetStartOfFrameOffset(OsDrv* Drv, DtPartRef Part,
 // port's AF_ASISDIRX or AF_ASISDITX and AF_DMA itself. Receiving uses the driver function
 // ASIRX and CDMAC in its receive direction, transmitting the gate ASITXG and the PHY or
 // the serialiser ASITXSER. The values these functions take and give are the driver's,
-// DT_ASIRX_, DT_ASITXG_ and the operational modes; one DTAPI's proxy would not send gives
-// DTAPI_E_INVALID_ARG without a command, and an answer it would not accept gives
+// DT_ASIRX_, DT_ASITXG_ and the operational modes; a value that is none of them gives
+// DTAPI_E_INVALID_ARG without a command, and an answer that is none of them gives
 // DTAPI_E_DEV_DRIVER.
 //
 
@@ -481,7 +480,8 @@ DtapiResult DtPcieCmd_AsiRxGetSyncMode(OsDrv* Drv, DtPartRef Part, int* Mode);
 DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtPartRef Part, DtAsiRxStatus* Status);
 
 // The rate of the stream on the wire, in bits a second: of 204-byte packets when those
-// come, which DTAPI converts to 188-byte packets; 0 while no packets come.
+// come, which the channel layer converts to a rate of 188-byte packets; 0 while no
+// packets come.
 DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, DtPartRef Part, int* Bitrate);
 
 // The count of 8b/10b code violations since the receiver started.

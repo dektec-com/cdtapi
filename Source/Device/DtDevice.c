@@ -69,12 +69,12 @@ static const struct
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadPorts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads the port counts and the capabilities of every port into Device, as Device::Init
-// and Device::GetCapInfo do: PORT_COUNT is required, MAIN_PORT_COUNT falls back to it for
-// an old driver, and a capability that cannot be read counts as absent. The hardware
-// functions look at the public ports, detection at all of them, so the capabilities
-// cover whichever count is larger. A negative or implausibly large count, which no
-// driver reports, is refused rather than allocated.
+// Reads the port counts and the capabilities of every port into Device: PORT_COUNT is
+// required, MAIN_PORT_COUNT falls back to it for an old driver, and a capability that
+// cannot be read counts as absent. The hardware functions look at the public ports,
+// detection at all of them, so the capabilities cover whichever count is larger. A
+// negative or implausibly large count, which no driver reports, is refused rather than
+// allocated.
 //
 static DtapiResult LoadPorts(DtDevice* Device, OsDrv* Drv)
 {
@@ -127,8 +127,8 @@ static DtapiResult LoadPorts(DtDevice* Device, OsDrv* Drv)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_AttachIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The order of the checks is DTAPI's: the driver version before the device's identity,
-// so that a driver that is too old is reported as such rather than as a missing device.
+// The driver version is checked before the device's identity, so that a driver that is
+// too old is reported as such rather than as a missing device.
 //
 DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
                                  int64_t Serial)
@@ -184,9 +184,9 @@ void DtDevice_Release(DtDevice* Device)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_Describe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DtapiDtHwFuncDesc2String, for the PCI category. DTAPI's special names for the DTA-107S2
-// and DTA-110T depend on capabilities of cards the DtPcie driver does not serve, and are
-// left out.
+// The description of a PCI device. Special names for the DTA-107S2 and the DTA-110T,
+// which would depend on capabilities of cards the DtPcie driver does not serve, are not
+// produced.
 //
 DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
                               size_t Size)
@@ -210,7 +210,7 @@ DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
     int Length =
         snprintf(Text, sizeof(Text), "DTA-%d%s port %d", TypeNumber, SubTypeText, Port);
 
-    // DTAPI refuses a string that does not leave room for its terminator.
+    // A string that does not leave room for its terminator is refused.
     if (Length < 0 || (size_t)Length >= Size)
         return DTAPI_E_BUF_TOO_SMALL;
 
@@ -240,14 +240,13 @@ void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHwFuncScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// DTAPI's DtapiHwFuncScan as CDTAPI calls and converts it. Every device is attached in
-// turn and each of its public ports becomes a hardware function; a device that cannot
-// be attached, including one whose driver is too old, is left out, as DTAPI's full
-// device scan leaves it out. The descriptors are collected first and copied only when
-// they all fit, because CDTAPI does not touch the caller's array on failure.
+// The hardware function scan. Every device is attached in turn and each of its public
+// ports becomes a hardware function; a device that cannot be attached, including one
+// whose driver is too old, is left out. The descriptors are collected first and copied
+// only when they all fit, because the caller's array is not touched on failure.
 //
-// On success CDTAPI converts all NumEntries descriptors, and the ones beyond the last
-// port are DTAPI's value-initialised, all-zero, descriptors: "0:0", "DTA-0 port 0".
+// On success all NumEntries descriptors are filled in, and the ones beyond the last port
+// are all-zero descriptors: "0:0", "DTA-0 port 0".
 //
 DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc* HwFuncs)
 {
@@ -307,8 +306,8 @@ DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc*
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FirmwareStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The driver's DT_FWSTATUS_ value as DTAPI's DtFirmwareStatus. The numbers are the same;
-// a value the driver should not report is undefined, as in DtProxyCORE::GetDeviceInfo.
+// The driver's DT_FWSTATUS_ value as a DtFirmwareStatus. The numbers are the same; a
+// value the driver should not report is undefined.
 //
 static DtFirmwareStatus FirmwareStatus(int Status)
 {
@@ -334,8 +333,8 @@ static DtFirmwareStatus FirmwareStatus(int Status)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_DescribeDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Only the public ports count. A port that is only an input or only an output counts as
-// such, an IP port as both, and any other port by its I/O direction; DTAPI stops counting
-// at the first port whose direction cannot be read.
+// such, an IP port as both, and any other port by its I/O direction; counting stops at
+// the first port whose direction cannot be read.
 //
 void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
 {
@@ -402,8 +401,8 @@ void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiDeviceScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// PcieDevice::DeviceScan: every device that can be attached counts, and its descriptor
-// is written while the array has room.
+// Every device that can be attached counts, and its descriptor is written while the
+// array has room.
 //
 DtapiResult DtapiDeviceScan(int NumEntries, int* NumEntriesResult,
                             DtDeviceDesc* DvcDescArr)
@@ -518,8 +517,8 @@ static DtapiResult CheckFirmware(const DtDevice* Device)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_SetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The checks of DtDevice::SetIoConfig(DtIoConfig*, int), in its order: the firmware,
-// then each entry's port and combination, before the driver is asked to apply them all.
+// The checks, in order: the firmware, then each entry's port and combination, before the
+// driver is asked to apply them all.
 //
 DtapiResult DtDevice_SetIoConfig(DtDevice* Device, const DtIoConfig* Configs, int Count)
 {
@@ -544,10 +543,9 @@ DtapiResult DtDevice_SetIoConfig(DtDevice* Device, const DtIoConfig* Configs, in
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortHasGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Whether the port at PortIndex has a capability of Group, as DtDevice::GetIoConfig
-// requires: any of the capabilities GetGroupCaps collects for it. The driver reports a
-// capability as a property named CAP_ and the code's name; one it does not report, the
-// port does not have.
+// Whether the port at PortIndex has a capability of Group: any of the capability codes
+// that belong to the group. The driver reports a capability as a property named CAP_ and
+// the code's name; one it does not report, the port does not have.
 //
 static bool PortHasGroup(const DtDevice* Device, int PortIndex, int Group)
 {
@@ -569,9 +567,9 @@ static bool PortHasGroup(const DtDevice* Device, int PortIndex, int Group)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The checks of DtDevice::GetIoConfig for each entry, in its order: the port, the
-// firmware, the group and whether the port has it. Every entry is -1 until the driver
-// has answered for all of them.
+// The checks made for each entry, in order: the port, the firmware, the group and
+// whether the port has it. Every entry is -1 until the driver has answered for all of
+// them.
 //
 DtapiResult DtDevice_GetIoConfig(DtDevice* Device, DtIoConfig* Configs, int Count)
 {
@@ -651,14 +649,14 @@ DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device, DtTimeOfDay* TimeOfDay
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Video standard +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// How often waiting for a signal detects again, as CDTAPI does.
+// How often waiting for a signal detects again.
 #define DT_SIGNAL_POLL_MS 5
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_DetectVidStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// CDTAPI attaches a DtAvInputStatus, ignores the result, and detects. The detection then
-// fails with DTAPI_E_NOT_ATTACHED, which hides why; the reason attaching failed is
-// returned here instead, and *VidStd is left alone on any failure.
+// A failure to attach is returned as it is, rather than becoming the DTAPI_E_NOT_ATTACHED
+// of a detection on an input that was never attached, which would hide why. *VidStd is
+// left alone on any failure.
 //
 DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* VidStd)
 {
@@ -679,9 +677,9 @@ DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* VidStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_WaitForSignalTimeout -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches once and detects until a standard is found, as CDTAPI's DtDevice_WaitForSignal
-// does, also while detection fails. The time is measured on a monotonic clock, and the
-// last pause is cut to what is left, so that the wait ends close to the time limit.
+// Attaches once and detects until a standard is found, also while detection fails. The
+// time is measured on a monotonic clock, and the last pause is cut to what is left, so
+// that the wait ends close to the time limit.
 //
 DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port, int TimeoutMs,
                                           DtDetVidStd* Result)

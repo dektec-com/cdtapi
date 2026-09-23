@@ -113,7 +113,7 @@ static size_t TakeSent(uint8_t* Out, size_t Size)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// An ASI output sends K28.5 from the attach on, with DTAPI's defaults.
+// An ASI output sends K28.5 from the attach on, with its defaults.
 DT_TEST(AttachesAndSendsK28)
 {
     Fixture Fix;
@@ -151,7 +151,7 @@ DT_TEST(AttachesAndSendsK28)
     FINISH(Fix);
 }
 
-// SetTxMode and SetTsRateBps check as DTAPI does, in any state.
+// SetTxMode and SetTsRateBps check their arguments in any state.
 DT_TEST(ModeAndRateChecks)
 {
     Fixture Fix;
@@ -188,9 +188,8 @@ DT_TEST(ModeAndRateChecks)
     FINISH(Fix);
 }
 
-// Every transmit mode sends what DTAPI's converter makes of the stream: whole packets,
-// 204-byte ones, 188-byte ones with 16 zeros, 204-byte ones less 16, or the bytes as
-// they are.
+// Every transmit mode sends what the mode makes of the stream: whole packets, 204-byte
+// ones, 188-byte ones with 16 zeros, 204-byte ones less 16, or the bytes as they are.
 DT_TEST(SendsEveryMode)
 {
     static const struct
@@ -390,8 +389,8 @@ DT_TEST(DetachEndsAWaitingWrite)
     FINISH(Fix);
 }
 
-// A detach that waits until everything is sent waits for the burst FIFO as well, which
-// DTAPI's wait leaves out once the buffer is empty: the last packet reaches the sink.
+// A detach that waits until everything is sent waits for the burst FIFO as well, and
+// not for the buffer alone: the last packet reaches the sink.
 DT_TEST(DetachWaitsForTheLastPacket)
 {
     Fixture Fix;

@@ -25,18 +25,18 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// SdiRxImpl_Bb2's FIFO_SIZE_MAX.
+// The size of the FIFO a load and a frame size are measured against.
 #define DT_FIFO_SIZE_MAX (48 * 1024 * 1024)
 
-// MxProcessMemless's bounds on the ring, the frames it asks room for, and the fewest
-// frames a ring must hold (MIN_DMASIZE_NUMFRAMES).
+// The bounds on the ring, the frames it asks room for, and the fewest frames a ring must
+// hold.
 #define DT_RING_MIN (8 * 1024 * 1024)
 #define DT_RING_MAX (256 * 1024 * 1024)
 #define DT_RING_FRAMES 5
 #define DT_RING_MIN_FRAMES 2
 
-// MxChannelMemlessRx's format event settings: events per frame, and the delay in
-// microseconds from the start of a frame to the first.
+// The format event settings: events per frame, and the delay in microseconds from the
+// start of a frame to the first.
 #define DT_FMT_EVENTS_PER_FRAME 4
 #define DT_FMT_EVENT_DELAY 200
 
@@ -80,7 +80,7 @@ static OsDrv* DrvOf(const DtSdiRx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SymbolBitsOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The symbol size of a receive mode, as SdiRxImpl_Bb2::SetRxMode picks it.
+// The symbol size of a receive mode.
 //
 static int SymbolBitsOf(int RxMode)
 {
@@ -93,8 +93,8 @@ static int SymbolBitsOf(int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for DTAPI's five frames plus the raw frames DTAPI's 48 MB FIFO holds, rounded up
-// to a power of two within MxProcessMemless's bounds.
+// Room for five frames plus the raw frames a 48 MB FIFO holds, rounded up to a power of
+// two within the ring's bounds.
 //
 static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
@@ -121,8 +121,7 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Unmaps the ring and detaches from the receive channel, ignoring failures, as a detach
-// in DTAPI does.
+// Unmaps the ring and detaches from the receive channel, ignoring failures.
 //
 static void ReleaseChannel(DtSdiRx* Sdi)
 {
@@ -147,9 +146,8 @@ static void ReleaseChannel(DtSdiRx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Attaches exclusively to the receive channel under DTAPI's friendly name, and
-// configures and maps it for the port's I/O standard, as MxChannelMemlessRx::Attach and
-// SetVidStd do. A channel already attached is released first.
+// Attaches exclusively to the receive channel under a friendly name, and configures and
+// maps it for the port's I/O standard. A channel already attached is released first.
 //
 static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 {
@@ -164,7 +162,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     memset(&Props, 0, sizeof(Props));
     ReleaseChannel(Sdi);
 
-    // DtapiIoStd2VidStd: the sub-value of an SDI standard is its video standard.
+    // The sub-value of an SDI standard is its video standard.
     DtFrameProps Frame;
     if (!DtFrameProps_Init(&Frame, Sdi->IoStdSubValue))
         return DTAPI_E_INVALID_VIDSTD;
@@ -177,7 +175,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     if (Sdi->QuarterMs < 1)
         Sdi->QuarterMs = 1;
 
-    // DtPalCHSDIRX::Attach: the process name and ID, cut to the longest name the driver
+    // The friendly name is the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
     char Process[128];
     OsProcess_Name(Process, sizeof(Process));
@@ -196,8 +194,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
 
     // 2160p over one 6G or 12G link receives as raw frames (0014); a 4K standard over
-    // four links, or of level-B links, which DTAPI's raw row does not take either,
-    // attaches without a ring; see SetRxControl.
+    // four links, or of level-B links, attaches without a ring; see SetRxControl.
     const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
     const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
                          Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
@@ -289,8 +286,8 @@ static DtapiResult Advance(DtSdiRx* Sdi, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardTo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Everything written up to WriteOffset is skipped, to an aligned offset, as
-// MxChannelMemlessRx::MarkAsProcessed(-1) does after an out-of-sync event.
+// Everything written up to WriteOffset is skipped, to an aligned offset, after an
+// out-of-sync event.
 //
 static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
 {
@@ -347,8 +344,8 @@ static DtapiResult DiscardAll(DtSdiRx* Sdi)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Searches the data in the ring for a valid header of any frame, stepping by the
-// alignment, as MxChannelMemlessRx::FindFrameHeader does. The positions searched without
-// finding one are skipped. Returns true with the read offset at the header.
+// alignment. The positions searched without finding one are skipped. Returns true with
+// the read offset at the header.
 //
 static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 {
@@ -379,12 +376,10 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiRxImpl_Bb2::SetRxControl: anything but idle receives, and the value is kept as
-// given. Receiving starts reading at the start of the ring, as DtPalCHSDIRX does. With
-// 8-bit symbols, or a 4K standard over four links or of level-B links, receiving fails as
-// the Matrix's row validation fails it (MxPreProcess::ValidateRowConfigRaw accepts only
-// 10- and 16-bit raw data of one logical link), before the channel runs. 2160p over one
-// 6G or 12G link receives, which DTAPI refuses too (0014).
+// Anything but idle receives, and the value is kept as given. Receiving starts reading at
+// the start of the ring. With 8-bit symbols, or a 4K standard over four links or of
+// level-B links, receiving fails before the channel runs, since raw frames carry only 10-
+// and 16-bit symbols of one logical link. 2160p over one 6G or 12G link receives (0014).
 //
 static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
 {
@@ -426,7 +421,7 @@ static void Release(DtRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxModeSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SdiRxImpl_Bb2::SetRxMode: the full frame without time stamps, while idle.
+// The full frame without time stamps, while idle.
 //
 static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
 {
@@ -456,7 +451,7 @@ static DtapiResult SetRxControlSdi(DtRx* Rx, int RxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiRxImpl_Bb2::Reset for DTAPI_FIFO_RESET: stop, clear the flags, drop what is held.
+// Stops, clears the flags, drops what is held.
 //
 static DtapiResult ClearFifo(DtRx* Rx)
 {
@@ -512,8 +507,8 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetMaxFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The load GetFifoLoad reports for a full ring. A channel without a ring, on a port of
-// 4K over four links, gives DTAPI's size.
+// The load GetFifoLoad reports for a full ring. A channel without a ring, on a port of 4K
+// over four links, gives the FIFO size.
 //
 static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
 {
@@ -529,8 +524,8 @@ static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiRxImpl_Bb2::SetIoConfig once the configuration is set: the down-scaling is kept, and
-// a new standard reconfigures the receive channel.
+// Once the configuration is set: the down-scaling is kept, and a new standard
+// reconfigures the receive channel.
 //
 static DtapiResult ApplyIoConfig(DtRx* Rx, const DtIoConfig* Config)
 {
@@ -547,8 +542,7 @@ static DtapiResult ApplyIoConfig(DtRx* Rx, const DtIoConfig* Config)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DetectIoStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SdiRxImpl_Bb2::DetectIoStd: the video standard, detected with the port's receiver and
-// converted.
+// The video standard, detected with the port's receiver and converted.
 //
 static DtapiResult DetectIoStd(DtRx* Rx, int* Value, int* SubValue)
 {
@@ -566,10 +560,9 @@ static DtapiResult DetectIoStd(DtRx* Rx, int* Value, int* SubValue)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtInpChannel::ReadFrame's last checks of the buffer: DTAPI_E_BUF_TOO_SMALL when it
-// cannot hold a frame of the channel's standard in its receive mode, and
-// DTAPI_E_INVALID_SIZE for a frame larger than DTAPI's FIFO. Sets *RawSize to the size
-// of that frame.
+// A frame read's last checks of the buffer: DTAPI_E_BUF_TOO_SMALL when it cannot hold a
+// frame of the channel's standard in its receive mode, and DTAPI_E_INVALID_SIZE for a
+// frame larger than the FIFO. Sets *RawSize to the size of that frame.
 //
 static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
 {
@@ -704,8 +697,8 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Waits for the next format event, as ReadWithTimeOut waits without its lock. No event
-// in time is no failure.
+// Waits for the next format event, without the channel's lock. No event in time is no
+// failure.
 //
 static DtapiResult Wait(DtRxWait* Wait, int Ms)
 {

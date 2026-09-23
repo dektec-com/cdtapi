@@ -254,7 +254,7 @@ DtapiResult DtNet_ChooseInputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
 //
 // A multicast group's scope picks the kind: interface- and link-local scopes link-local,
 // the realm-, admin-, site- and organisation-local scopes and the global scope
-// site-local, as DTAPI has it, and any other scope global.
+// site-local, and any other scope global.
 //
 DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
                                       const uint8_t* Dst, DtNetOwn* Own)
@@ -305,11 +305,11 @@ DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNet_ResolveDstMac -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// TxFifoMain::GetDstMacAddress. An IPv4 broadcast is the subnet's broadcast address, when
-// Dst is in the subnet, or 169.254.255.255. A best route without a gateway reaches Dst
-// on the link, which happens outside Own's subnet when the interface has another address
-// whose subnet holds Dst, or when Own's prefix is longer than the link's, as Windows
-// reports for temporary IPv6 addresses.
+// An IPv4 broadcast is the subnet's broadcast address, when Dst is in the subnet, or
+// 169.254.255.255. A best route without a gateway reaches Dst on the link, which happens
+// outside Own's subnet when the interface has another address whose subnet holds Dst, or
+// when Own's prefix is longer than the link's, as Windows reports for temporary IPv6
+// addresses.
 //
 DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
                                 const uint8_t* Gateway, uint8_t* Mac)

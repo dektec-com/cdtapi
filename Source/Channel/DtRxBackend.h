@@ -20,13 +20,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DTAPI's AsiSdiInpChannel_Bb2 keeps one implementation of the port's receiver, an
-// AsiRxImpl_Bb2 or an SdiRxImpl_Bb2 by the I/O standard, behind the virtual functions of
-// AsiSdiRxImpl_Bb2; a function an implementation does not have gives DTAPI's default.
-// Here the implementation is a DtRx, a struct that each side's own begins with, and the
-// virtual functions are the side's DtRxBackend. DtInpChannel.c keeps the checks that do
-// not depend on the side, the lock, detaching and the waits of a read, and calls these
-// with the lock held but where a function says otherwise (0011).
+// An input channel keeps one side that receives, chosen by the port's I/O standard:
+// DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. The side is a DtRx, a struct that each
+// side's own begins with, and its functions are the side's DtRxBackend. DtInpChannel.c
+// keeps the checks that do not depend on the side, the lock, detaching and the waits of a
+// read, and calls these with the lock held but where a function says otherwise (0011).
 //
 // A function that is NULL gives the default the function says.
 //

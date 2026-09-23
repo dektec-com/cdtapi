@@ -4,9 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// DtIoStubCORE_VPD as far as reading goes: the sections' sizes and a raw read of any
-// stretch of the EEPROM. Writing, and the items a section holds by keyword, are not
-// modelled; nothing in the library asks for them yet.
+// As much of the VPD as reading needs: the sections' sizes and a raw read of any stretch
+// of the EEPROM. Writing, and the items a section holds by keyword, are not modelled;
+// nothing in the library asks for them yet.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
