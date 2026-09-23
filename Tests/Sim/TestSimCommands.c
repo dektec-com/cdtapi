@@ -704,7 +704,7 @@ DT_TEST(PropertyRequestCarriesTheFilter)
     DT_ASSERT_EQ(In.m_DtapiMaj, CDTAPI_VERSION_MAJOR);
     DT_ASSERT_EQ(In.m_DtapiMin, CDTAPI_VERSION_MINOR);
     DT_ASSERT_EQ(In.m_DtapiBugfix, 0);
-    DT_ASSERT(CDTAPI_VERSION_MAJOR == 6 && CDTAPI_VERSION_MINOR == 13);
+    DT_ASSERT(CDTAPI_VERSION_MAJOR == 6 && CDTAPI_VERSION_MINOR == 14);
 
     // The name is terminated and the rest of its field is zero.
     char Name[PROPERTY_NAME_MAX_SIZE];

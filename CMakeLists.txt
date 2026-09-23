@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.21)
 # the patch number is CDTAPI's own. The driver is told the major and minor number in
 # every property request, see Source/DtPcie/DtPcieCmd.c.
 project(CDTAPI
-    VERSION 6.13.5
+    VERSION 6.14.0
     DESCRIPTION "Native open-source C API for DekTec SDI, DVB-ASI and SMPTE ST 2110 interfaces"
     HOMEPAGE_URL "https://www.dektec.com"
     LANGUAGES C)

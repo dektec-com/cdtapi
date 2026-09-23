@@ -162,7 +162,7 @@ DT_TEST(StringRequestCarriesTheFilter)
     DT_ASSERT_EQ(In.m_FirmwareVariant, -1);
     DT_ASSERT_EQ(In.m_PortIndex, 2);
     DT_ASSERT_EQ(In.m_DtapiMaj, 6);
-    DT_ASSERT_EQ(In.m_DtapiMin, 13);
+    DT_ASSERT_EQ(In.m_DtapiMin, 14);
     DT_ASSERT_EQ(In.m_DtapiBugfix, 0);
 
     char Name[PROPERTY_NAME_MAX_SIZE];

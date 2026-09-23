@@ -100,9 +100,9 @@ hardware and software pipes and a specific result code for every failure.
 ## Versions
 
 CDTAPI's major and minor version number are those of the DTAPI whose behaviour it
-reproduces, now 6.13; the patch number counts CDTAPI's own releases. The driver is
+reproduces, now 6.14; the patch number counts CDTAPI's own releases. The driver is
 told that DTAPI version, with bug-fix number 0, in every property request, so that it
-answers as it answers DTAPI 6.13.0.
+answers as it answers DTAPI 6.14.0.
 
 Where CDTAPI is checked out beside DTAPI, as it is in DekTec's SDK tree, every configure
 checks that the two numbers still agree and fails the build when they do not.
