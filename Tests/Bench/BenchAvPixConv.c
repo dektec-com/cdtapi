@@ -17,11 +17,17 @@
 //             without the wait for memory that both others include
 //
 // It then converts a 2160p frame between the card's coded lines and the raw frame the
-// channels carry, both ways, for each standard and symbol size.
+// channels carry, both ways, for each standard and symbol size, over as many threads as
+// asked for, each taking a band of the lines. Beside the milliseconds it gives the
+// millions of cycles a frame where the system says what clock it is running at: that is
+// the number which carries to another machine, since a core of half the clock needs
+// twice the time for the same cycles. It counts the cycles of the time that passed, not
+// those summed over the threads. The threads are started and joined for every frame, so
+// what they gain here is the least a pool would gain.
 //
 // Not a test: it asserts nothing about time.
 //
-// Usage: BenchAvPixConv [seconds per conversion]
+// Usage: BenchAvPixConv [seconds per conversion] [threads for the 4K conversion]
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -39,6 +45,40 @@
 #include "cdtapi.h"             // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Bands of a 4K conversion that can be measured at once.
+#define BENCH_MAX_THREADS 32
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchClockGHz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The clock the processor says it is running at, or zero where it does not say. Cycles
+// are the time a conversion takes times this clock, and that is the number that carries
+// to another machine: divide it by the clock of a core there for the time it would need.
+// Neither the nominal clock nor the time-stamp counter serves, since both miss the turbo
+// a lightly loaded desktop runs at, which is most of the difference with a server.
+//
+static double BenchClockGHz(void)
+{
+#if defined(__linux__)
+    FILE* File = fopen("/proc/cpuinfo", "r");
+    char Line[256];
+    double Highest = 0.0;
+
+    if (File == NULL)
+        return 0.0;
+    while (fgets(Line, sizeof(Line), File) != NULL)
+    {
+        double Mhz = 0.0;
+
+        if (sscanf(Line, "cpu MHz : %lf", &Mhz) == 1 && Mhz > Highest)
+            Highest = Mhz;
+    }
+    fclose(File);
+    return Highest / 1000.0;
+#else
+    return 0.0;
+#endif
+}
 
 #define WIDTH 3840
 #define HEIGHT 2160
@@ -240,28 +280,80 @@ static const int g_Sdi4kBits[] = {10, 16};
 // The memory one case converts.
 typedef struct Sdi4kBuffers
 {
-    uint8_t* Coded;    // A frame's coded lines, as the ring holds them
-    uint8_t* Raw;      // The raw frame the channels carry
-    uint16_t* Scratch; // The conversion's working symbols
+    uint8_t* Coded;                       // A frame's coded lines, as the ring holds them
+    uint8_t* Raw;                         // The raw frame the channels carry
+    uint16_t* Scratch[BENCH_MAX_THREADS]; // The working symbols, one set a band
 } Sdi4kBuffers;
 
-// Converts one frame, to the raw frame or back to the coded lines.
-static void ConvertFrame4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout,
-                           int Bits, bool ToRaw, const Sdi4kBuffers* Buf)
+// A band of lines for one thread: the lines from First below Last, with the working
+// symbols of Index.
+typedef struct Sdi4kBand
 {
-    size_t RawLine = DtSdiFrame_RawLineBits(Layout, Bits) / 8;
+    const DtSdi4kConv* Conv;
+    const DtSdiFrameLayout* Layout;
+    int Bits;
+    bool ToRaw;
+    const Sdi4kBuffers* Buf;
+    int First;
+    int Last;
+    int Index;
+} Sdi4kBand;
+
+// Converts the lines of one band.
+static void ConvertBand4k(void* Context)
+{
+    const Sdi4kBand* Band = (const Sdi4kBand*)Context;
+    const DtSdiFrameLayout* Layout = Band->Layout;
+    size_t RawLine = DtSdiFrame_RawLineBits(Layout, Band->Bits) / 8;
     size_t Coded = 2 * (size_t)Layout->Stride;
+    uint16_t* Scratch = Band->Buf->Scratch[Band->Index];
 
-    for (int Line = 0; Line < Layout->NumLines; Line++)
+    for (int Line = Band->First; Line < Band->Last; Line++)
     {
-        uint8_t* A = Buf->Coded + (size_t)Line * Coded;
-        uint8_t* Raw = Buf->Raw + (size_t)Line * RawLine;
+        uint8_t* A = Band->Buf->Coded + (size_t)Line * Coded;
+        uint8_t* Raw = Band->Buf->Raw + (size_t)Line * RawLine;
 
-        if (ToRaw)
-            Conv->ConvertLine(Layout, Bits, A, A + Layout->Stride, Line, Raw,
-                              Buf->Scratch);
+        if (Band->ToRaw)
+            Band->Conv->ConvertLine(Layout, Band->Bits, A, A + Layout->Stride, Line, Raw,
+                                    Scratch);
         else
-            Conv->CodeLine(Layout, Bits, Raw, Line, A, A + Layout->Stride, Buf->Scratch);
+            Band->Conv->CodeLine(Layout, Band->Bits, Raw, Line, A, A + Layout->Stride,
+                                 Scratch);
+    }
+}
+
+// Converts one frame, to the raw frame or back to the coded lines, over Threads bands.
+// The threads are started and joined for every frame, as a channel without a pool of its
+// own would have to; a pool would lose less between frames.
+static void ConvertFrame4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout,
+                           int Bits, bool ToRaw, const Sdi4kBuffers* Buf, int Threads)
+{
+    Sdi4kBand Bands[BENCH_MAX_THREADS];
+    OsThread* Started[BENCH_MAX_THREADS];
+    int Lines = Layout->NumLines;
+    int i;
+
+    for (i = 0; i < Threads; i++)
+    {
+        Bands[i].Conv = Conv;
+        Bands[i].Layout = Layout;
+        Bands[i].Bits = Bits;
+        Bands[i].ToRaw = ToRaw;
+        Bands[i].Buf = Buf;
+        Bands[i].First = Lines * i / Threads;
+        Bands[i].Last = Lines * (i + 1) / Threads;
+        Bands[i].Index = i;
+        Started[i] = i == 0 ? NULL : OsThread_Start(ConvertBand4k, &Bands[i]);
+    }
+
+    // The first band is the calling thread's, so that one thread starts none at all.
+    ConvertBand4k(&Bands[0]);
+    for (i = 1; i < Threads; i++)
+    {
+        if (Started[i] != NULL)
+            OsThread_Join(Started[i]);
+        else
+            ConvertBand4k(&Bands[i]); // A thread that would not start
     }
 }
 
@@ -270,8 +362,8 @@ static void ConvertFrame4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layo
 // Measures one conversion for Seconds, in milliseconds a frame and frames a second.
 //
 static void Measure4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout, int Bits,
-                      bool ToRaw, const Sdi4kBuffers* Buf, int Seconds, double* Ms,
-                      double* Fps)
+                      bool ToRaw, const Sdi4kBuffers* Buf, int Seconds, int Threads,
+                      double* Ms, double* Fps, double* MCycles)
 {
     uint64_t Start = OsTime_MonotonicMs();
     uint64_t Elapsed = 0;
@@ -279,12 +371,13 @@ static void Measure4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout, i
 
     while (Elapsed < (uint64_t)Seconds * 1000u)
     {
-        ConvertFrame4k(Conv, Layout, Bits, ToRaw, Buf);
+        ConvertFrame4k(Conv, Layout, Bits, ToRaw, Buf, Threads);
         Frames++;
         Elapsed = OsTime_MonotonicMs() - Start;
     }
     *Ms = (double)Elapsed / Frames;
     *Fps = (double)Frames / ((double)Elapsed / 1000.0);
+    *MCycles = *Ms * BenchClockGHz(); // Milliseconds times GHz are millions of cycles.
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Sdi4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -292,7 +385,7 @@ static void Measure4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout, i
 // Measures every standard and symbol size, both ways, with every conversion the
 // processor runs.
 //
-static void Sdi4k(int Seconds)
+static void Sdi4k(int Seconds, int Threads)
 {
     enum
     {
@@ -302,10 +395,25 @@ static void Sdi4k(int Seconds)
     const DtSdi4kConv* Sets[NUM_SETS] = {DtSdi4kConv_C(), DtSdi4kConv_Ssse3()};
 
     printf("\n4K over one link: the coded lines of the ring and the raw frame, a line at "
-           "a time\n");
+           "a time, over %d %s\n",
+           Threads, Threads == 1 ? "thread" : "threads");
     if (Sets[1] == NULL)
         printf("This processor or build has no SSSE3\n");
-    printf("%-26s %15s %17s %7s\n", "", "ms per frame", "frames per s", "SSSE3");
+    if (BenchClockGHz() > 0.0)
+    {
+        printf("At the %.2f GHz this processor reports. The Mcycles are of the time that "
+               "passed, not\nsummed over the threads: divide them by the clock of "
+               "another core in GHz for the\nmilliseconds the same number of threads "
+               "would need there.\n",
+               BenchClockGHz());
+    }
+    else
+    {
+        printf("This system does not report its clock, so the cycles a frame are left "
+               "out and the\nmilliseconds hold for this processor at this speed "
+               "alone.\n");
+    }
+    printf("%-26s %15s %17s %7s\n", "", "ms per frame", "Mcycles a frame", "SSSE3");
     printf("%-28s", "Standard");
     for (int Pass = 0; Pass < 2; Pass++)
     {
@@ -326,16 +434,23 @@ static void Sdi4k(int Seconds)
             size_t CodedSize = (size_t)Layout.CodedLines * (size_t)Layout.Stride;
             Sdi4kBuffers Buf;
 
+            bool Short = false;
+
             Buf.Coded = (uint8_t*)malloc(CodedSize);
             Buf.Raw = (uint8_t*)malloc(DtSdiFrame_RawSize(&Layout, Bits));
-            Buf.Scratch =
-                (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) * sizeof(uint16_t));
-            if (Buf.Coded == NULL || Buf.Raw == NULL || Buf.Scratch == NULL)
+            for (int b = 0; b < Threads; b++)
+            {
+                Buf.Scratch[b] = (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) *
+                                                   sizeof(uint16_t));
+                Short = Short || Buf.Scratch[b] == NULL;
+            }
+            if (Buf.Coded == NULL || Buf.Raw == NULL || Short)
             {
                 printf("Out of memory\n");
                 free(Buf.Coded);
                 free(Buf.Raw);
-                free(Buf.Scratch);
+                for (int b = 0; b < Threads; b++)
+                    free(Buf.Scratch[b]);
                 return;
             }
             uint32_t State = 2160;
@@ -350,6 +465,7 @@ static void Sdi4k(int Seconds)
             {
                 double Ms[NUM_SETS] = {0.0, 0.0};
                 double Fps[NUM_SETS] = {0.0, 0.0};
+                double MCycles[NUM_SETS] = {0.0, 0.0};
                 char Name[40];
 
                 snprintf(Name, sizeof(Name), "%s %s %d bits %s", g_Sdi4kCases[c].Name,
@@ -359,7 +475,7 @@ static void Sdi4k(int Seconds)
                     if (Sets[Set] != NULL)
                     {
                         Measure4k(Sets[Set], &Layout, Bits, ToRaw != 0, &Buf, Seconds,
-                                  &Ms[Set], &Fps[Set]);
+                                  Threads, &Ms[Set], &Fps[Set], &MCycles[Set]);
                     }
                 }
                 printf("%-28s", Name);
@@ -372,10 +488,10 @@ static void Sdi4k(int Seconds)
                 }
                 for (int Set = 0; Set < NUM_SETS; Set++)
                 {
-                    if (Sets[Set] != NULL)
-                        printf(" %7.1f", Fps[Set]);
-                    else
+                    if (Sets[Set] == NULL || MCycles[Set] <= 0.0)
                         printf(" %7s", "-");
+                    else
+                        printf(" %7.1f", MCycles[Set]);
                 }
                 if (Sets[1] != NULL)
                     printf(" %6.1fx\n", Fps[1] / Fps[0]);
@@ -385,7 +501,8 @@ static void Sdi4k(int Seconds)
             }
             free(Buf.Coded);
             free(Buf.Raw);
-            free(Buf.Scratch);
+            for (int b = 0; b < Threads; b++)
+                free(Buf.Scratch[b]);
         }
     }
 }
@@ -395,15 +512,19 @@ static void Sdi4k(int Seconds)
 int main(int Argc, char** Argv)
 {
     int Seconds = Argc > 1 ? atoi(Argv[1]) : 1;
+    int Threads = Argc > 2 ? atoi(Argv[2]) : 1;
     size_t Size = FRAME_PGROUPS * 5;
     size_t Packets = FRAME_PGROUPS / PACKET_PGROUPS_10 + 1;
     Buffers Buf;
     Buf.Frame = (uint8_t*)malloc(Size);
     Buf.Packets = (uint8_t*)malloc(Size + Packets * PACKET_HEADERS);
     Buf.Dst = (uint8_t*)malloc(Size);
-    if (Buf.Frame == NULL || Buf.Packets == NULL || Buf.Dst == NULL || Seconds <= 0)
+    if (Buf.Frame == NULL || Buf.Packets == NULL || Buf.Dst == NULL || Seconds <= 0 ||
+        Threads < 1 || Threads > BENCH_MAX_THREADS)
     {
-        fprintf(stderr, "Usage: BenchAvPixConv [seconds per conversion]\n");
+        fprintf(stderr,
+                "Usage: BenchAvPixConv [seconds per conversion] [threads, 1 to %d]\n",
+                BENCH_MAX_THREADS);
         return 1;
     }
     uint32_t State = 2110;
@@ -473,6 +594,6 @@ int main(int Argc, char** Argv)
     free(Buf.Frame);
     free(Buf.Packets);
     free(Buf.Dst);
-    Sdi4k(Seconds);
+    Sdi4k(Seconds, Threads);
     return 0;
 }

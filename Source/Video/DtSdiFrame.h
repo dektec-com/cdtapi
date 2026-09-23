@@ -245,7 +245,20 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 // whole bytes in every symbol size.
 //
 // The conversions work through a scratch buffer of DtSdiFrame_ScratchSymbols(Layout)
-// 16-bit symbols the caller provides, so that they allocate nothing per line.
+// 16-bit symbols the caller provides, so that they allocate nothing per line. It holds
+// one raw line's symbols in the order the raw line carries them, one to a 16-bit word:
+// what the coded lines have been read into but not yet packed to the raw line's symbol
+// size, or what the raw line has been unpacked into but not yet written to the coded
+// lines. So it is what the portable conversion hands from its first pass to its second,
+// and a line of a 2160p standard is some tens of kilobytes, which stays in the cache.
+//
+// The vector conversions do both passes over a tile at a time and keep the symbols in
+// registers, so they touch the buffer only where they fall back to the portable code,
+// which is 8-bit symbols; for 10 and 16 bits they leave it untouched. One buffer serves
+// any number of lines in turn, but not two conversions at once: a caller converting the
+// lines of a frame on more than one thread gives each thread its own.
+//
+// A layout that is not 4K needs none, and the count is 0.
 size_t DtSdiFrame_ScratchSymbols(const DtSdiFrameLayout* Layout);
 
 // Converts coded lines 2n-1 and 2n of a 4K frame, at CodedA and CodedB, into raw line
