@@ -1052,10 +1052,11 @@ static int SimIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
     Lock();
     Dev->SleepMs = 0;
     int Outcome = SimIoCtlLocked(Dev, FunctionCode, In, InSize, Out, OutSize, DrvStatus);
+    int SleepMs = Dev->SleepMs; // Taken under the lock: another thread is in here too
     Unlock();
 
-    if (Dev->SleepMs > 0)
-        OsTime_SleepMs(Dev->SleepMs);
+    if (SleepMs > 0)
+        OsTime_SleepMs(SleepMs);
     return Outcome;
 }
 

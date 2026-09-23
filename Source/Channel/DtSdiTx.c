@@ -1097,11 +1097,12 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
 typedef struct CodeBand
 {
     DtSdiTx* Sdi;
-    const uint8_t* Data; // The first of Lines raw lines
-    size_t RawLineBytes;
-    size_t Coded;  // What one raw line takes in the buffer, headers and all
-    size_t Offset; // Where the first of them goes
-    int FirstLine; // Its line number in the frame
+    const uint8_t* Data; // Where the first of Lines raw lines begins
+    size_t Bits;         // Bits one raw line takes
+    size_t Phase;        // Bit of that first byte the first line begins at, 0 to 7
+    size_t Coded;        // What one raw line takes in the buffer, headers and all
+    size_t Offset;       // Where the first of them goes
+    int FirstLine;       // Its line number in the frame
     int Lines;
 } CodeBand;
 
@@ -1110,17 +1111,26 @@ static void CodeLines(void* Context, int Index, int Count)
     const CodeBand* Band = (const CodeBand*)Context;
     DtSdiTx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    uint16_t* Scratch = Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
+    uint16_t* Scratch =
+        Sdi->Scratch == NULL ? NULL : Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
     int First;
     int Last;
 
-    DtWork_Band(Band->Lines, Index, Count, &First, &Last);
+    DtWork_Band(Band->Lines, Index, Count, 1, &First, &Last);
     for (int i = First; i < Last; i++)
     {
+        // Where line i begins in the raw frame. With 10-bit symbols a line that is not 4K
+        // can begin part way through a byte, and the byte it shares is only read.
+        const size_t At = Band->Phase + (size_t)i * Band->Bits;
+        const uint8_t* Src = Band->Data + At / 8;
         uint8_t* Dst = Sdi->Buf.Data + Band->Offset + (size_t)i * Band->Coded;
-        const uint8_t* Src = Band->Data + (size_t)i * Band->RawLineBytes;
         const int Line = Band->FirstLine + i;
 
+        if (!Layout->Is4k)
+        {
+            DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, (int)(At % 8), Dst);
+            continue;
+        }
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
         DtSdiFrame_CodeLine4k(
@@ -1131,12 +1141,17 @@ static void CodeLines(void* Context, int Index, int Count)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. TakeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Codes as many whole 4K lines as this call brings, over the threads the channel has,
-// and returns how many it did. Zero for everything it cannot divide, and the caller then
-// takes one line the way it always did: a standard that is not 4K, whose lines share a
-// byte at each boundary; a channel of one thread; a frame whose room is not reserved
-// yet, which is the first line of it; bytes of a line left over from the call before;
-// and a batch that would be a single line.
+// Codes as many whole lines as this call brings, over the threads the channel has, and
+// returns how many it did. Zero where there is nothing to divide, and the caller then
+// takes one line the way it always did: a channel of one thread; a frame whose room is
+// not reserved yet, which is its first line; bytes of a line left over from the call
+// before; and a batch that would be a single line.
+//
+// Every standard divides. The coded lines a band writes are its own whatever the
+// standard, since each begins on a byte of its own; the raw lines a band reads can share
+// a byte with the line before or after, which with 10-bit symbols they do, but reading
+// the same byte on two threads is no risk. So a band starts wherever it likes and the
+// line's own bit is worked out from the phase the batch began at.
 //
 // Only the lines that lie in one piece before the end of the buffer are taken. The line
 // that runs across the end goes through the line buffer and is copied in two, which is a
@@ -1150,18 +1165,22 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
 {
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
 
-    if (!Layout->Is4k || DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->Reserved ||
-        Sdi->Stage != DT_STAGE_LINES || Sdi->RawHave != 0)
+    if (DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->Reserved || Sdi->Stage != DT_STAGE_LINES ||
+        Sdi->RawHave != 0)
     {
         return 0;
     }
 
-    const size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
+    const size_t Bits = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits);
+    const size_t Phase = (size_t)Sdi->Phase;
     const size_t Coded = DtSdiFrame_TxLineBytes(Layout);
     const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
                                         (size_t)Sdi->LinesDone * Coded);
     const int Cap = Layout->NumLines / 4 < 2 ? 2 : Layout->NumLines / 4;
-    size_t Lines = *Left / RawLineBytes;
+
+    // The lines whose every bit this call brings: the last of them may end part way
+    // through the last byte, which the line after it begins in and which stays.
+    size_t Lines = Bits == 0 ? 0 : (8 * *Left - Phase) / Bits;
 
     if (Lines > (size_t)(Layout->NumLines - Sdi->LinesDone))
         Lines = (size_t)(Layout->NumLines - Sdi->LinesDone);
@@ -1175,23 +1194,29 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
     CodeBand Band;
     Band.Sdi = Sdi;
     Band.Data = *Data;
-    Band.RawLineBytes = RawLineBytes;
+    Band.Bits = Bits;
+    Band.Phase = Phase;
     Band.Coded = Coded;
     Band.Offset = Offset;
     Band.FirstLine = Sdi->LinesDone;
     Band.Lines = (int)Lines;
     DtWork_Run(&Sdi->Work, CodeLines, &Band);
 
-    const size_t Took = Lines * RawLineBytes;
-    *Data += Took;
-    *Left -= Took;
-    Sdi->FrameBytesLeft -= Took;
+    // The bytes the batch used up are those it has no more bits left in; a byte the next
+    // line begins in is left where it is, as it is for a single line.
+    const size_t End = Phase + Lines * Bits;
+    *Data += End / 8;
+    *Left -= End / 8;
+    Sdi->FrameBytesLeft -= End / 8;
     Sdi->LinesDone += (int)Lines;
+    Sdi->Phase = (int)(End % 8);
 
-    // What is left of the last line's byte is padding, as it is for a single line. A 4K
-    // line takes whole bytes, so the phase does not move.
+    // What is left of the last line's byte is padding.
     if (Sdi->LinesDone == Layout->NumLines)
+    {
+        Sdi->RawHave = 0;
         Sdi->Stage = DT_STAGE_PADDING;
+    }
     return (int)Lines;
 }
 

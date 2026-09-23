@@ -606,9 +606,12 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. ConvertLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Converts the band of lines this piece takes, from the coded lines of the frame at the
-// head of the ring into the raw frame. The bands are independent: a line's two coded
-// lines and its raw line are its own, and the working buffers are per band, so the only
-// thing every band reads is the ring.
+// head of the ring into the raw frame. The bands are independent: a line's coded lines
+// are its own, the working buffers are per band, and the only thing every band reads is
+// the ring. What a band writes is its own as well, for which the bands start on a
+// multiple of DtSdiFrame_BandLines lines: with 10-bit symbols a line of a frame that is
+// not 4K can share a byte of the raw frame with the line after it, and two threads must
+// not have the same byte.
 //
 typedef struct ConvertBand
 {
@@ -629,7 +632,8 @@ static void ConvertLines(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Band(Layout->NumLines, Index, Count, &First, &Last);
+    DtWork_Band(Layout->NumLines, Index, Count,
+                DtSdiFrame_BandLines(Layout, Sdi->SymbolBits), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset = (size_t)Layout->HeaderBytes + (size_t)Line * Band->Coded4Line;
@@ -728,12 +732,7 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
     Band.Coded4Line = Coded4Line;
     Band.RawLineBytes = RawLineBytes;
 
-    // Only a 4K frame divides: its raw lines take whole bytes and are a band's own, where
-    // the lines of every other standard share a byte at each boundary.
-    if (Layout->Is4k)
-        DtWork_Run(&Sdi->Work, ConvertLines, &Band);
-    else
-        ConvertLines(&Band, 0, 1);
+    DtWork_Run(&Sdi->Work, ConvertLines, &Band);
 
     Result = Advance(Sdi, Frame);
     if (Result != DTAPI_OK)

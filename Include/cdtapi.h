@@ -398,19 +398,26 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
-// Converts the lines of a 4K frame over Threads threads of the library's own, 1 for the
-// thread that reads, which is the default. A 2160p frame costs some milliseconds of
-// processor time a frame to convert, which is more than a slow core has to spare at 50
-// or 60 frames a second; the lines of a frame are independent, so they divide over as
-// many threads as the machine can give them. The threads exist until the channel is
-// detached or the count is set again.
+// Sets how many threads the channel converts a frame's lines over. The default is 1: the
+// thread that calls DtInpChannel_ReadFrame does the whole frame itself, as it always has.
+// Any number above that starts threads of the library's own, which live until the channel
+// is detached or the count is set again. The frames are the same whatever the count.
 //
-// No other standard divides: the lines of a packed frame share a byte at each boundary.
-// Whatever the count, the bytes are the same.
+// How many to ask for:
 //
-// DTAPI_E_INVALID_ARG below 1, DTAPI_E_NOT_SUPPORTED on a channel whose signal has no
-// lines to divide, and DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be
-// had, after which the channel converts in the reading thread again.
+//   up to 3G-SDI    1. The conversion is a small part of a frame period even on a slow
+//                   core, so more threads cost more than they save.
+//   6G and 12G      2 to 4. A 2160p frame is four times the work, which at 50 or 60
+//                   frames a second is more than one slow core has to spare.
+//   more than 4     not advised. The conversion waits on memory as much as on the
+//                   processor, so the fifth thread and the ones after it add little and
+//                   take cores from the rest of the program.
+//
+// Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a read has not returned, as
+// the threads and their buffers must not change under one; DTAPI_E_NOT_SUPPORTED on a
+// channel whose signal has no lines, such as ASI; and DTAPI_E_OUT_OF_MEM when the threads
+// or their buffers cannot be had, after which the channel converts in the reading thread
+// again.
 CDTAPI_API DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel,
                                                          int Threads);
 
@@ -599,18 +606,24 @@ CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
                                                   DtDevice* Device, int Port);
 
-// Codes the lines of a 4K frame over Threads threads of the library's own, 1 for the
-// thread that writes, which is the default. It is DtInpChannel_SetConversionThreads the
-// other way round, and what it says holds here too.
+// Sets how many threads the channel codes a frame's lines over. The default is 1: the
+// thread that writes does the whole frame itself, as it always has. Any number above that
+// starts threads of the library's own, which live until the channel is detached or the
+// count is set again. The signal is the same whatever the count.
+// DtInpChannel_SetConversionThreads says how many threads to ask for; the same numbers
+// hold here.
 //
-// What one call brings is what divides, so DtOutpChannel_WriteFrame always gets the whole
-// of it and DtOutpChannel_Write gets it for as many whole lines as the call holds: a
-// caller that writes a frame at a time is served, one that writes a line at a time is
-// not, and neither is wrong.
+// A channel can only divide the lines it has been given. DtOutpChannel_WriteFrame is
+// given a whole frame, so it always divides. DtOutpChannel_Write is given a stretch of
+// the stream, and divides the whole lines that stretch holds: a caller that writes a
+// frame at a time gets the same as WriteFrame, and a caller that writes a line at a time
+// gets no division, because there is nothing in that call to divide.
 //
-// DTAPI_E_INVALID_ARG below 1, DTAPI_E_NOT_SUPPORTED on a channel whose signal has no
-// lines to divide, and DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be
-// had, after which the channel codes in the writing thread again.
+// Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a write has not returned, as
+// the threads and their buffers must not change under one; DTAPI_E_NOT_SUPPORTED on a
+// channel whose signal has no lines, such as ASI; and DTAPI_E_OUT_OF_MEM when the threads
+// or their buffers cannot be had, after which the channel codes in the writing thread
+// again.
 CDTAPI_API DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel,
                                                           int Threads);
 

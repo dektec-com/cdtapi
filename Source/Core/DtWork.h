@@ -72,6 +72,8 @@ static inline int DtWork_Pieces(const DtWork* Work)
 void DtWork_Run(const DtWork* Work, DtWorkFunc Func, void* Context);
 
 // The half-open range [*First, *Last) of Total items that piece Index of Count takes.
-// The first Total % Count pieces take one item more than the rest, so that the ranges
-// cover the items exactly and differ by at most one in length.
-void DtWork_Band(int Total, int Index, int Count, int* First, int* Last);
+// Every boundary is a multiple of Unit, which is 1 where the items are independent one by
+// one and more where they are independent only in groups of that many. The ranges cover
+// the items exactly and are as near equal in length as the unit allows; a range can be
+// empty when there are fewer units than pieces.
+void DtWork_Band(int Total, int Index, int Count, int Unit, int* First, int* Last);

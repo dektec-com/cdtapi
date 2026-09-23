@@ -162,7 +162,6 @@ static bool WriteFrames(const char* Path, int VidStd, uint32_t First, int Count,
     return Done;
 }
 
-// The whole file at Path in a new buffer of *Size bytes; NULL when it cannot be read.
 // Frame Index of a file of frames Stride bytes apart, Size bytes of it, for a file too
 // large to hold whole. NULL when the file is shorter than that.
 static uint8_t* ReadFrameAt(const char* Path, size_t Index, size_t Stride, size_t Size)
@@ -185,6 +184,7 @@ static uint8_t* ReadFrameAt(const char* Path, size_t Index, size_t Stride, size_
     return Data;
 }
 
+// The whole file at Path in a new buffer of *Size bytes; NULL when it cannot be read.
 static uint8_t* ReadAll(const char* Path, size_t* Size)
 {
     FILE* File = SimDtPcie_OpenFile(Path, "rb");
@@ -435,6 +435,78 @@ DT_TEST(SinkWritesWhatIsSent)
     remove(SINK_FILE);
 }
 
+// Threads are not for 4K alone: a 1080i50 frame divides too, and its 10-bit lines share
+// a byte with the line before and after, which is what a band has to get right. Over four
+// threads the frame read and the frame sent are the ones a single thread gives.
+DT_TEST(HdOverThreads)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_1080I50, 0, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080I50", SOURCE_FILE)));
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    size_t Size = 0, Padded = 0;
+    uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_1080I50, 0, &Size, &Padded);
+    char* Buffer = (char*)malloc(Size);
+    DtInpChannel* In = DtInpChannel_Alloc();
+    DtOutpChannel* Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 4));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+    int FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_EQ((size_t)FrameSize, Size);
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+    DtInpChannel_Free(In);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetConversionThreads(Out, 4));
+    DT_ASSERT_OK(
+        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+
+    // Twice over the stream, so that a batch begins at a phase other than zero: the
+    // second frame follows the first in the same call and its first line begins where the
+    // last line of the first ended.
+    char* Two = (char*)malloc(2 * Size);
+    DT_ASSERT(Two != NULL);
+    memcpy(Two, Buffer, Size);
+    memcpy(Two + Size, Buffer, Size);
+    DT_ASSERT_OK(DtOutpChannel_Write(Out, Two, (int)(2 * Size)));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Free(Out);
+    DtDevice_Free(Fix.Device);
+    Fix.Device = NULL;
+    SimDtPcie_Reset(); // Closes the file
+
+    size_t FileSize = 0;
+    uint8_t* File = ReadAll(SINK_FILE, &FileSize);
+    DT_ASSERT(File != NULL && FileSize >= 2 * Padded);
+    int Found = 0;
+    for (size_t At = 0; At + Padded <= FileSize; At += Padded)
+    {
+        if (memcmp(File + At, Expected, Size) == 0)
+            Found++;
+    }
+    DT_ASSERT_EQ(Found, 2);
+    free(File);
+    free(Two);
+    free(Expected);
+    free(Buffer);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+    remove(SINK_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // A file of one 2160p50 frame plays on the input port, and what the output port sends
@@ -592,5 +664,6 @@ DT_TEST(LeavesAFileForTheExamples)
 
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
-             DT_RUN(SinkWritesWhatIsSent), DT_RUN(FourKThroughFiles),
-             DT_RUN(FourKOverThreads), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
+             DT_RUN(FourKThroughFiles), DT_RUN(FourKOverThreads),
+             DT_RUN(LeavesAFileForTheExamples))

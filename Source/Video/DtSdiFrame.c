@@ -750,6 +750,19 @@ static void ScatterLine(const DtSdiFrameLayout* Layout, const uint16_t* Raw,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_BandLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+int DtSdiFrame_BandLines(const DtSdiFrameLayout* Layout, int SymbolBits)
+{
+    const size_t Bits = DtSdiFrame_RawLineBits(Layout, SymbolBits);
+    int Lines = 1;
+
+    // Eight lines of any whole number of bits make whole bytes, so the search ends.
+    while (Lines < 8 && Bits * (size_t)Lines % 8 != 0)
+        Lines++;
+    return Lines;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ScratchSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 size_t DtSdiFrame_ScratchSymbols(const DtSdiFrameLayout* Layout)

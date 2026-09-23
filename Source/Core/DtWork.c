@@ -256,11 +256,15 @@ void DtWork_Run(const DtWork* Work, DtWorkFunc Func, void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. DtWork_Band -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWork_Band(int Total, int Index, int Count, int* First, int* Last)
+void DtWork_Band(int Total, int Index, int Count, int Unit, int* First, int* Last)
 {
-    const int Each = Total / Count;
-    const int Over = Total % Count;
+    // Counted in whole units, of which the last may be short.
+    const int Units = (Total + Unit - 1) / Unit;
+    const int Each = Units / Count;
+    const int Over = Units % Count;
+    const int FirstUnit = Index * Each + (Index < Over ? Index : Over);
+    const int LastUnit = FirstUnit + Each + (Index < Over ? 1 : 0);
 
-    *First = Index * Each + (Index < Over ? Index : Over);
-    *Last = *First + Each + (Index < Over ? 1 : 0);
+    *First = FirstUnit * Unit < Total ? FirstUnit * Unit : Total;
+    *Last = LastUnit * Unit < Total ? LastUnit * Unit : Total;
 }
