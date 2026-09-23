@@ -1036,9 +1036,8 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
     size_t Coded = DtSdiFrame_TxLineBytes(Layout);
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
                                   (size_t)Sdi->LinesDone * Coded);
-    uint8_t* Dst = !Layout->Is4k && Offset + Coded <= Sdi->Buf.Size
-                       ? Sdi->Buf.Data + Offset
-                       : Sdi->LineBuf;
+    uint8_t* Dst =
+        Offset + Coded <= Sdi->Buf.Size ? Sdi->Buf.Data + Offset : Sdi->LineBuf;
     if (Layout->Is4k)
     {
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
