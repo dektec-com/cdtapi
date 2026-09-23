@@ -636,6 +636,19 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
     return (Size + Unit - 1) / Unit * Unit;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocScratch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The conversion's working symbols, one set for every band a batch of lines divides into.
+// NULL for a standard that has none, which is every standard but 4K.
+//
+static uint16_t* AllocScratch(DtSdiTx* Sdi)
+{
+    if (Sdi->ScratchSymbols == 0)
+        return NULL;
+    return (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
+                                     Sdi->ScratchSymbols * sizeof(uint16_t));
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The DMA controller lets go of the buffer, which is then freed, and the standard's
@@ -747,9 +760,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->RawBufSize = Line;
     Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Layout);
-    if (Layout.Is4k)
-        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
-                                                 Sdi->ScratchSymbols * sizeof(uint16_t));
+    Sdi->Scratch = AllocScratch(Sdi);
     if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
         (Layout.Is4k && Sdi->Scratch == NULL) ||
         !DtSdiFrame_BlackLines(&Layout, Sdi->Black))
@@ -1665,14 +1676,19 @@ DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
     DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
 
     // The working symbols are one set a band, so they follow the number of threads. A
-    // side with no buffer yet takes them from the buffer's allocation instead.
+    // side with no buffer yet takes them from the buffer's allocation instead. Symbols
+    // that cannot be had for the bands asked for are taken for one band again, so that
+    // the side is left coding in the writing thread rather than without them.
     if (Result == DTAPI_OK && Sdi->Scratch != NULL)
     {
         DtAlloc_Free(Sdi->Scratch);
-        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
-                                                 Sdi->ScratchSymbols * sizeof(uint16_t));
+        Sdi->Scratch = AllocScratch(Sdi);
         if (Sdi->Scratch == NULL)
+        {
+            DtWork_SetThreads(&Sdi->Work, 1);
+            Sdi->Scratch = AllocScratch(Sdi);
             Result = DTAPI_E_OUT_OF_MEM;
+        }
     }
     return Result;
 }

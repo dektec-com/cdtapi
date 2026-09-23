@@ -816,9 +816,18 @@ DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
     DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
 
     // The working buffers are one set a band, so they follow the number of threads. A
-    // channel without a layout yet takes them from ConfigureChannel instead.
+    // channel without a layout yet takes them from ConfigureChannel instead. Buffers that
+    // cannot be had for the bands asked for are taken for one band again, so that the
+    // channel is left converting in the reading thread rather than without them.
     if (Result == DTAPI_OK && Sdi->LineBuf != NULL)
+    {
         Result = AllocBands(Sdi);
+        if (Result != DTAPI_OK)
+        {
+            DtWork_SetThreads(&Sdi->Work, 1);
+            AllocBands(Sdi);
+        }
+    }
     return Result;
 }
 

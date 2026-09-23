@@ -163,6 +163,28 @@ static bool WriteFrames(const char* Path, int VidStd, uint32_t First, int Count,
 }
 
 // The whole file at Path in a new buffer of *Size bytes; NULL when it cannot be read.
+// Frame Index of a file of frames Stride bytes apart, Size bytes of it, for a file too
+// large to hold whole. NULL when the file is shorter than that.
+static uint8_t* ReadFrameAt(const char* Path, size_t Index, size_t Stride, size_t Size)
+{
+    FILE* File = SimDtPcie_OpenFile(Path, "rb");
+    uint8_t* Data = NULL;
+
+    if (File == NULL)
+        return NULL;
+    if (fseek(File, (long)(Index * Stride), SEEK_SET) == 0)
+    {
+        Data = (uint8_t*)malloc(Size);
+        if (Data != NULL && fread(Data, 1, Size, File) != Size)
+        {
+            free(Data);
+            Data = NULL;
+        }
+    }
+    fclose(File);
+    return Data;
+}
+
 static uint8_t* ReadAll(const char* Path, size_t* Size)
 {
     FILE* File = SimDtPcie_OpenFile(Path, "rb");
@@ -509,9 +531,17 @@ DT_TEST(FourKOverThreads)
 
     // Setting the count again, with the layout in place, reallocates the working buffers.
     DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 3));
-    FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
-    DT_ASSERT_MEM(Buffer, Expected, Size);
+
+    // A 2160p50 frame takes 28 MB of the 256 MB ring, so the tenth frame is the first
+    // whose coded lines run across the end of it: those lines are copied into a band's
+    // own line buffer first, and every band must use its own. Every frame read is the
+    // frame in the file.
+    for (int Frame = 0; Frame < 10; Frame++)
+    {
+        FrameSize = (int)Size;
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+        DT_ASSERT_MEM(Buffer, Expected, Size);
+    }
     DtInpChannel_Free(In);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
@@ -520,17 +550,26 @@ DT_TEST(FourKOverThreads)
     DT_ASSERT_OK(
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+
+    // A coded 2160p50 frame takes 30 MB of the 256 MB buffer, so from the tenth frame a
+    // line runs across the end of it. A batch stops at the last line that lies in one
+    // piece and that line goes through the line buffer, so the frame must come out whole
+    // all the same. The card must be sending for the tenth to have anywhere to go: the
+    // buffer holds nine.
     DT_ASSERT_OK(DtOutpChannel_Write(Out, Buffer, (int)Size));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    for (int Frame = 1; Frame < 10; Frame++)
+        DT_ASSERT_OK(DtOutpChannel_Write(Out, Buffer, (int)Size));
     DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
     DtOutpChannel_Free(Out);
     DtDevice_Free(Fix.Device);
     Fix.Device = NULL;
     SimDtPcie_Reset(); // Closes the file
 
-    size_t FileSize = 0;
-    uint8_t* File = ReadAll(SINK_FILE, &FileSize);
-    DT_ASSERT(File != NULL && FileSize >= Padded);
+    // The file holds ten frames, which is too much to hold whole, so the last of them is
+    // read where it lies: that is the one the wrap fell in.
+    uint8_t* File = ReadFrameAt(SINK_FILE, 9, Padded, Size);
+    DT_ASSERT(File != NULL);
     DT_ASSERT_MEM(File, Expected, Size);
     free(File);
     free(Expected);

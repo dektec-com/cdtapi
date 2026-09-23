@@ -344,8 +344,11 @@ DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel, int Thre
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
+    // The threads are started and stopped here, and the working buffers with them, so a
+    // read that is between its start and its return would find them changing under it.
     const DtRxBackend* Ops = InpChannel->Rx->Ops;
-    DtapiResult Result = Ops->SetConversionThreads == NULL
+    DtapiResult Result = InpChannel->Reading ? DTAPI_E_IN_USE
+                         : Ops->SetConversionThreads == NULL
                              ? DTAPI_E_NOT_SUPPORTED
                              : Ops->SetConversionThreads(InpChannel->Rx, Threads);
     OsMutex_Unlock(InpChannel->Lock);

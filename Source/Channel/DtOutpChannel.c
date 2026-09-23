@@ -318,8 +318,11 @@ DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel, int T
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
+    // The threads are started and stopped here, and the working buffers with them, so a
+    // write that is between its start and its return would find them changing under it.
     const DtTxBackend* Ops = OutpChannel->Tx->Ops;
-    DtapiResult Result = Ops->SetConversionThreads == NULL
+    DtapiResult Result = OutpChannel->Writing ? DTAPI_E_IN_USE
+                         : Ops->SetConversionThreads == NULL
                              ? DTAPI_E_NOT_SUPPORTED
                              : Ops->SetConversionThreads(OutpChannel->Tx, Threads);
     OsMutex_Unlock(OutpChannel->Lock);
