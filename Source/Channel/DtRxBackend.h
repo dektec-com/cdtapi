@@ -84,6 +84,10 @@ struct DtRxBackend
     // DetectIoStd; NULL gives DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*DetectIoStd)(DtRx* Rx, int* Value, int* SubValue);
 
+    // Converts a frame's lines over Threads threads of the library's own, 1 for the
+    // reading thread alone. NULL where the side converts nothing to divide.
+    DtapiResult (*SetConversionThreads)(DtRx* Rx, int Threads);
+
     // ReadFrame: CheckFrame checks a buffer of FrameSize bytes and gives the size of a
     // frame, TakeFrame delivers one when there is one. NULL gives DTAPI_E_NOT_SDI_MODE.
     DtapiResult (*CheckFrame)(DtRx* Rx, int FrameSize, size_t* RawSize);

@@ -12,6 +12,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
+#include "Core/DtWork.h"        // The threads a batch of lines is coded over.
 #include "Device/DtFunc.h"      // Finding the transmit blocks.
 #include "DtPcieAbi.h"          // Operational modes and types.
 #include "DtSdiTx.h"            // Interface being implemented.
@@ -102,7 +103,12 @@ typedef struct DtSdiTx
     uint8_t* LineBuf;  // A raw line's coded lines when they run across the end
     uint8_t* RawBuf;   // The raw bytes of a line not yet complete
     size_t RawBufSize;
-    uint16_t* Scratch; // The working symbols of a 4K line
+    uint16_t* Scratch; // The working symbols of a 4K line, one set a band
+
+    // The threads a batch of 4K lines is coded over. Scratch holds DtWork_Pieces(&Work)
+    // sets of ScratchSymbols symbols, so that a band uses its own.
+    DtWork Work;
+    size_t ScratchSymbols;
 
     // The buffer while holding or sending.
     size_t WriteOffset; // Where the next frame's header goes, and the driver's offset
@@ -740,9 +746,10 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxLineBytes(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->RawBufSize = Line;
+    Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Layout);
     if (Layout.Is4k)
-        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc(DtSdiFrame_ScratchSymbols(&Layout) *
-                                                 sizeof(uint16_t));
+        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
+                                                 Sdi->ScratchSymbols * sizeof(uint16_t));
     if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
         (Layout.Is4k && Sdi->Scratch == NULL) ||
         !DtSdiFrame_BlackLines(&Layout, Sdi->Black))
@@ -1070,6 +1077,113 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. CodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Codes the band of raw lines this piece takes straight into the buffer. The bands are
+// independent: a raw line's two coded lines and their headers are its own, no coding
+// writes past them, and the working symbols are per band.
+//
+typedef struct CodeBand
+{
+    DtSdiTx* Sdi;
+    const uint8_t* Data; // The first of Lines raw lines
+    size_t RawLineBytes;
+    size_t Coded;  // What one raw line takes in the buffer, headers and all
+    size_t Offset; // Where the first of them goes
+    int FirstLine; // Its line number in the frame
+    int Lines;
+} CodeBand;
+
+static void CodeLines(void* Context, int Index, int Count)
+{
+    const CodeBand* Band = (const CodeBand*)Context;
+    DtSdiTx* Sdi = Band->Sdi;
+    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+    uint16_t* Scratch = Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
+    int First;
+    int Last;
+
+    DtWork_Band(Band->Lines, Index, Count, &First, &Last);
+    for (int i = First; i < Last; i++)
+    {
+        uint8_t* Dst = Sdi->Buf.Data + Band->Offset + (size_t)i * Band->Coded;
+        const uint8_t* Src = Band->Data + (size_t)i * Band->RawLineBytes;
+        const int Line = Band->FirstLine + i;
+
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
+        DtSdiFrame_CodeLine4k(
+            Layout, Sdi->SymbolBits, Src, Line, Dst + Layout->TxLineHeaderBytes,
+            Dst + Layout->TxStride + Layout->TxLineHeaderBytes, Scratch);
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. TakeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Codes as many whole 4K lines as this call brings, over the threads the channel has,
+// and returns how many it did. Zero for everything it cannot divide, and the caller then
+// takes one line the way it always did: a standard that is not 4K, whose lines share a
+// byte at each boundary; a channel of one thread; a frame whose room is not reserved
+// yet, which is the first line of it; bytes of a line left over from the call before;
+// and a batch that would be a single line.
+//
+// Only the lines that lie in one piece before the end of the buffer are taken. The line
+// that runs across the end goes through the line buffer and is copied in two, which is a
+// line at a time by nature, and the lines after it start a batch of their own.
+//
+// A batch holds the channel's lock while it runs, so it is capped at a quarter of the
+// frame: long enough that the threads earn their dispatch, short enough that a detach or
+// a stop does not wait a whole frame's coding for the lock.
+//
+static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
+{
+    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+
+    if (!Layout->Is4k || DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->Reserved ||
+        Sdi->Stage != DT_STAGE_LINES || Sdi->RawHave != 0)
+    {
+        return 0;
+    }
+
+    const size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
+    const size_t Coded = DtSdiFrame_TxLineBytes(Layout);
+    const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
+                                        (size_t)Sdi->LinesDone * Coded);
+    const int Cap = Layout->NumLines / 4 < 2 ? 2 : Layout->NumLines / 4;
+    size_t Lines = *Left / RawLineBytes;
+
+    if (Lines > (size_t)(Layout->NumLines - Sdi->LinesDone))
+        Lines = (size_t)(Layout->NumLines - Sdi->LinesDone);
+    if (Lines > (size_t)Cap)
+        Lines = (size_t)Cap;
+    if (Offset + Lines * Coded > Sdi->Buf.Size)
+        Lines = (Sdi->Buf.Size - Offset) / Coded;
+    if (Lines < 2)
+        return 0;
+
+    CodeBand Band;
+    Band.Sdi = Sdi;
+    Band.Data = *Data;
+    Band.RawLineBytes = RawLineBytes;
+    Band.Coded = Coded;
+    Band.Offset = Offset;
+    Band.FirstLine = Sdi->LinesDone;
+    Band.Lines = (int)Lines;
+    DtWork_Run(&Sdi->Work, CodeLines, &Band);
+
+    const size_t Took = Lines * RawLineBytes;
+    *Data += Took;
+    *Left -= Took;
+    Sdi->FrameBytesLeft -= Took;
+    Sdi->LinesDone += (int)Lines;
+
+    // What is left of the last line's byte is padding, as it is for a single line. A 4K
+    // line takes whole bytes, so the phase does not move.
+    if (Sdi->LinesDone == Layout->NumLines)
+        Sdi->Stage = DT_STAGE_PADDING;
+    return (int)Lines;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Into the buffer: every byte is taken, a frame at a time. The lock is released after
@@ -1112,7 +1226,8 @@ static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
             FindFrameBoundary(Sdi, &Data, &Left);
         else
         {
-            Result = TakeLine(Sdi, &Data, &Left, DT_TX_NO_DEADLINE);
+            if (TakeLines(Sdi, &Data, &Left) == 0)
+                Result = TakeLine(Sdi, &Data, &Left, DT_TX_NO_DEADLINE);
             OsMutex_Unlock(Sdi->Base.Port.Lock);
             OsMutex_Lock(Sdi->Base.Port.Lock);
         }
@@ -1167,7 +1282,8 @@ static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
         }
         else
         {
-            Result = TakeLine(Sdi, &Data, &Left, Deadline);
+            if (TakeLines(Sdi, &Data, &Left) == 0)
+                Result = TakeLine(Sdi, &Data, &Left, Deadline);
             OsMutex_Unlock(Sdi->Base.Port.Lock);
             OsMutex_Lock(Sdi->Base.Port.Lock);
         }
@@ -1288,6 +1404,7 @@ static void Release(DtTx* Tx)
     DtFunc_Release(&Sdi->AfTx);
     DtFunc_Release(&Sdi->AfDma);
     OsEvent_Destroy(Sdi->Room);
+    DtWork_Free(&Sdi->Work);
     DtAlloc_Free(Sdi);
 }
 
@@ -1523,6 +1640,7 @@ static void WaitUntilSent(DtTx* Tx)
 
 static const DtTxBackend g_Ops = {
     .Release = Release,
+    .SetConversionThreads = DtSdiTx_SetConversionThreads,
     .SetTxControl = SetTxControlSdi,
     .ClearFifo = ClearFifo,
     .GetFifoLoad = GetFifoLoad,
@@ -1539,6 +1657,26 @@ static const DtTxBackend g_Ops = {
     .WaitUntilSent = WaitUntilSent,
 };
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+    DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
+
+    // The working symbols are one set a band, so they follow the number of threads. A
+    // side with no buffer yet takes them from the buffer's allocation instead.
+    if (Result == DTAPI_OK && Sdi->Scratch != NULL)
+    {
+        DtAlloc_Free(Sdi->Scratch);
+        Sdi->Scratch = (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
+                                                 Sdi->ScratchSymbols * sizeof(uint16_t));
+        if (Sdi->Scratch == NULL)
+            Result = DTAPI_E_OUT_OF_MEM;
+    }
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx** Tx)
@@ -1551,6 +1689,7 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     Sdi->Base.Ops = &g_Ops;
     Sdi->Base.Port = *Port;
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    DtWork_Init(&Sdi->Work);
     DtVec_Init(&Sdi->AfTx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Sdi->AfDma.Objects, sizeof(DtFuncObject));
     Sdi->Room = OsEvent_Create();

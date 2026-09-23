@@ -398,6 +398,22 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
+// Converts the lines of a 4K frame over Threads threads of the library's own, 1 for the
+// thread that reads, which is the default. A 2160p frame costs some milliseconds of
+// processor time a frame to convert, which is more than a slow core has to spare at 50
+// or 60 frames a second; the lines of a frame are independent, so they divide over as
+// many threads as the machine can give them. The threads exist until the channel is
+// detached or the count is set again.
+//
+// No other standard divides: the lines of a packed frame share a byte at each boundary.
+// Whatever the count, the bytes are the same.
+//
+// DTAPI_E_INVALID_ARG below 1, DTAPI_E_NOT_SUPPORTED on a channel whose signal has no
+// lines to divide, and DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be
+// had, after which the channel converts in the reading thread again.
+CDTAPI_API DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel,
+                                                         int Threads);
+
 // Stops receiving and discards what the channel holds, and clears the overflow flag.
 CDTAPI_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
 
@@ -582,6 +598,21 @@ CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 // command.
 CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
                                                   DtDevice* Device, int Port);
+
+// Codes the lines of a 4K frame over Threads threads of the library's own, 1 for the
+// thread that writes, which is the default. It is DtInpChannel_SetConversionThreads the
+// other way round, and what it says holds here too.
+//
+// What one call brings is what divides, so DtOutpChannel_WriteFrame always gets the whole
+// of it and DtOutpChannel_Write gets it for as many whole lines as the call holds: a
+// caller that writes a frame at a time is served, one that writes a line at a time is
+// not, and neither is wrong.
+//
+// DTAPI_E_INVALID_ARG below 1, DTAPI_E_NOT_SUPPORTED on a channel whose signal has no
+// lines to divide, and DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be
+// had, after which the channel codes in the writing thread again.
+CDTAPI_API DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel,
+                                                          int Threads);
 
 // Stops transmitting, discards what the channel has not sent, and clears the flags.
 CDTAPI_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);

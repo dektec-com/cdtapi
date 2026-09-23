@@ -24,3 +24,13 @@
 // DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B, applies the I/O standard again and sets
 // the receive channel up for it. *Rx is the side after a success, NULL otherwise.
 DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx** Rx);
+
+// Converts the lines of a 4K frame over Threads threads of the library's own, 1 for the
+// reading thread alone, which is the default. The threads live until the side is
+// released or the count is set again. No other standard divides: the lines of a packed
+// frame share a byte at each boundary.
+//
+// The channel must not be reading while this is called. DTAPI_E_INVALID_ARG below 1,
+// DTAPI_E_OUT_OF_MEM when the threads or their buffers cannot be had, and then the side
+// converts in the reading thread again.
+DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads);

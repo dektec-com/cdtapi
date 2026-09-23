@@ -475,6 +475,71 @@ DT_TEST(FourKThroughFiles)
     remove(SINK_FILE);
 }
 
+// The same frame over four threads: a threaded conversion gives the bytes a single
+// thread gives, both ways. The output goes through DtOutpChannel_Write rather than
+// WriteFrame, so that the batch of lines is taken from the stream a caller of Write
+// hands over, which is what the device in FFmpeg calls.
+DT_TEST(FourKOverThreads)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_2160P50, 0, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("2160P50", SOURCE_FILE)));
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    size_t Size = 0, Padded = 0;
+    uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
+    char* Buffer = (char*)malloc(Size);
+    DtInpChannel* In = DtInpChannel_Alloc();
+    DtOutpChannel* Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtInpChannel_SetConversionThreads(In, 0), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 4));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+    int FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_EQ((size_t)FrameSize, Size);
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+
+    // Setting the count again, with the layout in place, reallocates the working buffers.
+    DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 3));
+    FrameSize = (int)Size;
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_MEM(Buffer, Expected, Size);
+    DtInpChannel_Free(In);
+
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetConversionThreads(Out, 4));
+    DT_ASSERT_OK(
+        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_Write(Out, Buffer, (int)Size));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Free(Out);
+    DtDevice_Free(Fix.Device);
+    Fix.Device = NULL;
+    SimDtPcie_Reset(); // Closes the file
+
+    size_t FileSize = 0;
+    uint8_t* File = ReadAll(SINK_FILE, &FileSize);
+    DT_ASSERT(File != NULL && FileSize >= Padded);
+    DT_ASSERT_MEM(File, Expected, Size);
+    free(File);
+    free(Expected);
+    free(Buffer);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+    remove(SINK_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For examples +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Leaves three frames of 1080i50 for the CTest run of DtDetectVidStd with
@@ -489,4 +554,4 @@ DT_TEST(LeavesAFileForTheExamples)
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(FourKThroughFiles),
-             DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(FourKOverThreads), DT_RUN(LeavesAFileForTheExamples))

@@ -309,6 +309,23 @@ DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.- DtOutpChannel_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel, int Threads)
+{
+    if (OutpChannel == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    const DtTxBackend* Ops = OutpChannel->Tx->Ops;
+    DtapiResult Result = Ops->SetConversionThreads == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Ops->SetConversionThreads(OutpChannel->Tx, Threads);
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel)

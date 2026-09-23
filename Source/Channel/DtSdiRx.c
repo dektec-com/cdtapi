@@ -14,6 +14,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "Core/DtRing.h"        // Reading the ring.
+#include "Core/DtWork.h"        // The threads a frame's lines are converted over.
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
 #include "Device/DtFunc.h"      // Finding the receive channel.
 #include "DtPcieAbi.h"          // DT_FUNC_OPMODE_ and SDI rate values.
@@ -60,9 +61,15 @@ typedef struct DtSdiRx
     DtSdiFrameLayout Layout;
     DtRing Ring;       // Base NULL without a ring
     bool RingMapped;   // Mapped by CDTAPI rather than by the driver
-    uint8_t* LineBuf;  // Coded lines that run across the end of the ring
-    uint16_t* Scratch; // The conversion's working symbols of a 4K line
+    uint8_t* LineBuf;  // Coded lines that run across the end of the ring, one a band
+    uint16_t* Scratch; // The conversion's working symbols of a 4K line, one set a band
     int QuarterMs;     // A quarter frame period, at least 1 ms
+
+    // The threads a frame's lines are converted over, and what one band of them needs.
+    // The buffers above hold DtWork_Pieces(&Work) sets, so a band uses its own.
+    DtWork Work;
+    size_t LineBufBytes;
+    size_t ScratchSymbols;
 
     // Reading.
     bool InSync;
@@ -142,6 +149,30 @@ static void ReleaseChannel(DtSdiRx* Sdi)
         DtPcieCmd_ChSdiRxDetach(DrvOf(Sdi), Sdi->Ch);
     }
     Sdi->ChannelAttached = false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. AllocBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The working buffers of the configured layout, one set for every band a frame's lines
+// divide into. Replaces what was there, so a change in the number of bands comes through
+// it too.
+//
+static DtapiResult AllocBands(DtSdiRx* Sdi)
+{
+    const size_t Bands = (size_t)DtWork_Pieces(&Sdi->Work);
+
+    DtAlloc_Free(Sdi->LineBuf);
+    DtAlloc_Free(Sdi->Scratch);
+    Sdi->Scratch = NULL;
+    Sdi->LineBufBytes = DtSdiFrame_CodedLineBytes(&Sdi->Layout);
+    Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Sdi->Layout);
+    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufBytes);
+    if (Sdi->Layout.Is4k)
+        Sdi->Scratch =
+            (uint16_t*)DtAlloc_Malloc(Bands * Sdi->ScratchSymbols * sizeof(uint16_t));
+    if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
+        return DTAPI_E_OUT_OF_MEM;
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -253,12 +284,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     if (Result == DTAPI_OK)
     {
         Sdi->RingMapped = Mapped;
-        Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_CodedLineBytes(&Sdi->Layout));
-        if (Sdi->Layout.Is4k)
-            Sdi->Scratch = (uint16_t*)DtAlloc_Malloc(
-                DtSdiFrame_ScratchSymbols(&Sdi->Layout) * sizeof(uint16_t));
-        if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
-            Result = DTAPI_E_OUT_OF_MEM;
+        Result = AllocBands(Sdi);
     }
     if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_RING_MIN_FRAMES)
         Result = DTAPI_E_DEV_DRIVER;
@@ -416,6 +442,7 @@ static void Release(DtRx* Rx)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
     ReleaseChannel(Sdi);
+    DtWork_Free(&Sdi->Work);
     DtAlloc_Free(Sdi);
 }
 
@@ -576,6 +603,52 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. ConvertLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Converts the band of lines this piece takes, from the coded lines of the frame at the
+// head of the ring into the raw frame. The bands are independent: a line's two coded
+// lines and its raw line are its own, and the working buffers are per band, so the only
+// thing every band reads is the ring.
+//
+typedef struct ConvertBand
+{
+    DtSdiRx* Sdi;
+    uint8_t* Buffer;
+    size_t Coded4Line;
+    size_t RawLineBytes;
+} ConvertBand;
+
+static void ConvertLines(void* Context, int Index, int Count)
+{
+    const ConvertBand* Band = (const ConvertBand*)Context;
+    DtSdiRx* Sdi = Band->Sdi;
+    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+    uint8_t* LineBuf = Sdi->LineBuf + (size_t)Index * Sdi->LineBufBytes;
+    uint16_t* Scratch =
+        Sdi->Scratch == NULL ? NULL : Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
+    int First;
+    int Last;
+
+    DtWork_Band(Layout->NumLines, Index, Count, &First, &Last);
+    for (int Line = First; Line < Last; Line++)
+    {
+        size_t Offset = (size_t)Layout->HeaderBytes + (size_t)Line * Band->Coded4Line;
+        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Band->Coded4Line);
+
+        if (Coded == NULL)
+        {
+            DtRing_PeekAt(&Sdi->Ring, Offset, LineBuf, Band->Coded4Line);
+            Coded = LineBuf;
+        }
+        if (Layout->Is4k)
+            DtSdiFrame_ConvertLine4k(
+                Layout, Sdi->SymbolBits, Coded, Coded + Layout->Stride, Line,
+                Band->Buffer + (size_t)Line * Band->RawLineBytes, Scratch);
+        else
+            DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Band->Buffer);
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Delivers the next frame into Buffer when the ring holds all of it, and the time of
@@ -649,23 +722,18 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
     size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
-    for (int Line = 0; Line < Layout->NumLines; Line++)
-    {
-        size_t Offset = (size_t)Layout->HeaderBytes + (size_t)Line * Coded4Line;
-        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Coded4Line);
+    ConvertBand Band;
+    Band.Sdi = Sdi;
+    Band.Buffer = Buffer;
+    Band.Coded4Line = Coded4Line;
+    Band.RawLineBytes = RawLineBytes;
 
-        if (Coded == NULL)
-        {
-            DtRing_PeekAt(&Sdi->Ring, Offset, Sdi->LineBuf, Coded4Line);
-            Coded = Sdi->LineBuf;
-        }
-        if (Layout->Is4k)
-            DtSdiFrame_ConvertLine4k(Layout, Sdi->SymbolBits, Coded,
-                                     Coded + Layout->Stride, Line,
-                                     Buffer + (size_t)Line * RawLineBytes, Sdi->Scratch);
-        else
-            DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Buffer);
-    }
+    // Only a 4K frame divides: its raw lines take whole bytes and are a band's own, where
+    // the lines of every other standard share a byte at each boundary.
+    if (Layout->Is4k)
+        DtWork_Run(&Sdi->Work, ConvertLines, &Band);
+    else
+        ConvertLines(&Band, 0, 1);
 
     Result = Advance(Sdi, Frame);
     if (Result != DTAPI_OK)
@@ -732,12 +800,27 @@ static const DtRxBackend g_Ops = {
     .GetMaxFifoSize = GetMaxFifoSize,
     .ApplyIoConfig = ApplyIoConfig,
     .DetectIoStd = DetectIoStd,
+    .SetConversionThreads = DtSdiRx_SetConversionThreads,
     .CheckFrame = CheckFrame,
     .TakeFrame = TakeFrame,
     .PrepareWait = PrepareWait,
     .Wait = Wait,
     .AfterWait = AfterWait,
 };
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+    DtapiResult Result = DtWork_SetThreads(&Sdi->Work, Threads);
+
+    // The working buffers are one set a band, so they follow the number of threads. A
+    // channel without a layout yet takes them from ConfigureChannel instead.
+    if (Result == DTAPI_OK && Sdi->LineBuf != NULL)
+        Result = AllocBands(Sdi);
+    return Result;
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -755,6 +838,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     Sdi->IoStdValue = IoStd->Value;
     Sdi->IoStdSubValue = IoStd->SubValue;
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    DtWork_Init(&Sdi->Work);
 
     // The receiver and the receive channel of the port's ASI/SDI receiver.
     DtFuncInstance Instance;
