@@ -118,6 +118,10 @@ bool SimSdiTx_PhyRuns(int PortIndex);
 // Whether output follows the clock, as SimDtPcie_SetTxRealTime sets it.
 bool SimSdiTx_RealTime(void);
 
+// The parts a frame of VidStd goes out in on the clock: its coded lines in parts of
+// NumLinesPerEvent, or in four parts for 0. 0 for a standard that is not known.
+int SimSdiTx_NumPartsPerFrame(int VidStd, int NumLinesPerEvent);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Makes CDMAC take a buffer as the Linux driver does, from the address in the input, when

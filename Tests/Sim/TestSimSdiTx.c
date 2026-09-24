@@ -906,6 +906,18 @@ DT_TEST(FramesReachTheSink)
     FINISH(Fix);
 }
 
+// On the clock a frame goes out in parts of the coded lines of one event. 2160p50 over
+// one link has 2250 coded lines, twice its raw ones, so with the event setting a channel
+// gives it, 564 lines an event, it takes four parts, as 1080i50 does.
+DT_TEST(PartsCountCodedLines)
+{
+    DT_ASSERT_EQ(SimSdiTx_NumPartsPerFrame(DTAPI_VIDSTD_2160P50, (2250 + 3) / 4 + 1), 4);
+    DT_ASSERT_EQ(SimSdiTx_NumPartsPerFrame(DTAPI_VIDSTD_2160P50, 0), 4);
+    DT_ASSERT_EQ(SimSdiTx_NumPartsPerFrame(DTAPI_VIDSTD_1080I50, (1125 + 3) / 4 + 1), 4);
+    DT_ASSERT_EQ(SimSdiTx_NumPartsPerFrame(DTAPI_VIDSTD_1080I50, 1125), 1);
+    DT_ASSERT_EQ(SimSdiTx_NumPartsPerFrame(DTAPI_VIDSTD_UNKNOWN, 0), 0);
+}
+
 // An underflow sends nothing and sets the PHY's flag and the burst FIFO's count; the
 // formatter reports it with the first event after it, and frames flow again once written,
 // without a restart. The PHY's flag stays set until cleared, or until the PHY goes idle.
@@ -1059,6 +1071,6 @@ DT_TEST_MAIN("SimSdiTx", DT_RUN(OneHandleHoldsAnObject),
              DT_RUN(BufferIsRegisteredBothWays), DT_RUN(BufferRules),
              DT_RUN(ModesOfTheDmaController), DT_RUN(BlocksCheckAccessAndPort),
              DT_RUN(WaitRules), DT_RUN(StandbyFillsThePipeline),
-             DT_RUN(FramesReachTheSink), DT_RUN(UnderflowAndRecovery),
-             DT_RUN(SwitchesMustBypassTheDemux), DT_RUN(BadHeadersAreSkipped),
-             DT_RUN(ClosingTheHandleStopsTheDma))
+             DT_RUN(FramesReachTheSink), DT_RUN(PartsCountCodedLines),
+             DT_RUN(UnderflowAndRecovery), DT_RUN(SwitchesMustBypassTheDemux),
+             DT_RUN(BadHeadersAreSkipped), DT_RUN(ClosingTheHandleStopsTheDma))

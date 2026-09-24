@@ -20,6 +20,7 @@
 #include "SimDtPcie.h"          // Port counts and the lock.
 #include "SimSdiTx.h"           // Interface being implemented.
 #include "Video/DtFrameProps.h" // Frame periods.
+#include "Video/DtSdiFrame.h"   // Coded lines of a frame.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -955,13 +956,11 @@ static uint32_t BurstFifoCmd(SimTxPort* Port, int Cmd, const void* In, void* Out
 static double PartPeriodMs(const SimTxPort* Port, int VidStd)
 {
     DtFrameProps Props;
+    int NumParts = SimSdiTx_NumPartsPerFrame(VidStd, Port->NumLinesPerEvent);
 
-    if (!DtFrameProps_Init(&Props, VidStd) || Props.FpsNum <= 0)
+    if (!DtFrameProps_Init(&Props, VidStd) || Props.FpsNum <= 0 || NumParts == 0)
         return 0;
-    int NumRawLines = DtFrameProps_NumLines(&Props);
-    int Lines =
-        Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (NumRawLines + 3) / 4;
-    return 1000.0 * Props.FpsDen / Props.FpsNum / ((NumRawLines + Lines - 1) / Lines);
+    return 1000.0 * Props.FpsDen / Props.FpsNum / NumParts;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxFCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1268,6 +1267,22 @@ static bool TypeMatches(int FunctionCode, int Type, const char* Role)
     default:
         return false;
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_NumPartsPerFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A part is the coded lines of one event, as NextEvent sends them, so a frame of 2160p
+// over one link has twice the parts its raw lines would give.
+//
+int SimSdiTx_NumPartsPerFrame(int VidStd, int NumLinesPerEvent)
+{
+    DtSdiFrameLayout Layout;
+
+    if (!DtSdiFrame_LayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT))
+        return 0;
+    int NumCodedLines = Layout.NumCodedLines;
+    int Lines = NumLinesPerEvent > 0 ? NumLinesPerEvent : (NumCodedLines + 3) / 4;
+    return (NumCodedLines + Lines - 1) / Lines;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
