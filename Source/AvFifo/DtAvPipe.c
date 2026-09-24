@@ -19,9 +19,6 @@
 // A buffer is rounded to 4 KB pages, whatever the operating system's page size.
 #define PIPE_PAGE 4096
 
-// A transmit pipe keeps this many bytes free before its read offset.
-#define TX_GAP 4
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
@@ -170,6 +167,9 @@ void DtAvWriter_Init(DtAvWriter* Writer, DtAvPipe* Pipe)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvWriter_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// One data word before the read offset stays free, so that a full buffer and an empty one
+// have different offsets; DtAvPipe_MaxLoad keeps the same word.
+//
 DtapiResult DtAvWriter_Free(DtAvWriter* Writer, uint32_t* Free)
 {
     DtAvPipe* Pipe = Writer->Pipe;
@@ -181,7 +181,8 @@ DtapiResult DtAvWriter_Free(DtAvWriter* Writer, uint32_t* Free)
         return Result;
     if (ReadOffset >= Pipe->Size)
         return DTAPI_E_DEV_DRIVER;
-    *Free = (ReadOffset + Pipe->Size - TX_GAP - Pipe->Offset) % Pipe->Size;
+    const uint32_t Word = (uint32_t)DtAvPipe_Alignment(Pipe);
+    *Free = (ReadOffset + Pipe->Size - Word - Pipe->Offset) % Pipe->Size;
     return DTAPI_OK;
 }
 
