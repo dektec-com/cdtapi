@@ -25,7 +25,7 @@
 // conversion, so that the suites check one against the other.
 //
 // Hanc is the symbols of one HANC section, Act those of one link's active part, half the
-// video section's; Raw holds 4*Hanc + 2*Act symbols and each coded line 2*Hanc + 2*Act.
+// video section's; Raw holds 4*Hanc + 4*Act symbols and each coded line 2*Hanc + 2*Act.
 
 // Where symbol Index of the line of link Link, both from 0, lies in the raw line.
 size_t Sim4k_RawAt(int Link, int Index);

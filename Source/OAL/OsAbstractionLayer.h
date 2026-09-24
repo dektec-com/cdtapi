@@ -47,10 +47,10 @@ void OsDrv_Close(OsDrv* Drv);
 
 // True when this handle is the emulated device rather than a card.
 //
-// It answers what actually opened, not what was asked for. A build made without the
-// emulator still accepts CDTAPI_SIM in the environment and then opens real hardware,
-// and a caller that decides "no card" from its own command line rather than from this
-// would go on to read a real device with the emulator's assumptions.
+// It answers what actually opened. CDTAPI_SIM is read once, at the first open of the
+// process, and every handle follows that answer, so a caller that decides "no card"
+// from its own command line or from the environment later on can disagree with the
+// library and read a real device with the emulator's assumptions.
 bool OsDrv_IsEmulated(const OsDrv* Drv);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Control -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

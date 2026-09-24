@@ -62,8 +62,8 @@
 #define SIM_NET_MAX_NEIGHBOURS 32
 #define SIM_NET_MAX_MEMBERSHIPS 64
 
-// Takes every interface, neighbour, socket and control back to the power-on state,
-// without taking the emulator's lock.
+// Takes every interface, neighbour, group and control back to the power-on state,
+// without taking the emulator's lock. Open sockets stay open and counted.
 void SimNet_Reset(void);
 
 // Adds the DTA-2110's interface with the MAC address Mac, or takes it away, without

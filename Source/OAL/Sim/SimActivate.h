@@ -17,7 +17,7 @@
 //
 // The object a card carries that its firmware waits for before it does any work. It is
 // ready once it has been given the data the card's own EEPROM holds behind its sections,
-// and stays ready until the card is reset.
+// unless those were never written, and each later check decides again.
 //
 
 // Forgets that the object was given anything, as a card does when it loses power.

@@ -548,7 +548,8 @@ static void Keep(const SimItem* Frame)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Arrive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A frame arrives at the receive side: a hardware receive pipe takes it, or it waits in
-// the common receive queue for the next interval. Frees the frame.
+// the common receive queue for the next interval, or it is lost when that is full. The
+// frame's data is freed unless the queue takes it over.
 //
 static void Arrive(SimItem* Frame)
 {
@@ -1139,7 +1140,7 @@ static int Scheduled(int Id)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Sets the pipe's operational mode. A software pipe takes any value; a hardware pipe's
-// DMA controller only the three modes, and running only with a buffer. A hardware
+// DMA controller only the three modes, and any but IDLE only with a buffer. A hardware
 // transmit pipe going from STANDBY to RUN applies the write offset it kept.
 //
 static uint32_t SetOpMode(SimPipe* Pipe, int OpMode)

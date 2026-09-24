@@ -40,10 +40,12 @@
 // A frame whose header asks for more bytes than this is refused as a bad header.
 #define SIM_TX_MAX_FRAME SIM_TX_MAX_BUFFER
 
+// A frame the sink received, as raw lines: those of the frame sent, or for 4K those of
+// the raw frame its coded lines carry.
 typedef struct SimTxKept
 {
     int FrameId;
-    int NumCodedLines;
+    int NumLines;
     int SymsHanc;
     int SymsVideo;
     uint16_t* Symbols;
@@ -98,7 +100,7 @@ typedef struct SimTxPort
     bool InFrame;
     int FrameId;
     bool Is4k; // The header names the 4K format: two HANC sections and line headers
-    int NumCodedLines;       // Coded lines
+    int NumCodedLines;       // From the header of the frame being received
     int SymsHanc, SymsVideo; // Of one section
     size_t BytesHanc, BytesVideo;
     size_t LineHdrBytes; // Before each coded line sent: 0, or 4 padded for 4K
@@ -341,13 +343,12 @@ static void UnpackSection(const SimTxPort* Port, size_t Offset, int Count, uint1
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SinkFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Appends the frame just received to the port's file, packed and padded; a write that
-// fails is not retried.
+// Appends Frame to Sink, packed and padded; a write that fails is not retried.
 //
-static void SinkFrame(const SimTxPort* Port)
+static void SinkFrame(FILE* Sink, const SimTxKept* Frame)
 {
     const size_t Count =
-        (size_t)Port->NumCodedLines * (size_t)(Port->SymsHanc + Port->SymsVideo);
+        (size_t)Frame->NumLines * (size_t)(Frame->SymsHanc + Frame->SymsVideo);
     const size_t Bytes = ((Count * 10 + 7) / 8 + 7) / 8 * 8;
     uint8_t* Out = (uint8_t*)DtAlloc_Malloc(Bytes);
     if (Out == NULL)
@@ -359,7 +360,7 @@ static void SinkFrame(const SimTxPort* Port)
     memset(Out, 0, Bytes);
     for (size_t i = 0; i < Count; i++)
     {
-        Accu |= (uint32_t)(Port->Symbols[i] & 0x3FF) << Have;
+        Accu |= (uint32_t)(Frame->Symbols[i] & 0x3FF) << Have;
         Have += 10;
         while (Have >= 8)
         {
@@ -370,8 +371,8 @@ static void SinkFrame(const SimTxPort* Port)
     }
     if (Have > 0)
         Out[Byte] = (uint8_t)Accu;
-    fwrite(Out, 1, Bytes, Port->Sink);
-    fflush(Port->Sink);
+    fwrite(Out, 1, Bytes, Sink);
+    fflush(Sink);
     DtAlloc_Free(Out);
 }
 
@@ -403,11 +404,15 @@ static uint16_t* RawFrame(const SimTxPort* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- KeepFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Moves the frame just received into the kept frames, dropping the oldest when full. A
-// 4K frame is kept as the raw frame it carries, whose lines are those of one link.
+// Moves the frame just received into the kept frames, dropping the oldest when full, and
+// into the file sink. A 4K frame is kept as the raw frame its coded lines carry; the
+// port's own fields keep describing the coded frame.
 //
 static void KeepFrame(SimTxPort* Port)
 {
+    SimTxKept Frame = {Port->FrameId, Port->NumCodedLines, Port->SymsHanc,
+                       Port->SymsVideo, Port->Symbols};
+
     if (Port->Is4k)
     {
         uint16_t* Raw = RawFrame(Port);
@@ -415,13 +420,14 @@ static void KeepFrame(SimTxPort* Port)
         if (Raw == NULL)
             return;
         DtAlloc_Free(Port->Symbols);
-        Port->Symbols = Raw;
-        Port->NumCodedLines /= 2;
-        Port->SymsHanc *= 4;
-        Port->SymsVideo *= 2;
+        Frame.NumLines = Port->NumCodedLines / 2;
+        Frame.SymsHanc = 4 * Port->SymsHanc;
+        Frame.SymsVideo = 2 * Port->SymsVideo;
+        Frame.Symbols = Raw;
     }
+    Port->Symbols = NULL;
     if (Port->Sink != NULL)
-        SinkFrame(Port);
+        SinkFrame(Port->Sink, &Frame);
     if (Port->NumKept == SIM_TX_KEPT_FRAMES)
     {
         DtAlloc_Free(Port->Kept[0].Symbols);
@@ -429,13 +435,7 @@ static void KeepFrame(SimTxPort* Port)
                 (SIM_TX_KEPT_FRAMES - 1) * sizeof(Port->Kept[0]));
         Port->NumKept--;
     }
-    SimTxKept* Slot = &Port->Kept[Port->NumKept++];
-    Slot->FrameId = Port->FrameId;
-    Slot->NumCodedLines = Port->NumCodedLines;
-    Slot->SymsHanc = Port->SymsHanc;
-    Slot->SymsVideo = Port->SymsVideo;
-    Slot->Symbols = Port->Symbols;
-    Port->Symbols = NULL;
+    Port->Kept[Port->NumKept++] = Frame;
     Port->FramesSent++;
 }
 
@@ -1592,7 +1592,7 @@ bool SimDtPcie_GetTxFrame(int PortIndex, int Index, SimTxFrame* Frame)
     {
         const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[Index];
         Frame->FrameId = Kept->FrameId;
-        Frame->NumCodedLines = Kept->NumCodedLines;
+        Frame->NumLines = Kept->NumLines;
         Frame->SymsHanc = Kept->SymsHanc;
         Frame->SymsVideo = Kept->SymsVideo;
         Frame->Symbols = Kept->Symbols;
@@ -1617,13 +1617,13 @@ bool SimDtPcie_CopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
     {
         const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[k];
         size_t Count =
-            (size_t)Kept->NumCodedLines * (size_t)(Kept->SymsHanc + Kept->SymsVideo);
+            (size_t)Kept->NumLines * (size_t)(Kept->SymsHanc + Kept->SymsVideo);
 
         if (Kept->FrameId != FrameId || Count > MaxSymbols)
             continue;
         memcpy(Symbols, Kept->Symbols, Count * sizeof(uint16_t));
         Frame->FrameId = Kept->FrameId;
-        Frame->NumCodedLines = Kept->NumCodedLines;
+        Frame->NumLines = Kept->NumLines;
         Frame->SymsHanc = Kept->SymsHanc;
         Frame->SymsVideo = Kept->SymsVideo;
         Frame->Symbols = Symbols;

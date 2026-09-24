@@ -115,7 +115,7 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path);
 typedef enum SimRxFault
 {
     SIM_RX_FAULT_SYNC_WORD,   // The header's sync word is wrong
-    SIM_RX_FAULT_FORMAT,      // The header names the 4K format
+    SIM_RX_FAULT_FORMAT,      // The header names the other format, 4K or not
     SIM_RX_FAULT_SKIP_FRAME,  // A frame number is skipped before the frame
     SIM_RX_FAULT_OUT_OF_SYNC, // The frame is not written and its events are out of sync
 } SimRxFault;

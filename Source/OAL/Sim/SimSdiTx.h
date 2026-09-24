@@ -183,12 +183,14 @@ typedef struct SimTxState
 
 void SimDtPcie_GetTxState(int PortIndex, SimTxState* State);
 
-// A frame the sink received: its header's frame ID and geometry, and every line's
-// symbols, EAV first, NumCodedLines times SymsHanc plus SymsVideo of them.
+// A frame the sink received: its header's frame ID, and every line's symbols, EAV first,
+// NumLines times (SymsHanc + SymsVideo) of them. A 4K frame is kept as the raw frame its
+// coded lines carry, so its lines are raw lines, and SymsHanc and SymsVideo those of a
+// raw line of the four links.
 typedef struct SimTxFrame
 {
     int FrameId;
-    int NumCodedLines;
+    int NumLines;
     int SymsHanc;
     int SymsVideo;
     const uint16_t* Symbols; // Valid until the next command or control

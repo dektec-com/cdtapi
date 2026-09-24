@@ -394,7 +394,7 @@ static int GetDevInfo(SimDevice* Dev, int FunctionCode, size_t InSize, void* Out
     return OS_IOCTL_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PropertyCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PropertyGetStr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Reading a string: an override, or the card's string property with that name. The
 // string is copied into the fixed field, which it may fill without a terminator.
@@ -1376,7 +1376,7 @@ void SimDtPcie_OverrideString(const char* Name, int PortIndex, bool Present,
     memcpy(Override->Str, Value, Length);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_FailProperty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void SimDtPcie_FailProperty(const char* Name, int PortIndex, bool IsString,
                             uint32_t Status)

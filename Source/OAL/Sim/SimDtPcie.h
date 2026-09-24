@@ -163,13 +163,12 @@ bool SimDtPcie_SetSdiSink(const char* Sink);
 void SimDtPcie_SetIndex(int Index);
 
 // Adds a DTA-2110, SimDta2110.h, at driver index Index, a different one from the
-// DTA-2178's; -1, as after a reset, takes it away again. Its handles address its own
+// DTA-2178's, or takes it away for a negative Index. A reset puts it at the index
+// CDTAPI_SIM_DTA2110 holds, or leaves none without it, so that a program with no test
+// controls of its own, such as an example, can use the card. Its handles address its own
 // objects and properties, and it has an interface in the emulated network, SimNet.h. The
 // property overrides and failures, the firmware status, the driver version and the
 // faults apply to both devices.
-// The emulated DTA-2110 at device index Index, or none for a negative index. Without
-// this call the environment decides: CDTAPI_SIM_DTA2110 holds the device index, so
-// that a program with no test controls of its own, such as an example, can use the card.
 void SimDtPcie_SetDta2110Index(int Index);
 
 // The number of handles to the emulated device that are open, so that a test can check

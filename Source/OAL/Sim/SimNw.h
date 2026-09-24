@@ -167,8 +167,8 @@ void SimDtPcie_GetNwPipeState(int PipeId, SimNwPipeState* State);
 typedef struct SimNwCounters
 {
     int ToOperatingSystem; // Received packets no pipe took
-    int Lost;              // Received packets a pipe took but could not write
-    int HeaderErrors;      // Transmitted packets whose header did not check
+    int Lost;              // Received packets that could not be written or queued
+    int HeaderErrors;      // Headers at a transmit pipe's read offset that did not check
 } SimNwCounters;
 
 void SimDtPcie_GetNwCounters(SimNwCounters* Counters);
