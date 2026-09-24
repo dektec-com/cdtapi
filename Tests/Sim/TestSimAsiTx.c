@@ -115,7 +115,7 @@ static size_t TakeSent(uint8_t* Out, size_t Size)
 
 // An ASI output attaches with its defaults: the gate in standby, where it sends K28.5
 // only, and the PHY running.
-DT_TEST(AttachesAndSendsK28)
+DT_TEST(AttachesInStandby)
 {
     Fixture Fix;
     if (!Start(&Fix, DtFailures, true))
@@ -449,7 +449,7 @@ DT_TEST(DrivesItsSlave)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-DT_TEST_MAIN("SimAsiTx", DT_RUN(AttachesAndSendsK28), DT_RUN(ModeAndRateChecks),
+DT_TEST_MAIN("SimAsiTx", DT_RUN(AttachesInStandby), DT_RUN(ModeAndRateChecks),
              DT_RUN(SendsEveryMode), DT_RUN(SendsAtTheRate), DT_RUN(LoopsToAnInput188),
              DT_RUN(LoopsToAnInput204), DT_RUN(StuffsNullPackets),
              DT_RUN(DetachEndsAWaitingWrite), DT_RUN(DetachWaitsForTheLastPacket),

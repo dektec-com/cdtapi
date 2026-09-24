@@ -87,7 +87,7 @@ DT_TEST(Ipv4PacketBytes)
     DT_ASSERT_EQ(DtAvPacket_Get16(Packet + 18 + 34 + 2), 5006);
 }
 
-DT_TEST(Ipv6VlanJumboPacketBytes)
+DT_TEST(Ipv6VlanHeaderV2PacketBytes)
 {
     static const uint8_t Expected[66] = {
         // Ethernet with the tag of priority 5 and VLAN 100
@@ -224,6 +224,6 @@ DT_TEST(SampleRowDataHeaderBytes)
     DT_ASSERT_EQ(Back.Offset, 0x7FFF);
 }
 
-DT_TEST_MAIN("AvPacket", DT_RUN(Ipv4PacketBytes), DT_RUN(Ipv6VlanJumboPacketBytes),
+DT_TEST_MAIN("AvPacket", DT_RUN(Ipv4PacketBytes), DT_RUN(Ipv6VlanHeaderV2PacketBytes),
              DT_RUN(ParsingReceivedPackets), DT_RUN(RtpHeaderBytes),
              DT_RUN(SampleRowDataHeaderBytes))

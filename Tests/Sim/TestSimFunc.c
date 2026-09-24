@@ -370,7 +370,7 @@ DT_TEST(ObjectsAreGotByKindTypeAndRole)
 
 // Each object type's minimum driver version, the build number included; a type the
 // table lacks is an internal error.
-DT_TEST(DriverVersionPerProxy)
+DT_TEST(DriverVersionPerObjectType)
 {
     static const struct
     {
@@ -417,4 +417,4 @@ DT_TEST_MAIN("SimFunc", DT_RUN(ObjectsOfTheReceiverFunction),
              DT_RUN(ObjectsOfTheTransmitFunctions), DT_RUN(UuidsAreUnique),
              DT_RUN(MissingFunctionIsNotFound), DT_RUN(InstanceIsChosenByRole),
              DT_RUN(ReadFailures), DT_RUN(OutOfMemory),
-             DT_RUN(ObjectsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerProxy))
+             DT_RUN(ObjectsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerObjectType))
