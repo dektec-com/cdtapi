@@ -551,9 +551,10 @@ CDTAPI_API DtapiResult DtInpChannel_GetIoConfig(DtInpChannel* InpChannel, int Gr
 CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int RxControl);
 
 // Sets the receive mode while not receiving: on SDI DTAPI_RXMODE_SDI_FULL, optionally
-// with DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_SDI_16B, 8-bit without either; on ASI one of
-// the modes above. Any other mode gives DTAPI_E_INVALID_MODE; receiving gives
-// DTAPI_E_NOT_IDLE.
+// with DTAPI_RXMODE_SDI_10B or DTAPI_RXMODE_SDI_16B, 8-bit without either, and with no
+// time-stamp flag, DTAPI_RXMODE_TIMESTAMP_TOD included, since a raw frame carries none;
+// on ASI one of the modes above. Any other mode gives DTAPI_E_INVALID_MODE; receiving
+// gives DTAPI_E_NOT_IDLE.
 CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
 // Reads one frame into FrameBuffer, which holds *FrameSize bytes, and sets *FrameSize to

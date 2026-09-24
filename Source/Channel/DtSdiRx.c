@@ -451,7 +451,8 @@ static void Release(DtRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxModeSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The full frame without time stamps, while idle.
+// The full frame without time stamps of any kind, while idle. A raw frame carries none;
+// ReadFrame2 gives its time of arrival.
 //
 static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
 {
@@ -459,7 +460,8 @@ static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
 
     if ((RxMode & DTAPI_RXMODE_SDI_MASK) != DTAPI_RXMODE_SDI_FULL)
         return DTAPI_E_INVALID_MODE;
-    if ((RxMode & (DTAPI_RXMODE_TIMESTAMP32 | DTAPI_RXMODE_TIMESTAMP64)) != 0)
+    if ((RxMode & (DTAPI_RXMODE_TIMESTAMP32 | DTAPI_RXMODE_TIMESTAMP64 |
+                   DTAPI_RXMODE_TIMESTAMP_TOD)) != 0)
         return DTAPI_E_INVALID_MODE;
     if (Rx->RxControl != DTAPI_RXCTRL_IDLE)
         return DTAPI_E_NOT_IDLE;
