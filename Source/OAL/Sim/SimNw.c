@@ -269,23 +269,33 @@ static bool WritePacket(SimPipe* Pipe, const uint8_t* Packet, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClosePipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Takes the pipe out of use, idle and without a buffer, and frees a software pipe. A
-// hardware pipe keeps its filter, offsets and error flags, and packets already in the
-// scheduler are still sent.
+// Takes the pipe out of use and drops the packets it has in the scheduler. A software
+// pipe is freed; a hardware pipe goes back to the state it had after a reset, idle,
+// without a buffer, filter, offsets or error flags, so that the next user starts from
+// nothing.
 //
+static void DropScheduled(int Id);
 static void ClosePipe(SimPipe* Pipe)
 {
-    Pipe->OpMode = DT_PIPE_OPMODE_IDLE;
-    Pipe->BufferSet = false;
-    Pipe->Buffer = NULL;
-    Pipe->BufferSize = 0;
-    Pipe->InUse = false;
-    Pipe->Owner = NULL;
+    DropScheduled(Pipe->Id);
     if (!Pipe->Hw)
     {
         g_Nw.SwPipes[Pipe->Id] = NULL;
         DtAlloc_Free(Pipe);
+        return;
     }
+    Pipe->InUse = false;
+    Pipe->Owner = NULL;
+    Pipe->OpMode = DT_PIPE_OPMODE_IDLE;
+    Pipe->BufferSet = false;
+    Pipe->Buffer = NULL;
+    Pipe->BufferSize = 0;
+    Pipe->ReadOffset = 0;
+    Pipe->WriteOffset = 0;
+    Pipe->CachedWriteOffset = 0;
+    Pipe->ErrorFlags = 0;
+    Pipe->FilterSet = false;
+    memset(&Pipe->Filter, 0, sizeof(Pipe->Filter));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Packets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
