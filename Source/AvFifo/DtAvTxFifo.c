@@ -43,7 +43,7 @@
 
 struct AvFifo_TxFifoC
 {
-    OsMutex* Lock; // Guards the calls of the application
+    OsMutex* Lock; // Guards the calls that set up, start and stop the FIFO
     bool Attached;
     DtAtomicInt Started;
     DtAvPort Port;

@@ -34,9 +34,8 @@ static int PartOfPeriod(const FrameRate* Rate, int Part, int Whole)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Configure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The transmit offset is a part of the frame period: 43/1125 for progressive video of
-// 1080 lines and more, 28/750 below; 26/625 for 625-line interlaced video, 20/525 for
-// 525 lines, told apart by a width of 720 and the field rate, and 22/1125 for other
-// interlaced video.
+// 1080 lines and more, 28/750 below; for interlaced and PsF video 26/625 at 625 lines,
+// 20/525 at 525, told apart by a width of 720 and the field rate, and 22/1125 otherwise.
 //
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
@@ -409,8 +408,10 @@ void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The row headers up to one without continuation or of length 0, at most three, each
-// checked against the payload size. Sets the offset of the data. False when the packet
-// is to be skipped.
+// checked against the payload size. Sets the offset of the data, and learns from a
+// field bit that the stream is interlaced. False when the packet is to be skipped:
+// an IP packet error, with the frame skipped, or the field bit appearing once the size
+// is known, a size error that resets the learned sizes.
 //
 static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSize,
                      DtAvSrd* Srd, int* NumRows, bool* Field1, int* DataOffset)

@@ -41,7 +41,7 @@
 
 struct AvFifo_RxFifoC
 {
-    OsMutex* Lock; // Guards the calls of the application
+    OsMutex* Lock; // Guards the calls that set up, start and stop the FIFO
     bool Attached;
     bool Started;
     DtAvPort Port;
@@ -92,8 +92,8 @@ static void Parse(void* Context, const uint8_t* Packet, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Pass after pass over the buffer, with a short sleep when a pass found nothing. Lost
-// packet boundaries count a synchronisation error.
+// Pass after pass over the buffer, with a short sleep when a pass found nothing or
+// failed. Lost packet boundaries count a synchronisation error.
 //
 static void ReceiveThread(void* Context)
 {

@@ -69,7 +69,9 @@ DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
 DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
                                          const St2110_TxConfigRawVideo* Config);
 
-// Sizes the packets for the stream, jumbo frames or not. DTAPI_E_INVALID_ARG for a
+// Sizes the packets for the stream, counts those of a frame and spaces them over the
+// frame period, or its active part for gapped scheduling. A payload size of -1 gives
+// the most a standard packet holds, on a jumbo pipe too. DTAPI_E_INVALID_ARG for a
 // configured payload size that is not a positive multiple of the pixel group, of 180
 // bytes for block packing, or larger than a packet holds.
 DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Stream);
@@ -111,12 +113,12 @@ typedef struct DtSt2110VideoRx
     // What the stream taught.
     int CalculatedFrameSize; // Bytes of pixel groups a frame gets room for, or -1
     int CountedFrameSize;    // Bytes of a frame from row 0 counted, or -1
-    int CountedNumLines;
+    int CountedNumLines;     // Last row number plus one of the rows counted
     bool Interlaced;
     bool Is420;
     int LineSizeFrame; // Bytes of pixel groups of a row, or -1
     int NumRowsFrame;  // Last row number plus one, or -1
-    int PrevRowNum;
+    int PrevRowNum;    // The previous packet's NumRowsFrame, or -1
 
     // The frame being received.
     uint32_t LastSeqNum;

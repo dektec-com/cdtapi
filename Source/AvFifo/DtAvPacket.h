@@ -45,7 +45,7 @@ typedef struct DtAvNet
     int Alignment; // Bytes a packet pads to: the pipe's data width in bytes
     uint8_t SrcMac[6];
     uint8_t DstMac[6];
-    int VlanId;       // With VlanPriority 0: no VLAN tag
+    int VlanId;       // 0, with VlanPriority 0: no VLAN tag
     int VlanPriority; // 0 to 7
     bool IpV6;
     uint8_t SrcIp[16]; // 4 bytes for IPv4

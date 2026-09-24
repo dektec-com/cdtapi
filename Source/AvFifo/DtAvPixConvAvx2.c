@@ -22,8 +22,9 @@
 // The 10-bit conversions of DtAvPixConvSsse3.c, two lanes at a time: the lower lane holds
 // the first two of four pixel groups, the upper lane the next two, and every shuffle,
 // multiply and shift acts on both lanes as the SSSE3 conversions act on one. A step
-// loads 16 bytes at the first pixel group and 16 at the third, and stores 16 at each, so
-// it runs while six pixel groups remain on both sides; the SSSE3 conversions do the rest.
+// loads 16 bytes at the first pixel group and 16 at the third, and stores 16 at each,
+// or 16 at the first alone for 8-bit output, so it runs while six pixel groups remain
+// on both sides; the SSSE3 conversions do the rest.
 // The planar conversion waits for memory rather than for the processor, and stays
 // SSSE3's.
 //

@@ -36,7 +36,7 @@ typedef struct DtAvFrame
     struct DtAvFrame* NextInPool; // Every frame of the pool
 } DtAvFrame;
 
-// The frame an application's frame is.
+// The pool frame around an application's frame, which must come from a pool.
 static inline DtAvFrame* DtAvFrame_Of(AvFifo_Frame* Frame)
 {
     return (DtAvFrame*)Frame;
@@ -61,7 +61,7 @@ typedef struct DtAvFramePool
 // Makes an empty pool. DTAPI_E_OUT_OF_MEM when its mutex cannot be made.
 DtapiResult DtAvFramePool_Init(DtAvFramePool* Pool);
 
-// Frees every frame of the pool, those the application holds too, and the pool itself.
+// Frees every frame of the pool, those the application holds too, and its mutex.
 void DtAvFramePool_Destroy(DtAvFramePool* Pool);
 
 // A frame of Size bytes, free or new, with its fields cleared and NumRows -1; NULL when
@@ -104,7 +104,7 @@ typedef struct DtAvFrameFifo
 // there is no memory.
 DtapiResult DtAvFrameFifo_Init(DtAvFrameFifo* Fifo);
 
-// Frees the FIFO. The frames in it stay where they were allocated.
+// Frees the FIFO's ring and mutex; the frames in it are left to their pool.
 void DtAvFrameFifo_Destroy(DtAvFrameFifo* Fifo);
 
 // Appends a frame; false, marking the FIFO overflowed, when it holds MaxSize frames.

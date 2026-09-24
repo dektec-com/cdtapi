@@ -18,9 +18,9 @@
 //
 // A frame of L16 or L24 samples is cut into packets of the configured number of samples;
 // the samples that do not fill a packet wait for the next frame, and that packet gets
-// the time of day and RTP timestamp of its first sample. Each packet's time and
-// timestamp advance by its samples, and its time is sent earlier by the card's output
-// delay. A raw frame is one packet of its bytes, at the frame's own time.
+// the time of day and RTP timestamp of its first sample. Each packet's time and timestamp
+// advance by its samples. A raw frame is one packet of its bytes, with the frame's time
+// and timestamp. Every packet is scheduled earlier by the card's output delay.
 //
 
 // The audio bytes a packet holds at most: a standard UDP datagram less the UDP and RTP
@@ -53,9 +53,9 @@ void DtSt2110AudioTx_Reset(DtSt2110AudioTx* Tx);
 int DtSt2110AudioTx_PacketBytes(const DtSt2110AudioTx* Tx, const DtAvTxStream* Stream,
                                 const AvFifo_Frame* Frame);
 
-// Hands the packets of Frame to Sink. DTAPI_E_INVALID_FORMAT, sending nothing, for a raw
-// frame of more than DT_ST2110_AUDIO_MAX_PAYLOAD bytes or a frame of samples that is not
-// a whole number of samples.
+// Hands the packets of Frame to Sink. DTAPI_E_INVALID_FORMAT, sending nothing, for
+// valid bytes that are negative or beyond the frame's size, a raw frame of more than
+// DT_ST2110_AUDIO_MAX_PAYLOAD bytes, or a frame of samples that holds a partial sample.
 DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvSink* Sink);
 
