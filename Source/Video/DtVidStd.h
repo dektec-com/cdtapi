@@ -23,8 +23,8 @@
 //
 
 #define DT_VIDLNK_NONE -1        // Not a multi-link standard
-#define DT_VIDLNK_4K_SMPTE425 0  // Four 3G links, SMPTE 425 level A
-#define DT_VIDLNK_4K_SMPTE425B 1 // Four 3G links, SMPTE 425 annex B
+#define DT_VIDLNK_4K_SMPTE425 0  // Four 3G links, SMPTE 425-5, two-sample interleave
+#define DT_VIDLNK_4K_SMPTE425B 1 // Four 3G links, SMPTE 425-5 annex B, square division
 #define DT_VIDLNK_4K_SMPTE2081 2 // One 6G link
 #define DT_VIDLNK_4K_SMPTE2082 3 // One 12G link
 

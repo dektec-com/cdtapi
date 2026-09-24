@@ -61,8 +61,10 @@ CDTAPI_API const char* DtapiGetVersion(void);
 
 // Converts a video standard to the I/O standard group value and sub-value that select it,
 // for use with SetIoConfig and DTAPI_IOCONFIG_IOSTD. LinkStandard is -1 for anything but
-// 4K; for 4K it says how the picture is carried: 0 and 1 are four 3G links per SMPTE 425
-// level A and annex B, 2 is one 6G link, 3 is one 12G link.
+// 4K; for 4K it says how the picture is carried: 0 is four 3G links per SMPTE 425-5 with
+// two-sample interleave, 1 four 3G links per its annex B with square division, 2 one 6G
+// link and 3 one 12G link. Whether each 3G link is of level A or B is the video
+// standard's.
 //
 // Returns DTAPI_E_INVALID_ARG for a null output pointer, which leaves both outputs as
 // they are. Otherwise sets *Value and *SubValue to -1 before anything else can fail, and
