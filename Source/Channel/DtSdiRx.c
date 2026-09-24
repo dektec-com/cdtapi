@@ -26,8 +26,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The FIFO size a load and a frame size are measured against, and what a port without a
-// ring reports as its maximum.
+// The FIFO size the ring is sized for and a frame size is checked against, and what a
+// channel without a ring reports as its maximum.
 #define DT_RX_FIFO_SIZE (48 * 1024 * 1024)
 
 // The bounds on the ring, the frames it asks room for, and the fewest frames a ring must
@@ -101,8 +101,8 @@ static int BitsPerSymbolOf(int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for five frames plus the raw frames a 48 MB FIFO holds, rounded up to a power of
-// two within the ring's bounds.
+// Room for five coded frames and as many more as a 48 MB FIFO holds of raw 10-bit
+// frames, rounded up to a power of two within the ring's bounds.
 //
 static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
@@ -129,7 +129,8 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Unmaps the ring and detaches from the receive channel, ignoring failures.
+// Unmaps the ring, frees the band buffers, forgets the layout, and sets the receive
+// channel idle and detaches from it, ignoring failures.
 //
 static void ReleaseChannel(DtSdiRx* Sdi)
 {
@@ -225,8 +226,8 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 
     Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
 
-    // 2160p over one 6G or 12G link receives as raw frames (0014); a 4K standard over
-    // four links, or of level-B links, attaches without a ring; see SetRxControl.
+    // 2160p over one 6G or 12G link receives as raw frames (plan 0014); a 4K standard
+    // over four links, or of level-B links, attaches without a ring; see SetRxControl.
     const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
     const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
                          Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
@@ -313,8 +314,8 @@ static DtapiResult Advance(DtSdiRx* Sdi, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardTo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Everything written up to WriteOffset is skipped, to an aligned offset, after an
-// out-of-sync event.
+// Skips everything written up to WriteOffset, rounded down to the alignment, so that
+// the next read searches for a header again.
 //
 static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
 {
@@ -404,9 +405,10 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Anything but idle receives, and the value is kept as given. Receiving starts reading at
-// the start of the ring. With 8-bit symbols, or a 4K standard over four links or of
-// level-B links, receiving fails before the channel runs, since raw frames carry only 10-
-// and 16-bit symbols of one logical link. 2160p over one 6G or 12G link receives (0014).
+// the start of the ring. With 8-bit symbols, as in DTAPI, and without a ring, receiving
+// fails with DTAPI_E_CONFIG_RAW_SDI before the channel runs. A 4K standard over four
+// links or of level-B links leaves the channel without a ring, since raw frames of one
+// link cannot carry it; 2160p over one 6G or 12G link receives (plan 0014).
 //
 static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
 {
@@ -468,8 +470,8 @@ static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControlSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A channel that lost its receive channel, after an I/O standard that failed, receives
-// nothing until one is set up.
+// Without a receive channel, which an I/O standard that failed leaves it, every value
+// gives DTAPI_E_NOT_INITIALIZED until a standard sets one up.
 //
 static DtapiResult SetRxControlSdi(DtRx* Rx, int RxControl)
 {
@@ -479,7 +481,8 @@ static DtapiResult SetRxControlSdi(DtRx* Rx, int RxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Stops, clears the flags, drops what is held.
+// Stops, clears the latched DTAPI_RX_FIFO_OVF and forgets the sync; the next start reads
+// from the start of the ring.
 //
 static DtapiResult ClearFifo(DtRx* Rx)
 {
@@ -514,8 +517,8 @@ static DtapiResult GetFlags(DtRx* Rx, int* Flags, int* Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFifoLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The complete frames from the read offset on, counted also before a read has found the
-// first header.
+// The complete frames from the read offset on, in raw bytes of the receive mode, counted
+// also before a read has found the first header; 0 while not receiving.
 //
 static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 {
@@ -535,8 +538,8 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetMaxFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The load GetFifoLoad reports for a full ring. A channel without a ring, on a port of 4K
-// over four links, gives the FIFO size.
+// The load GetFifoLoad reports for a full ring. A channel without a ring gives the FIFO
+// size.
 //
 static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
 {
@@ -812,12 +815,13 @@ static const DtRxBackend g_Ops = {
     .AfterWait = AfterWait,
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BandsFollow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The working buffers are one set a band, so they follow a change in the number of bands.
 // A channel without a layout yet takes them from ConfigureChannel instead. Buffers that
 // cannot be had for the bands asked for are taken for one band again, so that the channel
 // is left converting in the reading thread rather than without them.
+//
 static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
 {
     if (Result != DTAPI_OK || Sdi->LineBuf == NULL)
@@ -832,6 +836,8 @@ static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
 DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;

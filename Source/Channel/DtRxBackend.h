@@ -24,7 +24,8 @@
 // DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. The side is a DtRx, a struct that each
 // side's own begins with, and its functions are the side's DtRxBackend. DtInpChannel.c
 // keeps the checks that do not depend on the side, the lock, detaching and the waits of a
-// read, and calls these with the lock held but where a function says otherwise (0011).
+// read, and calls these with the lock held but where a function says otherwise (plan
+// 0011).
 //
 // A function that is NULL gives the default the function says.
 //
@@ -86,7 +87,8 @@ struct DtRxBackend
 
     // Converts a frame's lines over Threads threads of the library's own, 1 for the
     // reading thread alone, or over the caller's own threads by giving each piece to
-    // Dispatch. NULL where the side converts nothing to divide.
+    // Dispatch. NULL where the side converts nothing to divide, which gives
+    // DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*SetConversionThreads)(DtRx* Rx, int Threads);
     DtapiResult (*SetConversionDispatch)(DtRx* Rx, DtDispatchFunc Dispatch, void* User,
                                          int Pieces);

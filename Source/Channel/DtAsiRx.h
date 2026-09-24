@@ -14,9 +14,9 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtAsiRx +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The receiving side of a port whose I/O standard is ASI, with no thread and no software
-// FIFO of its own (0011). The side holds AF_ASISDIRX and AF_DMA of the port exclusively,
-// drives ASIRX, CDMAC and BURSTFIFO, and gives CDMAC a receive buffer of
-// DT_ASIRX_RING_SIZE, into which the card writes transparent packets (DtTsTrp.h).
+// FIFO of its own (plan 0011). The side holds AF_ASISDIRX and AF_DMA of the port
+// exclusively, drives ASIRX, CDMAC and BURSTFIFO, and gives CDMAC a receive buffer of at
+// least DT_ASIRX_RING_SIZE, into which the card writes transparent packets (DtTsTrp.h).
 //
 // A scan walks what the card has written since the last: the packets that convert are
 // counted in the load, the bytes Read would deliver in the receive mode; a packet that

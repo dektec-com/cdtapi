@@ -28,17 +28,18 @@
 // last symbols wait for more.
 #define DT_ASITX_EXIT_LOAD 32
 
-// Convert codes into the buffer only while it has this much room.
+// Convert codes into the buffer only when it has at least this much room, and then as
+// much as fits.
 #define DT_ASITX_MIN_OUTPUT_FREE (1024 * 1024)
 
-// A write wakes the converter for 100 packets or 5 ms of data; the converter wakes
-// itself every 10 ms.
+// A write wakes the converter when it leaves more than 100 packets or 5 ms of data in
+// the FIFO; the converter wakes itself every 10 ms.
 #define DT_ASITX_WAKE_BYTES (188 * 100)
 #define DT_ASITX_WAKE_DATA_MS 5
 #define DT_ASITX_WAKE_MS 10
 
-// With stuffing the buffer holds at least 50 ms of symbols: 50 ms of 27 M symbols of
-// 16 bits.
+// With stuffing, null packets top the buffer up to 50 ms of symbols on every pass: 50 ms
+// of 27 M symbols a second, of 16 bits.
 #define DT_ASITX_STUFF_LOAD 2700000
 
 // A write that has to wait writes 1 MB at a time and looks again every 5 ms.
@@ -104,7 +105,7 @@ typedef struct DtAsiTx
     OsThread* Thread;
     bool StopThread;
     OsEvent* Wake; // Wakes the converter
-    OsEvent* Room; // Set after every conversion, and to wake a write for a detach
+    OsEvent* Room; // Set after every pass of the thread, and to wake a write for a detach
 } DtAsiTx;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -198,9 +199,9 @@ static DtapiResult InsertNulls(DtAsiTx* Tx, int64_t Count, size_t Free)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// While the buffer has 1 MB of room, what the FIFO holds is coded into it. With the FIFO
-// empty and less than a data word left in the buffer, K28.5 fill that word, so that the
-// last symbols go out.
+// When the buffer has 1 MB of room, as much of what the FIFO holds as fits is coded into
+// it. With the FIFO empty and less than a data word left in the buffer, K28.5 fill that
+// word, so that the last symbols go out.
 //
 static DtapiResult Convert(DtAsiTx* Tx)
 {
@@ -487,7 +488,7 @@ static DtapiResult UpdateUfl(DtAsiTx* Tx)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DTAPI_TX_FIFO_UFL takes the burst FIFO's count as it is now and clears stuffing;
-// DTAPI_TX_SYNC_ERR the converter's.
+// DTAPI_TX_SYNC_ERR the encoder's.
 //
 static DtapiResult ClearFlags(DtTx* Base, int Flags)
 {
@@ -588,8 +589,9 @@ static DtapiResult GetFifoSize(DtTx* Base, int* FifoSize)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IdleToHold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // CDMAC flushed and running from the start of the buffer, the gate's input cleared, the
-// burst FIFO in standby, and the converter started, which refuses a rate that does not
-// fit the packet size. A failure leaves CDMAC and the burst FIFO idle.
+// burst FIFO in standby, and the encoder started, which refuses a rate that does not fit
+// the packet size, except with DTAPI_TXMODE_TXONTIME. A failure leaves CDMAC and the
+// burst FIFO idle.
 //
 static DtapiResult IdleToHold(DtAsiTx* Tx)
 {
@@ -923,7 +925,7 @@ static DtapiResult HasRoom(DtAsiTx* Tx, size_t Size, bool* Room)
 // What fits goes into the FIFO at once; otherwise 1 MB at a time, waiting for room
 // without the lock, which a detach ends with DTAPI_E_CANCELLED and a return to idle with
 // DTAPI_E_IDLE. While holding the bytes are converted at once; while sending the thread
-// is woken for 100 packets or 5 ms of data.
+// is woken when the FIFO holds more than 100 packets or 5 ms of data.
 //
 static DtapiResult Write(DtTx* Base, const uint8_t* Data, size_t Size)
 {

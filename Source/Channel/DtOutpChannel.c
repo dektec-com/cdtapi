@@ -8,7 +8,7 @@
 // that transmits for the port's I/O standard. This file holds the checks and the order
 // they are made in, the lock, attaching and detaching. The transmitting is the side's, a
 // DtTx behind the functions of DtTxBackend.h: DtSdiTx.c for raw SDI frames, DtAsiTx.c for
-// a transport stream over ASI (0011).
+// a transport stream over ASI (plan 0011).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

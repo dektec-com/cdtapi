@@ -13,15 +13,15 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtAsiTx +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The transmitting side of a port whose I/O standard is ASI (0011). The side holds
+// The transmitting side of a port whose I/O standard is ASI (plan 0011). The side holds
 // AF_ASISDITX and AF_DMA of the port exclusively and drives ASITXG, the port's SDITXPHY
 // or ASITXSER, CDMAC and BURSTFIFO. The software makes the symbol stream: a write goes
 // into a FIFO of DT_ASITX_FIFO_SIZE, and DtAsiEnc codes it into 8b/10b symbols in a DMA
 // buffer of DT_ASITX_BUF_SIZE, which the card sends at the ASI line rate whatever the
 // transport-stream rate. While holding a write converts what it wrote; while sending a
-// thread converts every 10 ms, or sooner when a write has put 100 packets or 5 ms of data
-// in the FIFO, pads the last data word with K28.5 when the FIFO runs dry, and with
-// stuffing keeps 50 ms of symbols in the buffer by inserting null packets.
+// thread converts every 10 ms, or sooner when a write leaves more than 100 packets or
+// 5 ms of data in the FIFO, pads the last data word with K28.5 when the FIFO runs dry,
+// and with stuffing tops the buffer up to 50 ms of symbols with null packets.
 //
 // The double-buffered and monitor outputs that name the port as their master in
 // ParXtra[0] are the side's slaves: held exclusively through AF_ASISDITX, AF_SDIPHYONLYTX

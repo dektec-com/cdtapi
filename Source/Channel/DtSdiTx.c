@@ -25,7 +25,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The typical and maximum FIFO size, reported for a port without a buffer.
+// The typical and maximum FIFO size, reported for a port without a buffer. The buffer is
+// sized to hold the typical one.
 #define DT_TX_FIFO_SIZE_TYP (48 * 1024 * 1024)
 #define DT_TX_FIFO_SIZE_MAX (64 * 1024 * 1024)
 
@@ -127,7 +128,7 @@ typedef struct DtSdiTx
     // The thread that keeps the signal while sending.
     OsThread* Thread;
     bool StopThread;
-    OsEvent* Room; // Set after every format event, and to wake a write for a detach
+    OsEvent* Room; // Set after every wait for a format event, and for a detach
     int Events;
     bool Started;  // A format event came since the channel held
     bool Settled;  // Black frames may follow the first frame: see DT_FIRST_BLACK_SEQ
@@ -275,7 +276,8 @@ static DtapiResult CommitFrame(DtSdiTx* Sdi)
 //
 // Commits a black frame at the write offset. The part of a frame a write has put there
 // moves one frame further, with the next frame ID; when the buffer has no room for both,
-// the black frame takes its place and the write looks for the next frame.
+// the black frame takes its place and the write looks for the next frame. A black frame
+// is an underflow: it sets DTAPI_TX_FIFO_UFL. Without room for one frame nothing happens.
 //
 static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 {
@@ -322,7 +324,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 // the frame going out is the last one written. After the first frame of a run it waits
 // with that until the frame's event DT_FIRST_BLACK_SEQ or a wait that times out, so that
 // an application that wrote only one frame before sending has time to write the next.
-// Wakes a write waiting for room after each event.
+// Wakes a write waiting for room after each wait, whether an event came or not.
 //
 static void Keeper(void* Context)
 {
@@ -501,9 +503,11 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HoldToSend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Refused without a frame that has not gone out. Then the burst FIFO is given five reads
-// to fill to 75 %, its and the reorder buffer's statistics are cleared, and the PHY runs.
-// The PHY's underflow flag of an earlier run is cleared too.
+// Refused with DTAPI_E_INSUF_LOAD without a frame that has not gone out, and with
+// DTAPI_E_CONFIG_RAW_SDI for 8-bit symbols. Then the burst FIFO's load is read up to five
+// times, without a pause, for 75 %, and sending goes ahead either way; its and the
+// reorder buffer's statistics are cleared, and the PHY runs. The PHY's underflow flag of
+// an earlier run is cleared too.
 //
 static DtapiResult HoldToSend(DtSdiTx* Sdi)
 {
@@ -623,8 +627,9 @@ static DtapiResult ResetFifo(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for five frames plus the raw frames a 48 MB FIFO holds, rounded up to a power of
-// two within the buffer's bounds, and to whole prefetch units of pages.
+// Room for five coded frames and as many more as a 48 MB FIFO holds of raw 10-bit
+// frames, rounded up to a power of two within the buffer's bounds, and to whole prefetch
+// units of pages.
 //
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
@@ -1105,7 +1110,7 @@ typedef struct CodeBand
     size_t Phase;        // Bit of that first byte the first line begins at, 0 to 7
     size_t Coded;        // What one raw line takes in the buffer, headers and all
     size_t Offset;       // Where the first of them goes
-    int FirstLine;       // Its line number in the frame
+    int FirstLine;       // Its index in the frame, from 0
     int Lines;
 } CodeBand;
 
@@ -1487,9 +1492,8 @@ static DtapiResult GetFifoLoad(DtTx* Tx, int* FifoLoad)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoSizeOr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The load GetFifoLoad reports for a full buffer. A channel without a buffer, on a port
-// of 4K over four links or of level-B links, gives the typical FIFO size, and the maximum
-// size for GetMaxFifoSize.
+// The load GetFifoLoad reports for a full buffer. A channel without a buffer gives the
+// typical FIFO size, and the maximum size for GetMaxFifoSize.
 //
 static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
 {
@@ -1605,8 +1609,9 @@ static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Bytes a Write left that are not yet in a frame refuse the frame, so that it goes into
-// the buffer whole, directly after the frames before it.
+// A frame a Write began and did not finish, or bytes it left that are not yet in a
+// frame, refuse the frame with DTAPI_E_INCOMP_FRAME, so that it goes into the buffer
+// whole, directly after the frames before it.
 //
 static DtapiResult WriteFrame(DtTx* Tx, const uint8_t* Frame, int FrameSize,
                               uint64_t Deadline)
@@ -1699,12 +1704,14 @@ static const DtTxBackend g_Ops = {
     .WaitUntilSent = WaitUntilSent,
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BandsFollow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The working symbols are one set a band, so they follow a change in the number of bands.
-// A side with no buffer yet takes them from the buffer's allocation instead. Symbols that
-// cannot be had for the bands asked for are taken for one band again, so that the side is
-// left coding in the writing thread rather than without them.
+// A side without working symbols, having no buffer yet or a standard that needs none,
+// takes them from the buffer's allocation instead. Symbols that cannot be had for the
+// bands asked for are taken for one band again, so that the side is left coding in the
+// writing thread rather than without them.
+//
 static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
 {
     if (Result != DTAPI_OK || Sdi->Scratch == NULL)
@@ -1721,6 +1728,8 @@ static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
 DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;

@@ -57,12 +57,13 @@ typedef struct DtAsiRx
     bool OutOfSync;
     size_t Scanned;
     size_t Load;     // Bytes to deliver, Pending's included
-    uint64_t ReadAt; // Bytes read from the buffer since receiving started
+    uint64_t ReadAt; // Bytes the read offset moved on since receiving started
     DtVec Skips;     // DtAsiRxSkip, in order
     size_t SkipHead;
     uint8_t* Search; // Where the stream is searched for
 
-    // Output of a packet that did not fit in the caller's buffer.
+    // Output of a packet converted when the caller's buffer had less room than the
+    // largest packet's output, kept for what the buffer could not take.
     uint8_t Pending[DT_TRP_MAX_OUTPUT];
     int PendingPos, PendingLen;
 
@@ -172,10 +173,10 @@ static DtapiResult UpdateBurst(DtAsiRx* Rx)
 //
 // Walks what the card wrote since the last scan, converting it. In sync, each packet is
 // converted to count its output; out of sync, the stream is searched for in what three
-// packets or more fill, and what was searched without finding it is passed over but for
-// the last three packets' worth. When nothing is left to deliver, what was scanned is
-// released at once, so that a stream the application does not want does not fill the
-// buffer.
+// packets or more fill, and what was searched without finding it is passed over except
+// for its last three packets' worth less a byte, where a stream could still start. When
+// nothing is left to deliver, what was scanned is released at once, so that a stream the
+// application does not want does not fill the buffer.
 //
 static DtapiResult ScanBuffer(DtAsiRx* Rx)
 {
@@ -464,7 +465,7 @@ static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Take -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Converts the packets the scan counted, passing over what it passed over, into Out, or
-// into Pending for a packet whose output Out has no room for.
+// into Pending when Out has less room than the largest packet's output.
 //
 static DtapiResult Take(DtRx* Base, uint8_t* Out, size_t Size)
 {

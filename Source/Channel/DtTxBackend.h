@@ -96,7 +96,7 @@ struct DtTxBackend
 
     // Codes a frame's lines over Threads threads of the library's own, 1 for the writing
     // thread alone, or over the caller's own threads by giving each piece to Dispatch.
-    // NULL where the side codes nothing to divide.
+    // NULL where the side codes nothing to divide, which gives DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*SetConversionThreads)(DtTx* Tx, int Threads);
     DtapiResult (*SetConversionDispatch)(DtTx* Tx, DtDispatchFunc Dispatch, void* User,
                                          int Pieces);

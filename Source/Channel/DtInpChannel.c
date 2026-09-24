@@ -8,7 +8,7 @@
 // that receives for the port's I/O standard. This file holds the checks and the order
 // they are made in, the lock, attaching and detaching, and the waits of a read. The
 // receiving is the side's, a DtRx behind the functions of DtRxBackend.h: DtSdiRx.c for
-// raw SDI frames, DtAsiRx.c for a transport stream over ASI (0011).
+// raw SDI frames, DtAsiRx.c for a transport stream over ASI (plan 0011).
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -49,7 +49,7 @@
 // How often a read on a channel that is not receiving looks again.
 #define DT_IDLE_POLL_MS 10
 
-// The most a read without a time-out takes at a time.
+// The most a read with a time-out of 0 takes at a time.
 #define DT_READ_BLOCK (1024 * 1024)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -500,7 +500,7 @@ DtapiResult DtInpChannel_GetIoConfig(DtInpChannel* InpChannel, int Group, int* V
 //
 // The channel's checks, then the side's. A configuration the port lacks a capability for
 // is refused by the driver. A direction is not applied, once the checks of it have passed
-// (0007).
+// (plan 0007).
 //
 // A standard that crosses between SDI and ASI releases the one side, sets the
 // configuration and attaches the other, with its default receive mode. When that fails
@@ -645,7 +645,7 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
 // A read's wait, without the lock, for at most Remaining milliseconds or without a limit
 // for -1: while not receiving a sleep, and otherwise the side's wait. While this read
 // waited, another thread may have changed the side; what the wait saw is then not the
-// new side's to deal with.
+// new side's to deal with. Gives DTAPI_E_CANCELLED while a detach waits.
 //
 static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
 {
@@ -774,9 +774,9 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Read -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The read's checks of its parameters, and DTAPI_E_IN_USE while a read on another thread
-// has not returned. Without a time-out the read takes what it can in blocks of 1 MB; with
-// one it waits for all of it, which may not exceed the FIFO. It waits without the lock,
-// so a detach ends it with DTAPI_E_CANCELLED.
+// has not returned. With a time-out of 0 the read takes 1 MB at a time as each is there;
+// with any other it waits for all of it, which may not exceed the FIFO. It waits without
+// the lock, so a detach ends it with DTAPI_E_CANCELLED.
 //
 DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumBytesToRead,
                               int TimeOut)
