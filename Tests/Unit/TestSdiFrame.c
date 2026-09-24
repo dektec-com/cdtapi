@@ -61,7 +61,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int Line, bool PadOnes,
                      uint8_t* Coded)
 {
     const int Syms[2] = {Layout->LineSymsHanc, Layout->LineSymsVideo};
-    const int Bytes[2] = {Layout->LineBytesHanc, Layout->LineBytesVideo};
+    const int Bytes[2] = {Layout->SectionBytesHanc, Layout->SectionBytesVideo};
     uint8_t* Section = Coded;
 
     memset(Coded, 0, (size_t)Layout->Stride);
@@ -157,9 +157,9 @@ DT_TEST(Layout1080I50)
     DT_ASSERT_EQ(Layout.HeaderBytes, 16);
     DT_ASSERT_EQ(Layout.NumLines, 1125);
     DT_ASSERT_EQ(Layout.LineSymsHanc, 1440);
-    DT_ASSERT_EQ(Layout.LineBytesHanc, 1808);
+    DT_ASSERT_EQ(Layout.SectionBytesHanc, 1808);
     DT_ASSERT_EQ(Layout.LineSymsVideo, 3840);
-    DT_ASSERT_EQ(Layout.LineBytesVideo, 4800);
+    DT_ASSERT_EQ(Layout.SectionBytesVideo, 4800);
     DT_ASSERT_EQ(Layout.Stride, 6608);
     DT_ASSERT_EQ(Layout.Format, DT_SDIFRAME_FORMAT_UNCOMPRESSED);
     DT_ASSERT_EQ(DtSdiFrame_CodedSize(&Layout), 16 + 1125 * 6608);
@@ -172,15 +172,15 @@ DT_TEST(LayoutOtherAlignments)
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 32));
     DT_ASSERT_EQ(Layout.LineSymsHanc, 288);
-    DT_ASSERT_EQ(Layout.LineBytesHanc, 360);
+    DT_ASSERT_EQ(Layout.SectionBytesHanc, 360);
     DT_ASSERT_EQ(Layout.LineSymsVideo, 1440);
-    DT_ASSERT_EQ(Layout.LineBytesVideo, 1800);
+    DT_ASSERT_EQ(Layout.SectionBytesVideo, 1800);
     DT_ASSERT_EQ(Layout.NumLines, 625);
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_525I59_94, 24));
     DT_ASSERT_EQ(Layout.HeaderBytes, 18);
     DT_ASSERT_EQ(Layout.LineSymsHanc, 276);
-    DT_ASSERT_EQ(Layout.LineBytesHanc, 345);
+    DT_ASSERT_EQ(Layout.SectionBytesHanc, 345);
     DT_ASSERT_EQ(Layout.Stride, 345 + 1800);
 }
 
@@ -212,8 +212,8 @@ DT_TEST(LayoutEveryStandard)
         int Video = Props.LineNumSymVanc;
         DT_ASSERT_EQ(Layout.LineSymsHanc, Hanc);
         DT_ASSERT_EQ(Layout.LineSymsVideo, Video);
-        DT_ASSERT_EQ(Layout.LineBytesHanc, (Hanc * 10 + 127) / 128 * 16);
-        DT_ASSERT_EQ(Layout.LineBytesVideo, (Video * 10 + 127) / 128 * 16);
+        DT_ASSERT_EQ(Layout.SectionBytesHanc, (Hanc * 10 + 127) / 128 * 16);
+        DT_ASSERT_EQ(Layout.SectionBytesVideo, (Video * 10 + 127) / 128 * 16);
         DT_ASSERT_EQ(Layout.NumLines, DtFrameProps_NumLines(&Props));
     }
 }
@@ -373,10 +373,10 @@ DT_TEST(ConvertsOddSections)
         Layout.Alignment = 1;
         Layout.NumLines = 6;
         Layout.LineSymsHanc = Sizes[s][0];
-        Layout.LineBytesHanc = (Sizes[s][0] * 10 + 7) / 8;
+        Layout.SectionBytesHanc = (Sizes[s][0] * 10 + 7) / 8;
         Layout.LineSymsVideo = Sizes[s][1];
-        Layout.LineBytesVideo = (Sizes[s][1] * 10 + 7) / 8;
-        Layout.Stride = Layout.LineBytesHanc + Layout.LineBytesVideo;
+        Layout.SectionBytesVideo = (Sizes[s][1] * 10 + 7) / 8;
+        Layout.Stride = Layout.SectionBytesHanc + Layout.SectionBytesVideo;
 
         for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
         {
@@ -762,10 +762,10 @@ DT_TEST(CodesAnyPhase)
         Layout.Alignment = 1;
         Layout.NumLines = 6;
         Layout.LineSymsHanc = Sizes[s][0];
-        Layout.LineBytesHanc = (Sizes[s][0] * 10 + 7) / 8;
+        Layout.SectionBytesHanc = (Sizes[s][0] * 10 + 7) / 8;
         Layout.LineSymsVideo = Sizes[s][1];
-        Layout.LineBytesVideo = (Sizes[s][1] * 10 + 7) / 8;
-        Layout.Stride = Layout.LineBytesHanc + Layout.LineBytesVideo;
+        Layout.SectionBytesVideo = (Sizes[s][1] * 10 + 7) / 8;
+        Layout.Stride = Layout.SectionBytesHanc + Layout.SectionBytesVideo;
 
         for (Phase = 0; Phase < 8; Phase++)
         {
@@ -798,9 +798,9 @@ DT_TEST(CodeLineRefuses)
     Layout.Alignment = 1;
     Layout.NumLines = 1;
     Layout.LineSymsHanc = 4;
-    Layout.LineBytesHanc = 5;
+    Layout.SectionBytesHanc = 5;
     Layout.LineSymsVideo = 4;
-    Layout.LineBytesVideo = 5;
+    Layout.SectionBytesVideo = 5;
     Layout.Stride = 10;
     uint8_t Raw[32];
     memset(Raw, 0x5A, sizeof(Raw));
@@ -829,9 +829,9 @@ DT_TEST(CodeLine8Bits)
     Layout.Alignment = 1;
     Layout.NumLines = 1;
     Layout.LineSymsHanc = 3;
-    Layout.LineBytesHanc = 4;
+    Layout.SectionBytesHanc = 4;
     Layout.LineSymsVideo = 5;
-    Layout.LineBytesVideo = 7;
+    Layout.SectionBytesVideo = 7;
     Layout.Stride = 11;
     static const uint8_t Raw8[8] = {0xFF, 0x00, 0x80, 0x9D, 0x01, 0xFE, 0x10, 0x7F};
     uint8_t Raw10[10];
@@ -924,10 +924,10 @@ static const char* CheckBlackLine(const DtSdiFrameLayout* Layout,
                                   const DtFrameProps* Props, const uint32_t ActiveCrc[2],
                                   const uint8_t* Coded, int Line, bool Full)
 {
-    const uint8_t* Sections[2] = {Coded, Coded + Layout->LineBytesHanc};
+    const uint8_t* Sections[2] = {Coded, Coded + Layout->SectionBytesHanc};
     const size_t Syms[2] = {(size_t)Layout->LineSymsHanc, (size_t)Layout->LineSymsVideo};
-    const size_t Bytes[2] = {(size_t)Layout->LineBytesHanc,
-                             (size_t)Layout->LineBytesVideo};
+    const size_t Bytes[2] = {(size_t)Layout->SectionBytesHanc,
+                             (size_t)Layout->SectionBytesVideo};
     const bool Hd = Props->LineNumSymEav == 16;
     const size_t Width = Hd ? 2 : 1;  // Symbols per word of a timing reference
     const size_t Start = Hd ? 16 : 4; // Symbols of the EAV, line numbers and CRCs
@@ -1255,11 +1255,12 @@ static void Line4kMake(const DtSdiFrameLayout* Layout, int Line, Line4k* L)
             L->Video[To1] = First[Hanc + a];
             L->Video[To2] = Second[Hanc + a];
         }
-        PackBitByBit(First, Hanc, Coded, (size_t)Layout->LineBytesHanc);
-        PackBitByBit(Second, Hanc, Coded + Layout->LineBytesHanc,
-                     (size_t)Layout->LineBytesHanc);
+        PackBitByBit(First, Hanc, Coded, (size_t)Layout->SectionBytesHanc);
+        PackBitByBit(Second, Hanc, Coded + Layout->SectionBytesHanc,
+                     (size_t)Layout->SectionBytesHanc);
         PackBitByBit(L->Video, (size_t)Layout->SectionSymsVideo,
-                     Coded + 2 * Layout->LineBytesHanc, (size_t)Layout->LineBytesVideo);
+                     Coded + 2 * Layout->SectionBytesHanc,
+                     (size_t)Layout->SectionBytesVideo);
     }
 }
 
@@ -1320,8 +1321,8 @@ DT_TEST(Layout4k)
     DT_ASSERT_EQ(L.SectionSymsVideo, 7680);
     DT_ASSERT_EQ(L.LineSymsHanc, 5760);
     DT_ASSERT_EQ(L.LineSymsVideo, 15360);
-    DT_ASSERT_EQ(L.LineBytesHanc, 1808);
-    DT_ASSERT_EQ(L.LineBytesVideo, 9600);
+    DT_ASSERT_EQ(L.SectionBytesHanc, 1808);
+    DT_ASSERT_EQ(L.SectionBytesVideo, 9600);
     DT_ASSERT_EQ(L.Stride, 13216);
     DT_ASSERT_EQ(L.TxLineHeaderBytes, 16);
     DT_ASSERT_EQ(L.TxStride, 13232);
@@ -1338,7 +1339,7 @@ DT_TEST(Layout4k)
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_2160P30, 128));
     DT_ASSERT_EQ(L.SectionSymsHanc, 560);
-    DT_ASSERT_EQ(L.LineBytesHanc, 704);
+    DT_ASSERT_EQ(L.SectionBytesHanc, 704);
     DT_ASSERT_EQ(L.SdiRate, DT_SDIRATE_6G);
     DT_ASSERT_EQ((long)DtSdiFrame_CodedSize(&L), 24768016L);
     DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 10), 24750000L);
@@ -1537,7 +1538,7 @@ DT_TEST(BlackFrame4k)
         const uint8_t* A = Lines + (size_t)(2 * Line - 2) * TxStride;
         const uint8_t* B = A + TxStride;
         size_t Header = (size_t)Layout.TxLineHeaderBytes;
-        size_t HancBytes = (size_t)Layout.LineBytesHanc;
+        size_t HancBytes = (size_t)Layout.SectionBytesHanc;
         bool Blanking = Line < 42 || Line > 1121;
 
         DT_ASSERT_EQ(A[0], Blanking ? 1 : 0);
@@ -1575,7 +1576,7 @@ DT_TEST(BlackFrame4k)
 // and DtSdiFrame_CodeLine4k clears afterwards.
 static void ClearPadding4k(uint8_t* Coded, const DtSdiFrameLayout* Layout)
 {
-    const size_t Hanc = (size_t)Layout->LineBytesHanc;
+    const size_t Hanc = (size_t)Layout->SectionBytesHanc;
     const size_t HancSyms = (size_t)Layout->SectionSymsHanc * 10 / 8;
     const size_t VideoSyms = (size_t)Layout->SectionSymsVideo * 10 / 8;
 
@@ -1585,7 +1586,8 @@ static void ClearPadding4k(uint8_t* Coded, const DtSdiFrameLayout* Layout)
 
         memset(At + HancSyms, 0, Hanc - HancSyms);
         memset(At + Hanc + HancSyms, 0, Hanc - HancSyms);
-        memset(At + 2 * Hanc + VideoSyms, 0, (size_t)Layout->LineBytesVideo - VideoSyms);
+        memset(At + 2 * Hanc + VideoSyms, 0,
+               (size_t)Layout->SectionBytesVideo - VideoSyms);
     }
 }
 

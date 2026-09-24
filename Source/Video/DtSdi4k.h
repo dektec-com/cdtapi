@@ -34,7 +34,7 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
                                       size_t Tile, size_t Offset[4])
 {
     const size_t HancTiles = (size_t)Layout->SectionSymsHanc / 4;
-    const size_t HancBytes = (size_t)Layout->LineBytesHanc;
+    const size_t HancBytes = (size_t)Layout->SectionBytesHanc;
 
     if (Tile < HancTiles)
     {

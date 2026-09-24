@@ -219,9 +219,10 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
     Words[0] = 0xFFEFFBFEu;
     Words[1] = 1u << 8 | (uint32_t)DT_DRV_SDIRATE_SD << 9;
     Words[2] = (uint32_t)FrameId | (uint32_t)L.NumLines << 16;
-    Words[3] = (uint32_t)(L.LineBytesHanc / L.Alignment) | (uint32_t)L.LineSymsHanc << 16;
-    Words[4] = (uint32_t)(L.LineBytesVideo / L.Alignment) | (uint32_t)L.LineSymsVideo
-                                                                << 16;
+    Words[3] = (uint32_t)(L.SectionBytesHanc / L.Alignment) | (uint32_t)L.LineSymsHanc
+                                                                  << 16;
+    Words[4] = (uint32_t)(L.SectionBytesVideo / L.Alignment) | (uint32_t)L.LineSymsVideo
+                                                                   << 16;
     uint8_t Header[32];
     memset(Header, 0, sizeof(Header));
     for (int i = 0; i < 5; i++)
@@ -233,9 +234,9 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
     for (int n = 1; n <= L.NumLines; n++)
     {
         SimChSdiRx_Line(VIDSTD, FrameNumber, n, Symbols);
-        Pack(Symbols, L.LineSymsHanc, Line, L.LineBytesHanc);
-        Pack(Symbols + L.LineSymsHanc, L.LineSymsVideo, Line + L.LineBytesHanc,
-             L.LineBytesVideo);
+        Pack(Symbols, L.LineSymsHanc, Line, L.SectionBytesHanc);
+        Pack(Symbols + L.LineSymsHanc, L.LineSymsVideo, Line + L.SectionBytesHanc,
+             L.SectionBytesVideo);
         Put(Buf, Offset, Line, (size_t)L.Stride);
     }
 }

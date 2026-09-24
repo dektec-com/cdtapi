@@ -323,7 +323,7 @@ static bool SentFrameIsBlack(int FrameId, int VidStd)
         for (int s = 0; Same && s < Layout.LineSymsHanc + Layout.LineSymsVideo; s++)
         {
             const uint8_t* Section =
-                s < Layout.LineSymsHanc ? Coded : Coded + Layout.LineBytesHanc;
+                s < Layout.LineSymsHanc ? Coded : Coded + Layout.SectionBytesHanc;
             size_t Index =
                 (size_t)(s < Layout.LineSymsHanc ? s : s - Layout.LineSymsHanc);
             size_t Bit = Index * 10;

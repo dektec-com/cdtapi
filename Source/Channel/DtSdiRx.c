@@ -165,7 +165,7 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->Scratch);
     Sdi->Scratch = NULL;
-    Sdi->LineBufBytes = DtSdiFrame_CodedLineBytes(&Sdi->Layout);
+    Sdi->LineBufBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->Layout);
     Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Sdi->Layout);
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufBytes);
     if (Sdi->Layout.Is4k)
@@ -724,7 +724,7 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
 
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
-    size_t CodedBytesPerLine = DtSdiFrame_CodedLineBytes(Layout);
+    size_t CodedBytesPerLine = DtSdiFrame_CodedBytesPerLine(Layout);
     size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));

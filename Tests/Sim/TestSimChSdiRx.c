@@ -133,7 +133,7 @@ static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* L
     {
         bool Video = i >= Layout->LineSymsHanc;
         size_t Bit = (size_t)(Video ? i - Layout->LineSymsHanc : i) * 10;
-        const uint8_t* Section = Ring + Offset + (Video ? Layout->LineBytesHanc : 0);
+        const uint8_t* Section = Ring + Offset + (Video ? Layout->SectionBytesHanc : 0);
         uint32_t Value =
             (uint32_t)(Section[Bit / 8] | Section[Bit / 8 + 1] << 8) >> (Bit % 8) & 0x3FF;
 

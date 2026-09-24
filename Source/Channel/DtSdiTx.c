@@ -289,7 +289,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
     if (Sdi->Reserved)
     {
         Partial = (size_t)Layout->TxHeaderBytes +
-                  (size_t)Sdi->LinesDone * DtSdiFrame_TxLineBytes(Layout);
+                  (size_t)Sdi->LinesDone * DtSdiFrame_TxBytesPerLine(Layout);
         if (Free < 2 * Coded)
         {
             ResetFrame(Sdi);
@@ -757,7 +757,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->Scratch = NULL;
     Sdi->Black =
         (uint8_t*)DtAlloc_Malloc((size_t)Layout.CodedLines * (size_t)Layout.TxStride);
-    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxLineBytes(&Layout));
+    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Layout);
     Sdi->Scratch = AllocScratch(Sdi);
@@ -1051,7 +1051,7 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
 
     // A raw line becomes one coded line, or the two coded lines of 4K, each of them
     // preceded by its line header.
-    size_t Coded = DtSdiFrame_TxLineBytes(Layout);
+    size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
                                   (size_t)Sdi->LinesDone * Coded);
     uint8_t* Dst =
@@ -1173,7 +1173,7 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
 
     const size_t Bits = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits);
     const size_t Phase = (size_t)Sdi->Phase;
-    const size_t Coded = DtSdiFrame_TxLineBytes(Layout);
+    const size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
     const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
                                         (size_t)Sdi->LinesDone * Coded);
     const int Cap = Layout->NumLines / 4 < 2 ? 2 : Layout->NumLines / 4;

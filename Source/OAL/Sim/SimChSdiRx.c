@@ -481,11 +481,11 @@ static void CodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, int
         const uint16_t* Line2 = i == 0 ? A : B;
         uint8_t* Out = Coded + (size_t)i * (size_t)Layout->Stride;
 
-        PackSection(Line2, Hanc, Out, Layout->LineBytesHanc);
-        PackSection(Line2 + Hanc, Hanc, Out + Layout->LineBytesHanc,
-                    Layout->LineBytesHanc);
-        PackSection(Line2 + 2 * Hanc, Video, Out + 2 * (size_t)Layout->LineBytesHanc,
-                    Layout->LineBytesVideo);
+        PackSection(Line2, Hanc, Out, Layout->SectionBytesHanc);
+        PackSection(Line2 + Hanc, Hanc, Out + Layout->SectionBytesHanc,
+                    Layout->SectionBytesHanc);
+        PackSection(Line2 + 2 * Hanc, Video, Out + 2 * (size_t)Layout->SectionBytesHanc,
+                    Layout->SectionBytesVideo);
     }
 }
 
@@ -532,9 +532,9 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
             CodeLines4k(Layout, Symbols, Line, Sections, Coded);
         else
         {
-            PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->LineBytesHanc);
+            PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->SectionBytesHanc);
             PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
-                        Coded + Layout->LineBytesHanc, Layout->LineBytesVideo);
+                        Coded + Layout->SectionBytesHanc, Layout->SectionBytesVideo);
         }
         if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->Stride))
         {

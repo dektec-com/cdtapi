@@ -85,8 +85,8 @@ typedef struct DtSdiFrameLayout
     int HancSections;      // HANC sections per coded line: 1, or 2 for 4K
     int SectionSymsHanc;   // Symbols in one HANC section
     int SectionSymsVideo;  // Symbols in the video section
-    int LineBytesHanc;     // Bytes of one HANC section with its padding
-    int LineBytesVideo;    // Bytes of the video section with its padding
+    int SectionBytesHanc;  // Bytes of one HANC section with its padding
+    int SectionBytesVideo; // Bytes of the video section with its padding
     int Stride;            // Bytes per coded line received
     int TxLineHeaderBytes; // Bytes before each coded line sent: 0, or 4 padded for 4K
     int TxStride;          // Bytes per coded line sent
@@ -106,17 +106,18 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
 size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
-// The coded lines one raw line is made of, and the bytes they take as they are received
-// and as they are sent.
+// The coded lines one raw line is made of, and the bytes all of them together take as
+// they are received and as they are sent. For 4K that is two coded lines, so none of
+// the three is the size of a single coded line: that is Stride, or TxStride.
 static inline int DtSdiFrame_CodedPerLine(const DtSdiFrameLayout* Layout)
 {
     return Layout->CodedLines / Layout->NumLines;
 }
-static inline size_t DtSdiFrame_CodedLineBytes(const DtSdiFrameLayout* Layout)
+static inline size_t DtSdiFrame_CodedBytesPerLine(const DtSdiFrameLayout* Layout)
 {
     return (size_t)DtSdiFrame_CodedPerLine(Layout) * (size_t)Layout->Stride;
 }
-static inline size_t DtSdiFrame_TxLineBytes(const DtSdiFrameLayout* Layout)
+static inline size_t DtSdiFrame_TxBytesPerLine(const DtSdiFrameLayout* Layout)
 {
     return (size_t)DtSdiFrame_CodedPerLine(Layout) * (size_t)Layout->TxStride;
 }
