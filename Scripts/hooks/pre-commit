@@ -20,7 +20,8 @@ fi
 RepoRoot="$(git rev-parse --show-toplevel)"
 cd "$RepoRoot"
 
-if ! Scripts/check_style.sh; then
+# Only the files the commit touches; CI checks the whole tree.
+if ! Scripts/check_style.sh --staged; then
     cat <<'MSG'
 
 pre-commit: style checks failed, commit aborted.

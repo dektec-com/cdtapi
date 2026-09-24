@@ -155,12 +155,13 @@ count, regenerate them:
 
     python Scripts/fix_banners.py <file> ...
 
-Install the pre-commit hook once, and the same checks run before each commit:
+Install the pre-commit hook once, and the same checks run before each commit, on the
+files the commit adds or changes:
 
     Scripts/install_hooks.sh
 
-The hook is a convenience, not the gate. CI runs the same checks and is what actually
-blocks a merge, so a contributor without the hook installed is still stopped.
+The hook is a convenience, not the gate. CI runs the checks on the whole tree and is what
+actually blocks a merge, so a contributor without the hook installed is still stopped.
 
 ## Vendored code is exempt
 

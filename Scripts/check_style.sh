@@ -20,11 +20,24 @@
 #
 # Source/DtPcie/Abi is skipped by the rules: it holds files vendored verbatim from the
 # SDK. What is checked there is that they are still the bytes SHA256SUMS records.
+#
+# With --staged, which the pre-commit hook passes, the rules look only at the C files the
+# commit adds or changes, so that a commit does not wait for the whole tree. A staged
+# .clang-format or check_style.sh changes what every file is held to, so either of them
+# brings the whole tree back. The checks that are not per file always run, and CI and
+# Scripts/build.sh check everything.
 
 set -uo pipefail
 
 RepoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RepoRoot"
+
+Staged=0
+if [ "${1:-}" = "--staged" ]; then
+    Staged=1
+    git diff --cached --name-only | grep -qxE '\.clang-format|Scripts/check_style\.sh' \
+        && Staged=0
+fi
 
 MaxLineLength=90
 Failures=0
@@ -35,12 +48,16 @@ Fail()
     Failures=$((Failures + 1))
 }
 
-# Files the rules apply to: CDTAPI's own C sources and headers.
+# Files the rules apply to: CDTAPI's own C sources and headers, and with --staged only
+# those of them the commit adds or changes.
 OwnFiles()
 {
-    find Examples Include Source Tests Tools -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null \
-        | grep -v '^Source/DtPcie/Abi/' \
-        | sort
+    if [ "$Staged" -eq 1 ]; then
+        git diff --cached --name-only --diff-filter=ACMR \
+            -- Examples Include Source Tests Tools
+    else
+        find Examples Include Source Tests Tools -type f 2>/dev/null
+    fi | grep -E '\.[ch]$' | grep -v '^Source/DtPcie/Abi/' | sort
 }
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 4: line length -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
