@@ -55,7 +55,7 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
 //
 // DtSdiFrame_ConvertLine4k and DtSdiFrame_CodeLine4k are these, with the fastest set the
 // processor runs. A test compares the sets with one another, and the benchmark measures
-// them; nothing else calls them directly.
+// them. Besides them only the SSSE3 set calls the portable one, for 8-bit symbols.
 //
 
 // Fills the raw line with the two coded lines 2n-1 and 2n at CodedA and CodedB, as
@@ -64,7 +64,8 @@ typedef void (*DtSdi4kGather)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch);
 
-// Fills the two coded lines with the raw line, as DtSdiFrame_CodeLine4k does.
+// Fills the two coded lines with the raw line, as DtSdiFrame_CodeLine4k does, but leaves
+// the sections' padding as it was.
 typedef void (*DtSdi4kScatter)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                                const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                                uint8_t* CodedB, uint16_t* Scratch);
@@ -85,6 +86,6 @@ const DtSdi4kConv* DtSdi4kConv_Ssse3(void);
 // The fastest conversion the processor runs.
 const DtSdi4kConv* DtSdi4kConv_Best(void);
 
-// The SSSE3 conversion, whatever the processor supports; only for the build of this
-// library on x86, as DtSdi4kConv_Ssse3 chooses it.
+// The SSSE3 conversion, without a check of the processor. It exists only in a build with
+// SSSE3 on x86; DtSdi4kConv_Ssse3 returns it once CPUID reports SSSE3.
 const DtSdi4kConv* DtSdi4kConv_Ssse3Table(void);

@@ -19,12 +19,13 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SSSE3 +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A step takes four pixels of each of the four links, eight symbols and ten bytes each,
-// and makes the four groups of eight words the raw line carries them in, forty bytes.
-// Symbol k of a link starts at bit 10k of its five-byte blocks, in byte 10k / 8 at bit
-// 10k mod 8, which is 0, 2, 4 or 6: the two bytes around it form a word from which a
-// multiply by 64, 16, 4 or 1 and a shift right by six cut the bits around the symbol.
-// The reverse puts each symbol back into its two bytes; symbols 0, 2, 4 and 6 share no
-// byte, nor do 1, 3, 5 and 7, so two shuffles and an OR assemble the ten bytes.
+// and makes the four groups of eight words the raw line carries them in, forty bytes of
+// 10-bit symbols or sixty-four of 16-bit ones. Symbol k of a link starts at bit 10k of
+// its five-byte blocks, in byte 10k / 8 at bit 10k mod 8, which is 0, 2, 4 or 6: the two
+// bytes around it form a word from which a multiply by 64, 16, 4 or 1 and a shift right
+// by six cut the bits around the symbol. The reverse puts each symbol back into its two
+// bytes; symbols 0, 2, 4 and 6 share no byte, nor do 1, 3, 5 and 7, so two shuffles and
+// an OR assemble the ten bytes.
 //
 // A load and a store take sixteen bytes where ten or forty are wanted, so a step that
 // would run past the end of a section or a line copies through a buffer instead.

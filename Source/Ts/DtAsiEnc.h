@@ -19,7 +19,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbols +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A DtPcie card sends what its DMA buffer holds as 10-bit 8b/10b symbols, one in each
-// 16-bit word, at the ASI line rate of 27 M symbols a second; the process makes them.
+// 16-bit word, at the ASI line rate of 27 M symbols a second; the library makes them.
 // Every byte of the transport stream becomes its 8b/10b code for the running disparity,
 // and K28.5 comma symbols fill the line so that the stream has the rate asked for.
 //
@@ -110,7 +110,8 @@ void DtAsiEnc_Convert(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t*
 // last data word.
 void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Syms);
 
-// The transport-stream bytes that Syms symbols carry at the current rate, rounded down.
+// The bytes, in packets of OutSize as sent, that Syms symbols carry at the current rate,
+// rounded down.
 int64_t DtAsiEnc_BytesOf(const DtAsiEnc* Enc, int64_t Syms);
 
 // DTAPI_TX_SYNC_ERR in *Flags and *Latched when set; ClearFlags clears it when Flags has

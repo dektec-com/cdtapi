@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtAtomic.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Atomic reference counting, portable across MSVC and GCC/Clang
+// CDTAPI - A 32-bit atomic integer, portable across MSVC and GCC/Clang
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

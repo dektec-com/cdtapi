@@ -20,7 +20,8 @@
 #define AT_VALID 213
 #define AT_SEQUENCE 214
 
-// The payload of a packet, time stamp left out, in DTAPI_RXMODE_STTRP.
+// What DTAPI_RXMODE_STTRP delivers of a packet without its time stamp: the 204 payload
+// bytes and the trailer.
 #define TRP_DATA_SIZE 208
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ValidCountFits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

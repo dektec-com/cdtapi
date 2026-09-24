@@ -77,10 +77,12 @@ typedef struct DtNetOwn
 // Finds the port's own address of Kind, a DT_NET_ADDR_ value, with its mask, its
 // interface's default gateway and the interface; for DT_NET_ADDR_OTHER an address in the
 // subnet of Hint, or, when Hint is all zero, one of no other kind. The failures are
-// DTAPI_E_NW_DRIVER when the operating system has no interface with the MAC address,
-// DTAPI_E_VLAN_NOT_FOUND when it has no VLAN interface with the ID on it and also when
-// the VLAN interface has no such address, and DTAPI_E_NO_ADAPTER_IP_ADDR when the
-// interface has none.
+// DTAPI_E_INVALID_ARG for a Mac or Own of NULL and an unknown Kind; DTAPI_E_OUT_OF_MEM
+// when the interfaces cannot be looked through for want of memory; DTAPI_E_NW_DRIVER
+// when the operating system has no interface with the MAC address, or the lookup fails
+// otherwise; DTAPI_E_VLAN_NOT_FOUND when it has no VLAN interface with the ID on it and
+// also when the VLAN interface has no such address; and DTAPI_E_NO_ADAPTER_IP_ADDR when
+// the interface has none.
 DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
                                 const uint8_t* Hint, DtNetOwn* Own);
 

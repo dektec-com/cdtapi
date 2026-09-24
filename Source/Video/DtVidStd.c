@@ -269,8 +269,8 @@ int DtVidStd_NumPhysicalLinks(int LinkStd)
 // The order of the checks decides which error a caller sees when more than one thing is
 // wrong: first the output pointers, then the link standard, then the video standard.
 //
-// The sub-value is always the video standard itself, because every video standard shares
-// its number with the I/O configuration sub-value of the same name.
+// The sub-value is the video standard that is configured, because every video standard
+// shares its number with the I/O configuration sub-value of the same name.
 //
 // A 2160p standard that is not on the one link of its rate class, 6G up to 30 frames and
 // 12G from 50, is configured as the standard of one of its links, the 1080p standard of

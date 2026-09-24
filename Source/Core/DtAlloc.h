@@ -52,8 +52,9 @@ int DtAlloc_Live(void);
 // Doubling from a minimum, shared by every growable container so that they cannot drift
 // apart. Current is the capacity now, Needed the capacity required.
 //
-// Returns 0 with *Out set, or -1 when Needed elements of ElemSize bytes each cannot be
-// represented in a size_t. Refusing is the point: a capacity that wraps produces a small
-// allocation followed by writes beyond its end.
+// Returns 0 with *Out set, or -1 for an Out of NULL, an ElemSize of 0, and a grown
+// capacity whose bytes cannot be represented in a size_t. Refusing is the point: a
+// capacity that wraps produces a small allocation followed by writes beyond its end.
+// MinCapacity must not be 0: from a Current of 0 the doubling would never leave it.
 int DtAlloc_GrowCapacity(size_t Current, size_t Needed, size_t ElemSize,
                          size_t MinCapacity, size_t* Out);

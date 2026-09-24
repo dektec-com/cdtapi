@@ -239,9 +239,10 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
         return false;
     }
 
-    // With a VPID, its scan bits must fit the frame, and its payload identifier the 3G
-    // level. PsF has two fields, so the interlaced test applies to it as well, and no
-    // VPID passes both: the search never gives PsF when there is a VPID.
+    // With a VPID, its scan bits must fit a frame of two fields, and its payload
+    // identifier the 3G level; a progressive frame accepts any scan bits. PsF has two
+    // fields, so the interlaced test applies to it as well, and no VPID passes both: the
+    // search never gives PsF when there is a VPID.
     if (!DtFrameProps_IsSd(Props) && Vpid != 0)
     {
         if (DtFrameProps_IsPsF(Props) && (Vpid & 0x0000C000) != 0x00008000)
@@ -267,9 +268,9 @@ static bool Matches(const DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFrameProps_Deduce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The standards are tried in the order of Tables/DtVidStdList.inc.
-// When none matches, a VPID that decodes to a standard whose geometry matches still gives
-// one; then the properties are those of one link.
+// The standards are tried in the order of Tables/DtVidStdList.inc. When none matches, a
+// VPID that decodes to a standard whose geometry matches still gives one. For a 2160p
+// VPID that is the frame of one link, and Props->VidStd is the link's 1080p standard.
 //
 void DtFrameProps_Deduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
                          int LineNumSymHanc, int LineNumSymVanc, double Fps,

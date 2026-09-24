@@ -38,7 +38,7 @@ typedef struct DtFrameProps
     int FpsDen;
     int NumFields; // 1 for progressive, 2 for interlaced and PsF
     DtFieldProps Fields[2];
-    int LineNumSymEav;  // Symbols in EAV
+    int LineNumSymEav;  // Symbols in EAV, with the line number and CRC in HD
     int LineNumSymHanc; // Symbols in HANC, not counting EAV and SAV
     int LineNumSymSav;  // Symbols in SAV
     int LineNumSymVanc; // Symbols in the active part of a line, video or VANC

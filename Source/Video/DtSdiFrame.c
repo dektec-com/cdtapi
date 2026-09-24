@@ -174,8 +174,8 @@ DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_TxHeaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The header's SDI rate takes the driver's DT_DRV_SDIRATE_ values, which DT_SDIRATE_
-// equals. A 4K header counts the coded lines and gives the sizes of one HANC section
-// and of the video section.
+// equals. Every header counts the coded lines and gives the sizes of one HANC section and
+// of the video section; a 4K coded line holds two HANC sections.
 //
 void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
                              DtSdiFrameTxHeader* Header)
@@ -778,6 +778,9 @@ size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// The portable conversion of DtSdi4kConv_C: gathers the line into Scratch, then writes it
+// in the raw frame's symbol size.
+//
 static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                          uint8_t* RawLine, uint16_t* Scratch)
@@ -803,6 +806,9 @@ void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The portable coding of DtSdi4kConv_C: reads the raw line into Scratch, then scatters
+// it over the two coded lines. The sections' padding is left as it was.
 //
 static void CodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                       const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
