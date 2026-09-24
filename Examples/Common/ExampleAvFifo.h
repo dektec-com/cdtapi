@@ -30,12 +30,13 @@ typedef struct ExampleAvConfig
     bool EightBit;       // Video: 8-bit rather than 10-bit samples
     int Channels;        // Audio when above 0: channels of L24
     int SampleRate;      // Audio: samples a second
-    int SamplesPerFrame; // Audio: samples of every channel in one frame
+    int SamplesPerFrame; // Audio: samples per channel in one frame
     HwOrSwPipe Pipe;     // Which pipe to use
 } ExampleAvConfig;
 
-// Fills *Config from the command line. Prints what is wrong and returns false for a
-// value that is no address, number or pipe.
+// Fills *Config from the command line, with the width rounded down to an even number,
+// whole pixel groups. Prints what is wrong and returns false for a value that is not an
+// address, a number or a pipe, or that is out of range.
 bool ExampleAv_Config(int Argc, char** Argv, ExampleAvConfig* Config);
 
 // True for a port with an AV FIFO.

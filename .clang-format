@@ -2,7 +2,8 @@
 #
 # Derived from Win/Applications/StreamXpertV3/.clang-format, which states the shared
 # house style in machine-readable form. Only the language differs: CDTAPI is C11,
-# so the C++-only options are dropped and Standard is pinned to C.
+# so the C++-only options are dropped and Standard is pinned to the oldest C++ dialect,
+# as clang-format has no C one.
 ---
 Language: Cpp
 BasedOnStyle: LLVM
@@ -51,5 +52,6 @@ IncludeBlocks: Preserve
 SpaceAfterCStyleCast: false
 SpaceBeforeParens: ControlStatements
 
-# C11. Without this, clang-format guesses the dialect from the file contents.
+# clang-format knows only C++ dialects, so the C11 code is formatted as c++03, the
+# oldest, rather than as the latest, which the LLVM base style would pick.
 Standard: c++03

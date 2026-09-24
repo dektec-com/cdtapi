@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Prints one line per port: the device name the scan gives it, serial number and port
+// Prints one line per port: its device name, which is the serial number and the port
 // number; its description; and what it is: SDI, ASI, AVFIFO, INPUT, OUTPUT. Then the
 // number of ports found.
 //

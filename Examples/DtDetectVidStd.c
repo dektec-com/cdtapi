@@ -44,8 +44,8 @@ static bool IsSdiInput(const DtHwFuncDesc* Port)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtDevice_DetectVidStd returns DTAPI_OK with DTAPI_VIDSTD_UNKNOWN while there is no
-// signal, so waiting is detecting again after a pause. DtDevice_WaitForSignal would do
-// that too, but without an end.
+// signal, so waiting is detecting again after a pause. DtDevice_WaitForSignalTimeout
+// waits with a time limit in one call; this loop shows the detection it is built from.
 //
 int main(int Argc, char** Argv)
 {

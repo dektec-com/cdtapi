@@ -4,10 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Uses DtapiDeviceScan, which describes devices rather than ports, so this program
-// is built against cdtapi.h only. Prints one block per device, every field of its
-// descriptor by name but the network addresses Ip, IpV6 and MacAddr, then the number of
-// devices:
+// Uses DtapiDeviceScan, which describes devices rather than ports. Prints one block per
+// device, every field of its descriptor by name but the network addresses Ip, IpV6 and
+// MacAddr, then the number of devices:
 //
 //     Device 1
 //       Category: 0

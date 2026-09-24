@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # The PowerShell counterpart of Scripts/build.sh, for use from a plain Windows shell or
-# from the Visual Studio terminal. It takes the same options.
+# from the Visual Studio terminal. It takes the same options as PowerShell parameters:
+# -Clean (-c), -BuildOnly (-b), -TestOnly (-t), -Lint (-l), -LintOnly and -List.
 
 [CmdletBinding()]
 param(

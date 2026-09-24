@@ -113,9 +113,12 @@ static const ExampleOption g_Options[] = {
     {"--stuff", false, "Fill the output with null packets when the stream falls behind"},
     {"--file", true, "Transmit this file"},
     {"--loop", false, "Transmit the file over and over"},
-    {"--stream", true, "Transmit a stream the program makes: numbered or service"},
-    {"--count", true, "The number of packets to send or write"},
-    {"--generate", true, "Write the stream the program makes to this file, and stop"},
+    {"--stream", true,
+     "Transmit a stream the program makes: numbered or service; numbered without --file"},
+    {"--count", true,
+     "Packets to send or write; without it the file once, or the stream until stopped"},
+    {"--generate", true,
+     "Write the stream the program makes to this file, and stop; 10 s without --count"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

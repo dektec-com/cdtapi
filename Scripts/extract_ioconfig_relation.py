@@ -5,12 +5,14 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# DTAPI validates an I/O configuration against a table that CapParser generates from
-# SDK/Capabilities/CapabilityDefinitions.xml: for every DTAPI_IOCONFIG_ code, whether it
-# is a group, a boolean I/O group, a value or a sub-value, and which codes sit one level
-# below it. This script repeats that derivation (CapDefStore.cpp: Load, AddTrueAndFalse,
-# EstablishHierarchy, EnumerateDefines, AddGrp, AddCap) and prints the entries of
-# Source/Tables/DtIoConfigList.inc, with each code's parents instead of its children.
+# An I/O configuration is valid when its codes relate as the DekTec capability XML,
+# SDK/Capabilities/CapabilityDefinitions.xml, says: for every DTAPI_IOCONFIG_ code,
+# whether it is a group, a boolean I/O group, a value or a sub-value, and which codes sit
+# one level below it. This script derives that relation from the XML: it reads the
+# groups and capabilities, gives TRUE and FALSE to every boolean I/O capability, puts
+# each capability under its groups or its parent capability, and numbers the codes. It
+# prints the entries of Source/Tables/DtIoConfigList.inc, with each code's parents
+# instead of its children.
 #
 # It is run by hand when DekTec adds I/O configuration codes; the build does not need the
 # XML. The output is checked against the numbering already in the list, so a code that
@@ -20,8 +22,8 @@
 #        Scripts/extract_ioconfig_relation.py --valid <CapabilityDefinitions.xml>
 #
 # The second form prints every valid combination of group, value and sub-value, worked
-# out on the children lists the way DTAPI's IsValidConfig does, for the unit test that
-# checks the parent encoding in the list against it.
+# out on the children lists, for the unit test that checks the parent encoding in the
+# list against it.
 
 import re
 import sys
@@ -68,7 +70,7 @@ def Derive(XmlPath):
     Caps.append(Cap("FALSE", [], Pseudo=True))
     CapMap = {C.Name: C for C in Caps}
 
-    # EstablishHierarchy: TRUE and FALSE belong to every boolean I/O capability.
+    # TRUE and FALSE belong to every boolean I/O capability.
     for Pseudo in (C for C in Caps if C.Pseudo):
         for C in Caps:
             Pseudo.Groups += [C.Name for G in C.Groups if G == "BOOLIO"]
@@ -90,7 +92,10 @@ def Derive(XmlPath):
                 S.IsBoolIo = G.Boolean and G.IoCap
                 S.IsSubCap = True
 
-    # EnumerateDefines for I/O configuration codes.
+    # The I/O configuration codes, in the order they are numbered: the I/O groups that
+    # are not boolean, the capabilities of the boolean I/O groups, and then, group by
+    # group, the capabilities of every I/O group followed by the sub-capabilities of
+    # those that are not gold. A code already numbered keeps its number.
     Codes = []
 
     def AddGrp(G):
@@ -144,7 +149,7 @@ def Kinds(Code):
 
 
 def IsValid(Codes, Group, Value, SubValue):
-    """DtConfigDefs::IsValidConfig, on the children lists as DTAPI holds them."""
+    """Whether (Group, Value, SubValue) is valid, worked out on the children lists."""
     Count = len(Codes)
     if Group < 0 or Group >= Count:
         return False

@@ -45,7 +45,8 @@
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI output"},
     {"--port", true, "The port number; the first SDI output"},
-    {"--vidstd", true, "Set the port's I/O standard for this video standard: 1080I50"},
+    {"--vidstd", true,
+     "Set the I/O standard and the pattern for this video standard, such as 1080I50"},
     {"--linkstd", true,
      "How 4K is carried: 0 or 1 four 3G links, 2 6G, 3 12G; default -1"},
     {"--txmode", true, "8B, 10B or 16B symbols; 10B without it"},

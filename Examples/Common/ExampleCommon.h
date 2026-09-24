@@ -34,9 +34,9 @@ typedef struct ExampleOption
     const char* Help; // One line for the usage text
 } ExampleOption;
 
-// Checks that every argument is a known option, with a value where it takes one. Prints
-// what is wrong and returns false when the command line is not valid, or when it asks
-// for --help, which every program knows; Usage is then printed.
+// Checks that every argument is a known option, with a value where it takes one. Returns
+// false after printing what is wrong when the command line is not valid, and after
+// printing Usage and the options when it asks for --help, which every program knows.
 bool Example_CheckArguments(int Argc, char** Argv, const char* Usage,
                             const ExampleOption* Options, int NumOptions);
 
@@ -57,8 +57,8 @@ typedef bool (*ExampleSuits)(const DtHwFuncDesc* Port);
 
 // Scans the hardware functions and returns in *Found the first port that is on the
 // device with this serial number, 0 for any; that has this number, 0 for any; and that
-// suits, NULL for any port. Returns DTAPI_OK, DTAPI_E_NOT_FOUND when no port matches, or
-// the scan's failure.
+// suits, NULL for any port. Returns DTAPI_OK, DTAPI_E_NOT_FOUND when no port matches,
+// DTAPI_E_OUT_OF_MEM, or the scan's failure.
 unsigned int Example_FindPort(int64_t Serial, int Port, ExampleSuits Suits,
                               DtHwFuncDesc* Found);
 

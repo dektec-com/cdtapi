@@ -6,8 +6,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Banner lines are decorative runs of #*, +=, .- around a title. Typed by hand they come
-# out one or two characters too long or short, which the style check then rejects. This
-# rebuilds each one from its title so the width is right by construction.
+# out one or two characters off: too long for the style check, or short of the edge.
+# This rebuilds each one from its title so the width is right by construction.
 #
 # Usage: Scripts/fix_banners.py <file> [<file> ...]
 

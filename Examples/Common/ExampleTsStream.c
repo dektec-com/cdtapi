@@ -346,8 +346,9 @@ static void PutHeader(uint8_t* P, int Pid, bool Start, int AdaptationControl, ui
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A packet with one section: Body is the section from its table_id up to the CRC, which
-// this adds, with the section_length still to be filled in.
+// A packet with one section: Body is the section from its table_id up to the CRC, with
+// section_length not yet set. This sets it and appends the CRC, so Body needs four bytes
+// of room after Size.
 //
 static void PutPsi(uint8_t* P, int Pid, uint8_t* Cc, uint8_t* Body, size_t Size)
 {

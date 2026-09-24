@@ -19,7 +19,8 @@ project(CDTAPI
 # where it stands alone this does nothing. See the script for what it compares.
 include("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/check_dtapi_version.cmake")
 
-# Groups the test projects into a Tests folder in the Visual Studio solution.
+# Groups the tests and the examples into folders of their own in the Visual Studio
+# solution.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Options -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -110,8 +111,9 @@ set(CDTAPI_SOURCES
     Source/Video/DtSmpte352.c
     Source/Video/DtVidStd.c)
 
-# The Linux buffer layout contains no Linux-specific code and is compiled everywhere, so
-# that it is unit-tested on every platform even though its only user is the Linux backend.
+# The Linux buffer layout and deadline arithmetic contain no Linux-specific code and are
+# compiled everywhere, so that they are unit-tested on every platform even though their
+# only user is the Linux backend.
 list(APPEND CDTAPI_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)

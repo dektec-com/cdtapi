@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleAvFifo.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - What the SMPTE ST 2110 examples share: the header, the stream and frames
+// CDTAPI - What the SMPTE ST 2110 examples share - Implementation
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

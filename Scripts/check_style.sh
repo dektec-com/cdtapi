@@ -14,6 +14,9 @@
 #   Rule 5  Every source file starts with a header naming the file.
 #   Rule 8  Every header guards itself with #pragma once, right after the file header.
 #
+# It also fails when Documentation/ or the internal notes, CLAUDE.md and CLAUDE.local.md,
+# are tracked: both belong outside this public repository.
+#
 # Source/DtPcie/Abi is skipped by the rules: it holds files vendored verbatim from the
 # SDK. What is checked there is that they are still the bytes SHA256SUMS records.
 
