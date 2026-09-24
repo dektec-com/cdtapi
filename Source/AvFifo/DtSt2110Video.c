@@ -139,19 +139,83 @@ DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RowsToSend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A field has half the rows; the first field of an odd number of rows one more.
+//
+static int RowsToSend(const DtSt2110VideoTx* Tx, int Field)
+{
+    if (!Tx->Interlaced && !Tx->Psf)
+        return Tx->NumRows;
+    return Tx->NumRows / 2 + (Field == 0 && Tx->NumRows % 2 != 0 ? 1 : 0);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumRowHeaders -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The row headers of the next packet, with RowBytesToDo left of the current row and
+// RowsToDo rows to go: a second when the rest of the row leaves room in the payload and
+// more rows follow, and a third when the room after the rest of the row exceeds a whole
+// row and more than two rows follow. Never more than three, which is what
+// DT_ST2110_VIDEO_HEADERS leaves room for.
+//
+static int NumRowHeaders(const DtSt2110VideoTx* Tx, int RowBytesToDo, int RowsToDo)
+{
+    if (Tx->Packing.OneLinePerPacket || RowBytesToDo >= Tx->PayloadSize || RowsToDo <= 1)
+        return 1;
+    return Tx->PayloadSize - RowBytesToDo <= Tx->RowSize || RowsToDo == 2 ? 2 : 3;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SegmentBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The bytes of the row at RowOffset that go into a packet of which Used bytes are taken:
+// the rest of the row, or as much of it as the payload has room for.
+//
+static int SegmentBytes(const DtSt2110VideoTx* Tx, int RowOffset, int Used)
+{
+    int RowBytesToDo = Tx->RowSize - RowOffset;
+    return RowBytesToDo >= Tx->PayloadSize - Used ? Tx->PayloadSize - Used : RowBytesToDo;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The packets NumRows rows go out in, cut as DtSt2110VideoTx_Packetize cuts them. A
+// packet is full only where its three row headers reach far enough, so a closed formula
+// that divides the bytes by the payload undercounts; this walks the rows instead.
+//
+static int NumPackets(const DtSt2110VideoTx* Tx, int NumRows)
+{
+    int RowsToDo = NumRows;
+    int RowOffset = 0;
+    int Packets = 0;
+    while (RowsToDo != 0)
+    {
+        int NumHeaders = NumRowHeaders(Tx, Tx->RowSize - RowOffset, RowsToDo);
+        int Used = 0;
+        for (int h = 0; h < NumHeaders; h++)
+        {
+            int Length = SegmentBytes(Tx, RowOffset, Used);
+            RowOffset += Length;
+            Used += Length;
+            if (RowOffset == Tx->RowSize)
+            {
+                RowsToDo--;
+                RowOffset = 0;
+            }
+        }
+        Packets++;
+    }
+    return Packets;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketsPerFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The packets of a whole frame, both fields: each field ends in a packet of its own.
 //
 static int PacketsPerFrame(const DtSt2110VideoTx* Tx)
 {
-    int64_t Rows = Tx->NumRows;
-    int64_t RowSize = Tx->RowSize;
-    int64_t Payload = Tx->PayloadSize;
-
-    if (Tx->Packing.OneLinePerPacket)
-        return (int)((RowSize + Payload - 1) / Payload * Rows);
-    if (Payload / RowSize >= 3)
-        return (int)((Rows + 2) / 3);
-    return (int)((Rows * RowSize + Payload - 1) / Payload);
+    if (!Tx->Interlaced && !Tx->Psf)
+        return NumPackets(Tx, Tx->NumRows);
+    return NumPackets(Tx, RowsToSend(Tx, 0)) + NumPackets(Tx, RowsToSend(Tx, 1));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -204,17 +268,6 @@ int DtSt2110VideoTx_FrameBytes(const DtSt2110VideoTx* Tx, const DtAvTxStream* St
     return Tx->PacketsPerFrame * DtAvNet_PacketSize(&Stream->Net, Payload);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RowsToSend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// A field has half the rows; the first field of an odd number of rows one more.
-//
-static int RowsToSend(const DtSt2110VideoTx* Tx, int Field)
-{
-    if (!Tx->Interlaced && !Tx->Psf)
-        return Tx->NumRows;
-    return Tx->NumRows / 2 + (Field == 0 && Tx->NumRows % 2 != 0 ? 1 : 0);
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_FrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field)
@@ -224,9 +277,7 @@ int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A packet takes a second row header when the rest of its row leaves room in the payload
-// and more rows follow, and a third when the room after the rest of the row exceeds a
-// whole row and more than two rows follow.
+// A packet takes as many row headers as NumRowHeaders gives it.
 //
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvSink* Sink)
@@ -254,14 +305,7 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
     uint64_t Offset = 0;
     while (RowsToDo != 0)
     {
-        int RowBytesToDo = Tx->RowSize - RowOffset;
-        int NumHeaders = 1;
-        if (!Tx->Packing.OneLinePerPacket && RowBytesToDo < Tx->PayloadSize &&
-            RowsToDo > 1)
-        {
-            NumHeaders =
-                Tx->PayloadSize - RowBytesToDo <= Tx->RowSize || RowsToDo == 2 ? 2 : 3;
-        }
+        int NumHeaders = NumRowHeaders(Tx, Tx->RowSize - RowOffset, RowsToDo);
 
         uint8_t* Packet = Sink->Begin(Sink->Context, MaxPacket);
         uint8_t* Rtp = Packet + Header;
@@ -274,10 +318,8 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
         int Used = 0;
         for (int h = 0; h < NumHeaders; h++, Srd += DT_AV_SRD_SIZE)
         {
-            RowBytesToDo = Tx->RowSize - RowOffset;
             DtAvSrd Row;
-            Row.Length = RowBytesToDo >= Tx->PayloadSize - Used ? Tx->PayloadSize - Used
-                                                                : RowBytesToDo;
+            Row.Length = SegmentBytes(Tx, RowOffset, Used);
             Row.Field = Frame->Field != 0;
             Row.Row = RowNum;
             Row.Continuation = h + 1 != NumHeaders;

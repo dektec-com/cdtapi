@@ -404,6 +404,19 @@ DT_TEST(TransmitSmallRowsThreePerPacket)
     CheckTransmit(&Config, false, DtFailures);
 }
 
+// Rows of 480 bytes in payloads of 1400: a packet with little left of its row reaches
+// only two rows further with its three row headers, and goes out short of full. Twenty
+// rows take eight packets, where their bytes over the payload would say seven.
+DT_TEST(TransmitShortPacketsCounted)
+{
+    const St2110_TxConfigVideo Config = {
+        St2110_TxFrameFormat_Uyvy422_8b,
+        {0, St2110_PackingMode_General, 1400},
+        {240, 20},
+        {{25, 1}, St2110_Scheduling_Linear, St2110_VideoScanning_Progressive}};
+    CheckTransmit(&Config, false, DtFailures);
+}
+
 DT_TEST(TransmitOneLinePerPacket)
 {
     const St2110_TxConfigVideo Config = {
@@ -900,8 +913,8 @@ DT_TEST(LoopbackRawInterlaced)
 
 DT_TEST_MAIN("St2110Video", DT_RUN(ConfigurationChecks), DT_RUN(Transmit1080p10Bit),
              DT_RUN(Transmit720p8BitGappedBlocks),
-             DT_RUN(TransmitSmallRowsThreePerPacket), DT_RUN(TransmitOneLinePerPacket),
-             DT_RUN(FieldsAndPsf), DT_RUN(Raw420Rows),
+             DT_RUN(TransmitSmallRowsThreePerPacket), DT_RUN(TransmitShortPacketsCounted),
+             DT_RUN(TransmitOneLinePerPacket), DT_RUN(FieldsAndPsf), DT_RUN(Raw420Rows),
              DT_RUN(ReceiveLearnsAndCountsFaults), DT_RUN(Loopback10Bit),
              DT_RUN(Loopback10BitTo8BitInterlaced), DT_RUN(Loopback8Bit),
              DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackRawInterlaced))
