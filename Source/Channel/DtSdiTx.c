@@ -96,14 +96,14 @@ typedef struct DtSdiTx
     size_t RawSize;   // A raw frame in the current transmit mode
     OsDmaBuffer Buf;
     bool Registered;
-    size_t MaxLoad;    // The buffer less the data word kept free
-    size_t WordBytes;  // A PCIe data word, which the card reads the buffer in
-    int BurstFifoSize; // Bytes
-    int QuarterMs;     // A quarter frame period, at least 1 ms
-    uint8_t* Black;    // The coded lines of a black frame, line headers included
-    uint8_t* LineBuf;  // A raw line's coded lines when they run across the end
-    uint8_t* RawBuf;   // The raw bytes of a line not yet complete
-    uint16_t* Scratch; // The working symbols of a 4K line, one set a band
+    size_t MaxLoad;      // The buffer less the data word kept free
+    size_t WordNumBytes; // A PCIe data word, which the card reads the buffer in
+    int BurstFifoSize;   // Bytes
+    int QuarterMs;       // A quarter frame period, at least 1 ms
+    uint8_t* Black;      // The coded lines of a black frame, line headers included
+    uint8_t* LineBuf;    // A raw line's coded lines when they run across the end
+    uint8_t* RawBuf;     // The raw bytes of a line not yet complete
+    uint16_t* Scratch;   // The working symbols of a 4K line, one set a band
 
     // The threads a batch of 4K lines is coded over. Scratch holds DtWork_Pieces(&Work)
     // sets of ScratchSymbols symbols, so that a band uses its own.
@@ -198,7 +198,7 @@ static void PutHeader(DtSdiTx* Sdi, size_t Offset, int FrameId)
     DtSdiFrameTxHeader Header;
     DtSdiFrame_TxHeaderInit(&Sdi->Layout, FrameId, &Header);
     DtSdiFrame_EncodeTxHeader(&Header, Bytes);
-    PutAt(Sdi, Offset, Bytes, (size_t)Sdi->Layout.TxHeaderBytes);
+    PutAt(Sdi, Offset, Bytes, (size_t)Sdi->Layout.TxHeaderNumBytes);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -288,7 +288,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
         return DTAPI_OK;
     if (Sdi->Reserved)
     {
-        Partial = (size_t)Layout->TxHeaderBytes +
+        Partial = (size_t)Layout->TxHeaderNumBytes +
                   (size_t)Sdi->LinesDone * DtSdiFrame_TxBytesPerLine(Layout);
         if (Free < 2 * Coded)
         {
@@ -304,7 +304,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
                   (Sdi->NextFrameId + 1) & 0xFFFF);
     }
     PutHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
-    PutAt(Sdi, Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes), Sdi->Black,
+    PutAt(Sdi, Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes), Sdi->Black,
           (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
 
     DtapiResult Result = CommitFrame(Sdi);
@@ -712,7 +712,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Result == DTAPI_OK &&
         !DtSdiFrame_LayoutInit(&Layout, Sdi->IoStdSubValue, Alignment))
         Result = DTAPI_E_INTERNAL;
-    if (Result == DTAPI_OK && Layout.TxHeaderBytes > DT_MAX_TX_HEADER)
+    if (Result == DTAPI_OK && Layout.TxHeaderNumBytes > DT_MAX_TX_HEADER)
         Result = DTAPI_E_INTERNAL;
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
@@ -741,7 +741,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
         Sdi->Layout.TxStride != Layout.TxStride ||
         Sdi->Layout.NumCodedLines != Layout.NumCodedLines ||
-        Sdi->Layout.TxHeaderBytes != Layout.TxHeaderBytes)
+        Sdi->Layout.TxHeaderNumBytes != Layout.TxHeaderNumBytes)
     {
         Size = 0;
     }
@@ -750,7 +750,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->RawSize = DtSdiFrame_RawSize(&Layout, Sdi->SymbolBits);
 
     // The standard's black frame and the buffers of a write.
-    size_t Line = DtSdiFrame_RawLineBits(&Layout, 16) / 8 + 2;
+    size_t Line = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8 + 2;
     DtAlloc_Free(Sdi->Black);
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->RawBuf);
@@ -797,8 +797,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         }
     }
 
-    Sdi->WordBytes = (size_t)Props.PcieDataWidth / 8;
-    Sdi->MaxLoad = Sdi->Buf.Size - Sdi->WordBytes;
+    Sdi->WordNumBytes = (size_t)Props.PcieDataWidth / 8;
+    Sdi->MaxLoad = Sdi->Buf.Size - Sdi->WordNumBytes;
     if (Sdi->MaxLoad / Sdi->CodedSize < DT_BUF_MIN_FRAMES)
     {
         FreeBuffer(Sdi);
@@ -1012,7 +1012,7 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
                             uint64_t Deadline)
 {
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    size_t Bits = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits);
+    size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits);
     size_t Need = ((size_t)Sdi->Phase + Bits + 7) / 8;
     size_t Used = ((size_t)Sdi->Phase + Bits) / 8;
 
@@ -1053,7 +1053,7 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
     // A raw line becomes one coded line, or the two coded lines of 4K, each of them
     // preceded by its line header.
     size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
-    size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
+    size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
                                   (size_t)Sdi->LinesDone * Coded);
     uint8_t* Dst =
         Offset + Coded <= Sdi->Buf.Size ? Sdi->Buf.Data + Offset : Sdi->LineBuf;
@@ -1062,9 +1062,10 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone + 1,
                                       Dst + Layout->TxStride);
-        DtSdiFrame_CodeLine4k(
-            Layout, Sdi->SymbolBits, Src, Sdi->LinesDone, Dst + Layout->TxLineHeaderBytes,
-            Dst + Layout->TxStride + Layout->TxLineHeaderBytes, Sdi->Scratch);
+        DtSdiFrame_CodeLine4k(Layout, Sdi->SymbolBits, Src, Sdi->LinesDone,
+                              Dst + Layout->TxLineHeaderNumBytes,
+                              Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
+                              Sdi->Scratch);
     }
     else
         DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, Sdi->Phase, Dst);
@@ -1135,8 +1136,8 @@ static void CodeLines(void* Context, int Index, int Count)
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
         DtSdiFrame_CodeLine4k(
-            Layout, Sdi->SymbolBits, Src, Line, Dst + Layout->TxLineHeaderBytes,
-            Dst + Layout->TxStride + Layout->TxLineHeaderBytes, Scratch);
+            Layout, Sdi->SymbolBits, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
+            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Scratch);
     }
 }
 
@@ -1172,10 +1173,10 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
         return 0;
     }
 
-    const size_t Bits = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits);
+    const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits);
     const size_t Phase = (size_t)Sdi->Phase;
     const size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
-    const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes +
+    const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
                                         (size_t)Sdi->LinesDone * Coded);
     const int Cap = Layout->NumLines / 4 < 2 ? 2 : Layout->NumLines / 4;
 
@@ -1344,7 +1345,8 @@ static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
 static void PadToWord(DtSdiTx* Sdi)
 {
     static const uint8_t Zeros[64] = {0};
-    size_t Pad = (Sdi->WordBytes - Sdi->Committed % Sdi->WordBytes) % Sdi->WordBytes;
+    size_t Pad =
+        (Sdi->WordNumBytes - Sdi->Committed % Sdi->WordNumBytes) % Sdi->WordNumBytes;
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + Pad);
     size_t Load;
 

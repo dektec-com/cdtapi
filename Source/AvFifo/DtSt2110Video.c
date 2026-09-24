@@ -340,8 +340,8 @@ static void ResetSizes(DtSt2110VideoRx* Rx)
     Rx->Interlaced = false;
     Rx->Is420 = false;
     Rx->PrevRowNum = -1;
-    Rx->InputBytes = 0;
-    Rx->OutputBytes = 0;
+    Rx->InputNumBytes = 0;
+    Rx->OutputNumBytes = 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoRx_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -503,17 +503,17 @@ static void CalculateFrameSize(DtSt2110VideoRx* Rx)
 static void Take(DtSt2110VideoRx* Rx, const uint8_t* Src, int Length)
 {
     uint8_t* Data = Rx->PartialFrame->Frame.Data;
-    size_t Out = (size_t)Rx->OutputBytes;
+    size_t Out = (size_t)Rx->OutputNumBytes;
 
     switch (Rx->Format)
     {
     case St2110_RxFrameFormat_Uyvy422_10b:
         Rx->Conv->Pg10ToUyvy10(Src, Data + Out, (size_t)Length / 5);
-        Rx->OutputBytes += Length / 5 * 5;
+        Rx->OutputNumBytes += Length / 5 * 5;
         break;
     case St2110_RxFrameFormat_Uyvy422_10b_to_8b:
         Rx->Conv->Pg10ToUyvy8(Src, Data + Out, (size_t)Length / 5);
-        Rx->OutputBytes += Length / 5 * 4;
+        Rx->OutputNumBytes += Length / 5 * 4;
         break;
     case St2110_RxFrameFormat_Yuv422p_8b:
     {
@@ -521,15 +521,15 @@ static void Take(DtSt2110VideoRx* Rx, const uint8_t* Src, int Length)
         size_t Pgroup = Out / 4;
         Rx->Conv->Uyvy8ToYuv422p(Src, (size_t)Length / 4, Data + Pgroup * 2,
                                  Data + Plane * 2 + Pgroup, Data + Plane * 3 + Pgroup);
-        Rx->OutputBytes += Length / 4 * 4;
+        Rx->OutputNumBytes += Length / 4 * 4;
         break;
     }
     default:
         memcpy(Data + Out, Src, (size_t)Length);
-        Rx->OutputBytes += Length;
+        Rx->OutputNumBytes += Length;
         break;
     }
-    Rx->InputBytes += Length;
+    Rx->InputNumBytes += Length;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Finish -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -543,14 +543,14 @@ static void Finish(DtSt2110VideoRx* Rx, bool Field1)
                        ? Rx->LineSizeFrame / 5 * 4
                        : Rx->LineSizeFrame;
 
-    Frame->Frame.NumValidBytes = Rx->OutputBytes;
+    Frame->Frame.NumValidBytes = Rx->OutputNumBytes;
     Frame->Frame.Field = Field1 ? 1 : 0;
     Frame->Frame.NumRows =
-        Rx->Interlaced && LineSize > 0 ? Rx->OutputBytes / LineSize : Rx->NumRowsFrame;
+        Rx->Interlaced && LineSize > 0 ? Rx->OutputNumBytes / LineSize : Rx->NumRowsFrame;
     Frame->Frame.Is420 = Rx->Is420 ? 1 : 0;
     Rx->PartialFrame = NULL;
-    Rx->InputBytes = 0;
-    Rx->OutputBytes = 0;
+    Rx->InputNumBytes = 0;
+    Rx->OutputNumBytes = 0;
     DtAvRxTarget_Deliver(&Rx->Target, &Rx->Stats, Frame);
 }
 
@@ -594,8 +594,8 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
             return;
         }
         Rx->WaitForEndFrame = false;
-        Rx->InputBytes = 0;
-        Rx->OutputBytes = 0;
+        Rx->InputNumBytes = 0;
+        Rx->OutputNumBytes = 0;
         return;
     }
 
@@ -604,12 +604,13 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
     Rx->LastSeqNum = SeqNum;
     if (SeqNum != PrevSeqNum + 1)
     {
-        if (Rx->InputBytes != 0 || NumRows == 0 || Srd[0].Row != 0 || Srd[0].Offset != 0)
+        if (Rx->InputNumBytes != 0 || NumRows == 0 || Srd[0].Row != 0 ||
+            Srd[0].Offset != 0)
         {
             Rx->Stats.FramesIncomplete++;
             Rx->WaitForEndFrame = !EndOfFrame;
-            Rx->InputBytes = 0;
-            Rx->OutputBytes = 0;
+            Rx->InputNumBytes = 0;
+            Rx->OutputNumBytes = 0;
             return;
         }
         Rx->Stats.Gaps++;
@@ -635,10 +636,10 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
             Rx->WaitForEndFrame = !EndOfFrame;
             return;
         }
-        Rx->InputBytes = 0;
-        Rx->OutputBytes = 0;
+        Rx->InputNumBytes = 0;
+        Rx->OutputNumBytes = 0;
     }
-    if (Rx->InputBytes == 0)
+    if (Rx->InputNumBytes == 0)
     {
         Rx->PartialFrame->Frame.RtpTime = Rtp.Timestamp;
         Rx->PartialFrame->Frame.ToD = DtAvTime_FromNs(Udp.TodNs);
@@ -647,7 +648,7 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
     const uint8_t* Src = Payload + DataOffset;
     for (int i = 0; i < NumRows; i++)
     {
-        if (Rx->InputBytes + Srd[i].Length > Rx->CalculatedFrameSize)
+        if (Rx->InputNumBytes + Srd[i].Length > Rx->CalculatedFrameSize)
         {
             Rx->Stats.FramesSizeError++;
             ResetSizes(Rx);

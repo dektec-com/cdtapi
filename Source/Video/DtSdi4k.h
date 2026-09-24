@@ -34,16 +34,16 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
                                       size_t Tile, size_t Offset[4])
 {
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
-    const size_t HancBytes = (size_t)Layout->SectionBytesHanc;
+    const size_t HancNumBytes = (size_t)Layout->SectionBytesHanc;
 
     if (Tile < HancTiles)
     {
         for (size_t L = 0; L < 4; L++)
-            Offset[L] = (L & 1) * HancBytes + 5 * Tile;
+            Offset[L] = (L & 1) * HancNumBytes + 5 * Tile;
         return;
     }
 
-    const size_t Video = 2 * HancBytes;
+    const size_t Video = 2 * HancNumBytes;
     const size_t Half = (size_t)Layout->SectionNumSymsVideo / 8 * 5;
     const size_t t = Tile - HancTiles;
 

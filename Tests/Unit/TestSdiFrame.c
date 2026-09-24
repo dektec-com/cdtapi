@@ -154,7 +154,7 @@ DT_TEST(Layout1080I50)
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
     DT_ASSERT_EQ(Layout.VidStd, DTAPI_VIDSTD_1080I50);
     DT_ASSERT_EQ(Layout.Alignment, 16);
-    DT_ASSERT_EQ(Layout.HeaderBytes, 16);
+    DT_ASSERT_EQ(Layout.HeaderNumBytes, 16);
     DT_ASSERT_EQ(Layout.NumLines, 1125);
     DT_ASSERT_EQ(Layout.LineNumSymsHanc, 1440);
     DT_ASSERT_EQ(Layout.SectionBytesHanc, 1808);
@@ -178,7 +178,7 @@ DT_TEST(LayoutOtherAlignments)
     DT_ASSERT_EQ(Layout.NumLines, 625);
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_525I59_94, 24));
-    DT_ASSERT_EQ(Layout.HeaderBytes, 18);
+    DT_ASSERT_EQ(Layout.HeaderNumBytes, 18);
     DT_ASSERT_EQ(Layout.LineNumSymsHanc, 276);
     DT_ASSERT_EQ(Layout.SectionBytesHanc, 345);
     DT_ASSERT_EQ(Layout.Stride, 345 + 1800);
@@ -220,7 +220,7 @@ DT_TEST(LayoutEveryStandard)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Header +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-DT_TEST(HeaderBytes)
+DT_TEST(HeaderNumBytes)
 {
     static const uint8_t Expected[DT_SDIFRAME_HEADER_BYTES] = {
         0xFE, 0xFB, 0xEF, 0xFF, 0x13, 0x00, 0x34, 0x12,
@@ -485,15 +485,15 @@ DT_TEST(LayoutTransmit)
     DtSdiFrameLayout Layout;
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
-    DT_ASSERT_EQ(Layout.TxHeaderBytes, 32);
+    DT_ASSERT_EQ(Layout.TxHeaderNumBytes, 32);
     DT_ASSERT_EQ(Layout.SdiRate, DT_SDIRATE_HD);
     DT_ASSERT_EQ(DtSdiFrame_TxCodedSize(&Layout), 32 + 1125 * 6608);
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 32));
-    DT_ASSERT_EQ(Layout.TxHeaderBytes, 20);
+    DT_ASSERT_EQ(Layout.TxHeaderNumBytes, 20);
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_525I59_94, 24));
-    DT_ASSERT_EQ(Layout.TxHeaderBytes, 21);
+    DT_ASSERT_EQ(Layout.TxHeaderNumBytes, 21);
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P50, 512));
-    DT_ASSERT_EQ(Layout.TxHeaderBytes, 64);
+    DT_ASSERT_EQ(Layout.TxHeaderNumBytes, 64);
 
     for (int i = 0; i < STANDARD_COUNT; i++)
     {
@@ -512,7 +512,7 @@ DT_TEST(LayoutTransmit)
 }
 
 // 1080i50 with the card's alignment, as the card took it on port 5.
-DT_TEST(TxHeaderBytes)
+DT_TEST(TxHeaderNumBytes)
 {
     static const uint8_t Expected[DT_SDIFRAME_TX_HEADER_BYTES] = {
         0xFE, 0xFB, 0xEF, 0xFF, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12,
@@ -599,12 +599,12 @@ DT_TEST(RawLineBits)
     DtSdiFrameLayout Layout;
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_1080I50, 128));
-    DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 8), 42240);
-    DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 10), 52800);
-    DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 16), 84480);
-    DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 12), 0);
+    DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 8), 42240);
+    DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 10), 52800);
+    DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 16), 84480);
+    DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 12), 0);
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P24, 128));
-    DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 10), 82500);
+    DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 10), 82500);
 
     // Only 720p23.98 and 720p24 have 10-bit lines that end half-way a byte.
     for (int i = 0; i < STANDARD_COUNT; i++)
@@ -613,8 +613,8 @@ DT_TEST(RawLineBits)
                               g_Standards[i] == DTAPI_VIDSTD_720P24;
 
         DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards[i], 128));
-        DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 10) % 8, HalfByte ? 4 : 0);
-        DT_ASSERT_EQ(DtSdiFrame_RawLineBits(&Layout, 16) % 8, 0);
+        DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 10) % 8, HalfByte ? 4 : 0);
+        DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 16) % 8, 0);
     }
 }
 
@@ -642,7 +642,7 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits, int L
                            int Phase, int* DtFailures)
 {
     const int Syms[2] = {Layout->LineNumSymsHanc, Layout->LineNumSymsVideo};
-    const size_t LineBits = DtSdiFrame_RawLineBits(Layout, SymbolBits);
+    const size_t LineBits = DtSdiFrame_RawLineNumBits(Layout, SymbolBits);
     const size_t LineBytes = ((size_t)Phase + LineBits + 7) / 8;
     const size_t Size = DtSdiFrame_RawSize(Layout, SymbolBits);
     const size_t Stride = (size_t)Layout->Stride;
@@ -729,7 +729,7 @@ DT_TEST(CodesEveryStandard)
             size_t b;
             for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
             {
-                const size_t LineBits = DtSdiFrame_RawLineBits(&Layout, Bits[b]);
+                const size_t LineBits = DtSdiFrame_RawLineNumBits(&Layout, Bits[b]);
 
                 size_t l;
                 for (l = 0; l < 4; l++)
@@ -1061,7 +1061,7 @@ DT_TEST(BlackFrameRoundTrip)
         size_t b;
         for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
         {
-            const size_t LineBits = DtSdiFrame_RawLineBits(&Layout, Bits[b]);
+            const size_t LineBits = DtSdiFrame_RawLineNumBits(&Layout, Bits[b]);
             uint8_t* Raw = (uint8_t*)calloc(DtSdiFrame_RawSize(&Layout, Bits[b]), 1);
             int Differ = -1;
 
@@ -1328,7 +1328,7 @@ DT_TEST(Layout4k)
     DT_ASSERT_EQ(L.SectionBytesHanc, 1808);
     DT_ASSERT_EQ(L.SectionBytesVideo, 9600);
     DT_ASSERT_EQ(L.Stride, 13216);
-    DT_ASSERT_EQ(L.TxLineHeaderBytes, 16);
+    DT_ASSERT_EQ(L.TxLineHeaderNumBytes, 16);
     DT_ASSERT_EQ(L.TxStride, 13232);
     DT_ASSERT_EQ(L.PictureStart, 42);
     DT_ASSERT_EQ(L.PictureEnd, 1121);
@@ -1339,7 +1339,7 @@ DT_TEST(Layout4k)
     DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 10), 29700000L);
     DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 16), 47520000L);
     DT_ASSERT_EQ((long)DtSdiFrame_RawSize(&L, 8), 23760000L);
-    DT_ASSERT_EQ((long)DtSdiFrame_RawLineBits(&L, 10), 211200L);
+    DT_ASSERT_EQ((long)DtSdiFrame_RawLineNumBits(&L, 10), 211200L);
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&L, DTAPI_VIDSTD_2160P30, 128));
     DT_ASSERT_EQ(L.SectionNumSymsHanc, 560);
@@ -1372,7 +1372,7 @@ DT_TEST(Converts4k)
         Line4k L;
 
         DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
-        size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+        size_t LineBytes = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8;
         uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_NumScratchSymbols(&Layout) * 2);
         uint8_t* Raw = (uint8_t*)malloc(LineBytes);
         DT_ASSERT(Line4kAlloc(&Layout, &L) && Scratch != NULL && Raw != NULL);
@@ -1408,7 +1408,7 @@ DT_TEST(Codes4k)
 
         DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
         size_t Stride = (size_t)Layout.Stride;
-        size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+        size_t LineBytes = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8;
         uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_NumScratchSymbols(&Layout) * 2);
         uint8_t* Raw = (uint8_t*)malloc(LineBytes);
         uint8_t* Again = (uint8_t*)malloc(LineBytes);
@@ -1436,7 +1436,7 @@ DT_TEST(Codes4k)
                     continue;
                 }
                 DtSdiFrame_ConvertLine4k(&Layout, 8, A, B, Index, Again, Scratch);
-                DT_ASSERT(memcmp(Again, Raw, DtSdiFrame_RawLineBits(&Layout, 8) / 8) ==
+                DT_ASSERT(memcmp(Again, Raw, DtSdiFrame_RawLineNumBits(&Layout, 8) / 8) ==
                           0);
             }
         }
@@ -1525,7 +1525,7 @@ DT_TEST(BlackFrame4k)
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_2160P50, 128));
     size_t TxStride = (size_t)Layout.TxStride;
-    size_t LineBytes = DtSdiFrame_RawLineBits(&Layout, 10) / 8;
+    size_t LineBytes = DtSdiFrame_RawLineNumBits(&Layout, 10) / 8;
     uint8_t* Lines = (uint8_t*)malloc((size_t)Layout.NumCodedLines * TxStride);
     uint8_t* Raw = (uint8_t*)malloc(LineBytes);
     uint16_t* Scratch = (uint16_t*)malloc(DtSdiFrame_NumScratchSymbols(&Layout) * 2);
@@ -1541,14 +1541,14 @@ DT_TEST(BlackFrame4k)
         int Line = g_Lines4k[i];
         const uint8_t* A = Lines + (size_t)(2 * Line - 2) * TxStride;
         const uint8_t* B = A + TxStride;
-        size_t Header = (size_t)Layout.TxLineHeaderBytes;
-        size_t HancBytes = (size_t)Layout.SectionBytesHanc;
+        size_t Header = (size_t)Layout.TxLineHeaderNumBytes;
+        size_t HancNumBytes = (size_t)Layout.SectionBytesHanc;
         bool Blanking = Line < 42 || Line > 1121;
 
         DT_ASSERT_EQ(A[0], Blanking ? 1 : 0);
         DT_ASSERT_EQ(B[0], Blanking ? 1 : 0);
-        DT_ASSERT(memcmp(A + Header, A + Header + HancBytes, HancBytes) == 0);
-        DT_ASSERT(memcmp(A + Header, B + Header, HancBytes) == 0);
+        DT_ASSERT(memcmp(A + Header, A + Header + HancNumBytes, HancNumBytes) == 0);
+        DT_ASSERT(memcmp(A + Header, B + Header, HancNumBytes) == 0);
 
         DtSdiFrame_ConvertLine4k(&Layout, 10, A + Header, B + Header, Line - 1, Raw,
                                  Scratch);
@@ -1614,7 +1614,7 @@ DT_TEST(Conv4kSetsAgree)
 
             DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, g_Standards4k[s], 128));
             const size_t Coded = (size_t)Layout.Stride;
-            const size_t RawBytes = DtSdiFrame_RawLineBits(&Layout, 16) / 8;
+            const size_t RawBytes = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8;
             uint8_t* CodedA = (uint8_t*)malloc(2 * Coded);
             uint8_t* CodedB = (uint8_t*)malloc(2 * Coded);
             uint8_t* RawC = (uint8_t*)malloc(RawBytes);
@@ -1648,7 +1648,7 @@ DT_TEST(Conv4kSetsAgree)
                     Sets[k]->ConvertLine(&Layout, Bits[b], CodedA, CodedB, Line, RawSet,
                                          Scratch);
                     DT_ASSERT_MEM(RawSet, RawC,
-                                  DtSdiFrame_RawLineBits(&Layout, Bits[b]) / 8);
+                                  DtSdiFrame_RawLineNumBits(&Layout, Bits[b]) / 8);
 
                     memset(BackC, 0x11, 2 * Coded);
                     memset(BackSet, 0x11, 2 * Coded);
@@ -1673,13 +1673,13 @@ DT_TEST(Conv4kSetsAgree)
 }
 
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
-             DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderBytes),
+             DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderNumBytes),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
              DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
              DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
-             DT_RUN(LayoutTransmit), DT_RUN(TxHeaderBytes), DT_RUN(TxHeaderFieldWidths),
-             DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
-             DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
+             DT_RUN(LayoutTransmit), DT_RUN(TxHeaderNumBytes),
+             DT_RUN(TxHeaderFieldWidths), DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard),
+             DT_RUN(CodesAnyPhase), DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
              DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip),
              DT_RUN(Layout4k), DT_RUN(Converts4k), DT_RUN(Codes4k), DT_RUN(ChecksLines4k),
              DT_RUN(TxLines4k), DT_RUN(BlackFrame4k), DT_RUN(Conv4kSetsAgree))

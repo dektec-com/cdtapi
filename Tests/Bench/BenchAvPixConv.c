@@ -133,7 +133,7 @@ typedef struct Buffers
     uint8_t* Dst;     // The destination, of 5 bytes per pixel group
 } Buffers;
 
-static int InputBytes(Which Kind)
+static int InputNumBytes(Which Kind)
 {
     return Kind == UYVY8_TO_YUV422P ? 4 : 5;
 }
@@ -184,7 +184,7 @@ static void Convert(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src, uin
 // Converts a frame's worth of pixel groups once, in the given way.
 static void ConvertFrame(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf)
 {
-    size_t Bytes = (size_t)InputBytes(Kind);
+    size_t Bytes = (size_t)InputNumBytes(Kind);
     size_t PerPacket = Bytes == 5 ? PACKET_PGROUPS_10 : PACKET_PGROUPS_8;
     if (How == ROWS)
     {
@@ -219,7 +219,7 @@ typedef struct Speed
 static Speed Measure(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf,
                      int Seconds)
 {
-    size_t Bytes = FRAME_PGROUPS * (size_t)InputBytes(Kind);
+    size_t Bytes = FRAME_PGROUPS * (size_t)InputNumBytes(Kind);
     uint64_t Start = OsTime_MonotonicMs();
     uint64_t Elapsed = 0;
     int Frames = 0;
@@ -305,7 +305,7 @@ static void ConvertBand4k(void* Context, int Index, int Count)
 {
     const Sdi4kJob* Job = (const Sdi4kJob*)Context;
     const DtSdiFrameLayout* Layout = Job->Layout;
-    size_t RawLine = DtSdiFrame_RawLineBits(Layout, Job->Bits) / 8;
+    size_t RawLine = DtSdiFrame_RawLineNumBits(Layout, Job->Bits) / 8;
     size_t Coded = 2 * (size_t)Layout->Stride;
     uint16_t* Scratch = Job->Buf->Scratch[Index];
     int First;
@@ -560,7 +560,7 @@ int main(int Argc, char** Argv)
         printf("\n");
         for (int Kind = 0; Kind < NUM_WHICH; Kind++)
         {
-            Packetize(&Buf, (size_t)InputBytes((Which)Kind));
+            Packetize(&Buf, (size_t)InputNumBytes((Which)Kind));
             Speed Speeds[NUM_SETS] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
             for (int Set = 0; Set < NUM_SETS; Set++)
             {

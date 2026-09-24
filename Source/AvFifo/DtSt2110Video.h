@@ -122,8 +122,8 @@ typedef struct DtSt2110VideoRx
     uint32_t LastSeqNum;
     bool WaitForEndFrame;
     DtAvFrame* PartialFrame;
-    int InputBytes;  // Bytes of pixel groups taken into it
-    int OutputBytes; // Bytes written into it
+    int InputNumBytes;  // Bytes of pixel groups taken into it
+    int OutputNumBytes; // Bytes written into it
 } DtSt2110VideoRx;
 
 // Sets up a parser that converts to Format with Conv and delivers to Target.

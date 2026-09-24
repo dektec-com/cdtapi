@@ -480,11 +480,11 @@ DT_TEST(TransmitFifoCalls)
     DT_ASSERT_EQ(UsesHwPipe, 0);
     DT_ASSERT_EQ(AvFifo_TxFifo_GetFifoLoad(Fifo), 0);
 
-    const int FrameBytes = 320 / 2 * 5 * 240;
-    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fifo, FrameBytes);
+    const int FrameNumBytes = 320 / 2 * 5 * 240;
+    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fifo, FrameNumBytes);
     DT_ASSERT(Frame != NULL);
-    memset(Frame->Data, 0x10, (size_t)FrameBytes);
-    Frame->NumValidBytes = FrameBytes;
+    memset(Frame->Data, 0x10, (size_t)FrameNumBytes);
+    Frame->NumValidBytes = FrameNumBytes;
     DtTimeOfDay Now = {0, 0};
     DT_ASSERT_OK(DtDevice_GetTimeOfDay(Device, &Now));
     Frame->ToD = Tod2Grid_Video(&Now, &Video.Timing.Rate);

@@ -652,16 +652,16 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
     DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 0);
 
-    int FrameBytes = 480 * 2 * SampleBytes;
+    int FrameNumBytes = 480 * 2 * SampleBytes;
     uint8_t Sent[5 * 480 * 2 * 3];
     for (int f = 0; f < 5; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, FrameBytes);
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, FrameNumBytes);
         DT_ASSERT(Frame != NULL);
-        for (int i = 0; i < FrameBytes; i++)
+        for (int i = 0; i < FrameNumBytes; i++)
             Frame->Data[i] = (uint8_t)(f * 31 + i);
-        memcpy(Sent + f * FrameBytes, Frame->Data, (size_t)FrameBytes);
-        Frame->NumValidBytes = FrameBytes;
+        memcpy(Sent + f * FrameNumBytes, Frame->Data, (size_t)FrameNumBytes);
+        Frame->NumValidBytes = FrameNumBytes;
         Frame->RtpTime = 48000u + 480u * (uint32_t)f;
         Frame->ToD = DtAvTime_FromNs(T0 + 100 * MS + (uint64_t)f * 10 * MS);
         DT_ASSERT_OK(AvFifo_TxFifo_Write(Tx, Frame));

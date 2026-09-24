@@ -175,12 +175,12 @@ DT_TEST(FramesAroundTheBuffers)
     DtSt2110VideoTx Video;
     DT_ASSERT_OK(DtSt2110VideoTx_Configure(&Video, &Config, DtAvPixConv_C()));
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Video, &S));
-    int FrameBytes = DtSt2110VideoTx_FrameBytes(&Video, &S);
+    int FrameNumBytes = DtSt2110VideoTx_FrameBytes(&Video, &S);
 
     // Buffers of a frame and a half.
-    DT_ASSERT_OK(DtAvPipe_SetBuffer(&Tx, (size_t)FrameBytes * 3 / 2));
-    DT_ASSERT_OK(DtAvPipe_SetBuffer(&Rx, (size_t)FrameBytes * 3 / 2));
-    DT_ASSERT((uint32_t)FrameBytes < DtAvPipe_MaxLoad(&Tx));
+    DT_ASSERT_OK(DtAvPipe_SetBuffer(&Tx, (size_t)FrameNumBytes * 3 / 2));
+    DT_ASSERT_OK(DtAvPipe_SetBuffer(&Rx, (size_t)FrameNumBytes * 3 / 2));
+    DT_ASSERT((uint32_t)FrameNumBytes < DtAvPipe_MaxLoad(&Tx));
     DtIpFilter Filter;
     memset(&Filter, 0, sizeof(Filter));
     memcpy(Filter.DstIp, DstIp, 4);
@@ -220,7 +220,7 @@ DT_TEST(FramesAroundTheBuffers)
 
         uint32_t Free = 0;
         DT_ASSERT_OK(DtAvWriter_Free(&Writer, &Free));
-        DT_ASSERT(Free >= (uint32_t)FrameBytes);
+        DT_ASSERT(Free >= (uint32_t)FrameNumBytes);
         uint32_t Before = Tx.Offset;
         DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Video, &S, &Frame->Frame, &Writer.Sink));
         DT_ASSERT_OK(DtAvWriter_Flush(&Writer));

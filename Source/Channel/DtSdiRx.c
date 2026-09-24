@@ -69,7 +69,7 @@ typedef struct DtSdiRx
     // The threads a frame's lines are converted over, and what one band of them needs.
     // The buffers above hold DtWork_Pieces(&Work) sets, so a band uses its own.
     DtWork Work;
-    size_t LineBufBytes;
+    size_t LineBufNumBytes;
     size_t ScratchSymbols;
 
     // Reading.
@@ -165,9 +165,9 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->Scratch);
     Sdi->Scratch = NULL;
-    Sdi->LineBufBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->Layout);
+    Sdi->LineBufNumBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->Layout);
     Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Sdi->Layout);
-    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufBytes);
+    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufNumBytes);
     if (Sdi->Layout.Is4k)
         Sdi->Scratch =
             (uint16_t*)DtAlloc_Malloc(Bands * Sdi->ScratchSymbols * sizeof(uint16_t));
@@ -381,7 +381,7 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 
     *Result = DTAPI_OK;
     size_t Offset;
-    for (Offset = 0; Offset + (size_t)Layout->HeaderBytes <= Available;
+    for (Offset = 0; Offset + (size_t)Layout->HeaderNumBytes <= Available;
          Offset += (size_t)Layout->Alignment)
     {
         uint8_t Bytes[DT_SDIFRAME_HEADER_BYTES];
@@ -619,7 +619,7 @@ typedef struct ConvertBand
     DtSdiRx* Sdi;
     uint8_t* Buffer;
     size_t CodedBytesPerLine;
-    size_t RawLineBytes;
+    size_t RawLineNumBytes;
 } ConvertBand;
 
 static void ConvertLines(void* Context, int Index, int Count)
@@ -627,7 +627,7 @@ static void ConvertLines(void* Context, int Index, int Count)
     const ConvertBand* Band = (const ConvertBand*)Context;
     DtSdiRx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    uint8_t* LineBuf = Sdi->LineBuf + (size_t)Index * Sdi->LineBufBytes;
+    uint8_t* LineBuf = Sdi->LineBuf + (size_t)Index * Sdi->LineBufNumBytes;
     uint16_t* Scratch =
         Sdi->Scratch == NULL ? NULL : Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
     int First;
@@ -638,7 +638,7 @@ static void ConvertLines(void* Context, int Index, int Count)
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset =
-            (size_t)Layout->HeaderBytes + (size_t)Line * Band->CodedBytesPerLine;
+            (size_t)Layout->HeaderNumBytes + (size_t)Line * Band->CodedBytesPerLine;
         const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Band->CodedBytesPerLine);
 
         if (Coded == NULL)
@@ -649,7 +649,7 @@ static void ConvertLines(void* Context, int Index, int Count)
         if (Layout->Is4k)
             DtSdiFrame_ConvertLine4k(
                 Layout, Sdi->SymbolBits, Coded, Coded + Layout->Stride, Line,
-                Band->Buffer + (size_t)Line * Band->RawLineBytes, Scratch);
+                Band->Buffer + (size_t)Line * Band->RawLineNumBytes, Scratch);
         else
             DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Band->Buffer);
     }
@@ -705,10 +705,11 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
         {
             uint8_t First[DT_SDIFRAME_LINE_START_BYTES];
 
-            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->HeaderBytes, First, sizeof(First));
+            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->HeaderNumBytes, First,
+                          sizeof(First));
             uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
             DtRing_PeekAt(&Sdi->Ring,
-                          (size_t)Layout->HeaderBytes +
+                          (size_t)Layout->HeaderNumBytes +
                               (size_t)(Layout->NumCodedLines - 1) *
                                   (size_t)Layout->Stride,
                           Last, sizeof(Last));
@@ -726,14 +727,14 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
     size_t CodedBytesPerLine = DtSdiFrame_CodedBytesPerLine(Layout);
-    size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
+    size_t RawLineNumBytes = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
     ConvertBand Band;
     Band.Sdi = Sdi;
     Band.Buffer = Buffer;
     Band.CodedBytesPerLine = CodedBytesPerLine;
-    Band.RawLineBytes = RawLineBytes;
+    Band.RawLineNumBytes = RawLineNumBytes;
 
     DtWork_Run(&Sdi->Work, ConvertLines, &Band);
 

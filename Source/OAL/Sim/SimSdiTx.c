@@ -242,9 +242,9 @@ static uint32_t Word32(const SimTxPort* Port, size_t Offset)
            (uint32_t)Peek(Port, Offset + 3) << 24;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HeaderBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HeaderNumBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static size_t HeaderBytes(void)
+static size_t HeaderNumBytes(void)
 {
     size_t Alignment = (size_t)g_Tx.Alignment / 8;
     return (SIM_TX_HEADER_BYTES + Alignment - 1) / Alignment * Alignment;
@@ -261,7 +261,7 @@ static size_t Padded(int Symbols)
     return (Bytes + Alignment - 1) / Alignment * Alignment;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The bytes and the symbols of one coded line as it is sent: a line header for 4K, the
 // HANC sections, one for a standard and two for 4K, and the video section.
@@ -312,7 +312,7 @@ static bool ReadHeader(SimTxPort* Port)
     {
         return false;
     }
-    size_t Frame = HeaderBytes() + (size_t)Port->NumLines * LineBytes(Port);
+    size_t Frame = HeaderNumBytes() + (size_t)Port->NumLines * LineBytes(Port);
     return Frame <= SIM_TX_MAX_FRAME;
 }
 
@@ -500,14 +500,14 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
     while (!Port->InFrame)
     {
         Advance(Port);
-        if (Port->PipeLoad < HeaderBytes())
+        if (Port->PipeLoad < HeaderNumBytes())
         {
             Underflow(Port);
             return false;
         }
         if (ReadHeader(Port))
         {
-            Header = HeaderBytes();
+            Header = HeaderNumBytes();
             break;
         }
         Port->HeaderErrors++;

@@ -427,7 +427,7 @@ static void StartFrame(SimRxChannel* Channel)
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
         Layout->LineNumSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
         Layout->LineNumSymsVideo == Config->m_FrameProps.m_NumSymsVidVanc &&
-        Layout->HeaderBytes <= (int)sizeof(Header);
+        Layout->HeaderNumBytes <= (int)sizeof(Header);
     if (Channel->Faults[SIM_RX_FAULT_OUT_OF_SYNC])
     {
         Channel->FrameInSync = false;
@@ -457,7 +457,7 @@ static void StartFrame(SimRxChannel* Channel)
 
         memset(Header, 0, sizeof(Header));
         DtSdiFrame_EncodeHeader(&Fields, Header);
-        if (!RingWrite(Channel, Header, (size_t)Layout->HeaderBytes))
+        if (!RingWrite(Channel, Header, (size_t)Layout->HeaderNumBytes))
             Channel->Dropped = true;
     }
 }
@@ -1058,7 +1058,7 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     }
     const int LineSyms = Layout.LineNumSymsHanc + Layout.LineNumSymsVideo;
     const size_t Bits = (size_t)Layout.NumLines * (size_t)LineSyms * 10;
-    const size_t FrameBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
+    const size_t FrameNumBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
     if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)
         return false;
 
@@ -1070,21 +1070,21 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     bool Failed = false;
     for (;;)
     {
-        uint8_t* More = (uint8_t*)DtAlloc_Realloc(Data, Size + FrameBytes);
+        uint8_t* More = (uint8_t*)DtAlloc_Realloc(Data, Size + FrameNumBytes);
         if (More == NULL)
         {
             Failed = true;
             break;
         }
         Data = More;
-        size_t Got = fread(Data + Size, 1, FrameBytes, File);
+        size_t Got = fread(Data + Size, 1, FrameNumBytes, File);
         Size += Got;
-        if (Got < FrameBytes)
+        if (Got < FrameNumBytes)
             break;
     }
     Failed = Failed || ferror(File) != 0;
     fclose(File);
-    if (Failed || Size == 0 || Size % FrameBytes != 0)
+    if (Failed || Size == 0 || Size % FrameNumBytes != 0)
     {
         DtAlloc_Free(Data);
         return false;
@@ -1093,8 +1093,8 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
     DtAlloc_Free(Channel->File);
     Channel->File = Data;
-    Channel->FileFrames = Size / FrameBytes;
-    Channel->FileFrameBytes = FrameBytes;
+    Channel->FileFrames = Size / FrameNumBytes;
+    Channel->FileFrameBytes = FrameNumBytes;
     Channel->FileLineSyms = LineSyms;
     Channel->SourceVidStd = VidStd;
     return true;
