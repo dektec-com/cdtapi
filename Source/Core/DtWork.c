@@ -8,6 +8,7 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -32,6 +33,7 @@ typedef struct Worker
     DtWorkPool* Pool;
     OsEvent* Go; // Set for a job to do, and once more to stop
     OsThread* Thread;
+    char Name[32]; // What a process viewer shows beside the thread, before cutting
 } Worker;
 
 struct DtWorkPool
@@ -74,6 +76,7 @@ static void WorkerThread(void* Context)
     Worker* Self = (Worker*)Context;
     DtWorkPool* Pool = Self->Pool;
 
+    OsThread_SetName(Self->Name);
     for (;;)
     {
         if (OsEvent_Wait(Self->Go, -1) != OS_WAIT_SIGNALLED)
@@ -115,7 +118,7 @@ static void DestroyPool(DtWorkPool* Pool)
 // A pool for Threads threads counting the one that calls it, so Threads - 1 of its own.
 // NULL when a thread or an event cannot be had, with everything it did take released.
 //
-static DtWorkPool* CreatePool(int Threads)
+static DtWorkPool* CreatePool(int Threads, const char* Tag)
 {
     DtWorkPool* Pool = (DtWorkPool*)DtAlloc_Malloc(sizeof(DtWorkPool));
     const int Helpers = Threads - 1;
@@ -139,6 +142,8 @@ static DtWorkPool* CreatePool(int Threads)
     for (int i = 0; i < Helpers; i++)
     {
         Pool->Worker[i].Pool = Pool;
+        snprintf(Pool->Worker[i].Name, sizeof(Pool->Worker[i].Name), "%s.%d",
+                 Tag != NULL ? Tag : "DtConv", i + 1);
         Pool->Worker[i].Go = OsEvent_Create();
         if (Pool->Worker[i].Go == NULL)
         {
@@ -206,7 +211,7 @@ void DtWork_Free(DtWork* Work)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- DtWork_SetThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtWork_SetThreads(DtWork* Work, int Threads)
+DtapiResult DtWork_SetThreads(DtWork* Work, int Threads, const char* Tag)
 {
     if (Threads < 1)
         return DTAPI_E_INVALID_ARG;
@@ -215,7 +220,7 @@ DtapiResult DtWork_SetThreads(DtWork* Work, int Threads)
     if (Threads == 1)
         return DTAPI_OK;
 
-    Work->Pool = CreatePool(Threads);
+    Work->Pool = CreatePool(Threads, Tag);
     if (Work->Pool == NULL)
         return DTAPI_E_OUT_OF_MEM;
     Work->Dispatch = PoolDispatch;

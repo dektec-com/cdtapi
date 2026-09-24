@@ -280,6 +280,8 @@ static void Converter(void* Context)
 {
     DtAsiTx* Tx = (DtAsiTx*)Context;
 
+    OsThread_SetName("DtAsiTx");
+
     OsThread_RaisePriority();
     OsMutex_Lock(Tx->Base.Port.Lock);
     while (!Tx->StopThread)

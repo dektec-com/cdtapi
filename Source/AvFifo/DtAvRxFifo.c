@@ -99,6 +99,8 @@ static void ReceiveThread(void* Context)
 {
     AvFifo_RxFifo* Fifo = (AvFifo_RxFifo*)Context;
 
+    OsThread_SetName("DtAvRx");
+
     OsThread_RaisePriority();
     while (DtAtomic_Load(&Fifo->Stop) == 0)
     {

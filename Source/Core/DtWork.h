@@ -44,10 +44,17 @@ void DtWork_Free(DtWork* Work);
 // DtWork_Free or the next DtWork_SetThreads, so a channel does this where it starts and
 // stops rather than per frame. Replaces a dispatch function set before it.
 //
+// Tag names the threads, so that a process viewer tells one pool's from another's: the
+// threads are called Tag.1, Tag.2 and so on, counting from 1 because piece 0 runs in the
+// calling thread. A caller with more than one pool gives each a tag of its own, such as
+// the direction and the port. Fifteen characters are shown, which is what Linux allows,
+// so a tag of about ten leaves room for the number; a longer one is composed in full and
+// cut when the thread is named.
+//
 // Returns DTAPI_E_INVALID_ARG below 1, DTAPI_E_OUT_OF_MEM when a thread or an event
 // cannot be created, and then leaves the DtWork running every piece in the calling
 // thread.
-DtapiResult DtWork_SetThreads(DtWork* Work, int Threads);
+DtapiResult DtWork_SetThreads(DtWork* Work, int Threads, const char* Tag);
 
 // Runs the jobs on the caller's own threads, in Pieces pieces, by giving each of them to
 // Dispatch. Dispatch NULL restores the calling thread, whatever DtWork_SetThreads asked

@@ -822,7 +822,7 @@ static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
     Result = AllocBands(Sdi);
     if (Result != DTAPI_OK)
     {
-        DtWork_SetThreads(&Sdi->Work, 1);
+        DtWork_SetThreads(&Sdi->Work, 1, NULL);
         AllocBands(Sdi);
     }
     return Result;
@@ -832,7 +832,10 @@ DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
 
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
+    char Tag[24];
+
+    snprintf(Tag, sizeof(Tag), "DtRxConv%d", Sdi->Base.Port.PortIndex + 1);
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads, Tag));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.

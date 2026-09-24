@@ -6,6 +6,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <stdbool.h>
+
 // Windows includes
 #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -34,6 +37,41 @@ static unsigned __stdcall ThreadEntry(void* Arg)
 
     Thread->Func(Thread->Context);
     return 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// SetThreadDescription is what a debugger and Task Manager read, and it arrived in
+// Windows 10 1607. It is looked up rather than linked, so that the library still loads on
+// an older Windows; there a thread simply has no name. The name is ASCII, which widens by
+// assignment.
+//
+void OsThread_SetName(const char* Name)
+{
+    typedef HRESULT(WINAPI * SetDescription)(HANDLE, PCWSTR);
+    static SetDescription Set = NULL;
+    static bool Looked = false;
+    WCHAR Wide[16];
+    size_t i;
+
+    if (Name == NULL)
+        return;
+    if (!Looked)
+    {
+        HMODULE Kernel = GetModuleHandleW(L"kernel32.dll");
+
+        Set = Kernel == NULL
+                  ? NULL
+                  : (SetDescription)(void*)GetProcAddress(Kernel, "SetThreadDescription");
+        Looked = true;
+    }
+    if (Set == NULL)
+        return;
+
+    for (i = 0; i + 1 < sizeof(Wide) / sizeof(Wide[0]) && Name[i] != '\0'; i++)
+        Wide[i] = (WCHAR)(unsigned char)Name[i];
+    Wide[i] = L'\0';
+    Set(GetCurrentThread(), Wide);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

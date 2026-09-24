@@ -45,6 +45,21 @@ static void* ThreadEntry(void* Arg)
     return NULL;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// pthread_setname_np refuses a name of more than fifteen characters rather than cutting
+// it, so it is cut here.
+//
+void OsThread_SetName(const char* Name)
+{
+    char Short[16];
+
+    if (Name == NULL)
+        return;
+    snprintf(Short, sizeof(Short), "%s", Name);
+    pthread_setname_np(pthread_self(), Short);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 OsThread* OsThread_Start(OsThreadFunc Func, void* Context)

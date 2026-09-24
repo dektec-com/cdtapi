@@ -384,7 +384,7 @@ static void Sdi4k(int Seconds, int Threads)
     // One pool for the whole run, as a channel keeps one between Start and Stop.
     DtWork Work;
     DtWork_Init(&Work);
-    if (DtWork_SetThreads(&Work, Threads) != DTAPI_OK)
+    if (DtWork_SetThreads(&Work, Threads, "DtBench") != DTAPI_OK)
     {
         printf("Cannot start %d threads\n", Threads);
         return;

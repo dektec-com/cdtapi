@@ -8,6 +8,7 @@
 
 // Standard includes
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -327,6 +328,8 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 static void Keeper(void* Context)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Context;
+
+    OsThread_SetName("DtSdiTxKeep");
 
     OsThread_RaisePriority();
     OsMutex_Lock(Sdi->Base.Port.Lock);
@@ -1709,7 +1712,7 @@ static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
     Sdi->Scratch = AllocScratch(Sdi);
     if (Sdi->Scratch == NULL)
     {
-        DtWork_SetThreads(&Sdi->Work, 1);
+        DtWork_SetThreads(&Sdi->Work, 1, NULL);
         Sdi->Scratch = AllocScratch(Sdi);
         Result = DTAPI_E_OUT_OF_MEM;
     }
@@ -1720,7 +1723,10 @@ DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
+    char Tag[24];
+
+    snprintf(Tag, sizeof(Tag), "DtTxConv%d", Sdi->Base.Port.PortIndex + 1);
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads, Tag));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.

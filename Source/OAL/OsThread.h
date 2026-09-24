@@ -35,6 +35,15 @@ OsThread* OsThread_Start(OsThreadFunc Func, void* Context);
 // on an event and returns when it is set; the caller sets that event and then joins.
 void OsThread_Join(OsThread* Thread);
 
+// Gives the calling thread a name, which is what a debugger and a process viewer show
+// beside it: "DtConv0" rather than the program's own name for every one of them, so that
+// the cost of a thread of the library's can be told from the cost of the program's.
+//
+// Linux takes fifteen characters and a terminator, which is the shorter of the two
+// limits, so a name is kept within that; a longer one is cut. A name is a convenience and
+// nothing depends on it, so a platform that refuses one carries on without.
+void OsThread_SetName(const char* Name);
+
 // Raises the calling thread's scheduling priority. Returns 0 on success and -1 when the
 // platform refuses, which on Linux is the normal answer without the right privilege. A
 // refusal is not fatal: the thread still runs, only with less headroom against a busy

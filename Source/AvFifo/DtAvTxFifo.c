@@ -95,6 +95,8 @@ static void TransmitThread(void* Context)
 {
     AvFifo_TxFifo* Fifo = (AvFifo_TxFifo*)Context;
 
+    OsThread_SetName("DtAvTx");
+
     OsThread_RaisePriority();
     while (DtAtomic_Load(&Fifo->Stop) == 0)
     {
