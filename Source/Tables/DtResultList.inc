@@ -11,11 +11,11 @@
 //     #include "Tables/DtResultList.inc"
 //     #undef X
 //
-// The list holds exactly the codes DTAPI's DtapiResult2Str names, in its order. Of each
-// pair of names for one value, only the first is here, which is the one DTAPI returns.
-// DTAPI_E_INVALID_NUM_INPUTS, DTAPI_E_DISABLED and DTAPI_E_EXCEPTION are left out, as
-// DTAPI leaves them out, so they are named "???". A unit test generated from the public
-// header checks that every other result code is here.
+// The list holds exactly the codes DTAPI's function of the same name gives a name, in its
+// order. Of each pair of names for one value, only the first is here, which is the one
+// DTAPI returns. DTAPI_E_INVALID_NUM_INPUTS, DTAPI_E_DISABLED and DTAPI_E_EXCEPTION are
+// left out, as DTAPI leaves them out, so they are named "???". A unit test generated from
+// the public header checks that every other result code is here.
 //
 // No include guard: the file is meant to be included more than once.
 
