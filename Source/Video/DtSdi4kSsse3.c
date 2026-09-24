@@ -67,7 +67,7 @@ static __m128i PairsSplit(void)
     return _mm_set_epi8(14, 13, 13, 12, 12, 11, 11, 10, 4, 3, 3, 2, 2, 1, 1, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Pack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The ten bytes of eight symbols, in the low ten bytes of the result.
 //
@@ -174,7 +174,7 @@ static void StoreGroups(const __m128i Group[4], int SymbolBits, uint8_t* Raw, bo
         memcpy(Raw, Buffer, 40);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Store10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Store10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The ten bytes of eight symbols. A wide store writes six bytes more, which the bytes
 // after them are; at the end of a section, where they are not, Safe copies them.
@@ -223,7 +223,7 @@ static void LoadGroups(const uint8_t* Raw, int SymbolBits, __m128i Group[4], boo
         Group[i] = Unpack8(In + 10 * i, PairsRun());
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TileC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TileC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // One tile without SSSE3, four symbols of each link and sixteen of the raw line: the
 // tail of a section whose tiles do not pair up. Gathers when Gather is true and scatters
@@ -321,7 +321,7 @@ static void LinkSources(const DtSdiFrameLayout* Layout, bool Blanking, size_t Ti
     size_t Offset[4];
 
     DtSdi4k_TileBlocks(Layout, Blanking, Tile, Offset);
-    *Split = !Blanking && Tile >= (size_t)Layout->SectionSymsHanc / 4;
+    *Split = !Blanking && Tile >= (size_t)Layout->SectionNumSymsHanc / 4;
     for (size_t L = 0; L < 4; L++)
         Src[L] = (L < 2 ? CodedA : CodedB) + Offset[L];
 }
@@ -333,8 +333,9 @@ static void ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                         uint8_t* RawLine, uint16_t* Scratch)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
-    const size_t HancTiles = (size_t)Layout->SectionSymsHanc / 4;
-    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+    const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
+    const size_t Tiles =
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
     const size_t RawBytes = SymbolBits == 16 ? 32 : 20;
     uint8_t* A = (uint8_t*)(uintptr_t)CodedA;
     uint8_t* B = (uint8_t*)(uintptr_t)CodedB;
@@ -391,8 +392,9 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                      uint8_t* CodedB, uint16_t* Scratch)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
-    const size_t HancTiles = (size_t)Layout->SectionSymsHanc / 4;
-    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+    const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
+    const size_t Tiles =
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
     const size_t RawBytes = SymbolBits == 16 ? 32 : 20;
     uint8_t* Raw = (uint8_t*)(uintptr_t)RawLine;
 
@@ -445,7 +447,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_Ssse3Table -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_Ssse3Table -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const DtSdi4kConv* DtSdi4kConv_Ssse3Table(void)
 {

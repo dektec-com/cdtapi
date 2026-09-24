@@ -263,8 +263,8 @@ static uint16_t* SentFrame(int FrameId, int VidStd, SimTxFrame* Frame)
 
     if (!DtSdiFrame_LayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT))
         return NULL;
-    size_t Count =
-        (size_t)Layout.NumLines * (size_t)(Layout.LineSymsHanc + Layout.LineSymsVideo);
+    size_t Count = (size_t)Layout.NumLines *
+                   (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsVideo);
     uint16_t* Symbols = (uint16_t*)malloc(Count * sizeof(uint16_t));
     if (Symbols != NULL &&
         !SimDtPcie_CopyTxFrame(PORT - 1, FrameId, Symbols, Count, Frame))
@@ -318,14 +318,15 @@ static bool SentFrameIsBlack(int FrameId, int VidStd)
     for (n = 0; Same && n < Layout.NumLines; n++)
     {
         const uint8_t* Coded = Black + (size_t)n * (size_t)Layout.Stride;
-        size_t At = (size_t)n * (size_t)(Layout.LineSymsHanc + Layout.LineSymsVideo);
+        size_t At =
+            (size_t)n * (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsVideo);
 
-        for (int s = 0; Same && s < Layout.LineSymsHanc + Layout.LineSymsVideo; s++)
+        for (int s = 0; Same && s < Layout.LineNumSymsHanc + Layout.LineNumSymsVideo; s++)
         {
             const uint8_t* Section =
-                s < Layout.LineSymsHanc ? Coded : Coded + Layout.SectionBytesHanc;
+                s < Layout.LineNumSymsHanc ? Coded : Coded + Layout.SectionBytesHanc;
             size_t Index =
-                (size_t)(s < Layout.LineSymsHanc ? s : s - Layout.LineSymsHanc);
+                (size_t)(s < Layout.LineNumSymsHanc ? s : s - Layout.LineNumSymsHanc);
             size_t Bit = Index * 10;
             uint32_t Value =
                 ((uint32_t)Section[Bit / 8] | (uint32_t)Section[Bit / 8 + 1] << 8) >>

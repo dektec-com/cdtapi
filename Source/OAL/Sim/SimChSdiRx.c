@@ -201,7 +201,7 @@ static uint32_t WithParity(uint32_t Nine)
     return Nine | ((Nine >> 8) ^ 1) << 9;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Line4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Line4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The raw line of a 4K standard: the lines of the four links, each of a frame number of
 // its own so that a test sees which link a symbol came from, interleaved word by word.
@@ -425,8 +425,8 @@ static void StartFrame(SimRxChannel* Channel)
     Channel->FrameInSync =
         DtSdiFrame_LayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
-        Layout->LineSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
-        Layout->LineSymsVideo == Config->m_FrameProps.m_NumSymsVidVanc &&
+        Layout->LineNumSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
+        Layout->LineNumSymsVideo == Config->m_FrameProps.m_NumSymsVidVanc &&
         Layout->HeaderBytes <= (int)sizeof(Header);
     if (Channel->Faults[SIM_RX_FAULT_OUT_OF_SYNC])
     {
@@ -470,8 +470,8 @@ static void StartFrame(SimRxChannel* Channel)
 static void CodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, int Line,
                         uint16_t* Sections, uint8_t* Coded)
 {
-    const int Hanc = Layout->SectionSymsHanc;
-    const int Video = Layout->SectionSymsVideo;
+    const int Hanc = Layout->SectionNumSymsHanc;
+    const int Video = Layout->SectionNumSymsVideo;
     uint16_t* A = Sections;
     uint16_t* B = Sections + 2 * Hanc + Video;
 
@@ -501,14 +501,14 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     if (!Channel->FrameInSync || Channel->Dropped || Channel->LinesWritten >= Upto)
         return;
 
-    const int PerLine = Layout->CodedLines / Layout->NumLines;
+    const int PerLine = Layout->NumCodedLines / Layout->NumLines;
     uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)PerLine * (size_t)Layout->Stride);
     uint16_t* Symbols =
         (uint16_t*)DtAlloc_Malloc(SIM_RX_MAX_LINE_SYMBOLS * sizeof(uint16_t));
     uint16_t* Sections =
         Layout->Is4k ? (uint16_t*)DtAlloc_Malloc((size_t)PerLine *
-                                                 (size_t)(2 * Layout->SectionSymsHanc +
-                                                          Layout->SectionSymsVideo) *
+                                                 (size_t)(2 * Layout->SectionNumSymsHanc +
+                                                          Layout->SectionNumSymsVideo) *
                                                  sizeof(uint16_t))
                      : NULL;
     if (Coded == NULL || Symbols == NULL || (Layout->Is4k && Sections == NULL))
@@ -532,8 +532,9 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
             CodeLines4k(Layout, Symbols, Line, Sections, Coded);
         else
         {
-            PackSection(Symbols, Layout->LineSymsHanc, Coded, Layout->SectionBytesHanc);
-            PackSection(Symbols + Layout->LineSymsHanc, Layout->LineSymsVideo,
+            PackSection(Symbols, Layout->LineNumSymsHanc, Coded,
+                        Layout->SectionBytesHanc);
+            PackSection(Symbols + Layout->LineNumSymsHanc, Layout->LineNumSymsVideo,
                         Coded + Layout->SectionBytesHanc, Layout->SectionBytesVideo);
         }
         if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->Stride))
@@ -1033,7 +1034,7 @@ void SimDtPcie_SetRxSource(int PortIndex, int VidStd)
     Channel->File = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxRealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxRealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void SimDtPcie_SetRxRealTime(bool RealTime)
 {
@@ -1055,7 +1056,7 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     {
         return false;
     }
-    const int LineSyms = Layout.LineSymsHanc + Layout.LineSymsVideo;
+    const int LineSyms = Layout.LineNumSymsHanc + Layout.LineNumSymsVideo;
     const size_t Bits = (size_t)Layout.NumLines * (size_t)LineSyms * 10;
     const size_t FrameBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
     if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)

@@ -64,16 +64,17 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
     Layout->HeaderBytes = AlignedBytes(DT_SDIFRAME_HEADER_BYTES, Layout->Alignment);
     Layout->TxHeaderBytes = AlignedBytes(DT_SDIFRAME_TX_HEADER_BYTES, Layout->Alignment);
     Layout->NumLines = DtFrameProps_NumLines(&Props);
-    Layout->CodedLines = Layout->NumLines * (Is4k ? 2 : 1);
-    Layout->HancSections = Is4k ? 2 : 1;
-    Layout->SectionSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
-    Layout->SectionSymsVideo = Props.LineNumSymVanc * (Is4k ? 2 : 1);
-    Layout->LineSymsHanc = Layout->SectionSymsHanc * Links;
-    Layout->LineSymsVideo = Props.LineNumSymVanc * Links;
-    Layout->SectionBytesHanc = PaddedBytes(Layout->SectionSymsHanc, Layout->Alignment);
-    Layout->SectionBytesVideo = PaddedBytes(Layout->SectionSymsVideo, Layout->Alignment);
+    Layout->NumCodedLines = Layout->NumLines * (Is4k ? 2 : 1);
+    Layout->NumHancSections = Is4k ? 2 : 1;
+    Layout->SectionNumSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
+    Layout->SectionNumSymsVideo = Props.LineNumSymVanc * (Is4k ? 2 : 1);
+    Layout->LineNumSymsHanc = Layout->SectionNumSymsHanc * Links;
+    Layout->LineNumSymsVideo = Props.LineNumSymVanc * Links;
+    Layout->SectionBytesHanc = PaddedBytes(Layout->SectionNumSymsHanc, Layout->Alignment);
+    Layout->SectionBytesVideo =
+        PaddedBytes(Layout->SectionNumSymsVideo, Layout->Alignment);
     Layout->Stride =
-        Layout->HancSections * Layout->SectionBytesHanc + Layout->SectionBytesVideo;
+        Layout->NumHancSections * Layout->SectionBytesHanc + Layout->SectionBytesVideo;
     Layout->TxLineHeaderBytes = Is4k ? AlignedBytes(4, Layout->Alignment) : 0;
     Layout->TxStride = Layout->TxLineHeaderBytes + Layout->Stride;
     Layout->PictureStart = Props.Fields[0].VidStartLine;
@@ -98,7 +99,7 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
 size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout)
 {
     return (size_t)Layout->HeaderBytes +
-           (size_t)Layout->CodedLines * (size_t)Layout->Stride;
+           (size_t)Layout->NumCodedLines * (size_t)Layout->Stride;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_TxCodedSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -106,7 +107,7 @@ size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout)
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout)
 {
     return (size_t)Layout->TxHeaderBytes +
-           (size_t)Layout->CodedLines * (size_t)Layout->TxStride;
+           (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Read32 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -186,11 +187,11 @@ void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
     Header->SdiRateValid = true;
     Header->SdiRate = Layout->SdiRate;
     Header->FrameId = FrameId & 0xFFFF;
-    Header->NumLines = Layout->CodedLines;
+    Header->NumLines = Layout->NumCodedLines;
     Header->NumWordsHanc = Layout->SectionBytesHanc / Layout->Alignment;
-    Header->NumSymsHanc = Layout->SectionSymsHanc;
+    Header->NumSymsHanc = Layout->SectionNumSymsHanc;
     Header->NumWordsVideo = Layout->SectionBytesVideo / Layout->Alignment;
-    Header->NumSymsVideo = Layout->SectionSymsVideo;
+    Header->NumSymsVideo = Layout->SectionNumSymsVideo;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_IsBlankingLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -263,8 +264,8 @@ void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 //
 size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
-    size_t Symbols =
-        (size_t)Layout->NumLines * (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
+    size_t Symbols = (size_t)Layout->NumLines *
+                     (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
     if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
         return 0;
@@ -278,7 +279,8 @@ size_t DtSdiFrame_RawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
     if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
         return 0;
-    return (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) * (size_t)SymbolBits;
+    return (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) *
+           (size_t)SymbolBits;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -411,8 +413,8 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                             const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
 {
-    size_t Hanc = (size_t)Layout->LineSymsHanc;
-    size_t Video = (size_t)Layout->LineSymsVideo;
+    size_t Hanc = (size_t)Layout->LineNumSymsHanc;
+    size_t Video = (size_t)Layout->LineNumSymsVideo;
     size_t Start = (size_t)LineIndex * (Hanc + Video);
     const uint8_t* VideoSection = CodedLine + Layout->SectionBytesHanc;
 
@@ -560,8 +562,8 @@ static void Pack16(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
 bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
 {
-    size_t Hanc = (size_t)Layout->LineSymsHanc;
-    size_t Video = (size_t)Layout->LineSymsVideo;
+    size_t Hanc = (size_t)Layout->LineNumSymsHanc;
+    size_t Video = (size_t)Layout->LineNumSymsVideo;
     uint8_t* VideoSection = CodedLine + Layout->SectionBytesHanc;
 
     if (Phase < 0 || Phase > 7)
@@ -703,7 +705,8 @@ static void GatherLine(const DtSdiFrameLayout* Layout, const uint8_t* CodedA,
                        const uint8_t* CodedB, int LineIndex, uint16_t* Raw)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
-    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+    const size_t Tiles =
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
 
     for (size_t Tile = 0; Tile < Tiles; Tile++, Raw += 16)
     {
@@ -733,7 +736,8 @@ static void ScatterLine(const DtSdiFrameLayout* Layout, const uint16_t* Raw,
                         int LineIndex, uint8_t* CodedA, uint8_t* CodedB)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
-    const size_t Tiles = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo) / 16;
+    const size_t Tiles =
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
 
     for (size_t Tile = 0; Tile < Tiles; Tile++, Raw += 16)
     {
@@ -764,13 +768,13 @@ int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int SymbolBits)
     return Lines;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ScratchSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_NumScratchSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtSdiFrame_ScratchSymbols(const DtSdiFrameLayout* Layout)
+size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout)
 {
     if (!Layout->Is4k)
         return 0;
-    return (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
+    return (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -779,7 +783,7 @@ static void ConvertLineC(const DtSdiFrameLayout* Layout, int SymbolBits,
                          const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                          uint8_t* RawLine, uint16_t* Scratch)
 {
-    const size_t LineSyms = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
+    const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
     GatherLine(Layout, CodedA, CodedB, LineIndex, Scratch);
     WriteRaw(Scratch, SymbolBits, LineSyms, RawLine);
@@ -802,7 +806,7 @@ static void CodeLineC(const DtSdiFrameLayout* Layout, int SymbolBits,
                       const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                       uint8_t* CodedB, uint16_t* Scratch)
 {
-    const size_t LineSyms = (size_t)(Layout->LineSymsHanc + Layout->LineSymsVideo);
+    const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
     ReadRaw(RawLine, SymbolBits, LineSyms, Scratch);
     ScatterLine(Layout, Scratch, LineIndex, CodedA, CodedB);
@@ -822,8 +826,8 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
                            const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                            uint8_t* CodedB, uint16_t* Scratch)
 {
-    const size_t SectionHanc = (size_t)Layout->SectionSymsHanc;
-    const size_t SectionVideo = (size_t)Layout->SectionSymsVideo;
+    const size_t SectionHanc = (size_t)Layout->SectionNumSymsHanc;
+    const size_t SectionVideo = (size_t)Layout->SectionNumSymsVideo;
     const size_t HancBytes = (size_t)Layout->SectionBytesHanc;
     const size_t VideoBytes = (size_t)Layout->SectionBytesVideo;
 
@@ -995,8 +999,8 @@ static uint32_t WithParity(uint32_t Nine)
 //
 static void BlackLink(const DtSdiFrameLayout* Layout, uint8_t* Lines)
 {
-    const size_t Hanc = (size_t)Layout->LineSymsHanc;
-    const size_t Video = (size_t)Layout->LineSymsVideo;
+    const size_t Hanc = (size_t)Layout->LineNumSymsHanc;
+    const size_t Video = (size_t)Layout->LineNumSymsVideo;
     uint32_t ActiveCrc[2] = {0, 0};
     DtFrameProps Props;
 
@@ -1084,7 +1088,7 @@ bool DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
     BlackLink(&Link, LinkLines);
 
     const size_t HancBytes = (size_t)Layout->SectionBytesHanc;
-    for (int Coded = 0; Coded < Layout->CodedLines; Coded++)
+    for (int Coded = 0; Coded < Layout->NumCodedLines; Coded++)
     {
         uint8_t* Line = Lines + (size_t)Coded * (size_t)Layout->TxStride;
         const uint8_t* LinkHanc = LinkLines + (size_t)(Coded / 2) * (size_t)Link.Stride;
@@ -1093,7 +1097,7 @@ bool DtSdiFrame_BlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
         DtSdiFrame_EncodeTxLineHeader(Layout, Coded, Line);
         memcpy(Sections, LinkHanc, HancBytes);
         memcpy(Sections + HancBytes, LinkHanc, HancBytes);
-        FillBlack(Sections + 2 * HancBytes, (size_t)Layout->SectionSymsVideo,
+        FillBlack(Sections + 2 * HancBytes, (size_t)Layout->SectionNumSymsVideo,
                   (size_t)Layout->SectionBytesVideo);
     }
     DtAlloc_Free(LinkLines);

@@ -166,7 +166,7 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
     DtAlloc_Free(Sdi->Scratch);
     Sdi->Scratch = NULL;
     Sdi->LineBufBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->Layout);
-    Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Sdi->Layout);
+    Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Sdi->Layout);
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufBytes);
     if (Sdi->Layout.Is4k)
         Sdi->Scratch =
@@ -257,8 +257,8 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Config.FmtIntInterval = (Den * 1000000 / Num) / DT_FMT_EVENTS_PER_FRAME;
     Config.FmtIntDelay = DT_FMT_EVENT_DELAY;
     Config.FmtNumIntsPerFrame = DT_FMT_EVENTS_PER_FRAME;
-    Config.NumSymsHanc = Sdi->Layout.LineSymsHanc;
-    Config.NumSymsVidVanc = Sdi->Layout.LineSymsVideo;
+    Config.NumSymsHanc = Sdi->Layout.LineNumSymsHanc;
+    Config.NumSymsVidVanc = Sdi->Layout.LineNumSymsVideo;
     Config.NumLines = Sdi->Layout.NumLines;
     Config.SdiRate = Sdi->Layout.SdiRate == DT_SDIRATE_12G  ? DT_DRV_SDIRATE_12G
                      : Sdi->Layout.SdiRate == DT_SDIRATE_6G ? DT_DRV_SDIRATE_6G
@@ -709,7 +709,8 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
             uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
             DtRing_PeekAt(&Sdi->Ring,
                           (size_t)Layout->HeaderBytes +
-                              (size_t)(Layout->CodedLines - 1) * (size_t)Layout->Stride,
+                              (size_t)(Layout->NumCodedLines - 1) *
+                                  (size_t)Layout->Stride,
                           Last, sizeof(Last));
             if (DtSdiFrame_CheckLines(Layout, First, Last) == DTAPI_OK)
                 break;

@@ -305,7 +305,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
     }
     PutHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
     PutAt(Sdi, Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderBytes), Sdi->Black,
-          (size_t)Layout->CodedLines * (size_t)Layout->TxStride);
+          (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
 
     DtapiResult Result = CommitFrame(Sdi);
     if (Result == DTAPI_OK)
@@ -638,7 +638,7 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
     return (Size + Unit - 1) / Unit * Unit;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocScratch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocScratch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The conversion's working symbols, one set for every band a batch of lines divides into.
 // NULL for a standard that has none, which is every standard but 4K.
@@ -717,7 +717,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
             Drv, Sdi->Txf,
-            (Layout.CodedLines + DT_FMT_EVENTS_PER_FRAME - 1) / DT_FMT_EVENTS_PER_FRAME +
+            (Layout.NumCodedLines + DT_FMT_EVENTS_PER_FRAME - 1) /
+                    DT_FMT_EVENTS_PER_FRAME +
                 1,
             1);
     if (Result == DTAPI_OK)
@@ -739,7 +740,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     size_t Size = Sdi->Buf.Size;
     if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
         Sdi->Layout.TxStride != Layout.TxStride ||
-        Sdi->Layout.CodedLines != Layout.CodedLines ||
+        Sdi->Layout.NumCodedLines != Layout.NumCodedLines ||
         Sdi->Layout.TxHeaderBytes != Layout.TxHeaderBytes)
     {
         Size = 0;
@@ -756,10 +757,10 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->Scratch);
     Sdi->Scratch = NULL;
     Sdi->Black =
-        (uint8_t*)DtAlloc_Malloc((size_t)Layout.CodedLines * (size_t)Layout.TxStride);
+        (uint8_t*)DtAlloc_Malloc((size_t)Layout.NumCodedLines * (size_t)Layout.TxStride);
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
-    Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Layout);
+    Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Layout);
     Sdi->Scratch = AllocScratch(Sdi);
     if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
         (Layout.Is4k && Sdi->Scratch == NULL) ||
@@ -1088,7 +1089,7 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. CodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Codes the band of raw lines this piece takes straight into the buffer. The bands are
 // independent: a raw line's two coded lines and their headers are its own, no coding
@@ -1139,7 +1140,7 @@ static void CodeLines(void* Context, int Index, int Count)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. TakeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Codes as many whole lines as this call brings, over the threads the channel has, and
 // returns how many it did. Zero where there is nothing to divide, and the caller then
@@ -1694,7 +1695,7 @@ static const DtTxBackend g_Ops = {
     .WaitUntilSent = WaitUntilSent,
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The working symbols are one set a band, so they follow a change in the number of bands.
 // A side with no buffer yet takes them from the buffer's allocation instead. Symbols that

@@ -127,12 +127,12 @@ static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* L
     int Count = SimChSdiRx_Line(Layout->VidStd, Frame, Line, Symbols);
     int i;
 
-    if (Count != Layout->LineSymsHanc + Layout->LineSymsVideo)
+    if (Count != Layout->LineNumSymsHanc + Layout->LineNumSymsVideo)
         return false;
     for (i = 0; i < Count; i++)
     {
-        bool Video = i >= Layout->LineSymsHanc;
-        size_t Bit = (size_t)(Video ? i - Layout->LineSymsHanc : i) * 10;
+        bool Video = i >= Layout->LineNumSymsHanc;
+        size_t Bit = (size_t)(Video ? i - Layout->LineNumSymsHanc : i) * 10;
         const uint8_t* Section = Ring + Offset + (Video ? Layout->SectionBytesHanc : 0);
         uint32_t Value =
             (uint32_t)(Section[Bit / 8] | Section[Bit / 8 + 1] << 8) >> (Bit % 8) & 0x3FF;

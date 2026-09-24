@@ -53,7 +53,7 @@
 // Bands of a 4K conversion that can be measured at once.
 #define BENCH_MAX_THREADS 32
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchClockGHz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchClockGHz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The clock the processor says it is running at, or zero where it does not say. Cycles
 // are the time a conversion takes times this clock, and that is the number that carries
@@ -251,7 +251,7 @@ static void Packetize(const Buffers* Buf, size_t Bytes)
     }
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ 4K frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The conversion between the card's coded lines of a 2160p signal over one link and the
 // raw frame the channels carry, a line at a time, as DtSdiRx and DtSdiTx do it (0014).
@@ -367,7 +367,7 @@ static void Measure4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout, i
     *MCycles = *Ms * BenchClockGHz(); // Milliseconds times GHz are millions of cycles.
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Sdi4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Sdi4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Measures every standard and symbol size, both ways, with every conversion the
 // processor runs.
@@ -427,7 +427,7 @@ static void Sdi4k(int Seconds, int Threads)
         for (int s = 0; s < NUM_SDI4K_SIZES; s++)
         {
             int Bits = g_Sdi4kBits[s];
-            size_t CodedSize = (size_t)Layout.CodedLines * (size_t)Layout.Stride;
+            size_t CodedSize = (size_t)Layout.NumCodedLines * (size_t)Layout.Stride;
             Sdi4kBuffers Buf;
 
             bool Short = false;
@@ -436,7 +436,7 @@ static void Sdi4k(int Seconds, int Threads)
             Buf.Raw = (uint8_t*)malloc(DtSdiFrame_RawSize(&Layout, Bits));
             for (int b = 0; b < Threads; b++)
             {
-                Buf.Scratch[b] = (uint16_t*)malloc(DtSdiFrame_ScratchSymbols(&Layout) *
+                Buf.Scratch[b] = (uint16_t*)malloc(DtSdiFrame_NumScratchSymbols(&Layout) *
                                                    sizeof(uint16_t));
                 Short = Short || Buf.Scratch[b] == NULL;
             }
