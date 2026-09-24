@@ -277,7 +277,7 @@ DtWorkPool* DtWorkPool_Alloc(void)
 //
 DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
 {
-    if (Pool == NULL || NumThreads < 1)
+    if (Pool == NULL || NumThreads < 2)
         return DTAPI_E_INVALID_ARG;
     if (IsSetUp(Pool))
         return DTAPI_E_IN_USE;
@@ -318,7 +318,7 @@ DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
 DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtWorkDispatchFunc Dispatch,
                                    void* User, int NumThreads)
 {
-    if (Pool == NULL || (Dispatch != NULL && NumThreads < 1))
+    if (Pool == NULL || (Dispatch != NULL && NumThreads < 2))
         return DTAPI_E_INVALID_ARG;
     if (IsSetUp(Pool))
         return DTAPI_E_IN_USE;
@@ -336,7 +336,7 @@ DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtWorkDispatchFunc Dispatch
 //
 DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads)
 {
-    if (Pool == NULL || NumThreads < 1)
+    if (Pool == NULL || NumThreads < 2)
         return DTAPI_E_INVALID_ARG;
     if (IsSetUp(Pool))
         return DTAPI_E_IN_USE;

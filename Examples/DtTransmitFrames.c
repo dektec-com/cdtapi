@@ -56,8 +56,8 @@ static const ExampleOption g_Options[] = {
     {"--count", true, "The number of frames to transmit; without it one, or every file"},
     {"--flags", false, "Print the latched flags after the last frame"},
     {"--threads", true,
-     "Code the frames over a pool of this many threads of the library's own; one thread "
-     "without it"},
+     "Code the frames over a pool of this many threads of the library's own, two or "
+     "more; one thread without it"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

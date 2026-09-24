@@ -320,9 +320,13 @@ DT_TEST(PoolRefusesWhatIsInvalid)
     Program P;
 
     DT_ASSERT(Pool != NULL);
+    // One thread would divide nothing, so a pool starts at two.
     DT_ASSERT_EQ(DtWorkPool_StartThreads(Pool, 0), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_StartThreads(Pool, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtWorkPool_StartThreads(NULL, 2), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtWorkPool_SetDispatch(Pool, SerialDispatch, &P, 0),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_SetDispatch(Pool, SerialDispatch, &P, 1),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtWorkPool_NumThreads(Pool), 1);
     DtWorkPool_Free(Pool);
@@ -480,7 +484,7 @@ DT_TEST(DismissBeforeJoinReturnsAtOnce)
     Joiner A;
 
     DT_ASSERT(Pool != NULL && Member != NULL);
-    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
     DtWorkPool_Dismiss(Pool, Member);
     DT_ASSERT_OK(DtWorkPool_Join(Pool, Member));
     DT_ASSERT_EQ(DtWorkPool_NumJoined(Pool), 0);
@@ -502,7 +506,7 @@ DT_TEST(JoinedThreadHoldsThePool)
     Joiner A;
 
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
     DT_ASSERT(StartJoiner(&A, Pool, 1));
     DtWorkPool_DismissAll(Pool);
     DtWorkPool_Free(Pool);
@@ -516,18 +520,21 @@ DT_TEST(JoinRefusesWhatIsInvalid)
     DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
     Program P;
     Joiner A;
+    Joiner B;
 
     DT_ASSERT(Pool != NULL && Member != NULL);
     DT_ASSERT_EQ(DtWorkPool_Join(NULL, Member), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtWorkPool_Join(Pool, NULL), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtWorkPool_Join(Pool, Member), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtWorkPool_ExpectThreads(Pool, 0), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(NULL, 1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(Pool, 1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(NULL, 2), DTAPI_E_INVALID_ARG);
 
-    // One expected and one joined: a second member, or the same one again, is refused,
+    // Two expected and two joined: a third member, or one of the two again, is refused,
     // and so is setting the pool again.
-    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
     DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DT_ASSERT(StartJoiner(&B, Pool, 2));
     DT_ASSERT_EQ(DtWorkPool_Join(Pool, Member), DTAPI_E_IN_USE);
     DT_ASSERT_EQ(DtWorkPool_Join(Pool, A.Member), DTAPI_E_IN_USE);
     DT_ASSERT_EQ(DtWorkPool_StartThreads(Pool, 2), DTAPI_E_IN_USE);
@@ -535,6 +542,7 @@ DT_TEST(JoinRefusesWhatIsInvalid)
     DT_ASSERT_EQ(DtWorkPool_ExpectThreads(Pool, 2), DTAPI_E_IN_USE);
     DtWorkPool_DismissAll(Pool);
     DT_ASSERT_OK(StopJoiner(&A));
+    DT_ASSERT_OK(StopJoiner(&B));
     DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
 
     DtWorkPool_Dismiss(NULL, Member);

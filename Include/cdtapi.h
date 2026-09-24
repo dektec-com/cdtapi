@@ -456,9 +456,12 @@ CDTAPI_API DtWorkPool* DtWorkPool_Alloc(void);
 // How many to start: as many pieces as the channels that share the pool run at once,
 // which DtInpChannel_SetWorkPool says for one channel, and no more than the cores the
 // rest of the program can spare. More threads than that add nothing: past four on one
-// frame the conversion waits on memory rather than on the processor.
+// frame the conversion waits on memory rather than on the processor. Fewer than two
+// divide nothing, so a pool refuses them: a job of one piece runs in the thread that
+// asks for it, which waits for it anyway, and a single thread of the pool's would never
+// be woken. The same holds for DtWorkPool_SetDispatch and DtWorkPool_ExpectThreads.
 //
-// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 1; DTAPI_E_IN_USE
+// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 2; DTAPI_E_IN_USE
 // while a channel with a signal to divide holds the pool, as it has sized its buffers
 // by it; and DTAPI_E_OUT_OF_MEM when a thread cannot be had, leaving the pool with
 // neither threads nor a dispatch function.
@@ -484,7 +487,7 @@ CDTAPI_API DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
 // With a pool of the program's own it is the call that pool already has for running a job
 // and waiting for it, with User whatever the program wants to find there.
 //
-// Returns DTAPI_E_INVALID_ARG for a null pool, or a NumThreads below 1 with a Dispatch,
+// Returns DTAPI_E_INVALID_ARG for a null pool, or a NumThreads below 2 with a Dispatch,
 // and DTAPI_E_IN_USE as DtWorkPool_StartThreads does.
 CDTAPI_API DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool,
                                               DtWorkDispatchFunc Dispatch, void* User,
@@ -497,7 +500,7 @@ CDTAPI_API DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool,
 // job asked for while no thread is joined runs in the thread that asks for it, so none
 // waits for a thread that is not coming.
 //
-// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 1, and
+// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 2, and
 // DTAPI_E_IN_USE as DtWorkPool_StartThreads does, or while a thread is joined.
 CDTAPI_API DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads);
 

@@ -51,8 +51,8 @@ static const ExampleOption g_Options[] = {
     {"--out", true, "Write each frame to <out><number>.raw"},
     {"--detect", false, "First detect the input's I/O standard through the channel"},
     {"--threads", true,
-     "Convert over a pool of this many threads of the library's own; one thread without "
-     "it"},
+     "Convert over a pool of this many threads of the library's own, two or more; one "
+     "thread without it"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

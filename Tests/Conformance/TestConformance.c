@@ -270,7 +270,7 @@ DT_TEST(InputChannelCalls)
     Pool = DtWorkPool_Alloc();
     DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
     DT_ASSERT(Pool != NULL && Member != NULL);
-    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
     DtWorkPool_Dismiss(Pool, Member);
     DT_ASSERT_OK(DtWorkPool_Join(Pool, Member));
     DtWorkPool_DismissAll(Pool);
