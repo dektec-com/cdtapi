@@ -156,8 +156,9 @@ DT_TEST(ConfigurationChecks)
     DT_ASSERT_EQ(DtSt2110AudioTx_Configure(&Tx, &Config), DTAPI_E_INVALID_ARG);
 }
 
-// Frames of 1,000 and 700 stereo L24 samples in packets of 125: whole packets go out,
-// the rest waits, and every packet has its first sample's timestamp and time.
+// Frames of 1,000, 700, 700, 50 and 1,550 stereo L24 samples in packets of 125: whole
+// packets go out, the rest waits, and every packet has its first sample's timestamp
+// and time.
 DT_TEST(SamplesAcrossFrames)
 {
     static MemSink Sink;
@@ -213,8 +214,9 @@ DT_TEST(SamplesAcrossFrames)
         DT_ASSERT_EQ(P.Ssrc, 0x11223344u);
         DT_ASSERT(!P.Marker);
 
-        // The time of the packet's first sample, less the delay, within the nanosecond
-        // the frames' times were rounded to.
+        // The time of the packet's first sample, less the delay, within what rounding the
+        // frames' and the packets' times to whole nanoseconds loses: at most 3 ns early
+        // and 1 ns late.
         uint64_t Expected =
             FirstTod +
             DtAvTime_MulAddDiv(125u * (uint64_t)i, DT_AV_NS_PER_SEC, 0, 48000) - DELAY_NS;

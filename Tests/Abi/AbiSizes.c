@@ -18,9 +18,8 @@
 // ASSERT_SIZE on every structure it defines, and this file is compiled as C11 with
 // static_assert available, so a structure whose layout drifted fails the build.
 //
-// A handful of sizes are restated here as a guard against ASSERT_SIZE being compiled
-// away by a future toolchain change. If these ever compile while DtCommon.h's own
-// assertions do not, the check has silently stopped working.
+// Two sizes are restated here with _Static_assert, so that these two structures stay
+// checked even if a toolchain change ever compiled ASSERT_SIZE away.
 //
 
 _Static_assert(sizeof(DtIoctlInputDataHdr) == 16, "DtIoctlInputDataHdr must be 16 bytes");

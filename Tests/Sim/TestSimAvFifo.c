@@ -140,7 +140,8 @@ static bool HasLoad(void* Context)
     return AvFifo_RxFifo_GetFifoLoad(W->Fifo) >= W->Load;
 }
 
-// The first pipe from First to First + 2, or of the software pipes, that is in use.
+// The first pipe from First to Last that is in use, with its state in *State; 0 when
+// none is.
 static int PipeInUse(int First, int Last, SimNwPipeState* State)
 {
     for (int Id = First; Id <= Last; Id++)
@@ -479,8 +480,7 @@ DT_TEST(PacketsOnTheWire)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Loopback +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Sends three frames of video and receives the two after the first, which teaches the
-// receiver the size, comparing them with what Expected makes of the frame.
+// What a receive format makes of a transmitted frame of Size bytes, into Expected.
 typedef void (*Expectation)(const uint8_t* Frame, size_t Size, uint8_t* Expected);
 
 static void Pgroups(const uint8_t* Frame, size_t Size, uint8_t* Expected)
@@ -510,6 +510,8 @@ static void Planar(const uint8_t* Frame, size_t Size, uint8_t* Expected)
                                     Expected + 3 * N);
 }
 
+// Sends three frames of video and receives the two after the first, which teaches the
+// receiver the size, comparing them with what Expect makes of the frame.
 static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat RxFormat,
                           HwOrSwPipe Pipe, Expectation Expect, int* DtFailures)
 {

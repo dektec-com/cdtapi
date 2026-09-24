@@ -6,8 +6,8 @@
 //
 // CTest runs this with CDTAPI_SIM=1. Video goes from the packetizer through a writer
 // into a hardware transmit pipe, over the emulator's loopback into a hardware receive
-// pipe, and through a reader into the parser, with buffers small enough that every frame
-// runs around their ends.
+// pipe, and through a reader into the parser, with buffers small enough that the stream
+// runs around their ends more than three times.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -118,7 +118,7 @@ DT_TEST(OpenBufferClose)
     DT_ASSERT(!State.InUse && !State.BufferSet);
     DtAvPipe_Close(&Pipe);
 
-    // Three hardware receive pipes, then the fallback, then none.
+    // Three hardware receive pipes; a fourth is refused unless a software one stands in.
     DtAvPipe Hw[3];
     for (int i = 0; i < 3; i++)
         DT_ASSERT_OK(DtAvPipe_Open(&Hw[i], Drv, Nw, DT_PIPE_RX_RT_HWP, -1));
@@ -136,7 +136,8 @@ DT_TEST(OpenBufferClose)
     DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
-// Eight frames of 320x240 8-bit video through buffers a frame and a half long.
+// Eight frames of 320x240 8-bit video through buffers a frame and a half long; the
+// parser learns the size from the first, so seven arrive.
 DT_TEST(FramesAroundTheBuffers)
 {
     int Live = DtAlloc_Live();

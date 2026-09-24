@@ -778,7 +778,8 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
 }
 
 // Frames transmitted by the packetizer and received by the parser, in each receive
-// format, progressive and interlaced.
+// format, progressive and interlaced. The first of three frames teaches the receiver the
+// size, so two come out.
 static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat RxFormat,
                           St2110_VideoScanning Scanning, int* DtFailures)
 {

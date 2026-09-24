@@ -118,7 +118,7 @@ DT_TEST(ActivatesOnce)
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
     DT_ASSERT(SimActivate_IsReady());
 
-    // A device that is ready already is left alone, and says so.
+    // Attaching a device that is ready already succeeds, and it stays ready.
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
     DT_ASSERT(SimActivate_IsReady());
     FINISH(Drv, Live);
@@ -206,7 +206,8 @@ DT_TEST(AttachSucceedsWithoutActivation)
     DT_ASSERT_EQ(DtAlloc_Live(), Live);
 }
 
-// The object is only answered to whoever holds it, so a second handle cannot activate.
+// The object answers only the handle that holds it, so while another handle holds it
+// activation fails, and once it is released activation succeeds.
 DT_TEST(ActivationNeedsTheObject)
 {
     int Live = 0;

@@ -119,8 +119,8 @@ DT_TEST(WritesAndReadsVersion2)
     DT_ASSERT(memcmp(&Header, &Expected, sizeof(Header)) == 0);
 }
 
-// Values wider than their field are cut to it, and every field reads back where the
-// others are all ones.
+// Values wider than their field are cut to it. With every value field all ones, each
+// reads back on its own, and the time stamp flags, left clear, read back clear.
 DT_TEST(FieldsAreCutAndKeptApart)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];

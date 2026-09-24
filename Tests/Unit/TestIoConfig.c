@@ -17,8 +17,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Completeness +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The highest code in cdtapi.h is TODREF_STEADYCLOCK. A constant added to the public
-// header without an entry in the X-macro list changes this relation and fails here.
+// The highest code in cdtapi_constants.h is TODREF_STEADYCLOCK. A code inserted before it
+// without an entry in the X-macro list fails here; one appended after it needs this
+// reference moved to it.
 DT_TEST(TableCoversEveryCode)
 {
     DT_ASSERT_EQ(DtIoConfig_Count(), DTAPI_IOCONFIG_TODREF_STEADYCLOCK + 1);

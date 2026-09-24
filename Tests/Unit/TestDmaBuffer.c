@@ -115,7 +115,6 @@ DT_TEST(AllocRejectsBadArguments)
     DT_ASSERT(Buf.Data == NULL);
 
     // The exact boundary: one byte more than the largest size whose rounding still fits.
-    // It must be refused before any allocation is attempted.
     DT_ASSERT_EQ(OsDmaBuffer_Alloc((size_t)-1 - OsDmaBuffer_PageSize() + 2, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
 }

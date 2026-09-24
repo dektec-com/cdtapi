@@ -190,7 +190,7 @@ DT_TEST(AttachesUsers)
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Ch));
     DT_ASSERT_EQ(DtPcieCmd_ChSdiRxDetach(Fix.Drv, Fix.Ch), DTAPI_E_NOT_FOUND);
 
-    // Shared users go together, but not with an exclusive one.
+    // Shared users go together, and a handle that is a user already cannot attach again.
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, false, "test:1"));
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"));
     DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"),

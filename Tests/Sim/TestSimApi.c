@@ -682,7 +682,7 @@ DT_TEST(ABadEntryRefusesTheWholeList)
 }
 
 // DtDevice_GetIoConfig's checks, per entry and in its order: the port, the group, and
-// whether the port has a capability of the group. The values stay -1 on a failure.
+// whether the port has a capability of the group. A failure leaves the values -1.
 DT_TEST(ReadingIsCheckedFirst)
 {
     DtDevice* Device = AttachSim(DtFailures);

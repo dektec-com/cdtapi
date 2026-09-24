@@ -83,7 +83,7 @@ DT_TEST(PackRefusesBadArguments)
 
     memset(In, 0, sizeof(In));
 
-    // Too small for header plus input.
+    // Too small for header plus input, no buffer, and no input for a size.
     uint8_t Small[8];
     DT_ASSERT_EQ(LinIoctlBuffer_Pack(true, In, sizeof(In), 0, Small, sizeof(Small)), -1);
     DT_ASSERT_EQ(LinIoctlBuffer_Pack(true, In, sizeof(In), 0, NULL, 32), -1);

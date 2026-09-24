@@ -121,7 +121,7 @@ static DtapiResult SetStandard(Fixture* Fix, int VidStd)
 }
 
 // Frame FrameNumber of VidStd as the emulator's receive source makes it, as a raw frame
-// with Bits bits per symbol, in a new buffer of *Size bytes aligned to 8.
+// with Bits bits per symbol, in a new buffer of *Size bytes, a multiple of 8.
 static uint8_t* MakeFrame(int VidStd, uint32_t FrameNumber, int Bits, size_t* Size)
 {
     uint64_t Accu = 0;
@@ -447,8 +447,8 @@ DT_TEST(AttachChecks)
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Second, Fix.Device, PORT), DTAPI_E_IN_USE);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 2);
 
-    // The blocks as MxChannelMemlessTx leaves them for 1080i50: idle, the encoder's
-    // corrections on, the bypass of the demultiplexer, and a buffer of 128 MB.
+    // The blocks as an attach leaves them for 1080i50: idle, the encoder's corrections
+    // on, the bypass of the demultiplexer, and a buffer of 128 MB.
     SimTxState State;
     SimDtPcie_GetTxState(PORT - 1, &State);
     DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
@@ -502,8 +502,8 @@ DT_TEST(AttachRefusals)
     SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
 
-    // The exclusive access was released: another attach succeeds. 2160p over one 12G
-    // link sends (0014), but a 4K standard of level-B links holds no buffer and does not
+    // The exclusive access was released: another attach succeeds. 2160p over one 12G link
+    // sends (plan 0014), but a 4K standard of level-B links holds no buffer and does not
     // leave idle.
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_2160P50", PORT - 1, true, 1);
@@ -714,7 +714,7 @@ DT_TEST(States)
 }
 
 // A port without DT_CAP_QUADLINK has no demultiplexer: the channel attaches and holds
-// without it, as MxChannelMemlessTx does. A quad-link port without one is refused.
+// without it. A quad-link port without one is refused.
 DT_TEST(SingleLinkPort)
 {
     Fixture Fix;

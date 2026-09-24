@@ -266,7 +266,8 @@ DT_TEST(PortsAreAllPortsOfTheCard)
     FINISH(Device, Live);
 }
 
-// Refuses a port by its capabilities before any of its functions is looked up.
+// Checks that with these capabilities detection on the input port gives Expected, and
+// that a refusal comes before any of the port's functions is looked up.
 static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
                                const char* Cap2, bool Has2, DtapiResult Expected)
 {
@@ -336,8 +337,8 @@ DT_TEST(InternalInputIsNoInputToTheScan)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Detects on the input port after the case's overrides, and returns the result, with
-// *VidStd the standard found.
+// Feeds the input port 1080i59.94 with its VPID, attaches after the case's overrides and
+// detects on the input port; returns the result, with *VidStd the standard found.
 static DtapiResult DetectWith(int* DtFailures, DtDevice** Device, int* VidStd)
 {
     const SdiFormat* Format = FormatOf(DTAPI_VIDSTD_1080I59_94);
@@ -545,7 +546,7 @@ static DtDetVidStd WaitFor(int* DtFailures, DtDevice* Device, const SdiFormat* F
 
 // With its VPID every standard is detected, with its link standard, the VPID, a link
 // number from 1, and the aspect ratio the VPID gives: 16:9 in HD, 4:3 in SD. Nothing is
-// scaled on the emulated ports, which have no down-scaler.
+// scaled on the emulated ports, which leave out the down-scaler a variant 1 card has.
 DT_TEST(EveryStandardWithItsVpid)
 {
     int Live;
@@ -667,8 +668,9 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     FINISH(Device, Live);
 }
 
-// A signal that is not valid or not locked, and counters of no standard, give DTAPI_OK
-// with every field unknown.
+// Without a signal, with one that is not valid and with counters of no standard,
+// detection gives DTAPI_OK and DTAPI_VIDSTD_UNKNOWN; a wait for a signal that is not
+// locked times out with every field unknown.
 DT_TEST(NoStandardIsUnknown)
 {
     const SdiFormat* Format = FormatOf(DTAPI_VIDSTD_1080P50);

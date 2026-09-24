@@ -1100,7 +1100,7 @@ DT_TEST(BlackFrameRoundTrip)
 // A 4K frame is built here from four links whose lines the tests make up: each link line
 // has an EAV with its line number and each stream's CRC-18 over the active part of the
 // line before, a SAV, and HANC and active symbols of its own. The coded lines are packed
-// bit by bit, by the two-sample interleave the card has (0014, step A), and the raw
+// bit by bit, by the two-sample interleave the card has (plan 0014, step A), and the raw
 // line is checked word by word against that order, worked out again here and
 // independently of the module's own permutation.
 
@@ -1236,8 +1236,9 @@ static void Line4kFree(Line4k* L)
     free(L->Video);
 }
 
-// Makes the link lines of line Line and codes them: a picture line's links 1 and 2 take
-// its pixel pairs in turn, a blanking line's their own halves.
+// Makes the link lines of line Line and codes them into two coded lines, of links 1 and 2
+// and of links 3 and 4: on a picture line the two links take its pixel pairs in turn, on
+// a blanking line each its own half.
 static void Line4kMake(const DtSdiFrameLayout* Layout, int Line, Line4k* L)
 {
     const size_t Hanc = (size_t)Layout->SectionNumSymsHanc;

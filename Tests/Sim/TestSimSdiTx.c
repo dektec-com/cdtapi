@@ -577,7 +577,7 @@ DT_TEST(RequestsCarryTheirFields)
     FINISH(Fix);
 }
 
-// Arguments the proxies would refuse send nothing.
+// Arguments the DtPcieCmd functions refuse send nothing.
 DT_TEST(InvalidArgumentsSendNothing)
 {
     Fixture Fix;
@@ -1033,7 +1033,8 @@ DT_TEST(BadHeadersAreSkipped)
 }
 
 // Closing the handle that registered the buffer stops the controller and lets go of the
-// buffer; a refused command can be forced.
+// buffer. A refusal the emulator is told to give reaches the caller, and the command
+// succeeds again once the refusal is withdrawn.
 DT_TEST(ClosingTheHandleStopsTheDma)
 {
     Fixture Fix;

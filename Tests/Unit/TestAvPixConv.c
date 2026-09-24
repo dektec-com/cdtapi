@@ -210,8 +210,8 @@ DT_TEST(Avx2MatchesReference)
     CheckAgainstReference(Avx2, DtFailures);
 }
 
-// The conversions of Fast give the portable ones' bytes for a frame's worth of random
-// data converted in rows of varying lengths, each row into its own place in the frame.
+// The conversions of Fast give the portable ones' bytes for three 3840-pixel rows of
+// random data, converted in pieces of varying lengths, each piece into its own place.
 static void CheckAgainstPortable(const DtAvPixConv* Fast, int* DtFailures)
 {
     const DtAvPixConv* C = DtAvPixConv_C();

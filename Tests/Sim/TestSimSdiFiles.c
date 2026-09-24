@@ -97,8 +97,8 @@ static bool Start(Fixture* Fix, int* DtFailures)
     } while (0)
 
 // Frame FrameNumber of the emulator's pattern of VidStd as a raw frame of 10-bit
-// symbols, into a new buffer of *Size bytes, followed by zeros up to *Padded bytes, a
-// multiple of 8.
+// symbols, padded with zeros to a multiple of 8 bytes, in a new buffer of *Size bytes.
+// *Padded is the same size.
 static uint8_t* PatternFrame(int VidStd, uint32_t FrameNumber, size_t* Size,
                              size_t* Padded)
 {
@@ -383,8 +383,10 @@ DT_TEST(SourceFollowsTheClock)
 }
 
 // A dispatch function of the kind a program with its own threads writes: it starts a
-// thread per piece but the first, does that one itself, and joins. A real program hands
-// the pieces to a pool it already has; the shape of the call is what matters here.
+// thread for each piece from the second to the eighth, does the first itself, and
+// joins. A ninth piece and those after it do not run; the cases ask for four. A real
+// program hands the pieces to a pool it already has; the shape of the call is what
+// matters here.
 typedef struct Piece
 {
     DtWorkFunc Work;
@@ -402,7 +404,7 @@ static void RunPiece(void* Arg)
 
 typedef struct Dispatcher
 {
-    int Calls; // How often the channel asked, which the case checks is not zero
+    int Calls; // How often the channel asked for the dispatch
 } Dispatcher;
 
 static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
@@ -424,7 +426,7 @@ static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
     }
     Work(Context, 0, Count);
 
-    // A piece whose thread could not start is done here, so that every one of them runs.
+    // A piece whose thread could not start is done here: every piece to the eighth runs.
     for (int i = 1; i < Count && i < 8; i++)
     {
         if (i <= Started && Thread[i] != NULL)
@@ -655,7 +657,7 @@ DT_TEST(FourKOverThreads)
     // Setting the count again, with the layout in place, reallocates the working buffers.
     DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 3));
 
-    // A 2160p50 frame takes 28 MB of the 256 MB ring, so the tenth frame is the first
+    // A 2160p50 frame takes 28.4 MB of the 256 MB ring, so the tenth frame is the first
     // whose coded lines run across the end of it: those lines are copied into a band's
     // own line buffer first, and every band must use its own. Every frame read is the
     // frame in the file.
@@ -674,7 +676,7 @@ DT_TEST(FourKOverThreads)
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
 
-    // A coded 2160p50 frame takes 30 MB of the 256 MB buffer, so from the tenth frame a
+    // A coded 2160p50 frame takes 28.4 MB of the 256 MB buffer, so from the tenth frame a
     // line runs across the end of it. A batch stops at the last line that lies in one
     // piece and that line goes through the line buffer, so the frame must come out whole
     // all the same. The card must be sending for the tenth to have anywhere to go: the

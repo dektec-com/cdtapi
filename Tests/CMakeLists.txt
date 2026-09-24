@@ -132,9 +132,10 @@ target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Gene
 
 # Every function the public headers declare, as an X-macro list for the conformance
 # suite. That suite takes the address of each, so a function that is declared and not
-# defined fails the link, and one that leaves a header fails the build. It also calls
-# each: a function its source does not call fails the configuration here, so that a
-# function added to a header cannot go untested there.
+# defined fails the link. It also calls each: a function its source does not call fails
+# the configuration here, so that a function added to a header cannot go untested there.
+# A function dropped from a header leaves its call without a declaration, which fails the
+# build where warnings are errors.
 set(PublicHeaders
     "${CMAKE_SOURCE_DIR}/Include/cdtapi.h"
     "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h")

@@ -31,7 +31,9 @@ static const HeaderCode g_HeaderCodes[] = {
 #undef R
 };
 
-// The name the library gives a code defined in the public header under Macro.
+// The name the library gives a code defined in the public header under Macro. The two
+// TS codes share their value with the DT codes and take the DT name. Three codes have no
+// name in the library, as they have none in DTAPI, and give "???".
 static const char* ExpectedName(const char* Macro)
 {
     if (strcmp(Macro, "DTAPI_E_NO_TS_OUTPUT") == 0)

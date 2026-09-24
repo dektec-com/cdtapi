@@ -10,8 +10,9 @@
 //
 // Completeness: PublicFunctions.inc, which CMake writes from the headers at configure
 // time, lists every function they declare. The table below takes the address of each, so
-// a function that is declared and not defined fails the link, and one that is dropped
-// from the header fails the build of this file.
+// a function that is declared and not defined fails the link. One that is dropped from a
+// header leaves its call further on without a declaration, which fails the build of this
+// file where warnings are errors.
 //
 // Behaviour: every function is called at least once, against the emulated device, and
 // its answer is checked to be a result the documentation names. Not the depth of the
@@ -544,7 +545,7 @@ DT_TEST(FramePropertiesAndTimingCalls)
     DtTimeOfDay BackAudio = Rtp2Tod_Audio(RtpAudio, &ToD, 48000);
     DT_ASSERT_EQ(BackAudio.Seconds, Audio.Seconds);
 
-    // The text of the last failure, of this thread, which the calls above left set.
+    // Always a string: the text of this thread's last failure, or an empty one.
     DT_ASSERT(GetLastException() != NULL);
 }
 

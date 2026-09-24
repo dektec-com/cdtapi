@@ -265,8 +265,7 @@ DT_TEST(Reads204BytePackets)
 }
 
 // Reads of any size that is a multiple of 4 give the same stream, a packet's output
-// cut where a read ends and continued in the next; without a time-out a read takes what
-// it can.
+// cut where a read ends and continued in the next, with a time-out of 0 as with one.
 DT_TEST(ReadsInPieces)
 {
     Fixture Fix;
@@ -465,7 +464,7 @@ static void ReadForever(void* Context)
 }
 
 // A read waiting without data refuses a second one and ends with DTAPI_E_CANCELLED when
-// the channel is detached, with a time-out and without.
+// the channel is detached, with a time-out of -1 and of 0.
 DT_TEST(DetachEndsAWaitingRead)
 {
     static const int TimeOuts[] = {-1, 0};

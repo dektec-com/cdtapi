@@ -173,8 +173,8 @@ DT_TEST(NullEventIsAccepted)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Kill pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The shape a channel's receive thread will take: poll on a short timeout, do some work
-// each time round, and stop when the kill event is set.
+// A thread that polls on a short timeout, does some work each time round, and stops when
+// a kill event is set.
 //
 
 typedef struct Worker

@@ -359,7 +359,7 @@ DT_TEST(AttachRefusals)
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_DRIVER_INCOMP);
 
-    // 2160p over one 12G link receives (0014), but a 4K standard of level-B links
+    // 2160p over one 12G link receives (plan 0014), but a 4K standard of level-B links
     // attaches without receiving.
     SimDtPcie_Reset();
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 1);
@@ -1153,7 +1153,7 @@ DT_TEST(IoConfiguration)
     DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
     // 2160p over one link goes through to the driver, which refuses it on a port without
-    // the capability and takes it on one with (0014). Ports 1 and 5 have it, so the
+    // the capability and takes it on one with (plan 0014). Ports 1 and 5 have it, so the
     // refusal needs the capability taken away.
     SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, false, 0);
     DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,

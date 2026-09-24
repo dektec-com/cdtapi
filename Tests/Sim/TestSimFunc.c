@@ -368,8 +368,8 @@ DT_TEST(ObjectsAreGotByKindTypeAndRole)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Each proxy's minimum, the build number included; a type the table lacks is an
-// internal error.
+// Each object type's minimum driver version, the build number included; a type the
+// table lacks is an internal error.
 DT_TEST(DriverVersionPerProxy)
 {
     static const struct

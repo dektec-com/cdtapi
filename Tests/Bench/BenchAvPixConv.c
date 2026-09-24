@@ -89,9 +89,10 @@ static double BenchClockGHz(void)
 #define PGROUPS_PER_ROW (WIDTH / 2)
 #define FRAME_PGROUPS ((size_t)HEIGHT * PGROUPS_PER_ROW)
 
-// What lies between two packets' pixel groups in a pipe's buffer: the DtEthIp header, 16
-// bytes; Ethernet, IPv4, UDP and RTP, 54; the extended sequence number and a row header,
-// 8.
+// Roughly what lies between two packets' pixel groups in a pipe's buffer: the DtEthIp
+// header's fields, 16 bytes; Ethernet, IPv4, UDP and RTP, 54; the extended sequence
+// number and a row header, 8. The header's two alignment bytes and the padding to a whole
+// 64-bit word are left out.
 #define PACKET_HEADERS 78
 
 // The pixel groups in a packet of the default payload of 1,420 bytes, less the
@@ -254,9 +255,9 @@ static void Packetize(const Buffers* Buf, size_t Bytes)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The conversion between the card's coded lines of a 2160p signal over one link and the
-// raw frame the channels carry, a line at a time, as DtSdiRx and DtSdiTx do it (0014).
-// A card sends 2160p50 and 2160p60 at 12G and 2160p30 at 6G, so the frames a second say
-// at once whether one core keeps up.
+// raw frame the channels carry, a line at a time, as DtSdiRx and DtSdiTx do it (plan
+// 0014). A card sends 2160p50 and 2160p60 at 12G and 2160p30 at 6G, so the frames a
+// second say at once whether one core keeps up.
 //
 
 // The stream alignment of a DTA-2178, in bits.
@@ -346,7 +347,8 @@ static void ConvertFrame4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layo
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Measure4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Measures one conversion for Seconds, in milliseconds a frame and frames a second.
+// Measures one conversion for Seconds: milliseconds a frame, frames a second, and
+// millions of cycles a frame where the clock is known.
 //
 static void Measure4k(const DtSdi4kConv* Conv, const DtSdiFrameLayout* Layout, int Bits,
                       bool ToRaw, const Sdi4kBuffers* Buf, int Seconds,

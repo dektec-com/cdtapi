@@ -675,8 +675,8 @@ DT_TEST(TimeOfDayFollowsTheHostClock)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Wire format +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The new commands, driven below the typed layer with wrong sizes and commands. The
-// emulator refuses them the way the driver does.
+// The property, I/O configuration and time-of-day commands, driven below the typed
+// layer with wrong sizes and commands. The emulator refuses them as the driver does.
 //
 
 // What the typed commands put on the wire, field by field.

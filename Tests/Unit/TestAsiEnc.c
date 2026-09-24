@@ -33,8 +33,9 @@ static const char* g_6b[32] = {
     "110011", "100110", "010110", "110110", "001110", "101110", "011110", "101011",
 };
 
-// The 3b/4b sub-block fghj of HGF for a negative running disparity, and the alternative
-// A7 for 7.
+// The 3b/4b sub-block fghj of HGF for a negative running disparity; the one for a
+// positive running disparity is its complement where it is not balanced, x.3 being the
+// balanced exception that has one for each. And the alternative A7 for 7.
 static const char* g_4b[8] = {"1011", "1001", "0101", "1100",
                               "1101", "1010", "0110", "1110"};
 static const char* g_A7 = "0111";
@@ -382,8 +383,8 @@ DT_TEST(PacketsAndRate)
     free(Ts);
 }
 
-// Before each packet go two K28.5, and at the highest rate none; RAW sends no K28.5
-// before anything and checks no sync byte.
+// Before each packet go two K28.5, at 200 Mbit/s; ModesAndRates checks the rates that fit
+// fewer. RAW sends no K28.5 before anything and checks no sync byte.
 DT_TEST(CommasBeforePackets)
 {
     BuildDecoder();
@@ -563,7 +564,8 @@ DT_TEST(PacketsGoOutOnTime)
     free(Ts);
 }
 
-// Padding is K28.5 that keeps the disparity, and the symbols of a rate carry its bytes.
+// Padding is K28.5 of alternating disparity, so four of them leave the running disparity
+// as it was; and the symbols of a rate carry its bytes.
 DT_TEST(PaddingAndLoad)
 {
     DtAsiEnc Enc;

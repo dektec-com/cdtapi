@@ -113,7 +113,8 @@ static size_t TakeSent(uint8_t* Out, size_t Size)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// An ASI output sends K28.5 from the attach on, with its defaults.
+// An ASI output attaches with its defaults: the gate in standby, where it sends K28.5
+// only, and the PHY running.
 DT_TEST(AttachesAndSendsK28)
 {
     Fixture Fix;
@@ -258,7 +259,8 @@ DT_TEST(SendsAtTheRate)
         Fixture Fix;
         if (!Start(&Fix, DtFailures, true))
             return;
-        // A fifth of a second of the stream, which the sink decodes symbol by symbol.
+        // A fifth of a second of the stream, at most MAX_PACKETS packets, which the sink
+        // decodes symbol by symbol.
         const int N =
             Rates[r] / 5 / 1504 < MAX_PACKETS ? Rates[r] / 5 / 1504 : MAX_PACKETS;
         DT_ASSERT_OK(DtOutpChannel_SetTsRateBps(Fix.Channel, Rates[r]));

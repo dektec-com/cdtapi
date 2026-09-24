@@ -172,7 +172,8 @@ DT_TEST(ManyReferencesBalance)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Out of memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // DtBuf_Alloc makes two allocations: the bytes and the handle. If the second one fails
-// the first has to be given back, or every failed allocation leaks the payload.
+// the first has to be given back, or every failed allocation leaks the payload. Only a
+// leak checker sees that leak; this checks that both failures are reported.
 DT_TEST(AllocFailureFreesTheBytes)
 {
     DtAlloc_ResetCount();

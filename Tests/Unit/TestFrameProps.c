@@ -168,7 +168,8 @@ static const SdiFormat* FormatNamed(int VidStd)
 }
 
 // From the counters alone every standard is found, except what the counters cannot
-// show: PsF at 25 frames and up is taken as interlaced, and four level-B links as one.
+// show: PsF at 25 frames and up is taken as interlaced, and four level-B links as one 3G
+// level-B link.
 DT_TEST(CountersAloneGiveTheStandard)
 {
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
