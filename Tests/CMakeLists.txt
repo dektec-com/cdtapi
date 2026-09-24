@@ -132,12 +132,18 @@ target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Gene
 
 # Every function the public headers declare, as an X-macro list for the conformance
 # suite. That suite takes the address of each, so a function that is declared and not
-# defined fails the link, and one that leaves a header fails the build.
+# defined fails the link, and one that leaves a header fails the build. It also calls
+# each: a function its source does not call fails the configuration here, so that a
+# function added to a header cannot go untested there.
 set(PublicHeaders
     "${CMAKE_SOURCE_DIR}/Include/cdtapi.h"
     "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PublicHeaders})
+set(ConformanceSource "${CMAKE_CURRENT_SOURCE_DIR}/Conformance/TestConformance.c")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PublicHeaders}
+                                                                ${ConformanceSource})
+file(READ "${ConformanceSource}" ConformanceText)
 set(PublicFunctions "")
+set(NotCalled "")
 foreach(PublicHeader IN LISTS PublicHeaders)
     file(READ "${PublicHeader}" HeaderText)
     string(REGEX MATCHALL "CDTAPI_API[^;(]+\\(" Declarations "${HeaderText}")
@@ -146,9 +152,17 @@ foreach(PublicHeader IN LISTS PublicHeaders)
             string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*\\($" Unused
                    "${Declaration}")
             string(APPEND PublicFunctions "F(${CMAKE_MATCH_1})\n")
+            string(FIND "${ConformanceText}" "${CMAKE_MATCH_1}(" Found)
+            if(Found EQUAL -1)
+                list(APPEND NotCalled "${CMAKE_MATCH_1}")
+            endif()
         endif()
     endforeach()
 endforeach()
+if(NotCalled)
+    list(JOIN NotCalled ", " NotCalled)
+    message(FATAL_ERROR "Tests/Conformance/TestConformance.c calls none of: ${NotCalled}")
+endif()
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/PublicFunctions.inc"
      "${PublicFunctions}")
 

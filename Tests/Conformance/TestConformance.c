@@ -253,6 +253,11 @@ DT_TEST(InputChannelCalls)
                                           &SubValue, &ParXtra0, &ParXtra1));
     DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_INPUT);
 
+    // The conversion over threads: two of the library's own, then back to the reading
+    // thread alone through a dispatch function of none.
+    DT_ASSERT_OK(DtInpChannel_SetConversionThreads(Channel, 2));
+    DT_ASSERT_OK(DtInpChannel_SetConversionDispatch(Channel, NULL, NULL, 1));
+
     // The functions of ASI, which an SDI channel does not have.
     int NumInv = 0, ClkDet = 0, AsiLock = 0, RateOk = 0, AsiInv = 0, Count = 0;
     static uint32_t Packets[47];
@@ -338,6 +343,11 @@ DT_TEST(OutputChannelCalls)
     DT_ASSERT_OK(DtOutpChannel_GetIoConfig(Channel, DTAPI_IOCONFIG_IODIR, &Value,
                                            &SubValue, &ParXtra0, &ParXtra1));
     DT_ASSERT_EQ(Value, DTAPI_IOCONFIG_OUTPUT);
+
+    // The conversion over threads: two of the library's own, then back to the writing
+    // thread alone through a dispatch function of none.
+    DT_ASSERT_OK(DtOutpChannel_SetConversionThreads(Channel, 2));
+    DT_ASSERT_OK(DtOutpChannel_SetConversionDispatch(Channel, NULL, NULL, 1));
 
     // The functions of ASI: SDI takes the normal polarity and has no rate.
     DT_ASSERT_OK(DtOutpChannel_SetTxPolarity(Channel, DTAPI_TXPOL_NORMAL));
