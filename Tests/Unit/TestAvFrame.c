@@ -183,7 +183,7 @@ DT_TEST(FramePropertiesByBytesAndRows)
     memset(&Frame, 0, sizeof(Frame));
     Frame.NumValidBytes = 1920 * 5 / 2 * 1080;
     Frame.NumRows = 1080;
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), 1);
+    DT_ASSERT_OK(GetFrameProperties(&Frame, &Props));
     DT_ASSERT_EQ(Props.Width, 1920);
     DT_ASSERT_EQ(Props.Height, 1080);
     DT_ASSERT_EQ(Props.BitDepth, 10);
@@ -195,24 +195,24 @@ DT_TEST(FramePropertiesByBytesAndRows)
     // A field of 1080i in 8 bits, and of 576i in 16.
     Frame.NumValidBytes = 1920 * 2 * 540;
     Frame.NumRows = 540;
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), 1);
+    DT_ASSERT_OK(GetFrameProperties(&Frame, &Props));
     DT_ASSERT_EQ(Props.IsInterlaced, 1);
     DT_ASSERT_EQ(Props.Height, 1080);
     DT_ASSERT_EQ(Props.BitDepth, 8);
     Frame.NumValidBytes = 720 * 4 * 288;
     Frame.NumRows = 288;
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), 1);
+    DT_ASSERT_OK(GetFrameProperties(&Frame, &Props));
     DT_ASSERT_EQ(Props.Height, 576);
     DT_ASSERT_EQ(Props.BitDepth, 16);
 
     // 4:2:0, an unknown size, and no frame.
     Frame.Is420 = 1;
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), -1);
+    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), DTAPI_E_UNSUP_FORMAT);
     Frame.Is420 = 0;
     Frame.NumRows = 287;
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), -1);
-    DT_ASSERT_EQ(GetFrameProperties(NULL, &Props), -1);
-    DT_ASSERT_EQ(GetFrameProperties(&Frame, NULL), -1);
+    DT_ASSERT_EQ(GetFrameProperties(&Frame, &Props), DTAPI_E_UNSUP_FORMAT);
+    DT_ASSERT_EQ(GetFrameProperties(NULL, &Props), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(GetFrameProperties(&Frame, NULL), DTAPI_E_INVALID_ARG);
 }
 
 DT_TEST_MAIN("AvFrame", DT_RUN(PoolGivesAlignedClearedFrames),

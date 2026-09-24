@@ -524,8 +524,8 @@ DT_TEST(FramePropertiesAndTimingCalls)
     Frame.NumRows = 1080;
     FrameProperties Properties;
     memset(&Properties, 0, sizeof(Properties));
-    DT_ASSERT(GetFrameProperties(&Frame, &Properties) == 0 ||
-              Properties.BytesPerFrame > 0);
+    DT_ASSERT_OK(GetFrameProperties(&Frame, &Properties));
+    DT_ASSERT(Properties.BytesPerFrame > 0);
 
     const DtTimeOfDay ToD = {1800000000u, 123456789u};
     const FrameRate Rate = {25, 1};

@@ -54,10 +54,10 @@ static FrameProperties MakeProperties(const Format* Fmt, int BitDepth)
 // The first format, in the table's order, whose 4:2:0 flag, valid bytes and rows the
 // frame has.
 //
-int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Properties)
+DtapiResult GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Properties)
 {
     if (Frame == NULL || Properties == NULL)
-        return -1;
+        return DTAPI_E_INVALID_ARG;
     for (size_t f = 0; f < sizeof(Formats) / sizeof(Formats[0]); f++)
     {
         for (size_t b = 0; b < sizeof(BitDepths) / sizeof(BitDepths[0]); b++)
@@ -68,9 +68,9 @@ int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Properties)
                 Frame->NumRows == Props.NLines)
             {
                 *Properties = Props;
-                return 1;
+                return DTAPI_OK;
             }
         }
     }
-    return -1;
+    return DTAPI_E_UNSUP_FORMAT;
 }

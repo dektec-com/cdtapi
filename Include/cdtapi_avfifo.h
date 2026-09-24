@@ -277,8 +277,11 @@ typedef struct FrameProperties
 // Finds the video format of a received frame by its valid bytes, rows and 4:2:0
 // subsampling, among 720x480 and 720x576 interlaced, 1920x1080 interlaced, 1280x720,
 // 1920x1080, 2048x1080 and 3840x2160 progressive, all 4:2:2 in 8, 10, 12 and 16 bits.
-// Returns 1 and fills *Properties when found, -1 otherwise.
-CDTAPI_API int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Properties);
+// Returns DTAPI_OK and fills *Properties when found; DTAPI_E_INVALID_ARG for a null Frame
+// or Properties, and DTAPI_E_UNSUP_FORMAT when no format matches, which both leave
+// *Properties as it was.
+CDTAPI_API DtapiResult GetFrameProperties(const AvFifo_Frame* Frame,
+                                          FrameProperties* Properties);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The FIFOs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

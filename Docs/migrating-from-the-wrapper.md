@@ -74,6 +74,17 @@ returns it. Code that tested for it should test the general way:
 `GetLastException` is still there, and still gives the text of the calling thread's last
 AV FIFO failure. It is now a description beside the code rather than the only clue.
 
+## `GetFrameProperties` returns a result code
+
+The wrapper's `GetFrameProperties` returned 1 when it found the frame's format and -1
+when it did not. It returns a `DtapiResult` like every other function that can fail:
+`DTAPI_OK` when found, `DTAPI_E_UNSUP_FORMAT` when no format matches and
+`DTAPI_E_INVALID_ARG` for a null argument. The compiler does not catch a test written for
+the old values, `== 1`, `> 0` or `< 0`, so look for every call:
+
+    if (GetFrameProperties(Frame, &Properties) != DTAPI_OK)
+        return;
+
 ## `DtapiResult` where the headers said `unsigned int`
 
 `DtapiResult` is `uint32_t`, which is what `unsigned int` was on every platform CDTAPI
