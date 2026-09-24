@@ -51,7 +51,7 @@ struct AvFifo_RxFifoC
     St2110_RxConfigVideo Video;
     bool IpParsSet;
     DtAvIpPars Ip;
-    bool UserMaxSize;
+    bool MaxSizeWasSet;
 
     DtAvFramePool Pool;
     DtAvFrameFifo Fifo;
@@ -417,7 +417,7 @@ DtapiResult AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo,
     {
         Fifo->Audio = *Config;
         Fifo->Kind = KIND_AUDIO;
-        if (!Fifo->UserMaxSize)
+        if (!Fifo->MaxSizeWasSet)
             DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, RX_AUDIO_MAX_SIZE);
     }
     OsMutex_Unlock(Fifo->Lock);
@@ -571,7 +571,7 @@ void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size)
     else if (DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, Size) != DTAPI_OK)
         DtAvError_Set(DTAPI_E_OUT_OF_MEM, Where, "No memory for the FIFO");
     else
-        Fifo->UserMaxSize = true;
+        Fifo->MaxSizeWasSet = true;
     OsMutex_Unlock(Fifo->Lock);
 }
 

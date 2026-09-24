@@ -189,7 +189,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     uint8_t* Base = NULL;
     int BufSize = 0;
     int MaxLoad = 0;
-    bool Mapped = false;
+    bool MappedHere = false;
 
     memset(&Props, 0, sizeof(Props));
     ReleaseChannel(Sdi);
@@ -270,8 +270,8 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 
     Result = DtPcieCmd_ChSdiRxConfigure(Drv, Sdi->Ch, &Config);
     if (Result == DTAPI_OK)
-        Result =
-            DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->Ch, &Base, &BufSize, &MaxLoad, &Mapped);
+        Result = DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->Ch, &Base, &BufSize, &MaxLoad,
+                                            &MappedHere);
 
     // The driver keeps a data word of the ring free; a maximum load that keeps nothing
     // free, or leaves no room, describes no ring that can be read.
@@ -279,12 +279,12 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
         (MaxLoad >= BufSize || DtRing_Init(&Sdi->Ring, Base, (size_t)BufSize,
                                            (size_t)(BufSize - MaxLoad)) != 0))
     {
-        DtPcieCmd_ChSdiRxUnmapDmaBuf(Drv, Base, BufSize, Mapped);
+        DtPcieCmd_ChSdiRxUnmapDmaBuf(Drv, Base, BufSize, MappedHere);
         Result = DTAPI_E_DEV_DRIVER;
     }
     if (Result == DTAPI_OK)
     {
-        Sdi->RingMapped = Mapped;
+        Sdi->RingMapped = MappedHere;
         Result = AllocBands(Sdi);
     }
     if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_RING_MIN_FRAMES)

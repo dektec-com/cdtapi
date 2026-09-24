@@ -154,7 +154,7 @@ typedef struct DtSdiFrameTxHeader
     bool SdiRateValid;
     int SdiRate; // DT_SDIRATE_ value
     int FrameId;
-    int NumLines;
+    int NumCodedLines;
     int NumWordsHanc; // The HANC section's size in alignment words
     int NumSymsHanc;
     int NumWordsVideo; // The video section's size in alignment words

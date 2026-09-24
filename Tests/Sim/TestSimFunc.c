@@ -101,7 +101,7 @@ DT_TEST(ObjectsOfTheReceiverFunction)
         DT_ASSERT_STR(Object->Name, g_Objects[i].Name);
         DT_ASSERT_STR(Object->Role, g_Objects[i].Role);
         DT_ASSERT_EQ(Object->IsDf, g_Objects[i].IsDf);
-        DT_ASSERT_EQ(Object->Type, g_Objects[i].Type);
+        DT_ASSERT_EQ(Object->FuncOrBlockType, g_Objects[i].Type);
         char Key[PROPERTY_NAME_MAX_SIZE];
         snprintf(Key, sizeof(Key), "%s_UUID", g_Objects[i].Name);
         DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, 5, &Uuid));
@@ -162,7 +162,7 @@ DT_TEST(ObjectsOfTheTransmitFunctions)
             DT_ASSERT_STR(Object->Name, Expected[i].Name);
             DT_ASSERT_STR(Object->Role, Expected[i].Role);
             DT_ASSERT_EQ(Object->IsDf, Expected[i].IsDf);
-            DT_ASSERT_EQ(Object->Type, Expected[i].Type);
+            DT_ASSERT_EQ(Object->FuncOrBlockType, Expected[i].Type);
             DT_ASSERT_EQ(Object->Ref.Uuid & DT_UUID_FLAG_MASK,
                          Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
         }

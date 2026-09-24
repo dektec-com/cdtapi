@@ -60,12 +60,12 @@
 
 typedef struct DtEthIpFields
 {
-    bool Jumbo;          // Version 2
+    bool HeaderV2;       // Version 2
     int NumWords;        // The packet's size in 64-bit words
     int FrameSize;       // Bytes of the Ethernet frame
     int IpAddressOffset; // Bytes from the start of the header to the source IP address
     int PortOffset;      // Bytes from the start of the header to the UDP header
-    int Protocol;
+    int IsUdp;
     int PacketType; // A DT_ETHIP_TYPE_ value
     int SubStream;  // 0 to 3
     bool IpV4ChecksumError;

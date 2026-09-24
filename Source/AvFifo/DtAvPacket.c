@@ -122,12 +122,12 @@ int DtAvNet_Finish(DtAvNet* Net, uint8_t* Packet, int PayloadSize, int DstPortOf
     // The packet header, and the padding.
     DtEthIpFields Header;
     memset(&Header, 0, sizeof(Header));
-    Header.Jumbo = Net->Jumbo;
+    Header.HeaderV2 = Net->HeaderV2;
     Header.NumWords = DtEthIp_NumWords(FrameSize, Net->Alignment);
     Header.FrameSize = FrameSize;
     Header.IpAddressOffset = (int)(Ip - Packet) + IpAddressOffset;
     Header.PortOffset = (int)(Udp - Packet);
-    Header.Protocol = DT_ETHIP_PROTO_UDP;
+    Header.IsUdp = DT_ETHIP_PROTO_UDP;
     Header.PacketType = Net->IpV6 ? DT_ETHIP_TYPE_IPV6 : DT_ETHIP_TYPE_IPV4;
     Header.TimestampValid = true;
     Header.Seconds = (uint32_t)(TodNs / DT_AV_NS_PER_SEC);
@@ -152,7 +152,7 @@ bool DtAvRxPacket_Parse(const uint8_t* Packet, int Size, DtAvRxPacket* Rx)
     if (Size < DT_ETHIP_HEADER_SIZE || !DtEthIp_Read(Packet, &Header))
         return false;
     int End = DtEthIp_HeaderSize(Header.PacketType) + Header.FrameSize;
-    if (End > Size || Header.Protocol != DT_ETHIP_PROTO_UDP ||
+    if (End > Size || Header.IsUdp != DT_ETHIP_PROTO_UDP ||
         (Header.PacketType != DT_ETHIP_TYPE_IPV4 &&
          Header.PacketType != DT_ETHIP_TYPE_IPV6) ||
         Header.PortOffset + DT_AV_UDP_HEADER_SIZE > End)

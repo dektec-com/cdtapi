@@ -147,7 +147,7 @@ static size_t PutPacket(OsDmaBuffer* Buf, size_t Offset, const uint8_t* Frame,
     Header.FrameSize = (int)Size;
     Header.IpAddressOffset = DT_ETHIP_HEADER_SIZE + 26;
     Header.PortOffset = DT_ETHIP_HEADER_SIZE + 34;
-    Header.Protocol = DT_ETHIP_PROTO_UDP;
+    Header.IsUdp = DT_ETHIP_PROTO_UDP;
     Header.PacketType = DT_ETHIP_TYPE_IPV4;
     Header.TimestampValid = true;
     Header.Seconds = (uint32_t)(TodNs / 1000000000u);
@@ -812,13 +812,13 @@ static size_t CheckPacket(const OsDmaBuffer* Buf, size_t Offset, const uint8_t* 
 {
     DtEthIpFields Header;
 
-    if (!DtEthIp_Read(Buf->Data + Offset, &Header) || Header.Jumbo ||
+    if (!DtEthIp_Read(Buf->Data + Offset, &Header) || Header.HeaderV2 ||
         Header.FrameSize != (int)Size ||
         Header.NumWords != DtEthIp_NumWords((int)Size, 8) ||
-        Header.PacketType != DT_ETHIP_TYPE_IPV4 ||
-        Header.Protocol != DT_ETHIP_PROTO_UDP || Header.IpAddressOffset != 44 ||
-        Header.PortOffset != 52 || Header.SubStream != SubStream ||
-        !Header.TimestampValid || Header.Seconds != TodNs / 1000000000u ||
+        Header.PacketType != DT_ETHIP_TYPE_IPV4 || Header.IsUdp != DT_ETHIP_PROTO_UDP ||
+        Header.IpAddressOffset != 44 || Header.PortOffset != 52 ||
+        Header.SubStream != SubStream || !Header.TimestampValid ||
+        Header.Seconds != TodNs / 1000000000u ||
         Header.Nanoseconds != TodNs % 1000000000u ||
         memcmp(Buf->Data + Offset + DT_ETHIP_HEADER_SIZE, Frame, Size) != 0)
     {

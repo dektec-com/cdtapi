@@ -536,7 +536,7 @@ DT_TEST(TxHeaderNumBytes)
     DT_ASSERT(Decoded.SdiRateValid);
     DT_ASSERT_EQ(Decoded.SdiRate, DT_SDIRATE_HD);
     DT_ASSERT_EQ(Decoded.FrameId, 0x1234);
-    DT_ASSERT_EQ(Decoded.NumLines, 1125);
+    DT_ASSERT_EQ(Decoded.NumCodedLines, 1125);
     DT_ASSERT_EQ(Decoded.NumWordsHanc, 113);
     DT_ASSERT_EQ(Decoded.NumSymsHanc, 1440);
     DT_ASSERT_EQ(Decoded.NumWordsVideo, 300);
@@ -573,7 +573,7 @@ DT_TEST(TxHeaderFieldWidths)
     DT_ASSERT(Header.SdiRateValid);
     DT_ASSERT_EQ(Header.SdiRate, 7);
     DT_ASSERT_EQ(Header.FrameId, 0xFFFF);
-    DT_ASSERT_EQ(Header.NumLines, 0xFFFF);
+    DT_ASSERT_EQ(Header.NumCodedLines, 0xFFFF);
     DT_ASSERT_EQ(Header.NumWordsHanc, 0xFFFF);
     DT_ASSERT_EQ(Header.NumSymsHanc, 0xFFFF);
     DT_ASSERT_EQ(Header.NumWordsVideo, 0xFFFF);
@@ -584,7 +584,7 @@ DT_TEST(TxHeaderFieldWidths)
     Header.SdiRateValid = false;
     Header.SdiRate = 0xF;
     Header.FrameId = 0x12345;
-    Header.NumLines = 0x10001;
+    Header.NumCodedLines = 0x10001;
     Header.NumSymsHanc = 0x10000;
     Header.NumWordsVideo = 0x10000;
     Header.NumSymsVideo = 0x1234;
@@ -1489,7 +1489,7 @@ DT_TEST(TxLines4k)
     DtSdiFrame_TxHeaderInit(&Layout, 7, &Header);
     DT_ASSERT_EQ(Header.Format, DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K);
     DT_ASSERT_EQ(Header.SdiRate, DT_SDIRATE_12G);
-    DT_ASSERT_EQ(Header.NumLines, 2250);
+    DT_ASSERT_EQ(Header.NumCodedLines, 2250);
     DT_ASSERT_EQ(Header.NumSymsHanc, 1440);
     DT_ASSERT_EQ(Header.NumWordsHanc, 113);
     DT_ASSERT_EQ(Header.NumSymsVideo, 7680);

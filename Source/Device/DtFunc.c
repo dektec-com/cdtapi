@@ -40,7 +40,7 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. ReadObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Reads the role, the type and the UUID, in that order, and a name that says which kind
 // of object it is. False when any of it cannot be had, in which case the object is
@@ -56,7 +56,8 @@ static bool ReadObject(OsDrv* Drv, int PortIndex, DtFuncObject* Object)
 
     char Key[PROPERTY_NAME_MAX_SIZE];
     if (snprintf(Key, sizeof(Key), "%s_TYPE", Object->Name) >= (int)sizeof(Key) ||
-        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Object->Type) != DTAPI_OK)
+        DtPcieCmd_GetPropertyInt(Drv, Key, PortIndex, &Object->FuncOrBlockType) !=
+            DTAPI_OK)
     {
         return false;
     }
@@ -128,8 +129,8 @@ void DtFunc_Release(DtFuncInstance* Instance)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtFunc_Get -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
-                               const char* Role)
+const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf,
+                               int FuncOrBlockType, const char* Role)
 {
     size_t i = DtVec_Count(&Instance->Objects);
 
@@ -137,7 +138,7 @@ const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Ty
     {
         const DtFuncObject* Object = &DT_VEC_AT(&Instance->Objects, DtFuncObject, i);
 
-        if (Object->IsDf == IsDf && Object->Type == Type &&
+        if (Object->IsDf == IsDf && Object->FuncOrBlockType == FuncOrBlockType &&
             strcmp(Object->Role, Role) == 0)
             return Object;
     }

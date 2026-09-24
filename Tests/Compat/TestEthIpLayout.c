@@ -30,18 +30,18 @@ typedef uint32_t UInt;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Fills a header with values that differ per field, as version 2 when Jumbo.
-static DtEthIpFields Values(bool Jumbo)
+// Fills a header with values that differ per field, as version 2 when HeaderV2.
+static DtEthIpFields Values(bool HeaderV2)
 {
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.Jumbo = Jumbo;
-    Header.NumWords = Jumbo ? 1004 : 158;
-    Header.FrameSize = Jumbo ? 8000 : 1242;
+    Header.HeaderV2 = HeaderV2;
+    Header.NumWords = HeaderV2 ? 1004 : 158;
+    Header.FrameSize = HeaderV2 ? 8000 : 1242;
     Header.IpAddressOffset = 44;
     Header.PortOffset = 52;
-    Header.Protocol = 1;
+    Header.IsUdp = 1;
     Header.PacketType = 2;
     Header.SubStream = 3;
     Header.IpV4ChecksumError = true;
@@ -59,7 +59,7 @@ static DtEthIpFields Values(bool Jumbo)
 static void FillSdk(const DtEthIpFields* Values, DtEthIp* EthIp)
 {
     memset(EthIp, 0, sizeof(*EthIp));
-    if (Values->Jumbo)
+    if (Values->HeaderV2)
     {
         EthIp->m_Hdr.m_SyncWord = DT_ETHIP_SYNCWORD_V2;
         EthIp->m_Hdr.V2.m_SizeInQWords = (UInt64)Values->NumWords;
@@ -74,7 +74,7 @@ static void FillSdk(const DtEthIpFields* Values, DtEthIp* EthIp)
     }
     EthIp->m_Hdr.m_IpAddressOffset = (UInt64)Values->IpAddressOffset / 4;
     EthIp->m_Hdr.m_PortOffset = (UInt64)Values->PortOffset / 4;
-    EthIp->m_Hdr.m_Protocol = (UInt64)Values->Protocol;
+    EthIp->m_Hdr.m_Protocol = (UInt64)Values->IsUdp;
     EthIp->m_Hdr.m_PacketType = (UInt64)Values->PacketType;
     EthIp->m_Hdr.m_SubStream = (UInt64)Values->SubStream;
     EthIp->m_Hdr.m_IpV4HdrChecksumError = Values->IpV4ChecksumError ? 1 : 0;

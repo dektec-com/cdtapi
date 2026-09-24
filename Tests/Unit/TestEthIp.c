@@ -35,7 +35,7 @@ static DtEthIpFields V1Header(void)
     Header.FrameSize = 1242;
     Header.IpAddressOffset = 44;
     Header.PortOffset = 52;
-    Header.Protocol = DT_ETHIP_PROTO_UDP;
+    Header.IsUdp = DT_ETHIP_PROTO_UDP;
     Header.PacketType = DT_ETHIP_TYPE_IPV4;
     Header.SubStream = 2;
     Header.TimestampValid = true;
@@ -53,7 +53,7 @@ static DtEthIpFields V2Header(void)
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.Jumbo = true;
+    Header.HeaderV2 = true;
     Header.NumWords = DtEthIp_NumWords(8000, 16);
     Header.FrameSize = 8000;
     Header.IpAddressOffset = 44;
@@ -131,7 +131,7 @@ DT_TEST(FieldsAreCutAndKeptApart)
     Header.FrameSize = 2047;
     Header.IpAddressOffset = 31 * 4;
     Header.PortOffset = 255 * 4;
-    Header.Protocol = 3;
+    Header.IsUdp = 3;
     Header.PacketType = 7;
     Header.SubStream = 7;
     Header.Fingerprint = 0xFF;
@@ -149,7 +149,7 @@ DT_TEST(FieldsAreCutAndKeptApart)
     DT_ASSERT_EQ(Header.FrameSize, 2047);
     DT_ASSERT_EQ(Header.IpAddressOffset, 124);
     DT_ASSERT_EQ(Header.PortOffset, 1020);
-    DT_ASSERT_EQ(Header.Protocol, 1);
+    DT_ASSERT_EQ(Header.IsUdp, 1);
     DT_ASSERT_EQ(Header.PacketType, 3);
     DT_ASSERT_EQ(Header.SubStream, 3);
     DT_ASSERT_EQ(Header.Fingerprint, 0x3F);
@@ -165,7 +165,7 @@ DT_TEST(TimestampPacketHasNoAlignment)
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.Jumbo = true;
+    Header.HeaderV2 = true;
     Header.NumWords = 2;
     Header.FrameSize = 0;
     Header.PacketType = DT_ETHIP_TYPE_TIMESTAMP;

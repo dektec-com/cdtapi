@@ -338,14 +338,14 @@ static void ReadFrame(const uint8_t* Frame, size_t Size, SimFrameInfo* Info)
     Offset += 2;
 
     size_t Next;
-    int Protocol;
+    int IsUdp;
     if (Type == 0x0800 && Size >= Offset + 20)
     {
         Info->PacketType = DT_ETHIP_TYPE_IPV4;
         Info->IpOffset = (int)Offset + 12;
         Info->SrcIp = Frame + Offset + 12;
         Info->DstIp = Frame + Offset + 16;
-        Protocol = Frame[Offset + 9];
+        IsUdp = Frame[Offset + 9];
         Next = Offset + 4 * (size_t)(Frame[Offset] & 0xF);
     }
     else if (Type == 0x86DD && Size >= Offset + 40)
@@ -354,7 +354,7 @@ static void ReadFrame(const uint8_t* Frame, size_t Size, SimFrameInfo* Info)
         Info->IpOffset = (int)Offset + 8;
         Info->SrcIp = Frame + Offset + 8;
         Info->DstIp = Frame + Offset + 24;
-        Protocol = Frame[Offset + 6];
+        IsUdp = Frame[Offset + 6];
         Next = Offset + 40;
     }
     else
@@ -362,7 +362,7 @@ static void ReadFrame(const uint8_t* Frame, size_t Size, SimFrameInfo* Info)
 
     if (Size < Next + 8)
         return;
-    Info->Udp = Protocol == 17;
+    Info->Udp = IsUdp == 17;
     Info->PortOffset = (int)Next;
     Info->SrcPort = Get16(Frame + Next);
     Info->DstPort = Get16(Frame + Next + 2);
@@ -502,10 +502,10 @@ static uint8_t* BuildPacket(const uint8_t* Frame, size_t Size, const SimFrameInf
 
     memset(&Header, 0, sizeof(Header));
     Header.FrameSize = (int)Size;
-    Header.Jumbo = Size > DT_ETHIP_MAX_FRAME_V1;
+    Header.HeaderV2 = Size > DT_ETHIP_MAX_FRAME_V1;
     Header.NumWords = DtEthIp_NumWords((int)Size, SIM_DTA2110_PACKET_ALIGNMENT);
     Header.PacketType = Info->PacketType;
-    Header.Protocol = Info->Udp ? DT_ETHIP_PROTO_UDP : 0;
+    Header.IsUdp = Info->Udp ? DT_ETHIP_PROTO_UDP : 0;
     if (Info->PacketType != DT_ETHIP_TYPE_OTHER)
     {
         Header.IpAddressOffset = DT_ETHIP_HEADER_SIZE + Info->IpOffset;

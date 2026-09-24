@@ -251,7 +251,7 @@ static bool Received(int Index, uint32_t FrameNumber, int FrameId)
         return false;
     int Width = Frame.SymsHanc + Frame.SymsVideo;
     uint16_t Symbols[2000];
-    for (int n = 1; n <= Frame.NumLines; n++)
+    for (int n = 1; n <= Frame.NumCodedLines; n++)
     {
         if (SimChSdiRx_Line(VIDSTD, FrameNumber, n, Symbols) != Width ||
             memcmp(Symbols, Frame.Symbols + (size_t)(n - 1) * (size_t)Width,

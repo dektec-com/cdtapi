@@ -180,11 +180,11 @@ typedef struct SimTxState
 void SimDtPcie_GetTxState(int PortIndex, SimTxState* State);
 
 // A frame the sink received: its header's frame ID and geometry, and every line's
-// symbols, EAV first, NumLines times SymsHanc plus SymsVideo of them.
+// symbols, EAV first, NumCodedLines times SymsHanc plus SymsVideo of them.
 typedef struct SimTxFrame
 {
     int FrameId;
-    int NumLines;
+    int NumCodedLines;
     int SymsHanc;
     int SymsVideo;
     const uint16_t* Symbols; // Valid until the next command or control

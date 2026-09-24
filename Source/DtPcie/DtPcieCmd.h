@@ -276,14 +276,15 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
 // Maps the configured ring into the process. On Windows the driver maps it during the
 // command and returns its address; on Linux the driver returns address 0, and the ring
 // is then mapped from the device at offset DT_MMAP_PORT_MEM_SEGMENT_SIZE times the port
-// index plus one. *Mapped is true in the second case, in which
+// index plus one. *MappedHere is true in the second case, in which
 // DtPcieCmd_ChSdiRxUnmapDmaBuf must release the mapping.
 DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t** Buffer,
-                                       int* BufSize, int* MaxLoad, bool* Mapped);
+                                       int* BufSize, int* MaxLoad, bool* MappedHere);
 
 // Releases a mapping DtPcieCmd_ChSdiRxMapDmaBuf made itself; one the driver made goes
 // with the detach.
-void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize, bool Mapped);
+void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize,
+                                  bool MappedHere);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Exclusive access -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //

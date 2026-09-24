@@ -83,7 +83,7 @@ void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
 {
     uint64_t Word = 0;
 
-    if (Header->Jumbo)
+    if (Header->HeaderV2)
     {
         int Padding = Header->NumWords * DT_ETHIP_WORD_SIZE -
                       DtEthIp_HeaderSize(Header->PacketType) - Header->FrameSize;
@@ -100,7 +100,7 @@ void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
     }
     Word |= Place((uint64_t)(Header->IpAddressOffset / 4), 35, 5);
     Word |= Place((uint64_t)(Header->PortOffset / 4), 40, 8);
-    Word |= Place((uint64_t)Header->Protocol, 48, 1);
+    Word |= Place((uint64_t)Header->IsUdp, 48, 1);
     Word |= Place((uint64_t)Header->PacketType, 49, 2);
     Word |= Place((uint64_t)Header->SubStream, 51, 2);
     Word |= Place(Header->IpV4ChecksumError ? 1 : 0, 53, 1);
@@ -128,7 +128,7 @@ bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpFields* Header)
     memset(Header, 0, sizeof(*Header));
     Header->IpAddressOffset = (int)Field(Word, 35, 5) * 4;
     Header->PortOffset = (int)Field(Word, 40, 8) * 4;
-    Header->Protocol = (int)Field(Word, 48, 1);
+    Header->IsUdp = (int)Field(Word, 48, 1);
     Header->PacketType = (int)Field(Word, 49, 2);
     Header->SubStream = (int)Field(Word, 51, 2);
     Header->IpV4ChecksumError = Field(Word, 53, 1) != 0;
@@ -148,7 +148,7 @@ bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpFields* Header)
     }
     else if (Sync == DT_ETHIP_SYNC_V2)
     {
-        Header->Jumbo = true;
+        Header->HeaderV2 = true;
         Header->NumWords = (int)Field(Word, 16, 11);
         Header->FrameSize =
             Header->NumWords * DT_ETHIP_WORD_SIZE - HeaderSize - (int)Field(Word, 27, 8);

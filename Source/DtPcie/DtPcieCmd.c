@@ -862,7 +862,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxMapDmaBuf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t** Buffer,
-                                       int* BufSize, int* MaxLoad, bool* Mapped)
+                                       int* BufSize, int* MaxLoad, bool* MappedHere)
 {
     if (Buffer != NULL)
         *Buffer = NULL;
@@ -870,10 +870,10 @@ DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t**
         *BufSize = 0;
     if (MaxLoad != NULL)
         *MaxLoad = 0;
-    if (Mapped != NULL)
-        *Mapped = false;
+    if (MappedHere != NULL)
+        *MappedHere = false;
     if (Drv == NULL || Buffer == NULL || BufSize == NULL || MaxLoad == NULL ||
-        Mapped == NULL)
+        MappedHere == NULL)
     {
         return DTAPI_E_INVALID_ARG;
     }
@@ -900,7 +900,7 @@ DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t**
         Address = OsDrv_MapMemory(Drv, Offset, (size_t)Out.m_BufSize);
         if (Address == NULL)
             return DTAPI_E_OUT_OF_MEM;
-        *Mapped = true;
+        *MappedHere = true;
     }
 
     *Buffer = (uint8_t*)Address;
@@ -911,8 +911,9 @@ DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t**
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxUnmapDmaBuf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize, bool Mapped)
+void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize,
+                                  bool MappedHere)
 {
-    if (Mapped && Buffer != NULL && BufSize > 0)
+    if (MappedHere && Buffer != NULL && BufSize > 0)
         OsDrv_UnmapMemory(Drv, Buffer, (size_t)BufSize);
 }

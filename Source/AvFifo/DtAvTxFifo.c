@@ -55,7 +55,7 @@ struct AvFifo_TxFifoC
     DtSt2110VideoTx Video;
     bool IpParsSet;
     DtAvIpPars Ip;
-    bool UserMaxSize;
+    bool MaxSizeWasSet;
 
     DtAvFramePool Pool;
     DtAvFrameFifo Fifo;
@@ -240,7 +240,7 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
         return DtAvError_Set(Result, Where,
                              "Failed to resolve the destination MAC address");
 
-    Stream->Net.Jumbo = DtAvPipe_IsJumbo(&Fifo->Pipe);
+    Stream->Net.HeaderV2 = DtAvPipe_IsJumbo(&Fifo->Pipe);
     Stream->Net.Alignment = DtAvPipe_Alignment(&Fifo->Pipe);
     memcpy(Stream->Net.SrcMac, Fifo->Port.Mac, 6);
     Stream->Net.VlanId = Pars->Vlan.Id;
@@ -460,7 +460,7 @@ DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
         Fifo->AudioConfig = *Config;
         Fifo->Audio = Audio;
         Fifo->Kind = KIND_AUDIO;
-        if (!Fifo->UserMaxSize)
+        if (!Fifo->MaxSizeWasSet)
             DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, TX_AUDIO_MAX_SIZE);
     }
     OsMutex_Unlock(Fifo->Lock);
@@ -643,7 +643,7 @@ void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size)
     else if (DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, Size) != DTAPI_OK)
         DtAvError_Set(DTAPI_E_OUT_OF_MEM, Where, "No memory for the FIFO");
     else
-        Fifo->UserMaxSize = true;
+        Fifo->MaxSizeWasSet = true;
     OsMutex_Unlock(Fifo->Lock);
 }
 

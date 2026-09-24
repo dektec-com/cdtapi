@@ -281,7 +281,7 @@ DT_TEST(ConfigurationChecks)
     DT_ASSERT_EQ(Tx.PayloadSize, 1260);
     Tx.Packing.PayloadSize = 8000;
     DT_ASSERT_EQ(DtSt2110VideoTx_Start(&Tx, &S), DTAPI_E_INVALID_ARG);
-    S.Net.Jumbo = true;
+    S.Net.HeaderV2 = true;
     DT_ASSERT_EQ(DtSt2110VideoTx_Start(&Tx, &S), DTAPI_E_INVALID_ARG);
     Tx.Packing.PayloadSize = 7920;
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Tx, &S));
@@ -598,7 +598,7 @@ static void Make(Maker* M, int Row, int Offset, int Length, bool Marker, uint32_
     H.FrameSize = FrameSize;
     H.IpAddressOffset = 18 + 14 + 12;
     H.PortOffset = 18 + 14 + 20;
-    H.Protocol = DT_ETHIP_PROTO_UDP;
+    H.IsUdp = DT_ETHIP_PROTO_UDP;
     H.PacketType = DT_ETHIP_TYPE_IPV4;
     H.TimestampValid = true;
     H.Seconds = (uint32_t)(TodNs / DT_AV_NS_PER_SEC);

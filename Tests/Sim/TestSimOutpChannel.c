@@ -284,7 +284,7 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
     bool Same = Symbols != NULL && Line != NULL;
     int n;
 
-    for (n = 1; Same && n <= Frame.NumLines; n++)
+    for (n = 1; Same && n <= Frame.NumCodedLines; n++)
     {
         int Count = SimChSdiRx_Line(VidStd, FrameNumber, n, Line);
         size_t At = (size_t)(n - 1) * (size_t)(Frame.SymsHanc + Frame.SymsVideo);

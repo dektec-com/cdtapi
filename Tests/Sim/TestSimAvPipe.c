@@ -154,7 +154,7 @@ DT_TEST(FramesAroundTheBuffers)
     DtAvTxStream S;
     memset(&S, 0, sizeof(S));
     S.Net.Alignment = DtAvPipe_Alignment(&Tx);
-    S.Net.Jumbo = DtAvPipe_IsJumbo(&Tx);
+    S.Net.HeaderV2 = DtAvPipe_IsJumbo(&Tx);
     static const uint8_t SrcMac[6] = SIM_DTA2110_MAC_ADDRESS;
     static const uint8_t DstMac[6] = {0x01, 0x00, 0x5E, 0x01, 0x02, 0x03};
     static const uint8_t SrcIp[4] = {192, 168, 1, 10};

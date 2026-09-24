@@ -188,7 +188,7 @@ void DtSdiFrame_TxHeaderInit(const DtSdiFrameLayout* Layout, int FrameId,
     Header->SdiRateValid = true;
     Header->SdiRate = Layout->SdiRate;
     Header->FrameId = FrameId & 0xFFFF;
-    Header->NumLines = Layout->NumCodedLines;
+    Header->NumCodedLines = Layout->NumCodedLines;
     Header->NumWordsHanc = Layout->SectionBytesHanc / Layout->Alignment;
     Header->NumSymsHanc = Layout->SectionNumSymsHanc;
     Header->NumWordsVideo = Layout->SectionBytesVideo / Layout->Alignment;
@@ -231,7 +231,7 @@ void DtSdiFrame_DecodeTxHeader(const uint8_t* Bytes, DtSdiFrameTxHeader* Header)
     Header->SdiRateValid = ((Word1 >> 8) & 1) != 0;
     Header->SdiRate = (int)((Word1 >> 9) & 0x7);
     Header->FrameId = (int)(Word2 & 0xFFFF);
-    Header->NumLines = (int)(Word2 >> 16);
+    Header->NumCodedLines = (int)(Word2 >> 16);
     Header->NumWordsHanc = (int)(Word3 & 0xFFFF);
     Header->NumSymsHanc = (int)(Word3 >> 16);
     Header->NumWordsVideo = (int)(Word4 & 0xFFFF);
@@ -250,7 +250,7 @@ void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
     Write32(Bytes, Header->SyncWord);
     Write32(Bytes + 4, Word1);
     Write32(Bytes + 8, ((uint32_t)Header->FrameId & 0xFFFF) |
-                           ((uint32_t)Header->NumLines & 0xFFFF) << 16);
+                           ((uint32_t)Header->NumCodedLines & 0xFFFF) << 16);
     Write32(Bytes + 12, ((uint32_t)Header->NumWordsHanc & 0xFFFF) |
                             ((uint32_t)Header->NumSymsHanc & 0xFFFF) << 16);
     Write32(Bytes + 16, ((uint32_t)Header->NumWordsVideo & 0xFFFF) |

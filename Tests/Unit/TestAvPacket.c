@@ -71,12 +71,12 @@ DT_TEST(Ipv4PacketBytes)
 
     DtEthIpFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
-    DT_ASSERT(!Header.Jumbo);
+    DT_ASSERT(!Header.HeaderV2);
     DT_ASSERT_EQ(Header.NumWords, 20);
     DT_ASSERT_EQ(Header.FrameSize, 142);
     DT_ASSERT_EQ(Header.IpAddressOffset, 18 + 14 + 12);
     DT_ASSERT_EQ(Header.PortOffset, 18 + 14 + 20);
-    DT_ASSERT_EQ(Header.Protocol, DT_ETHIP_PROTO_UDP);
+    DT_ASSERT_EQ(Header.IsUdp, DT_ETHIP_PROTO_UDP);
     DT_ASSERT_EQ(Header.PacketType, DT_ETHIP_TYPE_IPV4);
     DT_ASSERT(Header.TimestampValid);
     DT_ASSERT_EQ(Header.Seconds, 1800000000u);
@@ -109,7 +109,7 @@ DT_TEST(Ipv6VlanJumboPacketBytes)
     DtAvNet Net = NetV4();
     uint8_t Packet[1200];
 
-    Net.Jumbo = true;
+    Net.HeaderV2 = true;
     Net.Alignment = 16;
     Net.IpV6 = true;
     Net.VlanId = 100;
@@ -129,7 +129,7 @@ DT_TEST(Ipv6VlanJumboPacketBytes)
 
     DtEthIpFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
-    DT_ASSERT(Header.Jumbo);
+    DT_ASSERT(Header.HeaderV2);
     DT_ASSERT_EQ(Header.NumWords * 8, Size);
     DT_ASSERT_EQ(Header.FrameSize, 18 + 40 + 8 + 1000);
     DT_ASSERT_EQ(Header.IpAddressOffset, 18 + 18 + 8);
@@ -171,7 +171,7 @@ DT_TEST(ParsingReceivedPackets)
     DT_ASSERT(!DtAvRxPacket_Parse(Packet, Size, &Rx));
     DtAvPacket_Put16(108, Packet + 56);
     DT_ASSERT(DtAvRxPacket_Parse(Packet, Size, &Rx));
-    Header.Protocol = 0;
+    Header.IsUdp = 0;
     DtEthIp_Write(&Header, Packet);
     DT_ASSERT(!DtAvRxPacket_Parse(Packet, Size, &Rx));
     Packet[0] = 0;

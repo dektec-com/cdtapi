@@ -34,7 +34,8 @@ typedef struct DtFuncObject
     char Name[DT_PROPERTY_STR_SIZE]; // Such as DF_SDIRX#1
     char Role[DT_PROPERTY_STR_SIZE]; // Empty for the object's plain role
     bool IsDf;                       // A driver function, otherwise a building block
-    int Type;                        // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value
+    int FuncOrBlockType;             // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value,
+                                     // whichever IsDf says
     DtDrvObject Ref;                 // What commands to the object go to
 } DtFuncObject;
 
@@ -62,8 +63,8 @@ void DtFunc_Release(DtFuncInstance* Instance);
 // The object of the instance that is a driver function when IsDf, or a building block
 // otherwise, of Type and with Role; NULL when there is none. The objects are walked from
 // the back, so a later object of the same type and role wins.
-const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf, int Type,
-                               const char* Role);
+const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf,
+                               int FuncOrBlockType, const char* Role);
 
 // Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every object
 // of the instance. An object that does not support it is passed over. The first other

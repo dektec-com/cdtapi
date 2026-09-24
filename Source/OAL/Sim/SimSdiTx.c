@@ -42,7 +42,7 @@
 typedef struct SimTxKept
 {
     int FrameId;
-    int NumLines;
+    int NumCodedLines;
     int SymsHanc;
     int SymsVideo;
     uint16_t* Symbols;
@@ -96,8 +96,8 @@ typedef struct SimTxPort
     // The sink
     bool InFrame;
     int FrameId;
-    bool Is4k;    // The header names the 4K format: two HANC sections and line headers
-    int NumLines; // Coded lines
+    bool Is4k; // The header names the 4K format: two HANC sections and line headers
+    int NumCodedLines;       // Coded lines
     int SymsHanc, SymsVideo; // Of one section
     size_t BytesHanc, BytesVideo;
     size_t LineHdrBytes; // Before each coded line sent: 0, or 4 padded for 4K
@@ -300,19 +300,19 @@ static bool ReadHeader(SimTxPort* Port)
     Port->Is4k = (Word1 >> 4 & 0xF) == 1;
     Port->LineHdrBytes = Port->Is4k ? (4 + Alignment - 1) / Alignment * Alignment : 0;
     Port->FrameId = (int)(Word2 & 0xFFFF);
-    Port->NumLines = (int)(Word2 >> 16);
+    Port->NumCodedLines = (int)(Word2 >> 16);
     Port->BytesHanc = (size_t)(Word3 & 0xFFFF) * Alignment;
     Port->SymsHanc = (int)(Word3 >> 16);
     Port->BytesVideo = (size_t)(Word4 & 0xFFFF) * Alignment;
     Port->SymsVideo = (int)(Word4 >> 16);
 
-    if (Port->NumLines == 0 || Port->SymsHanc == 0 || Port->SymsVideo == 0 ||
+    if (Port->NumCodedLines == 0 || Port->SymsHanc == 0 || Port->SymsVideo == 0 ||
         Port->BytesHanc != Padded(Port->SymsHanc) ||
         Port->BytesVideo != Padded(Port->SymsVideo))
     {
         return false;
     }
-    size_t Frame = HeaderNumBytes() + (size_t)Port->NumLines * LineBytes(Port);
+    size_t Frame = HeaderNumBytes() + (size_t)Port->NumCodedLines * LineBytes(Port);
     return Frame <= SIM_TX_MAX_FRAME;
 }
 
@@ -346,7 +346,7 @@ static void UnpackSection(const SimTxPort* Port, size_t Offset, int Count, uint1
 static void SinkFrame(const SimTxPort* Port)
 {
     const size_t Count =
-        (size_t)Port->NumLines * (size_t)(Port->SymsHanc + Port->SymsVideo);
+        (size_t)Port->NumCodedLines * (size_t)(Port->SymsHanc + Port->SymsVideo);
     const size_t Bytes = ((Count * 10 + 7) / 8 + 7) / 8 * 8;
     uint8_t* Out = (uint8_t*)DtAlloc_Malloc(Bytes);
     if (Out == NULL)
@@ -385,7 +385,7 @@ static uint16_t* RawFrame(const SimTxPort* Port)
     const int Hanc = Port->SymsHanc;
     const int Act = Port->SymsVideo / 2;
     const size_t RawLine = (size_t)(4 * (Hanc + Act));
-    const int Lines = Port->NumLines / 2;
+    const int Lines = Port->NumCodedLines / 2;
     uint16_t* Raw = (uint16_t*)DtAlloc_Malloc((size_t)Lines * RawLine * sizeof(uint16_t));
 
     if (Raw == NULL)
@@ -415,7 +415,7 @@ static void KeepFrame(SimTxPort* Port)
             return;
         DtAlloc_Free(Port->Symbols);
         Port->Symbols = Raw;
-        Port->NumLines /= 2;
+        Port->NumCodedLines /= 2;
         Port->SymsHanc *= 4;
         Port->SymsVideo *= 2;
     }
@@ -430,7 +430,7 @@ static void KeepFrame(SimTxPort* Port)
     }
     SimTxKept* Slot = &Port->Kept[Port->NumKept++];
     Slot->FrameId = Port->FrameId;
-    Slot->NumLines = Port->NumLines;
+    Slot->NumCodedLines = Port->NumCodedLines;
     Slot->SymsHanc = Port->SymsHanc;
     Slot->SymsVideo = Port->SymsVideo;
     Slot->Symbols = Port->Symbols;
@@ -516,10 +516,10 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
     // The card reads the buffer while it sends, so a part can exceed the pipeline.
     size_t Stride = LineBytes(Port);
-    int Lines =
-        Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (Port->NumLines + 3) / 4;
-    if (Lines > Port->NumLines - Port->LinesDone)
-        Lines = Port->NumLines - Port->LinesDone;
+    int Lines = Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent
+                                           : (Port->NumCodedLines + 3) / 4;
+    if (Lines > Port->NumCodedLines - Port->LinesDone)
+        Lines = Port->NumCodedLines - Port->LinesDone;
     size_t Needed = Header + (size_t)Lines * Stride;
     if (Available(Port) < Needed)
     {
@@ -529,11 +529,11 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
     if (!Port->InFrame)
     {
-        size_t Symbols = (size_t)Port->NumLines * LineSymbols(Port);
+        size_t Symbols = (size_t)Port->NumCodedLines * LineSymbols(Port);
 
         Port->Symbols = (uint16_t*)DtAlloc_Malloc(Symbols * sizeof(uint16_t));
         if (Port->Is4k)
-            Port->Blanking = (uint8_t*)DtAlloc_Malloc((size_t)Port->NumLines);
+            Port->Blanking = (uint8_t*)DtAlloc_Malloc((size_t)Port->NumCodedLines);
         if (Port->Symbols == NULL || (Port->Is4k && Port->Blanking == NULL))
         {
             ClearFrame(Port);
@@ -583,7 +583,7 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
     }
 
     Port->SeqNumber++;
-    if (Port->LinesDone == Port->NumLines)
+    if (Port->LinesDone == Port->NumCodedLines)
     {
         KeepFrame(Port);
         ClearFrame(Port);
@@ -958,9 +958,10 @@ static double PartPeriodMs(const SimTxPort* Port, int VidStd)
 
     if (!DtFrameProps_Init(&Props, VidStd) || Props.FpsNum <= 0)
         return 0;
-    int NumLines = DtFrameProps_NumLines(&Props);
-    int Lines = Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (NumLines + 3) / 4;
-    return 1000.0 * Props.FpsDen / Props.FpsNum / ((NumLines + Lines - 1) / Lines);
+    int NumRawLines = DtFrameProps_NumLines(&Props);
+    int Lines =
+        Port->NumLinesPerEvent > 0 ? Port->NumLinesPerEvent : (NumRawLines + 3) / 4;
+    return 1000.0 * Props.FpsDen / Props.FpsNum / ((NumRawLines + Lines - 1) / Lines);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxFCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1576,7 +1577,7 @@ bool SimDtPcie_GetTxFrame(int PortIndex, int Index, SimTxFrame* Frame)
     {
         const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[Index];
         Frame->FrameId = Kept->FrameId;
-        Frame->NumLines = Kept->NumLines;
+        Frame->NumCodedLines = Kept->NumCodedLines;
         Frame->SymsHanc = Kept->SymsHanc;
         Frame->SymsVideo = Kept->SymsVideo;
         Frame->Symbols = Kept->Symbols;
@@ -1601,13 +1602,13 @@ bool SimDtPcie_CopyTxFrame(int PortIndex, int FrameId, uint16_t* Symbols,
     {
         const SimTxKept* Kept = &g_Tx.Ports[PortIndex].Kept[k];
         size_t Count =
-            (size_t)Kept->NumLines * (size_t)(Kept->SymsHanc + Kept->SymsVideo);
+            (size_t)Kept->NumCodedLines * (size_t)(Kept->SymsHanc + Kept->SymsVideo);
 
         if (Kept->FrameId != FrameId || Count > MaxSymbols)
             continue;
         memcpy(Symbols, Kept->Symbols, Count * sizeof(uint16_t));
         Frame->FrameId = Kept->FrameId;
-        Frame->NumLines = Kept->NumLines;
+        Frame->NumCodedLines = Kept->NumCodedLines;
         Frame->SymsHanc = Kept->SymsHanc;
         Frame->SymsVideo = Kept->SymsVideo;
         Frame->Symbols = Symbols;
