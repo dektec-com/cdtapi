@@ -1,9 +1,8 @@
 # DekTec house style for CDTAPI.
 #
 # Derived from Win/Applications/StreamXpertV3/.clang-format, which states the shared
-# house style in machine-readable form. Only the language differs: CDTAPI is C11,
-# so the C++-only options are dropped and Standard is pinned to the oldest C++ dialect,
-# as clang-format has no C one.
+# house style in machine-readable form. Only the language differs: CDTAPI is C11, so the
+# C++-only options are dropped.
 ---
 Language: Cpp
 BasedOnStyle: LLVM
@@ -52,6 +51,6 @@ IncludeBlocks: Preserve
 SpaceAfterCStyleCast: false
 SpaceBeforeParens: ControlStatements
 
-# clang-format knows only C++ dialects, so the C11 code is formatted as c++03, the
-# oldest, rather than as the latest, which the LLVM base style would pick.
-Standard: c++03
+# clang-format knows only C++ dialects. They differ in C++ constructs only, and the whole
+# tree formats alike under the oldest and the latest, so the house style's is kept.
+Standard: Latest
