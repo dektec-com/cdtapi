@@ -703,6 +703,8 @@ DT_TEST(ReadingIsCheckedFirst)
     List[1].Port = 1;
     List[1].Group = DTAPI_IOCONFIG_INPUT; // A value, not a group
     DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_INVALID_ARG);
+    List[1].Group = DTAPI_IOCONFIG_TRUE; // What a capability is set to, not a group
+    DT_ASSERT_EQ(DtDevice_GetIoConfig(Device, List, 2), DTAPI_E_INVALID_ARG);
 
     // The emulated DTA-2178 has no transport-stream rate selection.
     List[1].Group = DTAPI_IOCONFIG_TSRATESEL;

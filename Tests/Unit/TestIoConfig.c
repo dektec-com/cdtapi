@@ -238,7 +238,8 @@ DT_TEST(SharedSubValuesBelongToBothOutputs)
                  DTAPI_E_INVALID_ARG);
 }
 
-// A boolean I/O capability is set to TRUE or FALSE, and TRUE is not itself a group.
+// A boolean I/O capability is set to TRUE or FALSE, and neither TRUE nor FALSE is itself
+// a group.
 DT_TEST(BooleanCapabilitiesTakeTrueOrFalse)
 {
     DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE, -1));
@@ -250,6 +251,13 @@ DT_TEST(BooleanCapabilitiesTakeTrueOrFalse)
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_TRUE, -1),
                  DTAPI_E_INVALID_ARG);
+
+    // What a configuration can be read of: a capability, not the values it is set to.
+    DT_ASSERT_OK(DtIoConfig_CheckGroup(DTAPI_IOCONFIG_GENLOCKED));
+    DT_ASSERT_OK(DtIoConfig_CheckGroup(DTAPI_IOCONFIG_IODIR));
+    DT_ASSERT_EQ(DtIoConfig_CheckGroup(DTAPI_IOCONFIG_TRUE), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtIoConfig_CheckGroup(DTAPI_IOCONFIG_FALSE), DTAPI_E_INVALID_ARG);
+    DT_ASSERT(!DtIoConfig_IsCapOfGroup(DTAPI_IOCONFIG_TRUE, DTAPI_IOCONFIG_TRUE));
 }
 
 DT_TEST(VideoStandardsBelongToTheirRate)

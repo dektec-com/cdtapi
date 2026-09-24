@@ -117,10 +117,30 @@ static bool IsKind(int Code, int Kinds)
     return (g_IoConfigs[Code].Kinds & Kinds) != 0;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsBoolIoCap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// True for a boolean I/O capability. TRUE and FALSE carry the boolean I/O kind too, so
+// that they can be listed as its values, and are told apart by being sub-values as well.
+//
+static bool IsBoolIoCap(int Code)
+{
+    return IsKind(Code, DT_IOCFG_BOOLIO) && !IsKind(Code, DT_IOCFG_SUBVALUE);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// True for what a configuration can be set and read of: a group or a boolean I/O
+// capability.
+//
+static bool IsGroup(int Code)
+{
+    return IsCode(Code) && (IsKind(Code, DT_IOCFG_GROUP) || IsBoolIoCap(Code));
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasParent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True when Code may appear under Parent. DT_IOCFG_ANY_BOOLIO matches the boolean I/O
-// capabilities themselves, not TRUE and FALSE, which also carry the boolean I/O kind.
+// True when Code may appear under Parent. DT_IOCFG_ANY_BOOLIO matches every boolean I/O
+// capability.
 //
 static bool HasParent(int Code, int Parent)
 {
@@ -130,11 +150,8 @@ static bool HasParent(int Code, int Parent)
 
         if (Slot == Parent)
             return true;
-        if (Slot == DT_IOCFG_ANY_BOOLIO && IsKind(Parent, DT_IOCFG_BOOLIO) &&
-            !IsKind(Parent, DT_IOCFG_SUBVALUE))
-        {
+        if (Slot == DT_IOCFG_ANY_BOOLIO && IsBoolIoCap(Parent))
             return true;
-        }
     }
     return false;
 }
@@ -155,7 +172,7 @@ static bool HasChildren(int Code)
 //
 DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue)
 {
-    if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
+    if (!IsGroup(Group))
         return DTAPI_E_INVALID_ARG;
 
     if (!IsCode(Value) || !IsKind(Value, DT_IOCFG_VALUE) || !HasParent(Value, Group))
@@ -177,11 +194,11 @@ DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_CheckGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_CheckGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtIoConfig_CheckGroup(int Group)
 {
-    if (!IsCode(Group) || !IsKind(Group, DT_IOCFG_GROUP | DT_IOCFG_BOOLIO))
+    if (!IsGroup(Group))
         return DTAPI_E_INVALID_ARG;
     return DTAPI_OK;
 }
