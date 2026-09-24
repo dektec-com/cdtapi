@@ -109,7 +109,7 @@ definitions. Include one or the other.
 
 ## What the wrapper did not have
 
-CDTAPI declares nine functions besides those of the wrapper:
+CDTAPI declares 25 functions besides those of the wrapper:
 
 | Function | Does |
 |---|---|
@@ -118,6 +118,11 @@ CDTAPI declares nine functions besides those of the wrapper:
 | `DtInpChannel_ReadFrame2` | Reads a frame with its time of arrival |
 | `DtOutpChannel_WriteFrame` | Writes one whole frame, with a time-out |
 | `DtDevice_WaitForSignalTimeout` | `DtDevice_WaitForSignal` with a time limit and a result, for a program that must carry on when there is no signal |
+| `DtDevice_GetIoConfig`, `DtInpChannel_GetIoConfig`, `DtOutpChannel_GetIoConfig` | Read a port's I/O configuration |
+| `DtInpChannel_SetConversionThreads`, `DtOutpChannel_SetConversionThreads` | Convert a frame's lines over threads of the library's own |
+| `DtInpChannel_SetConversionDispatch`, `DtOutpChannel_SetConversionDispatch` | Convert a frame's lines over the program's own threads |
+| `DtInpChannel_Read`, `DtInpChannel_GetStatus`, `DtInpChannel_GetTsRateBps`, `DtInpChannel_GetViolCount`, `DtInpChannel_PolarityControl` | Receive DVB-ASI |
+| `DtOutpChannel_GetTsRateBps`, `DtOutpChannel_SetTsRateBps`, `DtOutpChannel_SetTxPolarity`, `DtOutpChannel_ClearFlags` | Transmit DVB-ASI, and clear a transmit channel's latched flags |
 | `AvFifo_RxFifo_Attach2`, `AvFifo_TxFifo_Attach2` | Attach with a choice between a hardware and a software pipe |
 | `AvFifo_RxFifo_UsesHwPipe`, `AvFifo_TxFifo_UsesHwPipe` | Which kind of pipe a started FIFO uses |
 

@@ -20,9 +20,9 @@ TabWidth: 4
 # lot of it, so stating it here keeps the two trees looking the same.
 IndentPPDirectives: BeforeHash
 
-# A public C header wraps its declarations in extern "C". The existing DekTec headers do
-# not indent inside that block (see SDK/Libraries/CDTAPI/CDTAPI/CDTAPI.h), and indenting
-# it would push the banner comments past the 90-column limit.
+# A public C header wraps its declarations in extern "C". The DekTec headers beside this
+# library do not indent inside that block, and indenting it would push the banner
+# comments past the 90-column limit.
 IndentExternBlock: NoIndent
 UseTab: Never
 ContinuationIndentWidth: 4

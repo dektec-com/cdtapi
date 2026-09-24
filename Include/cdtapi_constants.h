@@ -629,7 +629,8 @@
 #define DTAPI_TXMODE_BURST          0x20
 #define DTAPI_TXMODE_TXONTIME       0x40
 
-// Stuff mode - TS : Null-packet stuffing on/off; SDI: Black-frame stuffing on/off
+// Stuff mode - TS : Null-packet stuffing on/off; SDI ignores it and always fills with
+// black frames
 #define DTAPI_TXSTUFF_MODE_OFF      0
 #define DTAPI_TXSTUFF_MODE_ON       1
 

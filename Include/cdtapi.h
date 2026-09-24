@@ -342,7 +342,8 @@ CDTAPI_API DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* Vi
 CDTAPI_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
                                                      int TimeoutMs, DtDetVidStd* Result);
 
-// Reads the device's time-of-day clock. *TimeOfDay is zero when this fails.
+// Reads the device's time-of-day clock. *TimeOfDay is zero after a failure, but for
+// DTAPI_E_INVALID_ARG for a null Device or TimeOfDay, which leaves it untouched.
 CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
                                              DtTimeOfDay* TimeOfDay);
 
@@ -386,9 +387,6 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
-// On ASI the output sends K28.5 from here on, and so from a switch to ASI; a receiver
-// needs a moment to lock to it, and a stream sent at once loses its start. DekTec's
-// DtPlay waits 200 ms before sending, as DtTransmitTs does.
 //
 // Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT
@@ -573,9 +571,10 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 // The functions below are ASI's, and give DTAPI_E_NOT_SUPPORTED on SDI.
 
 // Reads NumBytesToRead bytes of the transport stream into Buffer, in the receive mode.
-// With a time-out of 0 it waits as long as it takes, reading 1 MB at a time when more
-// is asked for than the FIFO holds; otherwise it waits up to TimeOut milliseconds, or
-// without a limit for -1, for all of it, and reads nothing when the time runs out.
+// With a time-out of 0 it waits as long as it takes, taking the bytes 1 MB at a time as
+// they arrive, so that more than the FIFO holds can be asked for; otherwise it waits up
+// to TimeOut milliseconds, or without a limit for -1, for all of it, and reads nothing
+// when the time runs out.
 //
 // Returns, in DTAPI's order: DTAPI_OK at once for 0 bytes; DTAPI_E_INVALID_TIMEOUT for a
 // time-out below -1; DTAPI_E_IN_USE while a Read on another thread has not returned,
@@ -652,6 +651,9 @@ CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
+// On ASI the output sends K28.5 from here on, and so from a switch to ASI; a receiver
+// needs a moment to lock to it, and a stream sent at once loses its start. DekTec's
+// DtPlay waits 200 ms before sending, as DtTransmitTs does.
 //
 // Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_OUTPUT
@@ -728,7 +730,8 @@ CDTAPI_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
 // black frame or the card's formatter ran out of data, and DTAPI_TX_DMA_UFL when the
 // card's transmitter did. On ASI, DTAPI_TX_FIFO_UFL when the card ran out of symbols or
 // stuffing inserted null packets, and DTAPI_TX_SYNC_ERR for a packet without its sync
-// byte. The latched flags stay set until ClearFlags or ClearFifo.
+// byte. The latched flags stay set until ClearFlags or ClearFifo; on ASI holding also
+// clears DTAPI_TX_SYNC_ERR, and starting to send forgets the card's earlier underflows.
 CDTAPI_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status,
                                               int* Latched);
 

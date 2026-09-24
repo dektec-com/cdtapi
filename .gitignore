@@ -23,8 +23,8 @@ Export/
 Include/cdtapi_version.h
 
 # .-.-.- Surround SCM bookkeeping -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-# CDTAPI lives in git, not in Surround. These patterns keep Surround's metadata out
-# of the repository should the directory ever be placed under Surround as well.
+# Inside DekTec this directory is a Surround SCM working directory as well. These
+# patterns keep Surround's metadata out of the repository.
 .MySCMServerInfo
 *.vssscc
 *.vspscc

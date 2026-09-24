@@ -1,6 +1,6 @@
-# Checks that formatting cannot catch. Coding rules 4 and 6 are handled by
-# .clang-format; rule 5 and the "no historical comments" half of rule 2 are handled
-# by Scripts/check_style.sh, which runs in the same gate.
+# Checks that formatting cannot catch, for running clang-tidy by hand: no build step and
+# no CI job runs it. Coding rules 4 and 6 are handled by .clang-format; rule 5 and the
+# "no historical comments" half of rule 2 by Scripts/check_style.sh.
 ---
 Checks: >
   -*,

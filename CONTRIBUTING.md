@@ -111,7 +111,7 @@ belong wherever they are needed.
 | 8 | `Scripts/check_style.sh` |
 | 9 | Review |
 | 10 | Review |
-| Everything else | `clang-tidy`, warnings-as-errors |
+| Everything else | The compilers' warnings, as errors, and review. `.clang-tidy` configures clang-tidy for a run by hand; no gate runs it |
 
 Run them locally:
 
