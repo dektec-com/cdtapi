@@ -64,7 +64,7 @@ static const struct
 
 #define PORT_CAP_COUNT (sizeof(g_PortCaps) / sizeof(g_PortCaps[0]))
 
-// More public ports than any DekTec device has.
+// More ports than any DekTec device has.
 #define DT_MAX_PORTS 1024
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadPorts -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -245,8 +245,8 @@ void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 // whose driver is too old, is left out. The descriptors are collected first and copied
 // only when they all fit, because the caller's array is not touched on failure.
 //
-// On success all NumEntries descriptors are filled in, and the ones beyond the last port
-// are all-zero descriptors: "0:0", "DTA-0 port 0".
+// On success all NumEntries descriptors are filled in; the ones beyond the last port are
+// zero except for the names "0:0" and "DTA-0 port 0".
 //
 DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult, DtHwFuncDesc* HwFuncs)
 {
@@ -568,8 +568,8 @@ static bool PortHasGroup(const DtDevice* Device, int PortIndex, int Group)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The checks made for each entry, in order: the port, the firmware, the group and
-// whether the port has it. Every entry is -1 until the driver has answered for all of
-// them.
+// whether the port has it. The value, the sub-value and the extra parameters of every
+// entry are -1 unless the driver answers for all of them.
 //
 DtapiResult DtDevice_GetIoConfig(DtDevice* Device, DtIoConfig* Configs, int Count)
 {
@@ -719,8 +719,8 @@ DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port, int Timeou
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_WaitForSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Without a time limit only a null device or a port that cannot be attached returns, and
-// then every field is unknown.
+// Without a time limit this returns only once a standard is found, or at once, with every
+// field unknown, for a null device or a port that cannot be attached.
 //
 DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port)
 {

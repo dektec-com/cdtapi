@@ -42,9 +42,9 @@ static DtapiResult FindInstance(OsDrv* Drv, int PortIndex, const char* Name,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads the role, the type and the UUID, in that order, and a name that says which kind
-// of object it is. False when any of it cannot be had, in which case the object is
-// left out.
+// Reads the role, the type and the UUID of the object Object->Name names, in that order,
+// and tells a driver function from a building block by the name's prefix. False when any
+// of it cannot be had, in which case the object is left out.
 //
 static bool ReadObject(OsDrv* Drv, int PortIndex, DtFuncObject* Object)
 {

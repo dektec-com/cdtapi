@@ -35,8 +35,8 @@ typedef struct DtAvInput
 // Attaches Input to a port of an attached Device, numbered from 1, with the checks in
 // this order: DTAPI_E_DEVICE for a detached device, DTAPI_E_OBSOLETE_FW or
 // DTAPI_E_TAINTED_FW, then DTAPI_E_NO_SUCH_PORT beyond all ports, then
-// DTAPI_E_NOT_SUPPORTED for a port that is no input, has no SDI receiver, HDMI or Matrix
-// API capability, or lacks the Matrix API one.
+// DTAPI_E_NOT_SUPPORTED for a port that is not an input or an internal input, has no SDI
+// receiver, HDMI or Matrix API capability, or lacks the Matrix API one.
 //
 // Then the port's ASI/SDI receiver API function with the empty role is found with
 // DtFunc_Find, whose failures are returned, and in it the SDI receiver driver function

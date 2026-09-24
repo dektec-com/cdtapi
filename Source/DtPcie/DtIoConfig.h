@@ -48,7 +48,7 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 // What a code can be in a configuration; a code can be more than one. These are the
 // kinds in Tables/DtIoConfigList.inc.
 #define DT_IOCFG_GROUP 0x1    // A group, such as IODIR
-#define DT_IOCFG_BOOLIO 0x2   // A boolean I/O capability, set like a group to TRUE/FALSE
+#define DT_IOCFG_BOOLIO 0x2   // A boolean I/O capability, or TRUE/FALSE, its values
 #define DT_IOCFG_VALUE 0x4    // A value within a group, such as OUTPUT
 #define DT_IOCFG_SUBVALUE 0x8 // A sub-value within a value, such as DBLBUF
 

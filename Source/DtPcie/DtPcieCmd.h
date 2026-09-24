@@ -97,8 +97,9 @@ bool DtPcieCmd_VersionIsSupported(const DtDriverVersion* Version);
 bool DtPcieCmd_VersionAtLeast(const DtDriverVersion* Version, int Major, int Minor,
                               int Micro, int Build);
 
-// Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and falls back to the
-// original GET_DEV_INFO for a driver that predates it, whose PCIe part has no slot power.
+// Reads the identity of the device behind Drv. Uses GET_DEV_INFO2, and when that fails,
+// as it does on a driver that predates it, the original GET_DEV_INFO, whose PCIe part has
+// no slot power.
 DtapiResult DtPcieCmd_GetDeviceInfo(OsDrv* Drv, DtDeviceInfo* Info);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Properties -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -176,7 +177,7 @@ typedef struct DtSdiRxStatus
     bool CarrierDetect;
     bool SdiLock;       // Locked to the SDI stream
     bool LineLock;      // Locked to the lines
-    bool Valid;         // The counters below describe the input
+    bool Valid;         // The fields below describe the input
     int NumSymsHanc;    // Symbols per line in HANC, EAV and SAV included
     int NumSymsVidVanc; // Symbols per line in the active part
     int NumLinesF1;
@@ -269,7 +270,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtDrvObject Object,
                                       DtChSdiRxProps* Props);
 
 // Reads the status of the channel's input, as DtPcieCmd_SdiRxGetStatus does for the
-// receiver.
+// receiver, except that CarrierDetect is always false: the answer has no carrier.
 DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
                                           DtSdiRxStatus* Status);
 
@@ -371,7 +372,8 @@ typedef struct DtBurstFifoProps
     int FifoSize;  // Bytes
 } DtBurstFifoProps;
 
-// A burst FIFO's load and free space, now and at their maximum since the last clear.
+// A burst FIFO's load and free space in bytes, now and at their maximum since the last
+// clear.
 typedef struct DtBurstFifoStatus
 {
     int CurFree;
@@ -405,7 +407,8 @@ typedef struct DtSdiTxFEvent
     uint32_t SofNanoseconds;
 } DtSdiTxFEvent;
 
-// The formatter takes DT_BLOCK_OPMODE_IDLE and DT_BLOCK_OPMODE_RUN.
+// The formatter takes DT_BLOCK_OPMODE_IDLE and DT_BLOCK_OPMODE_RUN; the driver refuses
+// DT_BLOCK_OPMODE_STANDBY, which is sent to it.
 DtapiResult DtPcieCmd_SdiTxFSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
 // Asks for a format event every NumLinesPerEvent lines, and a start-of-frame time every
@@ -418,9 +421,9 @@ DtapiResult DtPcieCmd_SdiTxFSetFmtEventSetting(OsDrv* Drv, DtDrvObject Object,
 DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
                                                int* AlignmentInBits);
 
-// Waits up to TimeoutMs milliseconds, -1 to 1000, for the next format event. Gives
-// DTAPI_E_TIMEOUT when none comes, and DTAPI_E_INVALID_MODE at once while the formatter
-// is not running.
+// Waits up to TimeoutMs milliseconds for the next format event. The driver takes -1, no
+// limit, to 1000, and refuses any other value. Gives DTAPI_E_TIMEOUT when none comes, and
+// DTAPI_E_INVALID_MODE at once while the formatter is not running.
 DtapiResult DtPcieCmd_SdiTxFWaitForFmtEvent(OsDrv* Drv, DtDrvObject Object, int TimeoutMs,
                                             DtSdiTxFEvent* Event);
 
@@ -440,8 +443,9 @@ DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtDrvObject Object, bo
 
 DtapiResult DtPcieCmd_SdiTxPhySetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
-// Reads and clears the flag the PHY sets when its data ran out. It stays set until
-// cleared.
+// The flag the PHY sets when its data ran out. DtPcieCmd_SdiTxPhyGetUnderflowFlag reads
+// it and leaves it set; it stays set until DtPcieCmd_SdiTxPhyClearUnderflowFlag clears
+// it.
 DtapiResult DtPcieCmd_SdiTxPhyGetUnderflowFlag(OsDrv* Drv, DtDrvObject Object,
                                                bool* Underflow);
 DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, DtDrvObject Object);
@@ -491,8 +495,7 @@ DtapiResult DtPcieCmd_AsiRxGetStatus(OsDrv* Drv, DtDrvObject Object,
                                      DtAsiRxStatus* Status);
 
 // The rate of the stream on the wire, in bits a second: of 204-byte packets when those
-// come, which the channel layer converts to a rate of 188-byte packets; 0 while no
-// packets come.
+// come; 0 while no packets come.
 DtapiResult DtPcieCmd_AsiRxGetTsBitrate(OsDrv* Drv, DtDrvObject Object, int* Bitrate);
 
 // The count of 8b/10b code violations since the receiver started.
@@ -540,7 +543,7 @@ DtapiResult DtPcieCmd_NwGetMacAddress(OsDrv* Drv, DtDrvObject Object, uint8_t* M
 // down.
 DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtDrvObject Object, int* Speed);
 
-// Opens a pipe of Type, or of Fallback when every pipe of Type is in use; -1 for no
+// Opens a pipe of Type, or of TypeFallback when every pipe of Type is in use; -1 for no
 // fallback. *Pipe receives the pipe, in the port of the network function Object; its UUID
 // is 0 after a failure.
 DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type,
@@ -582,7 +585,8 @@ DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtDrvObject Pipe,
 // Lets go of the shared buffer.
 DtapiResult DtPcieCmd_PipeReleaseSharedBuffer(OsDrv* Drv, DtDrvObject Pipe);
 
-// Empties the pipe and clears an invalid time.
+// Empties the pipe and clears DT_PIPE_ERROR_INVALID_TIME, the stall a bad time stamp
+// causes.
 DtapiResult DtPcieCmd_PipeFlush(OsDrv* Drv, DtDrvObject Pipe);
 
 // Sets a DT_PIPE_OPMODE_ value; any other gives DTAPI_E_INVALID_ARG without a command.
@@ -600,9 +604,9 @@ DtapiResult DtPcieCmd_PipeSetTxWriteOffset(OsDrv* Drv, DtDrvObject Pipe, uint32_
 DtapiResult DtPcieCmd_PipeGetTxReadOffset(OsDrv* Drv, DtDrvObject Pipe, uint32_t* Offset);
 
 // Which packets a receive pipe takes. The addresses are in network byte order, IPv4 in
-// their first 4 bytes; the ports are numbers. Flags are DT_PIPE_IPFLT_FLAG_ values: the
-// filter is on with DT_PIPE_IPFLT_FLAG_EN_FILT, and each address, port and VLAN counts
-// only with its own flag.
+// their first 4 bytes; the ports are in host byte order. Flags are DT_PIPE_IPFLT_FLAG_
+// values: the filter is on with DT_PIPE_IPFLT_FLAG_EN_FILT, each address and port counts
+// only with its own flag, and both VLAN IDs with DT_PIPE_IPFLT_FLAG_EN_VLAN.
 typedef struct DtIpFilter
 {
     uint8_t DstIp[16];

@@ -48,7 +48,8 @@
 // The capability the device descriptor looks at besides the direction.
 #define DT_CAP_IP UINT64_C(0x2000) // Transport-stream-over-IP port
 
-// The capabilities an input channel looks at.
+// The capabilities the input and output channels look at. A hardware function description
+// reports DT_CAP_ASI as well.
 #define DT_CAP_ASI UINT64_C(0x4000)      // ASI, which the ASI/SDI receiver implies
 #define DT_CAP_MATRIX UINT64_C(0x8000)   // The frame-buffer Matrix API of older cards
 #define DT_CAP_TS UINT64_C(0x10000)      // Transport-stream receive modes
@@ -81,13 +82,15 @@ struct DtDevice
     DtDeviceInfo Info;
     int NumPorts;       // All ports, PORT_COUNT
     int NumPublicPorts; // The ports an application sees, MAIN_PORT_COUNT
-    uint64_t* PortCaps; // DT_CAP_ flags per port index, for NumPorts and NumPublicPorts
+    uint64_t* PortCaps; // DT_CAP_ flags per port index, for the larger count
 };
 
 // Attaches Device, which must be detached, to the device the driver numbers Index, when
 // MatchSerial is false or the device's serial number is Serial. Returns DTAPI_OK,
 // DTAPI_E_NO_SUCH_DEVICE when there is no such device or it cannot be read,
-// DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM.
+// DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM. An attached
+// device is activated too, as DtDevActivate_OnAttach describes, which can take tens of
+// milliseconds; the result of that does not decide the attach.
 DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
                                  int64_t Serial);
 
@@ -107,6 +110,7 @@ DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
 // Fills Desc for a port of an attached Device, numbered from 1.
 void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
-// Fills Desc for an attached Device. Reads the I/O direction of each port that can be
-// both an input and an output.
+// Fills Desc for an attached Device. Reads the I/O direction of each public port that is
+// not only an input, only an output or an IP port; the channel counts stop at the first
+// port whose direction cannot be read.
 void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);

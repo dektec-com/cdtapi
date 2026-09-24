@@ -17,7 +17,10 @@
 // Activates the device behind Drv: until this is done its firmware carries no data at
 // all, so the card neither receives nor sends, whatever kind of card it is. The data the
 // device is activated with is its own, held in its EEPROM; a device that has no object to
-// activate needs none, and gives DTAPI_OK.
+// activate needs none, and gives DTAPI_OK. An object that is already ready is left alone,
+// and gives DTAPI_OK too. Otherwise the result is the first failure, such as
+// DTAPI_E_IN_USE when exclusive access cannot be had in 10 tries, or DTAPI_E_INVALID when
+// the object is not ready afterwards.
 //
 // Attaching calls this once. Its failure is not a reason to refuse the attach: the device
 // is there and answers for itself, so the result is for the caller to log or ignore.

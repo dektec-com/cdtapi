@@ -116,8 +116,8 @@ static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, 
 //
 // The data lies in the EEPROM behind the read-only and read-write sections. A card whose
 // EEPROM was never given any holds the same word throughout, which counts as none.
-// The words are handed over most significant byte first, whatever order this processor
-// keeps them in.
+// The EEPROM holds each word most significant byte first, and the words are assembled
+// from the bytes, so that their values do not depend on this processor's byte order.
 //
 static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
 {
