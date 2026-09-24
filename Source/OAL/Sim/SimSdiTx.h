@@ -163,7 +163,7 @@ typedef struct SimTxState
     int PhyMode;                      // DT_FUNC_OPMODE_ value
     int SwitchIn[2];                  // Input and output index of SDI_DEMUX_IN
     int SwitchOut[2];                 // The same of SDI_DEMUX_OUT
-    bool Clamp, AncChecksum, LineCrc; // The encoder's generation mode
+    bool Clamp, AdpChecksum, LineCrc; // The encoder's generation mode
     bool BufferRegistered;
     size_t BufferSize;
     uint32_t ReadOffset, WriteOffset;

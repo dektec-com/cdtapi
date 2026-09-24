@@ -114,8 +114,8 @@ DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtDrvObject Object, int* Speed)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_NwOpenPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type, int Fallback,
-                                 DtDrvObject* Pipe)
+DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type,
+                                 int TypeFallback, DtDrvObject* Pipe)
 {
     if (Pipe != NULL)
     {
@@ -129,7 +129,7 @@ DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type, int F
     memset(&In, 0, sizeof(In));
     DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_NW_CMD_PIPE_OPEN, Object);
     In.m_PipeType = Type;
-    In.m_PipeTypeFallback = Fallback;
+    In.m_PipeTypeFallback = TypeFallback;
     DtIoctlNwCmdPipeOpenOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result = DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_NW_CMD), &In, sizeof(In),

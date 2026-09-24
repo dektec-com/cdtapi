@@ -383,8 +383,8 @@ DtapiResult DtPcieCmd_BurstFifoGetProps(OsDrv* Drv, DtDrvObject Object,
                                         DtBurstFifoProps* Props);
 DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtDrvObject Object,
                                          DtBurstFifoStatus* Status);
-DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool MaxFree,
-                                        bool MaxLoad);
+DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool ClearMaxFree,
+                                        bool ClearMaxLoad);
 
 // Reads the count of overflows and underflows. It stands still while data flows.
 DtapiResult DtPcieCmd_BurstFifoGetOvfUflCount(OsDrv* Drv, DtDrvObject Object,
@@ -432,9 +432,10 @@ DtapiResult DtPcieCmd_SdiDmx12GSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpM
 
 DtapiResult DtPcieCmd_SdiTxPSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
-// Makes the encoder clamp video symbols, and insert ANC checksums and line CRCs.
+// Makes the encoder clamp video symbols, and insert the checksum of each ancillary data
+// packet and the CRC of each line.
 DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtDrvObject Object, bool Clamp,
-                                              bool AncChecksum, bool LineCrc);
+                                              bool AdpChecksum, bool LineCrc);
 
 DtapiResult DtPcieCmd_SdiTxPhySetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
@@ -541,8 +542,8 @@ DtapiResult DtPcieCmd_NwGetPhySpeed(OsDrv* Drv, DtDrvObject Object, int* Speed);
 // Opens a pipe of Type, or of Fallback when every pipe of Type is in use; -1 for no
 // fallback. *Pipe receives the pipe, in the port of the network function Object; its UUID
 // is 0 after a failure.
-DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type, int Fallback,
-                                 DtDrvObject* Pipe);
+DtapiResult DtPcieCmd_NwOpenPipe(OsDrv* Drv, DtDrvObject Object, int Type,
+                                 int TypeFallback, DtDrvObject* Pipe);
 
 // Closes a pipe this handle opened.
 DtapiResult DtPcieCmd_NwClosePipe(OsDrv* Drv, DtDrvObject Pipe);

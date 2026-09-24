@@ -86,7 +86,7 @@ typedef struct SimTxPort
     // Switches, demultiplexer and encoder
     int SwitchInMode, SwitchOutMode, DmxMode, TxpMode;
     int SwitchIn[2], SwitchOut[2];
-    bool Clamp, AncChecksum, LineCrc;
+    bool Clamp, AdpChecksum, LineCrc;
 
     // SDITXPHY
     int PhyMode;
@@ -1098,7 +1098,7 @@ static uint32_t SdiTxPCmd(SimTxPort* Port, int Cmd, const void* In)
             (const DtIoctlSdiTxPCmdSetGenModeInput*)In;
 
         Port->Clamp = Request->m_ClampEnable != 0;
-        Port->AncChecksum = Request->m_AdpChecksumEnable != 0;
+        Port->AdpChecksum = Request->m_AdpChecksumEnable != 0;
         Port->LineCrc = Request->m_LineCrcEnable != 0;
         return DT_STATUS_OK;
     }
@@ -1378,7 +1378,7 @@ void SimSdiTx_Reset(void)
         Port->DmxMode = DT_BLOCK_OPMODE_IDLE;
         Port->TxpMode = DT_BLOCK_OPMODE_IDLE;
         Port->PhyMode = DT_FUNC_OPMODE_IDLE;
-        Port->Clamp = Port->AncChecksum = Port->LineCrc = true;
+        Port->Clamp = Port->AdpChecksum = Port->LineCrc = true;
     }
 #if defined(_WIN32) || defined(_WIN64)
     g_Tx.AsLinux = false;
@@ -1531,7 +1531,7 @@ void SimDtPcie_GetTxState(int PortIndex, SimTxState* State)
     memcpy(State->SwitchIn, Port->SwitchIn, sizeof(State->SwitchIn));
     memcpy(State->SwitchOut, Port->SwitchOut, sizeof(State->SwitchOut));
     State->Clamp = Port->Clamp;
-    State->AncChecksum = Port->AncChecksum;
+    State->AdpChecksum = Port->AdpChecksum;
     State->LineCrc = Port->LineCrc;
     State->BufferRegistered = Port->Registered;
     State->BufferSize = Port->BufferSize;

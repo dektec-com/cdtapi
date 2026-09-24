@@ -330,8 +330,8 @@ DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtDrvObject Object,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_BurstFifoClearMax -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool MaxFree,
-                                        bool MaxLoad)
+DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool ClearMaxFree,
+                                        bool ClearMaxLoad)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -339,8 +339,8 @@ DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool Max
     DtIoctlBurstFifoCmdClearFifoMaxInput In;
     memset(&In, 0, sizeof(In));
     DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_BURSTFIFO_CMD_CLEAR_FIFO_MAX, Object);
-    In.m_ClearMaxFree = MaxFree ? 1 : 0;
-    In.m_ClearMaxLoad = MaxLoad ? 1 : 0;
+    In.m_ClearMaxFree = ClearMaxFree ? 1 : 0;
+    In.m_ClearMaxLoad = ClearMaxLoad ? 1 : 0;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD), &In, sizeof(In), NULL,
                            0);
 }
@@ -495,7 +495,7 @@ DtapiResult DtPcieCmd_SdiTxPSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SdiTxPSetGenerationMode -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtDrvObject Object, bool Clamp,
-                                              bool AncChecksum, bool LineCrc)
+                                              bool AdpChecksum, bool LineCrc)
 {
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -504,7 +504,7 @@ DtapiResult DtPcieCmd_SdiTxPSetGenerationMode(OsDrv* Drv, DtDrvObject Object, bo
     memset(&In, 0, sizeof(In));
     DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_SDITXP_CMD_SET_GENERATION_MODE, Object);
     In.m_ClampEnable = Clamp ? 1 : 0;
-    In.m_AdpChecksumEnable = AncChecksum ? 1 : 0;
+    In.m_AdpChecksumEnable = AdpChecksum ? 1 : 0;
     In.m_LineCrcEnable = LineCrc ? 1 : 0;
     return DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_SDITXP_CMD), &In, sizeof(In), NULL, 0);
 }

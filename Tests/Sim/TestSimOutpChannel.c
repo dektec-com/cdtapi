@@ -453,7 +453,7 @@ DT_TEST(AttachChecks)
     DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
               State.TxfMode == DT_BLOCK_OPMODE_IDLE &&
               State.PhyMode == DT_FUNC_OPMODE_IDLE);
-    DT_ASSERT(State.Clamp && State.AncChecksum && State.LineCrc);
+    DT_ASSERT(State.Clamp && State.AdpChecksum && State.LineCrc);
     DT_ASSERT(State.SwitchIn[0] == 0 && State.SwitchIn[1] == 0 &&
               State.SwitchOut[0] == 0 && State.SwitchOut[1] == 0);
     DT_ASSERT(State.BufferRegistered);
