@@ -24,42 +24,15 @@
 // goes when the last of them does. So a program may free its pool as soon as it has
 // handed it to its channels.
 //
-
-typedef struct DtWorkPool DtWorkPool;
-
-// A pool with neither threads nor a dispatch function, which runs every piece in the
-// thread that asks for it. Returns NULL when memory runs out.
-DtWorkPool* DtWorkPool_Alloc(void);
-
-// Runs the pieces on NumThreads threads of the pool's own; the thread that asks for a
-// job waits for it and takes no piece. The threads are named DtWork.1, DtWork.2 and so
-// on, and live until the pool goes or is set again. Replaces a dispatch function or
-// threads set before.
+// DtWorkPool and the functions a program calls are public, in cdtapi.h; what follows is
+// the library's own.
 //
-// Returns DTAPI_E_INVALID_ARG below 1, DTAPI_E_IN_USE while a DtWork holds the pool, as
-// the holders have sized their buffers by it, and DTAPI_E_OUT_OF_MEM when a thread or an
-// event cannot be had, leaving the pool with neither threads nor a dispatch function.
-DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads);
 
-// Runs the pieces on the program's threads by handing every job to Dispatch, in at most
-// NumThreads pieces. Dispatch NULL leaves the pool with neither threads nor a dispatch
-// function. Replaces threads or a dispatch function set before. Dispatch may be called
-// from more than one thread at once when more than one DtWork holds the pool.
-//
-// Returns DTAPI_E_INVALID_ARG for a NumThreads below 1 with a Dispatch, and
-// DTAPI_E_IN_USE while a DtWork holds the pool.
-DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtDispatchFunc Dispatch, void* User,
-                                   int NumThreads);
-
-// Takes a hold on the pool, which DtWorkPool_Free lets go of; a channel holds the pool it
-// is given this way. Unlike a DtWork's hold, it does not keep the pool from being set
-// again, since it sizes no buffers by it. Passing NULL does nothing.
-void DtWorkPool_Hold(DtWorkPool* Pool);
-
-// Lets go of one hold: the program's, or one DtWorkPool_Hold took. Passing NULL does
+// Takes a hold on the pool, which DtWorkPool_Free lets go of as it does the program's; a
+// channel holds the pool it is given this way. Unlike a DtWork's hold, it does not keep
+// the pool from being set again, since it sizes no buffers by it. Passing NULL does
 // nothing.
-void DtWorkPool_Free(DtWorkPool* Pool);
-void DtWorkPool_Freep(DtWorkPool** Pool);
+void DtWorkPool_Hold(DtWorkPool* Pool);
 
 // How many pieces the pool runs at once: its threads, the NumThreads its dispatch
 // function was given, or 1 with neither.

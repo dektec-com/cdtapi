@@ -407,88 +407,125 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Parallel work +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// Converting a frame between the raw frame a program holds and the coded lines the card
-// carries divides into pieces that do not depend on one another, so it can run on more
-// than one thread. Either the library makes the threads, which
-// DtInpChannel_SetConversionThreads and DtOutpChannel_SetConversionThreads ask for, or a
-// program that has threads of its own runs the pieces on those, which
-// DtInpChannel_SetConversionDispatch and DtOutpChannel_SetConversionDispatch ask for. A
-// channel given neither converts in the thread that calls it, which is the default and
-// what costs nothing.
+// Some of a channel's work divides into pieces that do not depend on one another, so it
+// can run on more than one thread: converting a frame between the raw frame a program
+// holds and the coded lines the card carries is the first. A DtWorkPool is where those
+// pieces run, and any number of channels may share one.
+//
+// A pool runs the pieces on threads of the library's own, which DtWorkPool_StartThreads
+// asks for, or hands them to a program that has threads of its own, through
+// DtWorkPool_SetDispatch. A channel given no pool does all its work in the thread that
+// calls it, which is the default and what costs nothing.
 //
 // Whichever it is, the bytes are the same.
 //
 
-// Does piece Index of Count pieces of a conversion. The pieces are independent and may
-// run in any order, on any thread. The library gives this to a DtDispatchFunc, which
+// Does piece PieceIndex of NumPieces pieces of a job. The pieces are independent and may
+// run in any order, on any thread. The library gives this to a DtWorkDispatchFunc, which
 // calls it; a program has no other use for it.
-typedef void (*DtWorkFunc)(void* Context, int Index, int Count);
+typedef void (*DtWorkFunc)(void* Context, int PieceIndex, int NumPieces);
 
-// Runs Work(Context, Index, Count) for every Index below Count, on whatever threads the
-// program has, and returns only when every one of them has finished. Running them one
-// after another in the calling thread is a correct implementation, only not a fast one.
+// Runs Work(Context, PieceIndex, NumPieces) for every PieceIndex below NumPieces, on
+// whatever threads the program has, and returns only when every one of them has
+// finished. Running them one after another in the calling thread is a correct
+// implementation, only not a fast one.
 //
 // Nothing the library passes outlives the return, so Context may be held on the stack
-// and there is nothing to free. Work must not be called after the return.
-typedef void (*DtDispatchFunc)(void* User, DtWorkFunc Work, void* Context, int Count);
+// and there is nothing to free. Work must not be called after the return. A pool shared
+// by more than one channel calls this from more than one thread at once.
+typedef void (*DtWorkDispatchFunc)(void* User, DtWorkFunc Work, void* Context,
+                                   int NumPieces);
 
-// Sets how many threads the channel converts a frame's lines over. The default is 1: the
-// thread that calls DtInpChannel_ReadFrame does the whole frame itself. Any number above
-// that starts as many threads of the library's own, which the reading thread waits for.
-// They live until the channel is freed or the count or a dispatch is set again; detaching
-// the channel, and switching it to ASI and back, keep them. The frames are the same
-// whatever the count.
-//
-// How many to ask for:
-//
-//   up to 3G-SDI    1. The conversion is a small part of a frame period even on a slow
-//                   core, so more threads cost more than they save.
-//   6G and 12G      2 to 4. A 2160p frame is four times the work, which at 50 or 60
-//                   frames a second is more than one slow core has to spare.
-//   more than 4     not advised. The conversion waits on memory as much as on the
-//                   processor, so the fifth thread and the ones after it add little and
-//                   take cores from the rest of the program.
-//
-// A channel whose signal has no lines, such as ASI, takes the setting and keeps it for
-// when it has.
-//
-// Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a read has not returned, as
-// the threads and their buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
-// the threads or their buffers cannot be had, after which the channel converts in the
-// reading thread again.
-CDTAPI_API DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel,
-                                                         int Threads);
+// The threads a channel's work runs on. A pool is reference counted: the program holds
+// it from DtWorkPool_Alloc until DtWorkPool_Free, every channel given it holds it too,
+// and it goes when the last of them lets go. So a program may free its pool as soon as
+// it has given it to its channels.
+typedef struct DtWorkPool DtWorkPool;
 
-// Converts a frame's lines on the program's own threads instead of the library's. The
-// channel cuts each frame into Pieces pieces and calls Dispatch once, which must run
-// every piece and return only when they have all finished. Pieces is the number that
-// would have gone to DtInpChannel_SetConversionThreads; the channel keeps a working
-// buffer for each, so it has to know before the first frame. Which thread takes which
-// piece is the program's business.
+// Allocates a pool with neither threads nor a dispatch function, which runs every piece
+// in the thread that asks for it. Returns NULL when memory runs out.
+CDTAPI_API DtWorkPool* DtWorkPool_Alloc(void);
+
+// Runs the pieces on NumThreads threads of the pool's own, named DtWork.1, DtWork.2 and
+// so on; the thread that calls into a channel waits for its pieces and takes none. The
+// threads live until the pool goes or is set again.
+//
+// How many to start: as many pieces as the channels that share the pool run at once,
+// which DtInpChannel_SetWorkPool says for one channel, and no more than the cores the
+// rest of the program can spare. More threads than that add nothing: past four on one
+// frame the conversion waits on memory rather than on the processor.
+//
+// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 1; DTAPI_E_IN_USE
+// while a channel with a signal to divide holds the pool, as it has sized its buffers
+// by it; and DTAPI_E_OUT_OF_MEM when a thread cannot be had, leaving the pool with
+// neither threads nor a dispatch function.
+CDTAPI_API DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads);
+
+// Runs the pieces on the program's own threads, by giving every job to Dispatch in at
+// most NumThreads pieces: as many as the program's threads run at once for this pool.
+// Which thread takes which piece is the program's business. Dispatch NULL leaves the pool
+// with neither threads nor a dispatch function.
 //
 // With OpenMP the whole of it is:
 //
-//     static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
+//     static void Dispatch(void* User, DtWorkFunc Work, void* Context, int NumPieces)
 //     {
 //         (void)User;
 //     #pragma omp parallel for
-//         for (int i = 0; i < Count; i++)
-//             Work(Context, i, Count);
+//         for (int i = 0; i < NumPieces; i++)
+//             Work(Context, i, NumPieces);
 //     }
 //
-//     DtInpChannel_SetConversionDispatch(Channel, Dispatch, NULL, 4);
+//     DtWorkPool_SetDispatch(Pool, Dispatch, NULL, 4);
 //
 // With a pool of the program's own it is the call that pool already has for running a job
 // and waiting for it, with User whatever the program wants to find there.
 //
-// Dispatch NULL goes back to the reading thread alone, whatever was set before it. The
-// results are those of DtInpChannel_SetConversionThreads, with DTAPI_E_INVALID_ARG for a
-// Pieces below 1.
-CDTAPI_API DtapiResult DtInpChannel_SetConversionDispatch(DtInpChannel* InpChannel,
-                                                          DtDispatchFunc Dispatch,
-                                                          void* User, int Pieces);
+// Returns DTAPI_E_INVALID_ARG for a null pool, or a NumThreads below 1 with a Dispatch,
+// and DTAPI_E_IN_USE as DtWorkPool_StartThreads does.
+CDTAPI_API DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool,
+                                              DtWorkDispatchFunc Dispatch, void* User,
+                                              int NumThreads);
+
+// Lets go of the program's hold on the pool; it goes when no channel holds it either.
+// Passing NULL does nothing.
+CDTAPI_API void DtWorkPool_Free(DtWorkPool* Pool);
+
+// DtWorkPool_Free, and sets *Pool to NULL.
+CDTAPI_API void DtWorkPool_Freep(DtWorkPool** Pool);
+
+// Divides the channel's work over Pool, NULL for the reading thread alone, which is the
+// default. The channel holds the pool until it is set again or the channel is freed;
+// detaching the channel, and switching it to ASI and back, keep it, and it may be set
+// before the channel is attached. A channel whose signal has no lines, such as ASI,
+// takes the pool and keeps it for when it has. The frames are the same whatever the
+// pool.
+//
+// NumThreads is how many pieces the channel divides a frame into, no more than the pool
+// runs at once. 0 leaves it to the library, which follows the standard the channel is
+// set to, not the fastest the port carries:
+//
+//   2160p50, 2160p60     4. A 12G signal is four times the work of a 3G one, which at
+//                        50 or 60 frames a second is more than one slow core has to
+//                        spare.
+//   2160p24 to 2160p30   2. The same frame, half as often.
+//   up to 3G-SDI         1. The conversion is a small part of a frame period even on a
+//                        slow core, so dividing it costs more than it saves; a pool
+//                        given to such a channel with 0 goes unused.
+//
+// A number is a ceiling, not a reservation: when other channels hold the pool's threads,
+// this channel's pieces wait for one. A channel that must not wait gets a pool of its
+// own.
+//
+// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0; DTAPI_E_IN_USE
+// while a read has not returned, as the buffers must not change under one; and
+// DTAPI_E_OUT_OF_MEM when the buffers cannot be had for those pieces, after which the
+// channel converts in the reading thread until its standard changes or the pool is set
+// again.
+CDTAPI_API DtapiResult DtInpChannel_SetWorkPool(DtInpChannel* InpChannel,
+                                                DtWorkPool* Pool, int NumThreads);
 
 // Stops receiving and discards what the channel holds, and clears the overflow flag.
 CDTAPI_API DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel);
@@ -683,13 +720,9 @@ CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
                                                   DtDevice* Device, int Port);
 
-// Sets how many threads the channel codes a frame's lines over. The default is 1: the
-// thread that writes does the whole frame itself. Any number above that starts as many
-// threads of the library's own, which the writing thread waits for. They live until the
-// channel is freed or the count or a dispatch is set again; detaching the channel, and
-// switching it to ASI and back, keep them. The signal is the same whatever the count.
-// DtInpChannel_SetConversionThreads says how many threads to ask for; the same numbers
-// hold here.
+// Divides the channel's work over Pool, NULL for the writing thread alone, which is the
+// default. It is DtInpChannel_SetWorkPool for an output channel, and what that one says
+// holds here, the number of pieces included.
 //
 // A channel can only divide the lines it has been given. DtOutpChannel_WriteFrame is
 // given a whole frame, so it always divides. DtOutpChannel_Write is given a stretch of
@@ -697,22 +730,12 @@ CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
 // frame at a time gets the same as WriteFrame, and a caller that writes a line at a time
 // gets no division, because there is nothing in that call to divide.
 //
-// A channel whose signal has no lines, such as ASI, takes the setting and keeps it for
-// when it has.
-//
-// Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a write has not returned, as
-// the threads and their buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
-// the threads or their buffers cannot be had, after which the channel codes in the
-// writing thread again.
-CDTAPI_API DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel,
-                                                          int Threads);
-
-// Codes a frame's lines on the program's own threads instead of the library's. It is
-// DtInpChannel_SetConversionDispatch for an output channel, and what that one says holds
-// here, including which calls to write can divide anything.
-CDTAPI_API DtapiResult DtOutpChannel_SetConversionDispatch(DtOutpChannel* OutpChannel,
-                                                           DtDispatchFunc Dispatch,
-                                                           void* User, int Pieces);
+// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0; DTAPI_E_IN_USE
+// while a write has not returned; and DTAPI_E_OUT_OF_MEM when the buffers cannot be had
+// for those pieces, after which the channel codes in the writing thread until its
+// standard changes or the pool is set again.
+CDTAPI_API DtapiResult DtOutpChannel_SetWorkPool(DtOutpChannel* OutpChannel,
+                                                 DtWorkPool* Pool, int NumThreads);
 
 // Stops transmitting, discards what the channel has not sent, and clears the underflow
 // flags; on ASI DTAPI_TX_SYNC_ERR stays set. When stopping fails no flag is cleared.

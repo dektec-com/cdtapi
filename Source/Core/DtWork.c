@@ -54,7 +54,7 @@ struct DtWorkPool
     DtAtomicInt NumHolders; // The DtWorks holding the pool
 
     // A dispatch function of the program's, or threads of the pool's own, or neither.
-    DtDispatchFunc Dispatch;
+    DtWorkDispatchFunc Dispatch;
     void* User;
     int NumThreads; // 0 with neither
     Worker* Worker; // NumThreads of them with threads of its own
@@ -261,8 +261,8 @@ DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_SetDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtDispatchFunc Dispatch, void* User,
-                                   int NumThreads)
+DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtWorkDispatchFunc Dispatch,
+                                   void* User, int NumThreads)
 {
     if (Pool == NULL || (Dispatch != NULL && NumThreads < 1))
         return DTAPI_E_INVALID_ARG;
