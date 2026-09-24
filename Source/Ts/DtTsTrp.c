@@ -156,7 +156,7 @@ bool DtTsTrp_FindSync(const DtTsTrp* Trp, const uint8_t* Buf, size_t Size, size_
         }
         if (Found)
         {
-            *Offset = Pos > AT_SYNC ? Pos - AT_SYNC : Pos + (DT_TRP_SIZE - AT_SYNC);
+            *Offset = Pos >= AT_SYNC ? Pos - AT_SYNC : Pos + (DT_TRP_SIZE - AT_SYNC);
             return true;
         }
     }

@@ -200,7 +200,12 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
             const int n =
                 DtTsTrp_Convert(&Rx->Scan, PacketAt(Rx, Rx->Scanned, Copy), NULL);
             if (n < 0)
+            {
+                // The search accepts a first packet the conversion refuses, so it starts
+                // a byte further on, or it would find this packet again.
                 Rx->OutOfSync = true;
+                Result = Skip(Rx, 1);
+            }
             else if (Rx->Load + (size_t)n > DT_ASIRX_FIFO_SIZE)
             {
                 Rx->FifoOvf = Rx->FifoOvfLatched = true;

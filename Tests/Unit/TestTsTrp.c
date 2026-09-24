@@ -167,8 +167,9 @@ DT_TEST(BytesThatAreNoPacket)
     DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), -1);
 }
 
-// The search finds three packets in a row at any offset and gives where a whole packet
-// starts; a gap in the sequence numbers is no stream.
+// The search finds three packets in a row at any offset, the first of them at the start
+// of the buffer too, and gives where it starts; a gap in the sequence numbers is no
+// stream.
 DT_TEST(FindingTheStream)
 {
     uint8_t Buf[8 * DT_TRP_SIZE];
@@ -183,8 +184,7 @@ DT_TEST(FindingTheStream)
             Build(Buf + Skew + (size_t)n * DT_TRP_SIZE, 0, 0, n, 188, true, 65534 + n);
         size_t Offset = 9999;
         DT_ASSERT(DtTsTrp_FindSync(&Trp, Buf, sizeof(Buf), &Offset));
-        DT_ASSERT_EQ(Offset % DT_TRP_SIZE, Skew);
-        DT_ASSERT(Offset == Skew || Offset == Skew + DT_TRP_SIZE);
+        DT_ASSERT_EQ(Offset, Skew);
     }
 
     // Too few bytes, and a sequence that jumps.
