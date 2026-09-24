@@ -32,7 +32,9 @@
 #define RX_BUFFER_VIDEO (64 * 1024 * 1024)
 #define RX_BUFFER_AUDIO (4 * 1024 * 1024)
 
-// The FIFO size for audio, 50 ms of 125 us packets.
+// The FIFO size for audio when the application sets none: 400 frames, which hold at
+// least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
+// The default of 4 would then hold 500 us.
 #define RX_AUDIO_MAX_SIZE 400
 
 #define KIND_NONE 0

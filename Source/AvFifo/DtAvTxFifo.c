@@ -28,7 +28,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The FIFO size for audio, 50 ms of 125 us packets.
+// The FIFO size for audio when the application sets none: 400 frames, which hold at
+// least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
+// The default of 4 would then hold 500 us.
 #define TX_AUDIO_MAX_SIZE 400
 
 // How long the thread waits for a frame before it looks at its stop flag again.
