@@ -11,7 +11,7 @@
 //
 //     9217800001:1  io standard HDSDI 1080I50
 //
-//     9217800001:1  frame 0  6187504 bytes  hash 3C0F2E6D89A1B437
+//     9217800001:1  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //     9217800001:1  no frame within 1000 ms
 //
 // The port must be configured as an input for the standard it receives; DtConfigPort
@@ -36,8 +36,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Room for the largest frame a channel delivers: 2160p over one link with 16-bit
-// symbols, 47 520 000 bytes.
+// Room for the largest frame a channel delivers: 2160p24 over one 6G link with 16-bit
+// symbols, 49 500 000 bytes.
 #define FRAME_BUFFER_SIZE (48 * 1024 * 1024)
 
 static const ExampleOption g_Options[] = {
@@ -183,7 +183,7 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
 
     int Exit = Receive(Channel, Port, RxMode, Count, TimeoutMs,
                        Example_Value(Argc, Argv, "--out"), Frame);
-    DtInpChannel_Detach(Channel, 1);
+    DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
     return Exit;
 }
 

@@ -8,7 +8,7 @@
 // or of a tone with --audio, to a multicast group, and prints one line per frame: its
 // number, its size, its time of day and its RTP timestamp.
 //
-//     9211000001:1  hardware pipe  239.1.2.3:5004
+//     9211000001:1  hardware pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit
 //     9211000001:1  frame 0  5184000 bytes  tod 1800000000.100000000  rtp 2296742400
 //     9211000001:1  sent 3 frames
 //
@@ -46,9 +46,10 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A frame of vertical bars that move a bar a frame, in the packing the configuration
-// asks for, or a square wave of 1 kHz on every channel for audio: 48 samples a period at
-// 48 kHz, as 24-bit two's complement samples, most significant byte first.
+// A frame of vertical bars 128 pixels wide that move 16 pixels to the left a frame, in
+// the packing the configuration asks for, or a square wave of 1 kHz on every channel for
+// audio: 48 samples a period at 48 kHz, as 24-bit two's complement samples, most
+// significant byte first.
 //
 static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, int Size)
 {

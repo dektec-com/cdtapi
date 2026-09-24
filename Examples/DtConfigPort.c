@@ -83,7 +83,8 @@ static bool IsAsi(const DtHwFuncDesc* Port)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // DtapiVidStd2IoStd turns a video standard into the value and sub-value of the IOSTD
-// group; for a video standard, the sub-value is the standard's own code.
+// group. The sub-value is a video standard: the one given, or for 4K over four links the
+// 1080p standard each link carries.
 //
 int main(int Argc, char** Argv)
 {

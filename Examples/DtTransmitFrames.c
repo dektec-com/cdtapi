@@ -39,10 +39,6 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// DtOutpChannel_Detach's mode that waits until what was written is sent, which the
-// header gives no name of its own.
-#define WAIT_UNTIL_SENT 2
-
 // The most frames --in reads.
 #define MAX_FILES 1000
 
@@ -620,12 +616,13 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
     {
         printf("%s  ", Port->DeviceName);
         Example_Failed(What, Result);
-        DtOutpChannel_Detach(Channel, 1);
+        DtOutpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
         return EXAMPLE_FAILED;
     }
 
     int Exit = Transmit(Channel, Port, Src, Count, Flags);
-    Result = DtOutpChannel_Detach(Channel, Exit == EXAMPLE_OK ? WAIT_UNTIL_SENT : 1);
+    Result = DtOutpChannel_Detach(Channel, Exit == EXAMPLE_OK ? DTAPI_WAIT_UNTIL_SENT
+                                                              : DTAPI_INSTANT_DETACH);
     if (Exit == EXAMPLE_OK && Result != DTAPI_OK)
     {
         printf("%s  ", Port->DeviceName);

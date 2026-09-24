@@ -16,8 +16,9 @@
 //
 // Packets of 188 or 204 bytes that say which they are, for a receiver to check one by
 // one: on PID 0x0100, with the continuity counter counting, the packet's number as eight
-// bytes, most significant first, and then bytes that count up from the number's lowest
-// byte to the end of the packet, the 16 bytes of a 204-byte packet included.
+// bytes from offset 4, most significant first, and from offset 12 to the end of the
+// packet, the 16 bytes of a 204-byte packet included, each byte the number plus its
+// offset.
 //
 
 // Writes packet Number of Size bytes, 188 or 204, into Packet.
