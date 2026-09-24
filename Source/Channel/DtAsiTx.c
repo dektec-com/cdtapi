@@ -781,7 +781,7 @@ static DtapiResult ClearFifo(DtTx* Base)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// In any state: stuffing 0 or 1, and not with DTAPI_TXMODE_RAW.
+// In any state: stuffing 0 or 1, and not with DTAPI_TXMODE_RAW, whatever flags it has.
 //
 static DtapiResult SetTxMode(DtTx* Base, int TxMode, int StuffMode)
 {
@@ -789,7 +789,7 @@ static DtapiResult SetTxMode(DtTx* Base, int TxMode, int StuffMode)
 
     if (StuffMode != 0 && StuffMode != 1)
         return DTAPI_E_INVALID_ARG;
-    if (StuffMode == 1 && TxMode == DTAPI_TXMODE_RAW)
+    if (StuffMode == 1 && (TxMode & DTAPI_TXMODE_TS_MASK) == DTAPI_TXMODE_RAW)
         return DTAPI_E_INVALID_MODE;
     DtapiResult Result = DtAsiEnc_SetTxMode(&Tx->Enc, TxMode);
     if (Result != DTAPI_OK)

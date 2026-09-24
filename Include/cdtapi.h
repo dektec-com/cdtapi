@@ -788,8 +788,9 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
 // and a channel that is not idle DTAPI_E_NOT_IDLE. On ASI in any state: one of the modes
 // above, DTAPI_E_INVALID_MODE for DTAPI_TXMODE_192, DTAPI_E_NOT_IMPLEMENTED for
 // DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another; StuffMode 0 or 1, else
-// DTAPI_E_INVALID_ARG, and not 1 with DTAPI_TXMODE_RAW, DTAPI_E_INVALID_MODE. With
-// stuffing the channel keeps 50 ms of symbols in the card's buffer with null packets.
+// DTAPI_E_INVALID_ARG, and not 1 with DTAPI_TXMODE_RAW and any flag,
+// DTAPI_E_INVALID_MODE. With stuffing the channel keeps 50 ms of symbols in the card's
+// buffer with null packets.
 CDTAPI_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
                                                int StuffMode);
 
