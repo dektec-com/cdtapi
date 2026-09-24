@@ -93,8 +93,8 @@ DTAPI's closed library in its archive.
 Beside that surface it has what an application needs and DTAPI's C wrapper left out:
 `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`, `DtInpChannel_ReadFrame2` with each
 frame's time of arrival, and `DtOutpChannel_WriteFrame`, which writes one whole frame
-with a time-out. `DtInpChannel` receives SD, HD and 3G, and `DtOutpChannel` transmits
-them. `cdtapi_avfifo.h` carries SMPTE ST 2110 video and audio, with a choice between
+with a time-out. `DtInpChannel` receives SD, HD, 3G and 2160p over one 6G or 12G link,
+and DVB-ASI, and `DtOutpChannel` transmits them. `cdtapi_avfifo.h` carries SMPTE ST 2110 video and audio, with a choice between
 hardware and software pipes and a specific result code for every failure.
 
 ## Versions

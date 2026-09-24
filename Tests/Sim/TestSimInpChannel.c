@@ -483,7 +483,6 @@ DT_TEST(RingHoldsTwoFramesAtLeast)
     FINISH(Fix);
 }
 
-// A channel on a 4K port has no ring and no frame size: a read waits for its time-out,
 // A port of 2160p over one link wants a buffer for a whole raw frame, 29.7 MB in 10 bits,
 // also after the channel was attached to the port with an HD standard before; without a
 // signal nothing comes.

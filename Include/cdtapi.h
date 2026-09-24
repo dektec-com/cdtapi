@@ -350,11 +350,12 @@ CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
 //
 // An input channel on a port of a DtPcie card, SDI or ASI by the port's I/O standard.
 //
-// On SDI it delivers DTAPI's raw SDI frames: every line, EAV first, with 8-, 10- or
-// 16-bit symbols. It works directly on the DMA ring of the card's receive channel,
-// without a thread of its own: ReadFrame waits for the card's format events and
-// assembles each frame straight into the caller's buffer. SD, HD and 3G standards are
-// received; 4K, 8-bit symbols, active-video-only and compressed modes are not.
+// On SDI it delivers DTAPI's raw SDI frames: every line, EAV first, with 10- or 16-bit
+// symbols. It works directly on the DMA ring of the card's receive channel, without a
+// thread of its own: ReadFrame waits for the card's format events and assembles each
+// frame straight into the caller's buffer. SD, HD and 3G standards are received, and
+// 2160p over one 6G or 12G link; 4K over four links or of level-B links, 8-bit symbols,
+// active-video-only and compressed modes are not.
 //
 // On ASI it delivers a transport stream through Read, in the receive modes DTAPI has for
 // ASI: DTAPI_RXMODE_ST188, ST204, STMP2, STRAW and STTRP, with DTAPI_RXMODE_TIMESTAMP32
@@ -500,8 +501,9 @@ CDTAPI_API DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* V
 CDTAPI_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad);
 
 // The largest load GetFifoLoad can report: the complete frames the channel's ring holds
-// when full, as raw frames in the current receive mode. At least two frames. On a 4K
-// port, where the channel does not receive, DTAPI's FIFO size of 48 MB; on ASI its 8 MB.
+// when full, as raw frames in the current receive mode. At least two frames. On a port
+// of 4K over four links or of level-B links, which the channel does not receive, DTAPI's
+// FIFO size of 48 MB; on ASI its 8 MB.
 CDTAPI_API DtapiResult DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel,
                                                    int* MaxFifoSize);
 
@@ -520,8 +522,7 @@ CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flag
 // DTAPI_RXMODE_ST188; when the switch fails the channel is left detached. Returns
 // DTAPI_E_INVALID_ARG for a combination that is no configuration, for an output
 // direction and for an input that shares the antenna of a port ParXtra0 does not name,
-// and DTAPI_E_NOT_SUPPORTED for 6G, 12G and any other direction, which DTAPI would
-// apply.
+// and DTAPI_E_NOT_SUPPORTED for any other direction, which DTAPI would apply.
 CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
                                                 int Value, int SubValue, int64_t ParXtra0,
                                                 int64_t ParXtra1);
@@ -536,10 +537,10 @@ CDTAPI_API DtapiResult DtInpChannel_GetIoConfig(DtInpChannel* InpChannel, int Gr
                                                 int64_t* ParXtra0, int64_t* ParXtra1);
 
 // DTAPI_RXCTRL_RCV starts receiving from the next frame on; DTAPI_RXCTRL_IDLE stops.
-// Receiving in the 8-bit mode, or on a port configured for 4K, fails with
-// DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI. On ASI, starting empties the FIFO and
-// clears DTAPI_RX_FIFO_OVF, and so does stopping; a value that is neither gives
-// DTAPI_E_INVALID_ARG.
+// Receiving in the 8-bit mode, or on a port configured for 4K over four links or of
+// level-B links, fails with DTAPI_E_CONFIG_RAW_SDI, as it does in DTAPI. On ASI,
+// starting empties the FIFO and clears DTAPI_RX_FIFO_OVF, and so does stopping; a value
+// that is neither gives DTAPI_E_INVALID_ARG.
 CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int RxControl);
 
 // Sets the receive mode while not receiving: on SDI DTAPI_RXMODE_SDI_FULL, optionally
@@ -618,8 +619,8 @@ CDTAPI_API DtapiResult DtInpChannel_PolarityControl(DtInpChannel* InpChannel,
 // While sending, a thread of the channel keeps the signal: when the card holds less than
 // a frame, it writes a black frame, and a frame a write had only partly written follows
 // it. After the first frame of a run the thread waits half of that frame before it does
-// so. SD, HD and 3G standards are transmitted; 4K, 8-bit symbols and active-video-only
-// modes are not.
+// so. SD, HD and 3G standards are transmitted, and 2160p over one 6G or 12G link; 4K over
+// four links or of level-B links, 8-bit symbols and active-video-only modes are not.
 //
 // On ASI it takes a transport stream, as DTAPI does: Write puts it in a FIFO of 8 MB, and
 // a thread of the channel codes it into the 8b/10b symbols the card sends, at the rate
@@ -712,12 +713,14 @@ CDTAPI_API DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel,
                                                  int* FifoLoad);
 
 // The largest load GetFifoLoad can report: the complete frames the channel's buffer holds
-// when full, as raw frames in the current transmit mode, at least two. On a 4K port,
-// where the channel does not transmit, DTAPI's FIFO size of 48 MB. On ASI 8 MB.
+// when full, as raw frames in the current transmit mode, at least two. On a port of 4K
+// over four links or of level-B links, which the channel does not transmit, DTAPI's FIFO
+// size of 48 MB. On ASI 8 MB.
 CDTAPI_API DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel,
                                                  int* FifoSize);
 
-// The same as GetFifoSize; on a 4K port DTAPI's maximum FIFO size of 64 MB, on ASI 8 MB.
+// The same as GetFifoSize; on a port the channel does not transmit on, DTAPI's maximum
+// FIFO size of 64 MB, on ASI 8 MB.
 CDTAPI_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
                                                     int* MaxFifoSize);
 
@@ -752,9 +755,10 @@ CDTAPI_API DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int
 // from idle, which goes through hold; DTAPI_TXCTRL_IDLE stops and discards what was
 // written. In the 8-bit mode the channel holds and takes frames, but sending a frame
 // fails with DTAPI_E_CONFIG_RAW_SDI, as in DTAPI; holding on a port configured for 4K
-// fails with the same code. On ASI sending needs no data, but waits a few milliseconds
-// for the card's burst FIFO to fill, DTAPI_E_TIMEOUT when it does not; holding refuses a
-// rate that does not fit the packet size with DTAPI_E_INVALID_RATE.
+// over four links or of level-B links fails with the same code. On ASI sending needs no
+// data, but waits a few milliseconds for the card's burst FIFO to fill, DTAPI_E_TIMEOUT
+// when it does not; holding refuses a rate that does not fit the packet size with
+// DTAPI_E_INVALID_RATE.
 CDTAPI_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
                                                   int TxControl);
 

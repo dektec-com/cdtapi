@@ -1486,8 +1486,9 @@ static DtapiResult GetFifoLoad(DtTx* Tx, int* FifoLoad)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoSizeOr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The load GetFifoLoad reports for a full buffer. A channel without a buffer, on a 4K
-// port, gives the typical FIFO size, and the maximum size for GetMaxFifoSize.
+// The load GetFifoLoad reports for a full buffer. A channel without a buffer, on a port
+// of 4K over four links or of level-B links, gives the typical FIFO size, and the maximum
+// size for GetMaxFifoSize.
 //
 static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
 {
