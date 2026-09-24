@@ -641,7 +641,7 @@ static void Pack10(const uint16_t* In, size_t Count, uint8_t* Out)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearPadding -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearPadding -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The bytes of a section of Bytes bytes that its Count packed symbols do not reach.
 //
@@ -750,9 +750,9 @@ static void ScatterLine(const DtSdiFrameLayout* Layout, const uint16_t* Raw,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_BandLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_BandLineStep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtSdiFrame_BandLines(const DtSdiFrameLayout* Layout, int SymbolBits)
+int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int SymbolBits)
 {
     const size_t Bits = DtSdiFrame_RawLineBits(Layout, SymbolBits);
     int Lines = 1;
@@ -807,7 +807,7 @@ static void CodeLineC(const DtSdiFrameLayout* Layout, int SymbolBits,
     ScatterLine(Layout, Scratch, LineIndex, CodedA, CodedB);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_C -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_C -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 const DtSdi4kConv* DtSdi4kConv_C(void)
 {

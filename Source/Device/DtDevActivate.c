@@ -26,9 +26,10 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The object that is asked, and the data it takes: 64 words of the EEPROM, which sit
-// behind the sections that hold the card's own description.
-#define ACTIVATE_OBJECT_UUID "BC_IPSECG#1_UUID"
+// The property naming the object that is asked, whose answer is its UUID, and the data
+// it takes: 64 words of the EEPROM, which sit behind the sections that hold the card's
+// own description.
+#define ACTIVATE_UUID_PROPERTY "BC_IPSECG#1_UUID"
 #define ACTIVATE_NUM_WORDS 64
 
 // How long the object may take to answer, in milliseconds, and the step between polls.
@@ -64,7 +65,7 @@ static DtapiResult Acquire(OsDrv* Drv, DtDrvObject Object)
 static DtapiResult FindObject(OsDrv* Drv, DtDrvObject* Object)
 {
     Object->PortIndex = DT_PROPERTY_DEVICE;
-    return DtPcieCmd_GetPropertyInt(Drv, ACTIVATE_OBJECT_UUID, DT_PROPERTY_DEVICE,
+    return DtPcieCmd_GetPropertyInt(Drv, ACTIVATE_UUID_PROPERTY, DT_PROPERTY_DEVICE,
                                     &Object->Uuid);
 }
 

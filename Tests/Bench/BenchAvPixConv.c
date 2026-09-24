@@ -311,8 +311,8 @@ static void ConvertBand4k(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Band(Layout->NumLines, Index, Count, DtSdiFrame_BandLines(Layout, Job->Bits),
-                &First, &Last);
+    DtWork_Band(Layout->NumLines, Index, Count,
+                DtSdiFrame_BandLineStep(Layout, Job->Bits), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         uint8_t* A = Job->Buf->Coded + (size_t)Line * Coded;

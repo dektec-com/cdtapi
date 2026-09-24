@@ -224,7 +224,7 @@ size_t DtSdiFrame_RawLineBits(const DtSdiFrameLayout* Layout, int SymbolBits);
 // before it, so bands cut that way may be converted at once on more than one thread. It
 // is 1 wherever every line starts on a byte of its own, which is every 8- and 16-bit
 // frame and every 4K one; only a 10-bit frame that is not 4K can need more.
-int DtSdiFrame_BandLines(const DtSdiFrameLayout* Layout, int SymbolBits);
+int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int SymbolBits);
 
 // Converts the coded line at CodedLine, the line with index LineIndex from 0, into its
 // place in the raw frame at Raw, whose symbols take SymbolBits, 8, 10 or 16. With 10 bits

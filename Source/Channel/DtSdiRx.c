@@ -152,7 +152,7 @@ static void ReleaseChannel(DtSdiRx* Sdi)
     Sdi->ChannelAttached = false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. AllocBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The working buffers of the configured layout, one set for every band a frame's lines
 // divide into. Replaces what was there, so a change in the number of bands comes through
@@ -604,21 +604,21 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. ConvertLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Converts the band of lines this piece takes, from the coded lines of the frame at the
 // head of the ring into the raw frame. The bands are independent: a line's coded lines
 // are its own, the working buffers are per band, and the only thing every band reads is
 // the ring. What a band writes is its own as well, for which the bands start on a
-// multiple of DtSdiFrame_BandLines lines: with 10-bit symbols a line of a frame that is
-// not 4K can share a byte of the raw frame with the line after it, and two threads must
-// not have the same byte.
+// multiple of DtSdiFrame_BandLineStep lines: with 10-bit symbols a line of a frame
+// that is not 4K can share a byte of the raw frame with the line after it, and two
+// threads must not have the same byte.
 //
 typedef struct ConvertBand
 {
     DtSdiRx* Sdi;
     uint8_t* Buffer;
-    size_t Coded4Line;
+    size_t CodedBytesPerLine;
     size_t RawLineBytes;
 } ConvertBand;
 
@@ -634,15 +634,16 @@ static void ConvertLines(void* Context, int Index, int Count)
     int Last;
 
     DtWork_Band(Layout->NumLines, Index, Count,
-                DtSdiFrame_BandLines(Layout, Sdi->SymbolBits), &First, &Last);
+                DtSdiFrame_BandLineStep(Layout, Sdi->SymbolBits), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
-        size_t Offset = (size_t)Layout->HeaderBytes + (size_t)Line * Band->Coded4Line;
-        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Band->Coded4Line);
+        size_t Offset =
+            (size_t)Layout->HeaderBytes + (size_t)Line * Band->CodedBytesPerLine;
+        const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Band->CodedBytesPerLine);
 
         if (Coded == NULL)
         {
-            DtRing_PeekAt(&Sdi->Ring, Offset, LineBuf, Band->Coded4Line);
+            DtRing_PeekAt(&Sdi->Ring, Offset, LineBuf, Band->CodedBytesPerLine);
             Coded = LineBuf;
         }
         if (Layout->Is4k)
@@ -723,14 +724,14 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
 
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
-    size_t Coded4Line = DtSdiFrame_CodedLineBytes(Layout);
+    size_t CodedBytesPerLine = DtSdiFrame_CodedLineBytes(Layout);
     size_t RawLineBytes = DtSdiFrame_RawLineBits(Layout, Sdi->SymbolBits) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
     ConvertBand Band;
     Band.Sdi = Sdi;
     Band.Buffer = Buffer;
-    Band.Coded4Line = Coded4Line;
+    Band.CodedBytesPerLine = CodedBytesPerLine;
     Band.RawLineBytes = RawLineBytes;
 
     DtWork_Run(&Sdi->Work, ConvertLines, &Band);
@@ -809,7 +810,7 @@ static const DtRxBackend g_Ops = {
     .AfterWait = AfterWait,
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The working buffers are one set a band, so they follow a change in the number of bands.
 // A channel without a layout yet takes them from ConfigureChannel instead. Buffers that
