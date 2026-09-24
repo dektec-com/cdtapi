@@ -731,7 +731,7 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The receive channel of the port at PortIndex. Its status is the receiver's, which the
-// emulator keeps here; everything else is the channel's own.
+// emulator keeps here, with the carrier left 0; everything else is the channel's own.
 //
 static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
                       size_t InSize, void* Out, size_t* OutSize, uint32_t* DrvStatus)
@@ -906,8 +906,9 @@ static void SimClose(void* State)
 // stub. A target refuses a command it does not handle with DT_STATUS_NOT_SUPPORTED,
 // before its sizes are looked at, as the driver does.
 //
-// The DTA-2110 has the network function and exclusive access on its objects; its core
-// answers what the DTA-2178's does but the I/O configuration, which it refuses.
+// The DTA-2110 has the network function, the activation object and exclusive access on
+// its objects; its core answers what the DTA-2178's does, except the I/O configuration,
+// which it refuses.
 //
 static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InSize,
                     void* Out, size_t* OutSize, uint32_t* DrvStatus)
@@ -1267,9 +1268,7 @@ void SimDtPcie_Reset(void)
 
     g_Sim.Index = SIM_DEVICE_INDEX;
 
-    // A test puts the DTA-2110 there through SimDtPcie_SetDta2110Index. A program that
-    // calls no test control, an example, asks for it through the environment, with the
-    // device index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
+    // A source and a sink through files, as SimDtPcie.h describes.
     const char* Source = getenv("CDTAPI_SIM_SDI_SOURCE");
     if (Source != NULL && Source[0] != '\0')
     {
@@ -1282,6 +1281,9 @@ void SimDtPcie_Reset(void)
     if (Sink != NULL && Sink[0] != '\0' && !ApplySdiSink(Sink))
         fprintf(stderr, "CDTAPI_SIM_SDI_SINK: cannot use \"%s\"\n", Sink);
 
+    // A test adds the DTA-2110 through SimDtPcie_SetDta2110Index. A program that calls
+    // no test control, an example, asks for it through the environment, with the device
+    // index to put it at; the DTA-2178 has index SIM_DEVICE_INDEX.
     const char* Dta2110 = getenv("CDTAPI_SIM_DTA2110");
     g_Sim.Dta2110Index = Dta2110 != NULL && Dta2110[0] != '\0' ? atoi(Dta2110) : -1;
     if (g_Sim.Dta2110Index >= 0)

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* SimActivate.h *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - The emulated card's activation object
+// CDTAPI - The emulated DTA-2110's activation object
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -20,7 +20,8 @@
 // unless those were never written, and each later check decides again.
 //
 
-// Forgets that the object was given anything, as a card does when it loses power.
+// Forgets that the object was given anything, as a card does when it loses power, and
+// the busy count a test set.
 void SimActivate_Reset(void);
 
 // True once the object has what it needs.

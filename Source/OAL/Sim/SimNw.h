@@ -31,12 +31,13 @@
 //               refused as not supported, on any pipe from 5 up whether in use or not;
 //               pipes 1 to 4 and pipes that do not exist are an invalid parameter. The
 //               buffer is the process's, as on Linux from the address in the input or as
-//               on Windows from the output; a hardware pipe takes one that starts on a
-//               page and is a multiple of its prefetch pages, a software pipe any
+//               on Windows from the output; a hardware pipe takes one of at most 256 MB
+//               that starts on a page and is a multiple of its prefetch pages, a
+//               software pipe any; a pipe that has a buffer refuses a second as in use
 //
-// Packets move on the card's time of day, the host's UTC time or a clock a test sets,
-// whenever a command or test control comes, as the driver would have moved them since
-// the last one:
+// Packets move on the card's time of day, which is the host's UTC time or a clock a test
+// sets, whenever a command or test control comes, as the driver would have moved them
+// since the last one:
 //
 //   transmit    a hardware transmit pipe in RUN hands its packets to the scheduler at
 //               once; a software transmit pipe in RUN only at the periodic interval,
@@ -45,8 +46,9 @@
 //               more than 10 s from the time sets invalid time and stops the pipe until
 //               it is flushed. The scheduler sends each packet at its time, or at once
 //               when that has passed
-//   wire        every sent packet is kept for the tests, and, with the loopback on, also
-//               arrives at the receive side, as does a frame a test injects
+//   wire        the last SIM_NW_KEPT_PACKETS sent packets are kept for the tests, and,
+//               with the loopback on, every sent packet also arrives at the receive
+//               side, as does a frame a test injects
 //   receive     an arriving packet goes to the first hardware receive pipe whose filter
 //               takes it, which writes it at once when running and loses it otherwise;
 //               any other packet waits for the next periodic interval, which copies it
@@ -61,15 +63,16 @@
 // themselves.
 //
 
-// The periodic interval of the software pipes, and how far a software transmit pipe looks
-// beyond it.
+// The periodic interval of the software pipes, and how far past an interval's tick a
+// software transmit pipe looks.
 #define SIM_NW_INTERVAL_NS 10000000ull
 #define SIM_NW_LOOKAHEAD_NS (SIM_NW_INTERVAL_NS + SIM_NW_INTERVAL_NS / 2)
 
 // How far from the time a transmitted packet may be.
 #define SIM_NW_MAX_DELAY_NS 10000000000ull
 
-// Pipe numbers: the driver's queues, the hardware pipes, and the software pipes.
+// Pipe numbers: the first hardware transmit, hardware receive and software pipe, and the
+// highest pipe number. Pipes 1 to 4 are the driver's own queues.
 #define SIM_NW_FIRST_TX_HWP 5
 #define SIM_NW_FIRST_RX_HWP 8
 #define SIM_NW_FIRST_SWP 11

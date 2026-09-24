@@ -15,8 +15,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Model +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The card description is taken from DekTec's device description of the DTA-2178,
-// firmware variant 1. Only the description lives here; the commands that read and change
-// it are in SimDtPcie.c.
+// firmware variant 1, with the changes SimDta2178.c lists. Only the description lives
+// here; the commands that read and change it are in SimDtPcie.c.
 //
 
 // Looks up a property as the DtPcie driver does: by name and port index, -1 for the

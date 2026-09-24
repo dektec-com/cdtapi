@@ -125,15 +125,15 @@ typedef struct SimAsiSource
     int64_t Rate;        // Bits a second of the packets on the wire
     int PacketsPerRead;  // Without real time, the packets each read of the offset brings
     int UnsyncedAtStart; // Pieces without packet sync when the receiver starts, as on a
-                         // DTA-2178 (0011, step A)
+                         // DTA-2178 (plan 0011, step A)
 } SimAsiSource;
 
 // A source that receives 188-byte packets at 10 Mbit/s, 8 per read, 3 pieces unsynced.
 void SimAsi_DefaultSource(SimAsiSource* Source);
 
 // Makes the port at PortIndex receive Source, with a carrier, lock, the packet size and
-// the rate as ASIRX's status; NULL ends it and restores the power-on signal. The packet
-// numbers start again at 0.
+// the rate as ASIRX's status; NULL, or a source with another packet size or no rate,
+// ends it and restores the power-on signal. The packet numbers start again at 0.
 void SimDtPcie_SetAsiSource(int PortIndex, const SimAsiSource* Source);
 
 // What the next packet a source sends, not a piece without sync, has wrong.
@@ -149,7 +149,7 @@ void SimDtPcie_AsiRxFault(int PortIndex, int Fault);
 // carrier while the output sends. A negative TxIndex ends it.
 void SimDtPcie_SetAsiLoopback(int TxIndex, int RxIndex);
 
-// What the sink of a port decoded since the port was reset.
+// What the sink of a port decoded since the emulator was reset.
 typedef struct SimAsiTxStats
 {
     int64_t Symbols;

@@ -19,9 +19,10 @@
 // What the emulated card says about itself. Tests compare against these rather than
 // against literals, so that changing the emulated card is a one-line edit here.
 //
-// It presents as a DTA-2178 with firmware variant 1, eight 12G-SDI/ASI ports with
-// genlock, at the latest firmware version of that variant. DekTec PCI device IDs are the
-// type number in hexadecimal, so 2178 becomes 0x0882.
+// It presents as a DTA-2178 with firmware variant 1, eight SDI/ASI ports with genlock,
+// at the latest firmware version of that variant; ports 1 and 5 carry 12G, as
+// SimDta2178.c describes. DekTec PCI device IDs are the type number in hexadecimal, so
+// 2178 becomes 0x0882.
 //
 // The serial number starts with 9 because DekTec serials start with the type number,
 // and no card has type number 9: a serial seen in a log is recognisably emulated.
@@ -55,16 +56,16 @@
 #define SIM_PCIE_MAX_READ_REQUEST_SIZE 512
 #define SIM_PCIE_MAX_SLOT_POWER 25000
 
-// The driver version the DTA-2178 in the Linux machine runs, new enough for every driver
-// function the emulator has.
+// The driver version a DTA-2178 was seen with, new enough for every driver function the
+// emulator has.
 #define SIM_DRIVER_MAJOR 3
 #define SIM_DRIVER_MINOR 6
 #define SIM_DRIVER_MICRO 4
 #define SIM_DRIVER_BUILD 398
 
 // The emulator presents this device, at index zero unless a test moves it, and a DTA-2110
-// only while a test adds one. A scan returns just those, which replace the hardware
-// rather than adding to it.
+// only while a test or CDTAPI_SIM_DTA2110 adds one. A scan returns just those, which
+// replace the hardware rather than adding to it.
 #define SIM_DEVICE_INDEX 0
 
 // Ports 1 to 8 are SDI/ASI inputs and outputs, port 9 the genlock reference input, and
@@ -87,8 +88,9 @@
 // first.
 //
 
-// Restores the power-on state: the default I/O configuration, the identity above, and
-// no faults.
+// Restores the power-on state of the whole emulator: the default I/O configuration, the
+// index, firmware status and driver version above, and no signals, overrides, exclusive
+// access or faults; then applies the environment variables described below.
 void SimDtPcie_Reset(void);
 
 // Makes the card report this firmware status, one of the DT_FWSTATUS_ values.
@@ -191,17 +193,18 @@ size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size);
 #define SIM_MAX_RECORDED_INPUT 1024
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Emulator parts +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-
-// Opens the file at Path as fopen does, with fopen_s where MSVC deprecates fopen; NULL
-// when it cannot.
-FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 //
 // For the emulated functions, not for tests.
 //
 
-// Whether Handle holds the object whose UUID has index ObjectIndex plus one, as the
-// driver answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when nobody
-// does, DT_STATUS_IN_USE when another handle does. Called with the emulator's lock held.
+// Opens the file at Path as fopen does, with fopen_s where MSVC deprecates fopen; NULL
+// when it cannot.
+FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
+
+// Whether Handle holds the DTA-2178's object whose UUID has index ObjectIndex plus one,
+// as the driver answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when
+// nobody does, DT_STATUS_IN_USE when another handle does. Called with the emulator's
+// lock held.
 uint32_t SimDtPcie_CheckAccess(void* Handle, int ObjectIndex);
 
 // Takes and releases the emulator's lock, for a test control that reads or changes state

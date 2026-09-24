@@ -22,21 +22,24 @@
 // sockets that remember the groups they join. It answers at once, as an operating system
 // does that knows every neighbour:
 //
-//   interfaces  as added, in that order
+//   interfaces  in the order of the table, which is the order they were added until one
+//               is removed; a new one then takes the first free place
 //   routes      a destination in the subnet of one of the interface's addresses of its
 //               family, or IPv6 link-local or IPv4 link-local, is reached directly;
 //               otherwise the route with the longest matching prefix gives the gateway,
 //               then the default gateway; without either there is no route
 //   neighbours  known or not found
 //   binding     to the any address, or to an address of an interface, IPv6 link-local
-//               ones only with that interface's index; a port of 0 gets a free port from
-//               49152 up, and a port may be bound twice
+//               ones only with that interface's index; a port of 0 gets the next port
+//               from 49152 up, and a port may be bound twice
 //   groups      joining needs a multicast group of the socket's family and an existing
 //               interface; joining a group twice, or leaving one that was not joined,
 //               with the same source, fails, as on Linux; closing leaves every group
 //
 // The DTA-2110 comes with an interface, as a card whose network driver is installed: see
-// the SIM_NET_DTA2110_ values below. A reset takes it and every other interface away.
+// the SIM_NET_DTA2110_ values below. SimNet_Reset takes it and every other interface
+// away, and the emulator's reset puts it back when CDTAPI_SIM_DTA2110 places the
+// DTA-2110.
 //
 
 // The DTA-2110's interface: its index and name, its addresses and gateways, and the
@@ -72,9 +75,9 @@ void SimNet_SetDta2110Interface(bool Present, const uint8_t* Mac);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Adds an interface with index Index, which must not be in use, and returns true; false
-// when the table is full. A VLAN interface has a VlanId and the ParentIndex of the
-// interface it is on. It starts enabled and connected, without addresses.
+// Adds an interface with index Index and returns true; false when Index is 0 or in use,
+// Mac is NULL, or the table is full. A VLAN interface has a VlanId and the ParentIndex
+// of the interface it is on. It starts enabled and connected, without addresses.
 bool SimDtPcie_AddNetInterface(uint32_t Index, const uint8_t* Mac, int VlanId,
                                uint32_t ParentIndex, const char* Name);
 
@@ -84,7 +87,8 @@ void SimDtPcie_RemoveNetInterface(uint32_t Index);
 // Makes an interface enabled or not, and connected or not.
 void SimDtPcie_SetNetInterfaceUp(uint32_t Index, bool AdminUp, bool LinkUp);
 
-// Adds an address to an interface; false when there is no room.
+// Adds an address to an interface; false when Addr is NULL, there is no such interface,
+// or there is no room.
 bool SimDtPcie_AddNetAddress(uint32_t Index, const OsNetAddr* Addr);
 
 // Takes the IPv4 or IPv6 addresses of an interface away.
@@ -94,12 +98,12 @@ void SimDtPcie_ClearNetAddresses(uint32_t Index, bool IpV6);
 void SimDtPcie_SetNetGateway(uint32_t Index, bool IpV6, const uint8_t* Gateway);
 
 // Adds a route to the subnet Dst of PrefixLength bits through Gateway; false when there
-// is no room.
+// is no such interface, Dst or Gateway is NULL, or there is no room.
 bool SimDtPcie_AddNetRoute(uint32_t Index, bool IpV6, const uint8_t* Dst,
                            int PrefixLength, const uint8_t* Gateway);
 
-// Makes Ip a known neighbour with MAC address Mac on an interface; false when there is no
-// room.
+// Makes Ip a known neighbour with MAC address Mac on an interface, which need not exist;
+// false when Ip or Mac is NULL or there is no room.
 bool SimDtPcie_AddNetNeighbour(uint32_t Index, bool IpV6, const uint8_t* Ip,
                                const uint8_t* Mac);
 

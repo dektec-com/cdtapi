@@ -84,7 +84,7 @@ static void LinClose(void* State)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTransfer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Packs the input into the block Buf of BufSize bytes, issues the ioctl and unpacks the
-// output. Returns one of the OS_IOCTL_ outcomes, with the device's last error set.
+// output. Returns one of the OS_IOCTL_ outcomes; a failure sets the device's last error.
 //
 static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const void* In,
                        size_t InSize, void* Out, size_t OutBytes, uint8_t* Buf,

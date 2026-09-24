@@ -86,8 +86,9 @@ void OsMutex_Unlock(OsMutex* Mutex);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Time -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-// Sleeps for at least Ms milliseconds, or returns at once for 0 or less. The system may
-// sleep longer, by up to a scheduler tick.
+// Sleeps for about Ms milliseconds, or returns at once for 0 or less. The sleep follows
+// the system's timer resolution and can last longer than asked; on Linux it lasts at
+// least Ms, while on Windows a sleep shorter than one timer tick can also end early.
 void OsTime_SleepMs(int Ms);
 
 // Milliseconds on a clock that only moves forward, for measuring an interval. Where it

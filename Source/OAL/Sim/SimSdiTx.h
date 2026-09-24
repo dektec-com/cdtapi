@@ -22,12 +22,14 @@
 //   commands    refused as the driver's I/O stubs do, in its order: a command the block
 //               does not have, the sizes, exclusive access for the commands that need
 //               it, and a block that is not enabled; the blocks of the transmitter are
-//               enabled while the port is an SDI output, those of the DMA always, so a
-//               registered buffer outlasts a change of direction, as on the card
-//   buffer      CDMAC registers a buffer of the process for transmit, as on Windows from
-//               the output or as on Linux from the address in the input; it must start
-//               on a page, be a multiple of the prefetch size in pages, and be at most
-//               256 MB
+//               enabled while the port is an SDI output, and SDITXPHY on an ASI output
+//               too, and a command to one of them that is not enabled first idles them
+//               all; those of the DMA are always enabled, so a registered buffer outlasts
+//               a change of direction, as on the card
+//   buffer      CDMAC registers a buffer of the process for transmit or receive, as on
+//               Windows from the output or as on Linux from the address in the input; it
+//               must start on a page, be a multiple of the prefetch size in pages, and be
+//               at most 256 MB
 //   pipeline    while CDMAC and the burst FIFO run, the card takes what lies between the
 //               read and write offsets into its pipeline, in whole 32-byte words, up to
 //               the burst FIFO and 16 KB more, and advances the read offset
@@ -65,7 +67,7 @@ bool SimSdiTx_Takes(int FunctionCode);
 
 // Handles a command from Handle for the block of type Type, with role Role, of the port
 // at PortIndex. Access is what SimDtPcie_CheckAccess answers for Handle and the block,
-// Enabled whether the port is an SDI output, and VidStd the video standard of its I/O
+// Enabled whether the block is enabled, and VidStd the video standard of the port's I/O
 // standard, which paces the output. Returns the DtStatus the driver would, and fills Out
 // and *OutSize for a command that answers. *SleepMs receives how long the caller sleeps
 // after releasing the emulator's lock.
@@ -133,8 +135,9 @@ void SimDtPcie_RegisterTxBufferAsLinux(bool AsLinux);
 void SimDtPcie_SetTxAlignment(int AlignmentInBits);
 
 // Lets the port at PortIndex send Events parts of frames without anyone waiting for their
-// events, as a card goes on while an application does not wait. Stops at an underflow.
-// Returns the number of events that came.
+// events, as a card goes on while an application does not wait. Stops at the first event
+// that cannot come, as at an underflow or the frame limit. Returns the number of events
+// that came.
 int SimDtPcie_RunTxEvents(int PortIndex, int Events);
 
 // Makes the next Events waits of the port at PortIndex underflow, whatever the pipeline

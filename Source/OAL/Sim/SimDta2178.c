@@ -185,8 +185,8 @@ static int FunctionUuid(int Af, int PortIndex, int Index)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The object whose name starts Name and is followed by Suffix: true with its API function
-// in *Af and its index in *Index.
+// The object whose name, followed by Suffix, is Name: true with its API function in *Af
+// and its index in *Index.
 //
 static bool FindFunction(const char* Name, const char* Suffix, int* Af, int* Index)
 {

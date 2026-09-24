@@ -27,16 +27,18 @@
 // real rather than mocked away. That is where most of the defects are going to be.
 //
 
-// The driver accepts up to this many devices, and the Linux backend probes /dev/DtPcie0
-// through /dev/DtPcie49 to find them.
+// The driver accepts up to this many devices. The device layer tries every index below
+// it; on Linux index N is /dev/DtPcieN.
 #define DT_MAX_DEVICES 50
 
 typedef struct OsDrv OsDrv;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Device -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-// Opens the device at Index, or returns NULL when there is none. Index runs from zero
-// to DT_MAX_DEVICES - 1.
+// Opens the device at Index, or returns NULL when there is none or it cannot be opened.
+// Index runs from zero to DT_MAX_DEVICES - 1. On Linux it is the N of /dev/DtPcieN; on
+// Windows it counts the present devices in the operating system's order, which can
+// change when a card is added or removed.
 //
 // When CDTAPI_SIM is set in the environment, the emulated device is opened instead
 // and no real hardware is touched.
@@ -89,9 +91,12 @@ int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* 
 // status. Everything else is a failure of the operating system rather than of the
 // driver, and is kept apart because it maps to a different result.
 //
+// On Linux only the backend's own allocation reports OS_IOCTL_NO_RESOURCES; an ioctl
+// that fails with ENOMEM is OS_IOCTL_COMMUNICATION.
+//
 #define OS_IOCTL_OK 0             // The driver carried out the command.
 #define OS_IOCTL_DRIVER_STATUS -1 // The driver refused it; see the DtStatus.
-#define OS_IOCTL_NO_RESOURCES -2  // The operating system ran out of resources.
+#define OS_IOCTL_NO_RESOURCES -2  // Out of memory or system resources for the call.
 #define OS_IOCTL_COMMUNICATION -3 // Any other failure to reach the driver.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Memory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

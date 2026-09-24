@@ -45,9 +45,9 @@ int OsDmaBuffer_Alloc(size_t Size, OsDmaBuffer* Buf)
 
     memset(Buf, 0, sizeof(*Buf));
 
-    // The page size must be a power of two for the masks below to align anything. Only an
-    // operating system reporting a nonsensical page size fails this, so the tests do
-    // not reach it.
+    // An empty request fails here. So does a page size that is not a power of two, for
+    // which the masks below would align nothing; only an operating system reporting a
+    // nonsensical page size fails that part, so the tests do not reach it.
     if (Size == 0 || Page == 0 || (Page & (Page - 1)) != 0)
         return -1;
 

@@ -52,9 +52,9 @@ void OsDmaBuffer_Free(OsDmaBuffer* Buf);
 //   Linux    as a virtual address in the input structure's m_BufferAddr field. The
 //            output buffer is the command's small fixed-size output structure.
 //
-// If callers branched on the platform themselves, the difference would leak into every
-// command that registers a buffer, so it is resolved here once, into the three values a
-// caller needs.
+// The difference is resolved here into the three values a caller needs, so that a
+// command only copies them into place. The DtPcie command layer picks the convention per
+// platform and passes it through, so that its commands are tested both ways too.
 //
 
 typedef struct OsDmaHandOff
@@ -70,7 +70,8 @@ void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t Fix
                                  OsDmaHandOff* HandOff);
 
 // The same, with the convention chosen explicitly: true for Windows, false for Linux.
-// Exists so that both conventions are tested on every platform.
+// The command layer calls this one, so that both conventions are tested on every
+// platform.
 void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
                                    void* Fixed, size_t FixedSize, OsDmaHandOff* HandOff);
 

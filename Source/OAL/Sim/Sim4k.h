@@ -21,8 +21,8 @@
 // carry is the eight streams of the four links word by word, the chrominance of links 4,
 // 2, 3 and 1 and then their luminance. Of the video section each link takes whole pixel
 // pairs in turn on a picture line, and its own half on a blanking line. This is the
-// emulator's own reading of 0014, written from the layout rather than from the library's
-// conversion, so that the suites check one against the other.
+// emulator's own reading of plan 0014, written from the layout rather than from the
+// library's conversion, so that the suites check one against the other.
 //
 // Hanc is the symbols of one HANC section, Act those of one link's active part, half the
 // video section's; Raw holds 4*Hanc + 4*Act symbols and each coded line 2*Hanc + 2*Act.

@@ -22,8 +22,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The bytes the driver's own queues hold: the common receive queue and the queue of the
-// scheduler.
+// The most bytes each of the driver's own queues holds: the common receive queue and the
+// queue of the scheduler.
 #define SIM_NW_QUEUE_BYTES (128u * 1024 * 1024)
 
 // The pages of a hardware pipe's buffer are this size.
@@ -269,7 +269,9 @@ static bool WritePacket(SimPipe* Pipe, const uint8_t* Packet, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClosePipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Releases what the pipe holds, and for a software pipe its end.
+// Takes the pipe out of use, idle and without a buffer, and frees a software pipe. A
+// hardware pipe keeps its filter, offsets and error flags, and packets already in the
+// scheduler are still sent.
 //
 static void ClosePipe(SimPipe* Pipe)
 {
@@ -294,7 +296,7 @@ typedef struct SimFrameInfo
     int PacketType; // A DT_ETHIP_TYPE_ value
     bool Udp;
     int IpOffset;   // Bytes from the start of the frame to the source IP address
-    int PortOffset; // Bytes from the start of the frame to the UDP header, 0 for none
+    int PortOffset; // Bytes from the frame's start to the transport header, 0 for none
     const uint8_t* SrcIp;
     const uint8_t* DstIp;
     uint16_t SrcPort;
@@ -314,8 +316,8 @@ static uint16_t Get16(const uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads the Ethernet, VLAN, IP and UDP headers of a frame. A frame too short for the
-// headers its types announce is of the other type.
+// Reads the Ethernet, VLAN, IP and UDP headers of a frame. A frame too short for its IP
+// header is of the other type; one too short for the ports has no port offset.
 //
 static void ReadFrame(const uint8_t* Frame, size_t Size, SimFrameInfo* Info)
 {
@@ -587,8 +589,8 @@ static void Arrive(SimItem* Frame)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Send -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The scheduler sends a packet of a pipe's buffer: its frame is kept, and arrives at the
-// receive side through the loopback. Frees the packet.
+// The scheduler sends a packet of a pipe's buffer: its frame is kept and, with the
+// loopback on, arrives at the receive side. Frees the packet.
 //
 static void Send(SimItem* Packet)
 {
@@ -735,8 +737,8 @@ static void Deliver(uint64_t NowNs)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interval -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The periodic interval at TickNs: the real-time transmit queues first, then the
-// receive queues.
+// The periodic interval at TickNs: the software transmit pipes first, then the common
+// receive queue.
 //
 static void Interval(uint64_t TickNs)
 {

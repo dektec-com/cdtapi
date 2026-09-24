@@ -91,7 +91,8 @@ int OsNet_GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
 
 // Reads the MAC address of the neighbour Dst on the interface, asking the network for
 // it when the operating system does not know it yet, from the interface's address Src.
-// That can take up to about 2.5 seconds; OS_NET_NOT_FOUND when no answer comes.
+// That can take seconds: on Linux about 2 for IPv4 and 2.5 for IPv6, on Windows as long
+// as the operating system's own resolution takes. OS_NET_NOT_FOUND when no answer comes.
 int OsNet_ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
                            const uint8_t* Dst, uint8_t* Mac);
 
@@ -142,7 +143,7 @@ typedef struct OsNetBackend
     void (*Close)(void* Socket);
 } OsNetBackend;
 
-// The host's network, or NULL on a platform without one.
+// The host's network.
 const OsNetBackend* OsPlatform_NetBackend(void);
 
 // The emulated network.

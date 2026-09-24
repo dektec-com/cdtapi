@@ -54,7 +54,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Model +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The port has one API function, AF_NW#1 with the empty role, whose one object is the
-// driver function DF_NW#1. The lookups follow those of SimDta2178.h.
+// driver function DF_NW#1. The device has the activation block BC_IPSECG#1. The lookups
+// follow those of SimDta2178.h.
 //
 
 // Looks up a property by name and port index, -1 for the device. A capability the port

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# LinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Threads, events, mutexes and time on Linux
+// CDTAPI - Threads, events, mutexes, time and the process on Linux
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //

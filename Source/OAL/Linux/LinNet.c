@@ -105,7 +105,8 @@ static const struct rtattr* NextAttr(const struct rtattr* Attr, int* Left)
 //
 // Sends Request, of the length its header gives, and hands every answer to Handler
 // until the kernel is done. OS_NET_NOT_FOUND when the kernel answers with an error, such
-// as for a route that does not exist.
+// as for a route that does not exist; OS_NET_ERROR when the next answer does not come
+// within 2 s.
 //
 static int Transact(struct nlmsghdr* Request, LinNetHandler Handler, void* Context)
 {

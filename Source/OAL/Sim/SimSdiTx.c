@@ -165,7 +165,7 @@ static void StopPipeline(SimTxPort* Port)
     Port->PipeLoad = 0;
     Port->ReadOffset = 0;
     if (Port->Direction == DT_CDMAC_DIR_RX)
-        Port->WriteOffset = 0; // Where a DTA-2178 writes from again (0011, step A)
+        Port->WriteOffset = 0; // Where a DTA-2178 writes from again (plan 0011, step A)
     ClearFrame(Port);
 }
 

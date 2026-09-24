@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# WinThread.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Threads, events, mutexes and time on Windows
+// CDTAPI - Threads, events, mutexes, time and the process on Windows
 //
 // SPDX-License-Identifier: BSD-3-Clause
 

@@ -18,8 +18,8 @@
 // Each SDI port of the emulated card has a CHSDIRX channel that behaves as the driver's
 // does and as a DTA-2178 was seen to answer:
 //
-//   users        up to eight handles attach, each with a friendly name; an exclusive user
-//                excludes every other, and a handle that is no user is not found
+//   users        up to eight handles attach; an exclusive user excludes every other, and
+//                a handle that is not a user is not found
 //   ring         configuring allocates it, rounded up to whole multiples of the prefetch
 //                size in pages, from that size up to 256 MB; a size outside that range
 //                is refused and leaves the channel unconfigured; the last data word is
@@ -86,8 +86,8 @@ void SimChSdiRx_Reset(void);
 // a 4K standard it is the raw line of the four links, each carrying the line of a frame
 // number of its own, FrameNumber for link 1 up to FrameNumber + 3 for link 4, so that a
 // test sees which link a symbol came from. Returns the number of symbols, or 0, writing
-// nothing, for an unknown standard, one of level-B links, or a line the frame does not
-// have.
+// nothing, for an unknown standard, a 4K standard of level-B links, or a line the frame
+// does not have.
 int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols);
 
 // Makes the port at PortIndex receive VidStd from now on; DTAPI_VIDSTD_UNKNOWN takes the
@@ -127,8 +127,9 @@ void SimDtPcie_InjectRxFault(int PortIndex, SimRxFault Fault);
 // anyone waiting for them, as a card goes on while an application does not read.
 void SimDtPcie_RunRxEvents(int PortIndex, int Events);
 
-// Makes the channel of every port allocate at most Size bytes, so that a test can wrap
-// the ring with few frames. 0 lifts the limit.
+// Makes the channel of every port allocate at most Size bytes, rounded down to a whole
+// multiple of the prefetch size but never below one, so that a test can wrap the ring
+// with few frames. 0 lifts the limit.
 void SimDtPcie_LimitRxRing(size_t Size);
 
 // Makes every channel report this stream alignment in bits.
@@ -146,7 +147,8 @@ void SimDtPcie_FailRxCmd(int Cmd, uint32_t Status);
 void SimDtPcie_SlowRxCmd(int Cmd, int Ms);
 
 // What the channel of the port at PortIndex holds: whether it is configured, the ring's
-// size, the number of users, and the frame number its source starts next.
+// size, the number of users, the frame number its source starts next, and the ring's
+// write offset.
 typedef struct SimRxState
 {
     bool Configured;
