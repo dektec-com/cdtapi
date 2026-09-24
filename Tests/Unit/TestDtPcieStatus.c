@@ -148,7 +148,7 @@ DT_TEST(UnknownOutcomeIsCommunication)
     DT_ASSERT_EQ(DtPcieStatus_OutcomeToResult(1, 0), DTAPI_E_COMMUNICATION);
 }
 
-DT_TEST_MAIN("DrvStatus", DT_RUN(EveryStatusMapsAsDtapiDoes),
+DT_TEST_MAIN("DtPcieStatus", DT_RUN(EveryStatusMapsAsDtapiDoes),
              DT_RUN(StatusEncodingMatchesThePlatform), DT_RUN(SuccessIsOk),
              DT_RUN(UnknownStatusIsDriverFailure), DT_RUN(OutcomeOkIsOk),
              DT_RUN(OutcomeDriverStatusUsesTheStatus),

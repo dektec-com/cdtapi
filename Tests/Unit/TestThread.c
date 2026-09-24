@@ -10,9 +10,6 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// Standard includes
-#include <time.h>
-
 // CDTAPI includes
 #include "DtTest.h"       // Test framework.
 #include "OAL/OsThread.h" // Interface under test.
@@ -22,10 +19,7 @@
 // Milliseconds on a clock that only moves forward, for measuring how long a wait took.
 static int64_t NowMs(void)
 {
-    struct timespec Ts;
-
-    timespec_get(&Ts, TIME_UTC);
-    return (int64_t)Ts.tv_sec * 1000 + Ts.tv_nsec / 1000000;
+    return (int64_t)OsTime_MonotonicMs();
 }
 
 // Pauses the calling thread, using an event that is never set.

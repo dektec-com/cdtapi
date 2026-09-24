@@ -710,7 +710,7 @@ DT_TEST(RecoversFromFaults)
 }
 
 // A reader that falls behind fills the ring: frames are lost and the overflow flag is
-// set, then cleared again once frames can be read.
+// latched, until ClearFlags clears it.
 DT_TEST(FullRingSetsOverflow)
 {
     Fixture Fix;

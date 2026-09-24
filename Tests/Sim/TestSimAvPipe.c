@@ -252,7 +252,8 @@ DT_TEST(FramesAroundTheBuffers)
     DT_ASSERT(Got.AllEqual);
     DT_ASSERT_EQ(Parser.Stats.IpPacketErrors + Parser.Stats.FramesIncomplete, 0);
 
-    // Off by a byte, the reader loses the boundaries and skips to the pipe's offset.
+    // Off by one alignment word, the reader loses the boundaries and skips to the pipe's
+    // offset.
     DtAvFrame* Frame = DtAvFramePool_Get(&Pool, HEIGHT * ROW);
     DT_ASSERT(Frame != NULL);
     memcpy(Frame->Frame.Data, Image, HEIGHT * ROW);

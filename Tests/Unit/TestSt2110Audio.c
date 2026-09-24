@@ -59,7 +59,8 @@ static void SinkCommit(void* Context, int Size)
     Sink->Used += (size_t)Size;
 }
 
-// A stream to 239.1.2.3 in 64-bit words.
+// A stream in 64-bit words; the addresses are left zero, as packetizing does not read
+// them.
 static DtAvTxStream Stream(void)
 {
     DtAvTxStream S;

@@ -100,7 +100,7 @@ int OsNet_ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
 typedef struct OsNetSocket OsNetSocket;
 
 // Opens a UDP socket bound to Ip and Port, 0 for a free port, with the address reusable.
-// IfIndex is the scope of a link-local or site-local IPv6 address, and is ignored
+// IfIndex is the scope of a link-local IPv6 address, fe80::/10, and is ignored
 // otherwise. *Socket is NULL after a failure.
 int OsNetSocket_Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
                      OsNetSocket** Socket);

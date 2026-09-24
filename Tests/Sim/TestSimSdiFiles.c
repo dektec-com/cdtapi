@@ -238,8 +238,8 @@ static DtapiResult SetStandard(Fixture* Fix, int Port, int VidStd)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Source +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // A file of three frames plays on the input port: the port detects its standard, and a
-// channel reads the three and then the first again, byte for byte. 720p50 is the
-// standard whose frames the file pads; the name is taken in any case.
+// channel reads the three and then the first again, byte for byte. 720p50 is one of the
+// standards whose frames the file pads; the name is taken in any case.
 DT_TEST(SourcePlaysTheFile)
 {
     static const struct
@@ -487,9 +487,9 @@ DT_TEST(SinkWritesWhatIsSent)
     remove(SINK_FILE);
 }
 
-// Threads are not for 4K alone: a 1080i50 frame divides too, and its 10-bit lines share
-// a byte with the line before and after, which is what a band has to get right. Over four
-// threads the frame read and the frame sent are the ones a single thread gives.
+// Threads are not for 4K alone: a 1080i50 frame divides too. Over four threads the frame
+// read and the frame sent are the ones a single thread gives. Its 10-bit lines are 6600
+// bytes each, so no line shares a byte with the next.
 DT_TEST(HdOverThreads)
 {
     Fixture Fix;
@@ -525,9 +525,8 @@ DT_TEST(HdOverThreads)
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
 
-    // Twice over the stream, so that a batch begins at a phase other than zero: the
-    // second frame follows the first in the same call and its first line begins where the
-    // last line of the first ended.
+    // Twice over the stream: the second frame follows the first in the same call, and its
+    // first line begins where the last line of the first ended.
     char* Two = (char*)malloc(2 * Size);
     DT_ASSERT(Two != NULL);
     memcpy(Two, Buffer, Size);

@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Runs on every platform. The layout is the part of the Linux backend most likely to be
-// wrong, and these tests are the only part of that backend exercised until a Linux
-// machine is available.
+// wrong, and these tests check it where no Linux driver is at hand, on Windows and in
+// the emulator's builds.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

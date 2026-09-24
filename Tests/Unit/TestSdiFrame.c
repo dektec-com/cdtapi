@@ -220,7 +220,7 @@ DT_TEST(LayoutEveryStandard)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Header +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-DT_TEST(HeaderNumBytes)
+DT_TEST(EncodedHeader)
 {
     static const uint8_t Expected[DT_SDIFRAME_HEADER_BYTES] = {
         0xFE, 0xFB, 0xEF, 0xFF, 0x13, 0x00, 0x34, 0x12,
@@ -512,7 +512,7 @@ DT_TEST(LayoutTransmit)
 }
 
 // 1080i50 with the card's alignment, as the card took it on port 5.
-DT_TEST(TxHeaderNumBytes)
+DT_TEST(EncodedTxHeader)
 {
     static const uint8_t Expected[DT_SDIFRAME_TX_HEADER_BYTES] = {
         0xFE, 0xFB, 0xEF, 0xFF, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12,
@@ -1675,13 +1675,13 @@ DT_TEST(Conv4kSetsAgree)
 }
 
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
-             DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(HeaderNumBytes),
+             DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(EncodedHeader),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
              DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
              DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
-             DT_RUN(LayoutTransmit), DT_RUN(TxHeaderNumBytes),
-             DT_RUN(TxHeaderFieldWidths), DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard),
-             DT_RUN(CodesAnyPhase), DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
+             DT_RUN(LayoutTransmit), DT_RUN(EncodedTxHeader), DT_RUN(TxHeaderFieldWidths),
+             DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
+             DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
              DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip),
              DT_RUN(Layout4k), DT_RUN(Converts4k), DT_RUN(Codes4k), DT_RUN(ChecksLines4k),
              DT_RUN(TxLines4k), DT_RUN(BlackFrame4k), DT_RUN(Conv4kSetsAgree))

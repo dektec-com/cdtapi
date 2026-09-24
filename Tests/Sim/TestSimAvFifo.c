@@ -626,7 +626,8 @@ DT_TEST(Loopback8BitPlanar)
                   HwOrSwPipe_Auto, Planar, DtFailures);
 }
 
-// Stereo L24 in frames of 480 samples arrives as packets of 48 samples, in order.
+// Stereo audio in Format, SampleBytes a sample, in frames of 480 samples arrives as
+// packets of 48 samples, in order.
 static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailures)
 {
     Fixture Fix;

@@ -340,7 +340,7 @@ DT_TEST(OpenPipesByType)
     FINISH(Fix);
 }
 
-// Software pipes run out after 2,047 pipes, and a closed one's number is used again.
+// Software pipes run out at pipe number 2,047, and a closed one's number is used again.
 DT_TEST(SoftwarePipesRunOut)
 {
     Fixture Fix;
