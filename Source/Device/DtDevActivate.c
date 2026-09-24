@@ -114,10 +114,11 @@ static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The data lies in the EEPROM behind the read-only and read-write sections. A card whose
-// EEPROM was never given any holds the same word throughout, which counts as none.
-// The EEPROM holds each word most significant byte first, and the words are assembled
-// from the bytes, so that their values do not depend on this processor's byte order.
+// The data lies in the EEPROM behind the read-only and read-write sections, after the one
+// that ends last, whatever their order. A card whose EEPROM was never given any holds the
+// same word throughout, which counts as none. The EEPROM holds each word most significant
+// byte first, and the words are assembled from the bytes, so that their values do not
+// depend on this processor's byte order.
 //
 static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
 {
@@ -129,7 +130,9 @@ static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    const int Offset = Props.RoSize + Props.RwSize;
+    const int RoEnd = Props.RoOffset + Props.RoSize;
+    const int RwEnd = Props.RwOffset + Props.RwSize;
+    const int Offset = RoEnd > RwEnd ? RoEnd : RwEnd;
     if (Offset < 0 || Props.EepromSize < 0 ||
         (int)sizeof(Bytes) > Props.EepromSize - Offset)
         return DTAPI_OK; // No room for any: the card holds none
