@@ -35,10 +35,13 @@ jobs:
         run: Scripts/check_style.sh
 
   build:
-    name: Build ${{ matrix.preset }}
+    name: Build ${{ matrix.name || matrix.preset }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # windows-latest has the newest Visual Studio, and CDTAPI promises 2022 or newer, so
+      # windows-2022 builds with the oldest it promises: the two do not warn alike, and
+      # the presets turn a warning into a failed build.
       matrix:
         include:
           - os: ubuntu-latest
@@ -51,6 +54,9 @@ jobs:
             preset: windows-debug
           - os: windows-latest
             preset: windows-release
+          - os: windows-2022
+            preset: windows-release
+            name: windows-release, Visual Studio 2022
     steps:
       - uses: actions/checkout@v7
 
