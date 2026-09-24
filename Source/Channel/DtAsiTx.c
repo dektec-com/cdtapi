@@ -24,9 +24,9 @@
 // The page a transmit buffer's size is rounded to, times the prefetch size.
 #define DT_ASITX_PAGE 4096
 
-// A data word of 256 bits, which the card reads the buffer in: the load below which the
-// last symbols wait for more.
-#define DT_ASITX_EXIT_LOAD 32
+// The widest data word a card may read the buffer in, 1024 bits, which the padding of the
+// last word has room for.
+#define DT_ASITX_MAX_WORD 128
 
 // Convert codes into the buffer only when it has at least this much room, and then as
 // much as fits.
@@ -82,9 +82,11 @@ typedef struct DtAsiTx
     // The DMA buffer.
     OsDmaBuffer Buf;
     bool Registered;
-    size_t MaxLoad;     // The buffer less the data word kept free
-    size_t WriteOffset; // Where the next symbol goes, and the driver's offset
-    uint64_t Committed; // Bytes committed since CDMAC was set running
+    size_t MaxLoad;      // The buffer less the data word kept free
+    size_t WordNumBytes; // The data word the card reads the buffer in: below it, the last
+                         // symbols wait for more
+    size_t WriteOffset;  // Where the next symbol goes, and the driver's offset
+    uint64_t Committed;  // Bytes committed since CDMAC was set running
     DtAsiEnc Enc;
 
     // The FIFO of transport-stream bytes.
@@ -214,10 +216,10 @@ static DtapiResult Convert(DtAsiTx* Tx)
         return Result;
     size_t Free = Tx->MaxLoad - Load;
 
-    if (Load > 1 && Load < DT_ASITX_EXIT_LOAD && Tx->FifoLoad == 0)
+    if (Load > 1 && Load < Tx->WordNumBytes && Tx->FifoLoad == 0)
     {
-        uint16_t Pad[DT_ASITX_EXIT_LOAD / 2];
-        const size_t Syms = (DT_ASITX_EXIT_LOAD - Load) / 2;
+        uint16_t Pad[DT_ASITX_MAX_WORD / 2];
+        const size_t Syms = (Tx->WordNumBytes - Load) / 2;
         DtAsiEnc_Pad(&Tx->Enc, Pad, Syms);
         for (size_t i = 0; i < Syms; i++)
             memcpy(Tx->Buf.Data + (Tx->WriteOffset + 2 * i) % Tx->Buf.Size, &Pad[i], 2);
@@ -551,7 +553,7 @@ static DtapiResult FifoLoadOf(DtAsiTx* Tx, size_t* Load)
     if (Result != DTAPI_OK)
         return Result;
     *Load = Tx->FifoLoad;
-    if (!Tx->Enc.TxOnTime && Dma >= DT_ASITX_EXIT_LOAD)
+    if (!Tx->Enc.TxOnTime && Dma >= Tx->WordNumBytes)
     {
         int64_t Bytes =
             DtAsiEnc_BytesOf(&Tx->Enc, (int64_t)(Dma + (size_t)Tx->BurstFifoSize) / 2);
@@ -998,7 +1000,7 @@ static void WaitUntilSent(DtTx* Base)
     for (bool Burst = false; Base->TxControl == DTAPI_TXCTRL_SEND;)
     {
         DtBurstFifoStatus Status;
-        if (!Burst && (FifoLoadOf(Tx, &Load) != DTAPI_OK || Load <= DT_ASITX_EXIT_LOAD))
+        if (!Burst && (FifoLoadOf(Tx, &Load) != DTAPI_OK || Load <= Tx->WordNumBytes))
         {
             Burst = true;
             Lowest = SIZE_MAX;
@@ -1006,7 +1008,7 @@ static void WaitUntilSent(DtTx* Base)
         if (Burst)
         {
             if (DtPcieCmd_BurstFifoGetStatus(Tx->Drv, Tx->Burst, &Status) != DTAPI_OK ||
-                Status.CurLoad <= DT_ASITX_EXIT_LOAD)
+                Status.CurLoad <= Tx->WordNumBytes)
                 break;
             Load = (size_t)Status.CurLoad;
         }
@@ -1125,8 +1127,9 @@ static DtapiResult RegisterBuffer(DtAsiTx* Tx)
         Result = DtPcieCmd_CdmacGetProps(Drv, Tx->Cdmac, &Props);
     if (Result == DTAPI_OK && (Props.Caps & DT_CDMAC_CAP_TX) == 0)
         Result = DTAPI_E_NOT_SUPPORTED;
-    if (Result == DTAPI_OK && (Props.PrefetchSize <= 0 || Props.PcieDataWidth <= 0 ||
-                               Props.PcieDataWidth % 32 != 0))
+    if (Result == DTAPI_OK &&
+        (Props.PrefetchSize <= 0 || Props.PcieDataWidth <= 0 ||
+         Props.PcieDataWidth % 32 != 0 || Props.PcieDataWidth / 8 > DT_ASITX_MAX_WORD))
         Result = DTAPI_E_DEV_DRIVER;
     if (Result != DTAPI_OK)
         return Result;
@@ -1139,7 +1142,8 @@ static DtapiResult RegisterBuffer(DtAsiTx* Tx)
     Tx->Registered = Result == DTAPI_OK;
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacSetTestMode(Drv, Tx->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
-    Tx->MaxLoad = Tx->Buf.Size - (size_t)Props.PcieDataWidth / 8;
+    Tx->WordNumBytes = (size_t)Props.PcieDataWidth / 8;
+    Tx->MaxLoad = Tx->Buf.Size - Tx->WordNumBytes;
     return Result;
 }
 
