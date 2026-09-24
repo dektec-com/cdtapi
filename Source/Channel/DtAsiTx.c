@@ -532,7 +532,8 @@ static DtapiResult GetFlags(DtTx* Base, int* Status, int* Latched)
 //
 // While holding, what was written; while sending, the FIFO and what the symbols in the
 // buffer and the burst FIFO carry, at most the FIFO's size. With DTAPI_TXMODE_TXONTIME
-// only the FIFO counts, and the packets whose time has not yet come are left out.
+// only the FIFO counts: without a fixed rate, the symbols in the buffer cannot be
+// converted to the bytes they carry.
 //
 static DtapiResult FifoLoadOf(DtAsiTx* Tx, size_t* Load)
 {
