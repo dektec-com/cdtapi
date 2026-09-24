@@ -166,7 +166,7 @@ Building the sources as part of a project needs no install step:
     include(FetchContent)
     FetchContent_Declare(cdtapi
         GIT_REPOSITORY https://github.com/dektec-com/cdtapi.git
-        GIT_TAG v6.14.2)
+        GIT_TAG v6.14.3)
     FetchContent_MakeAvailable(cdtapi)
     target_link_libraries(myapp PRIVATE cdtapi::cdtapi)
 
