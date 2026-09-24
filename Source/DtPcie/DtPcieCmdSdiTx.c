@@ -62,10 +62,20 @@ _Static_assert(sizeof(OpModeInput) == sizeof(DtIoctlSdiTxPhyCmdSetOpModeInput) &
 //
 // The block and function values are the same numbers, so one check serves both.
 //
+// Visual Studio 2022's compiler reports the comparison as C5287, operands of different
+// enumeration types, although both are cast to int; later versions do not.
+//
+#if defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable : 5287)
+#endif
 _Static_assert((int)DT_BLOCK_OPMODE_IDLE == (int)DT_FUNC_OPMODE_IDLE &&
                    (int)DT_BLOCK_OPMODE_STANDBY == (int)DT_FUNC_OPMODE_STANDBY &&
                    (int)DT_BLOCK_OPMODE_RUN == (int)DT_FUNC_OPMODE_RUN,
                "Block and function operational modes must be the same numbers");
+#if defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
 
 static DtapiResult SetOpMode(OsDrv* Drv, uint32_t Code, int Cmd, DtDrvObject Object,
                              int OpMode)

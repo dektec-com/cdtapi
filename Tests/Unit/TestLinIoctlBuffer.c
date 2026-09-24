@@ -10,6 +10,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <stdint.h> // SIZE_MAX.
+
 // CDTAPI includes
 #include "DtTest.h"                   // Test framework.
 #include "OAL/Linux/LinIoctlBuffer.h" // Interface under test.
@@ -101,12 +104,13 @@ DT_TEST(PackRefusesBadArguments)
 // size check runs before anything is written, and that ordering is what this checks.
 DT_TEST(SizeBeyondThirtyTwoBitsIsRefused)
 {
-    if (sizeof(size_t) <= sizeof(uint32_t))
-        return;
-
+#if SIZE_MAX > UINT32_MAX
     uint8_t Buf[16];
     DT_ASSERT_EQ(
         LinIoctlBuffer_Pack(true, NULL, 0, (size_t)UINT32_MAX + 1, Buf, (size_t)-1), -1);
+#else
+    (void)DtFailures; // A size_t of 32 bits cannot hold such a size.
+#endif
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Unpacking +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

@@ -51,7 +51,8 @@ static const char* ExpectedName(const char* Macro)
 DT_TEST(EveryHeaderCodeHasItsName)
 {
     // Sanity: the generated list really holds the header's codes.
-    DT_ASSERT(sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]) > 290);
+    _Static_assert(sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]) > 290,
+                   "The generated list holds the header's codes");
 
     for (size_t i = 0; i < sizeof(g_HeaderCodes) / sizeof(g_HeaderCodes[0]); i++)
     {

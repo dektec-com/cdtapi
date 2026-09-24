@@ -55,9 +55,17 @@
 // scope, which -Wpedantic reports and -Werror then turns into a failed build of every
 // file that includes the driver ABI. The headers stay byte-identical to the SDK, so the
 // diagnostic is silenced for exactly these vendored includes instead.
+//
+// Visual Studio 2022's compiler reports the flexible array members of those headers, such
+// as m_Buf[] at the end of a command's output, as C4200, a zero-sized array, although C99
+// and C11 have them; later versions do not. /W4 reports it and /WX fails the build, so it
+// is silenced for the same includes.
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wpedantic"
+#elif defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable : 4200)
 #endif
 
 #include "Abi/DtCommon.h"
@@ -71,4 +79,6 @@
 
 #if defined(__GNUC__)
     #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+    #pragma warning(pop)
 #endif
