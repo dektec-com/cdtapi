@@ -8,7 +8,6 @@
 
 // Standard includes
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -1124,7 +1123,7 @@ static void CodeLines(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Band(Band->Lines, Index, Count, 1, &First, &Last);
+    DtWork_Split(Band->Lines, Index, Count, 1, &First, &Last);
     for (int i = First; i < Last; i++)
     {
         // Where line i begins in the raw frame. With 10-bit symbols a line that is not 4K
@@ -1721,7 +1720,7 @@ static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
     Sdi->Scratch = AllocScratch(Sdi);
     if (Sdi->Scratch == NULL)
     {
-        DtWork_SetThreads(&Sdi->Work, 1, NULL);
+        DtWork_SetThreads(&Sdi->Work, 1);
         Sdi->Scratch = AllocScratch(Sdi);
         Result = DTAPI_E_OUT_OF_MEM;
     }
@@ -1734,10 +1733,7 @@ DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    char Tag[24];
-
-    snprintf(Tag, sizeof(Tag), "DtTxConv%d", Sdi->Base.Port.PortIndex + 1);
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads, Tag));
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.

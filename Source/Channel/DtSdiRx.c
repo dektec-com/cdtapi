@@ -638,8 +638,8 @@ static void ConvertLines(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Band(Layout->NumLines, Index, Count,
-                DtSdiFrame_BandLineStep(Layout, Sdi->BitsPerSymbol), &First, &Last);
+    DtWork_Split(Layout->NumLines, Index, Count,
+                 DtSdiFrame_BandLineStep(Layout, Sdi->BitsPerSymbol), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset =
@@ -832,7 +832,7 @@ static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
     Result = AllocBands(Sdi);
     if (Result != DTAPI_OK)
     {
-        DtWork_SetThreads(&Sdi->Work, 1, NULL);
+        DtWork_SetThreads(&Sdi->Work, 1);
         AllocBands(Sdi);
     }
     return Result;
@@ -844,10 +844,7 @@ DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
 
-    char Tag[24];
-
-    snprintf(Tag, sizeof(Tag), "DtRxConv%d", Sdi->Base.Port.PortIndex + 1);
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads, Tag));
+    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.

@@ -312,8 +312,8 @@ static void ConvertBand4k(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Band(Layout->NumLines, Index, Count,
-                DtSdiFrame_BandLineStep(Layout, Job->Bits), &First, &Last);
+    DtWork_Split(Layout->NumLines, Index, Count,
+                 DtSdiFrame_BandLineStep(Layout, Job->Bits), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         uint8_t* A = Job->Buf->Coded + (size_t)Line * Coded;
@@ -386,7 +386,7 @@ static void Sdi4k(int Seconds, int Threads)
     // One pool for the whole run, as a channel keeps one between Start and Stop.
     DtWork Work;
     DtWork_Init(&Work);
-    if (DtWork_SetThreads(&Work, Threads, "DtBench") != DTAPI_OK)
+    if (DtWork_SetThreads(&Work, Threads) != DTAPI_OK)
     {
         printf("Cannot start %d threads\n", Threads);
         return;

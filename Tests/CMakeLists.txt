@@ -87,6 +87,7 @@ cdtapi_add_test(St2110Video Unit/TestSt2110Video.c)
 cdtapi_add_test(Thread Unit/TestThread.c)
 cdtapi_add_test(Vec Unit/TestVec.c)
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
+cdtapi_add_test(Work Unit/TestWork.c)
 
 # The throughput of the pixel conversions. A program to run by hand, not a test: timing
 # depends on the machine, so nothing about it can pass or fail.
