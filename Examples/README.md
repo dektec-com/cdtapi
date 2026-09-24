@@ -8,8 +8,8 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, ASI, AV FIFO, input or output |
 | `DtConfigPort` | Makes a port an input or output and sets its I/O standard: with `--vidstd` for a video standard, with `--asi` to DVB-ASI |
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
-| `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files |
-| `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame |
+| `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files; `--threads` converts them over a pool of threads |
+| `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame; `--threads` codes them over a pool of threads |
 | `DtReceiveTs` | Receives a transport stream from an ASI input, optionally to a file, with the rate, packet size, lock and flags once a second; `--check` checks `DtTransmitTs`'s numbered packets one by one |
 | `DtTransmitTs` | Transmits a transport stream on an ASI output at a set rate: a file, numbered packets, or an MPEG-2 test picture; `--generate` writes either stream to a file instead |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
@@ -54,6 +54,23 @@ the `SimAvFifo` test suite is where transmission and reception meet.
 
 A legal frame `DtTransmitFrames` sends through a cable to an input arrives with the hash
 it printed, so the two programs' lines show whether it arrived bit for bit.
+
+### 2160p over threads
+
+Converting a 2160p frame between the raw frame and the lines the card carries is more
+than one slow core has time for at 50 or 60 frames a second. `--threads` gives the
+channel a pool of that many threads of the library's own, and the channel divides each
+frame over it: into 4 pieces for 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and one
+up to 3G, where the pool goes unused. `GivePool` in either program has the calls:
+
+    DtConfigPort --port 1 --input --vidstd 2160P50 --linkstd 3
+    DtReceiveFrames --port 1 --count 10 --threads 4
+    DtConfigPort --port 5 --output
+    DtTransmitFrames --port 5 --vidstd 2160P50 --linkstd 3 --in frame --count 250         --threads 4
+
+The frames are the same whatever the number of threads. A pool can also run the pieces
+on a program's own threads, which join it, or on a pool the program already has; the
+`Parallel work` section of `cdtapi.h` describes both.
 
 ### DVB-ASI
 

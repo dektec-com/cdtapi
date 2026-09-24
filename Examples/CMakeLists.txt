@@ -140,12 +140,18 @@ cdtapi_example_test(ReceiveFramesOnOutput DtReceiveFrames
     "^9217800001:2  DtInpChannel_AttachToPort: DTAPI_E_NO_DT_INPUT" --port 2)
 cdtapi_example_test(ReceiveFramesBadMode DtReceiveFrames
     "^Unknown receive mode: 12B" --rxmode 12B)
+cdtapi_example_test(ReceiveFramesOverThreads DtReceiveFrames
+    "^9217800001:1  no frame within 100 ms" --timeout 100 --threads 4)
 cdtapi_example_test(ReceiveFramesDetect DtReceiveFrames
     "^9217800001:1  DtInpChannel_DetectIoStd: DTAPI_E_INVALID_VIDSTD" --detect --timeout 20)
 
 cdtapi_example_test(TransmitFramesPattern DtTransmitFrames
     "^9217800001:2  frame 0  7425000 bytes  hash [0-9A-F]+\n9217800001:2  frame 1  7425000 bytes  hash [0-9A-F]+\n9217800001:2  frame 2 "
     --port 2 --vidstd 1080I50 --count 3)
+cdtapi_example_test(TransmitFramesOverThreads DtTransmitFrames
+    "^9217800001:2  frame 0  7425000 bytes  hash [0-9A-F]+
+9217800001:2  frame 1 "
+    --port 2 --vidstd 1080I50 --count 2 --threads 4)
 cdtapi_example_test(TransmitFramesSd16Bits DtTransmitFrames
     "^9217800001:2  frame 0  1801800 bytes  hash [0-9A-F]+\n9217800001:2  latched"
     --port 2 --vidstd 525I59_94 --txmode 16B --flags)

@@ -16,7 +16,9 @@
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
-// With --flags it then prints the channel's latched flags. It detaches when every frame
+// With --threads a pool of that many threads of the library's own codes the frames, which
+// a 2160p output needs on a slow core. With --flags it then prints the channel's latched
+// flags. It detaches when every frame
 // is written, waiting until the card has sent them. The port must be an output;
 // DtConfigPort makes it one. Exits with 0 when every frame is written, 2 when there is no
 // SDI output, and 1 when a call fails or the command line is wrong.
@@ -53,6 +55,9 @@ static const ExampleOption g_Options[] = {
     {"--in", true, "Transmit the frames in <in>0.raw, <in>1.raw and so on"},
     {"--count", true, "The number of frames to transmit; without it one, or every file"},
     {"--flags", false, "Print the latched flags after the last frame"},
+    {"--threads", true,
+     "Code the frames over a pool of this many threads of the library's own; one thread "
+     "without it"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -571,16 +576,37 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
     return EXAMPLE_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Gives the channel a pool of NumThreads threads of the library's own, over which it
+// codes each frame's lines. With 0 as its number of pieces the channel takes what the
+// standard calls for, as it is set now and after --vidstd: 4 for 2160p50 and 2160p60, 2
+// for 2160p24 to 2160p30, and one piece up to 3G, where the pool goes unused. The channel
+// holds the pool, so the program lets go of its own hold at once.
+//
+static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    unsigned int Result =
+        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, NumThreads);
+
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_SetWorkPool(Channel, Pool, 0);
+    DtWorkPool_Freep(&Pool);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches the device and the channel to Port, sets the I/O standard when asked and then
-// the transmit mode, in that order, since a standard that crosses between SDI and ASI
-// gives the channel that side's default transmit mode, and transmits. Returns the exit
-// code.
+// Attaches the device and the channel to Port, gives it a pool of Threads threads when
+// asked, sets the I/O standard when asked and then the transmit mode, in that order,
+// since a standard that crosses between SDI and ASI gives the channel that side's default
+// transmit mode, and transmits. Returns the exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              const DtHwFuncDesc* Port, int TxMode, int VidStd,
-                             int LinkStd, Source* Src, int64_t Count, bool Flags)
+                             int LinkStd, Source* Src, int64_t Count, bool Flags,
+                             int64_t Threads)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
     if (!Example_Succeeded(Result))
@@ -592,9 +618,9 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
         return Example_Failed("DtOutpChannel_AttachToPort", Result);
     }
 
-    const char* What = "DtOutpChannel_SetTxMode";
-    Result = DTAPI_OK;
-    if (VidStd != DTAPI_VIDSTD_UNKNOWN)
+    const char* What = "DtOutpChannel_SetWorkPool";
+    Result = Threads > 0 ? GivePool(Channel, (int)Threads) : DTAPI_OK;
+    if (Result == DTAPI_OK && VidStd != DTAPI_VIDSTD_UNKNOWN)
     {
         int Value = -1;
         int SubValue = -1;
@@ -669,13 +695,15 @@ int main(int Argc, char** Argv)
     int64_t PortNumber = 0;
     int64_t Count = -1;
     int64_t LinkStd = -1;
+    int64_t Threads = 0;
     if (!Example_CheckArguments(Argc, Argv, "Transmits raw SDI frames on an SDI output.",
                                 g_Options,
                                 (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
         !Example_Int64(Argc, Argv, "--serial", &Serial) ||
         !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
         !Example_Int64(Argc, Argv, "--count", &Count) ||
-        !Example_Int64(Argc, Argv, "--linkstd", &LinkStd))
+        !Example_Int64(Argc, Argv, "--linkstd", &LinkStd) ||
+        !Example_Int64(Argc, Argv, "--threads", &Threads))
     {
         return EXAMPLE_FAILED;
     }
@@ -720,8 +748,9 @@ int main(int Argc, char** Argv)
     else if (Device == NULL || Channel == NULL)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
-        Exit = AttachAndTransmit(Device, Channel, &Port, TxMode, VidStd, (int)LinkStd,
-                                 &Src, Count, Example_HasFlag(Argc, Argv, "--flags"));
+        Exit =
+            AttachAndTransmit(Device, Channel, &Port, TxMode, VidStd, (int)LinkStd, &Src,
+                              Count, Example_HasFlag(Argc, Argv, "--flags"), Threads);
 
     DtOutpChannel_Free(Channel);
     DtDevice_Free(Device);

@@ -7,7 +7,9 @@
 // Attaches an input channel to the port, receives --count frames in the receive mode's
 // symbol size, and prints one line per frame: its number, its size and a 64-bit FNV-1a
 // hash of its bytes. With --out each frame is also written to <out><number>.raw. With
-// --detect the channel first detects the I/O standard of the input:
+// --detect the channel first detects the I/O standard of the input. With --threads a
+// pool of that many threads of the library's own converts the frames, which a 2160p
+// input needs on a slow core:
 //
 //     9217800001:1  io standard HDSDI 1080I50
 //
@@ -48,6 +50,9 @@ static const ExampleOption g_Options[] = {
     {"--timeout", true, "Milliseconds to wait for each frame; 1000 without it"},
     {"--out", true, "Write each frame to <out><number>.raw"},
     {"--detect", false, "First detect the input's I/O standard through the channel"},
+    {"--threads", true,
+     "Convert over a pool of this many threads of the library's own; one thread without "
+     "it"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -145,14 +150,34 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
     return EXAMPLE_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Gives the channel a pool of NumThreads threads of the library's own, over which it
+// converts each frame's lines. With 0 as its number of pieces the channel takes what the
+// standard calls for: 4 for 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and one piece
+// up to 3G, where the pool goes unused. The channel holds the pool, so the program lets
+// go of its own hold at once.
+//
+static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    unsigned int Result =
+        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, NumThreads);
+
+    if (Result == DTAPI_OK)
+        Result = DtInpChannel_SetWorkPool(Channel, Pool, 0);
+    DtWorkPool_Freep(&Pool);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Attaches the device and the channel to Port, detects the I/O standard when asked, and
-// receives. Returns the exit code.
+// Attaches the device and the channel to Port, gives it a pool of Threads threads when
+// asked, detects the I/O standard when asked, and receives. Returns the exit code.
 //
 static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame,
                             const DtHwFuncDesc* Port, int Argc, char** Argv, int RxMode,
-                            int64_t Count, int64_t TimeoutMs)
+                            int64_t Count, int64_t TimeoutMs, int64_t Threads)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
     if (!Example_Succeeded(Result))
@@ -162,6 +187,14 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
     {
         printf("%s  ", Port->DeviceName);
         return Example_Failed("DtInpChannel_AttachToPort", Result);
+    }
+    Result = Threads > 0 ? GivePool(Channel, (int)Threads) : DTAPI_OK;
+    if (Result != DTAPI_OK)
+    {
+        printf("%s  ", Port->DeviceName);
+        Example_Failed("DtInpChannel_SetWorkPool", Result);
+        DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
+        return EXAMPLE_FAILED;
     }
 
     if (Example_HasFlag(Argc, Argv, "--detect"))
@@ -195,13 +228,15 @@ int main(int Argc, char** Argv)
     int64_t PortNumber = 0;
     int64_t Count = 1;
     int64_t TimeoutMs = 1000;
+    int64_t Threads = 0;
     if (!Example_CheckArguments(Argc, Argv, "Receives raw SDI frames from an SDI input.",
                                 g_Options,
                                 (int)(sizeof(g_Options) / sizeof(g_Options[0]))) ||
         !Example_Int64(Argc, Argv, "--serial", &Serial) ||
         !Example_Int64(Argc, Argv, "--port", &PortNumber) ||
         !Example_Int64(Argc, Argv, "--count", &Count) ||
-        !Example_Int64(Argc, Argv, "--timeout", &TimeoutMs))
+        !Example_Int64(Argc, Argv, "--timeout", &TimeoutMs) ||
+        !Example_Int64(Argc, Argv, "--threads", &Threads))
     {
         return EXAMPLE_FAILED;
     }
@@ -231,7 +266,7 @@ int main(int Argc, char** Argv)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
         Exit = AttachAndReceive(Device, Channel, Frame, &Port, Argc, Argv, RxMode, Count,
-                                TimeoutMs);
+                                TimeoutMs, Threads);
 
     DtInpChannel_Free(Channel);
     DtDevice_Free(Device);
