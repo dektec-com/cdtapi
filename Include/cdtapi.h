@@ -415,9 +415,10 @@ CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
 // pieces run, and any number of channels may share one.
 //
 // A pool runs the pieces on threads of the library's own, which DtWorkPool_StartThreads
-// asks for, or hands them to a program that has threads of its own, through
-// DtWorkPool_SetDispatch. A channel given no pool does all its work in the thread that
-// calls it, which is the default and what costs nothing.
+// asks for; hands them to a program that has a pool of threads of its own, through
+// DtWorkPool_SetDispatch; or takes the program's own threads that join it, which
+// DtWorkPool_ExpectThreads sets up. A channel given no pool does all its work in the
+// thread that calls it, which is the default and what costs nothing.
 //
 // Whichever it is, the bytes are the same.
 //
@@ -489,8 +490,47 @@ CDTAPI_API DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool,
                                               DtWorkDispatchFunc Dispatch, void* User,
                                               int NumThreads);
 
-// Lets go of the program's hold on the pool; it goes when no channel holds it either.
-// Passing NULL does nothing.
+// Runs the pieces on threads of the program's that join the pool, NumThreads of them at
+// most: each calls DtWorkPool_Join with a DtWorkPoolMember of its own, and takes pieces
+// there until the program sends it back. The program keeps its threads' priority,
+// affinity and names, and needs no pool of its own that runs a job and waits for it. A
+// job asked for while no thread is joined runs in the thread that asks for it, so none
+// waits for a thread that is not coming.
+//
+// Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 1, and
+// DTAPI_E_IN_USE as DtWorkPool_StartThreads does, or while a thread is joined.
+CDTAPI_API DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads);
+
+// One thread of the program's in a pool it joins, which the program allocates before the
+// thread joins and frees once its DtWorkPool_Join has returned. A member may join again
+// after it has been sent back. DtWorkPoolMember_Alloc returns NULL when out of resources;
+// freeing NULL does nothing.
+typedef struct DtWorkPoolMember DtWorkPoolMember;
+CDTAPI_API DtWorkPoolMember* DtWorkPoolMember_Alloc(void);
+CDTAPI_API void DtWorkPoolMember_Free(DtWorkPoolMember* Member);
+CDTAPI_API void DtWorkPoolMember_Freep(DtWorkPoolMember** Member);
+
+// Takes pieces in the calling thread until DtWorkPool_Dismiss sends Member back, or
+// DtWorkPool_DismissAll every member, and then returns DTAPI_OK. A Dismiss that comes
+// before the Join makes it return at once. The last thread sent back first takes the
+// pieces still queued. A joined thread holds the pool, so a program that lets go of its
+// pool sends its threads back as well.
+//
+// Returns DTAPI_E_INVALID_ARG for a null pool or member; DTAPI_E_NOT_SUPPORTED on a pool
+// that DtWorkPool_ExpectThreads did not set up; and DTAPI_E_IN_USE when the member is
+// already joined, or as many threads as expected are.
+CDTAPI_API DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Member);
+
+// Sends Member back from DtWorkPool_Join, once it has finished the piece it is on, or
+// makes its next Join return at once. Called from another thread than Member's, which
+// is in the Join. Passing NULL does nothing.
+CDTAPI_API void DtWorkPool_Dismiss(DtWorkPool* Pool, DtWorkPoolMember* Member);
+
+// Sends every thread in DtWorkPool_Join on Pool back. Passing NULL does nothing.
+CDTAPI_API void DtWorkPool_DismissAll(DtWorkPool* Pool);
+
+// Lets go of the program's hold on the pool; it goes when no channel and no joined thread
+// holds it either. Passing NULL does nothing.
 CDTAPI_API void DtWorkPool_Free(DtWorkPool* Pool);
 
 // DtWorkPool_Free, and sets *Pool to NULL.

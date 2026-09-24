@@ -123,7 +123,7 @@ definitions. Include one or the other.
 
 ## What the wrapper did not have
 
-CDTAPI declares 28 functions besides those of the wrapper:
+CDTAPI declares 35 functions besides those of the wrapper:
 
 | Function | Does |
 |---|---|
@@ -134,7 +134,9 @@ CDTAPI declares 28 functions besides those of the wrapper:
 | `DtDevice_WaitForSignalTimeout` | `DtDevice_WaitForSignal` with a time limit and a result, for a program that must carry on when there is no signal |
 | `DtDevice_GetIoConfig`, `DtInpChannel_GetIoConfig`, `DtOutpChannel_GetIoConfig` | Read a port's I/O configuration |
 | `DtWorkPool_Alloc`, `DtWorkPool_Free`, `DtWorkPool_Freep` | A pool of threads that channels share, for the work they divide |
-| `DtWorkPool_StartThreads`, `DtWorkPool_SetDispatch` | Run a pool's work on threads of the library's own, or on the program's |
+| `DtWorkPool_StartThreads`, `DtWorkPool_SetDispatch` | Run a pool's work on threads of the library's own, or on the program's pool |
+| `DtWorkPool_ExpectThreads`, `DtWorkPool_Join`, `DtWorkPool_Dismiss`, `DtWorkPool_DismissAll` | Let the program's own threads join a pool, and send them back one by one or all at once |
+| `DtWorkPoolMember_Alloc`, `DtWorkPoolMember_Free`, `DtWorkPoolMember_Freep` | One thread of the program's in a pool it joins |
 | `DtInpChannel_SetWorkPool`, `DtOutpChannel_SetWorkPool` | Divide a channel's work, such as converting a frame's lines, over a pool |
 | `DtInpChannel_Read`, `DtInpChannel_GetStatus`, `DtInpChannel_GetTsRateBps`, `DtInpChannel_GetViolCount`, `DtInpChannel_PolarityControl` | Receive DVB-ASI |
 | `DtOutpChannel_GetTsRateBps`, `DtOutpChannel_SetTsRateBps`, `DtOutpChannel_SetTxPolarity`, `DtOutpChannel_ClearFlags` | Transmit DVB-ASI, and clear a transmit channel's latched flags |

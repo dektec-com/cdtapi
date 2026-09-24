@@ -265,6 +265,21 @@ DT_TEST(InputChannelCalls)
     DtWorkPool_Freep(&Pool);
     DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, NULL, 0));
 
+    // A pool the program's threads join: a member sent back before it joins returns from
+    // its Join at once, and a channel takes such a pool as it takes any other.
+    Pool = DtWorkPool_Alloc();
+    DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
+    DT_ASSERT(Pool != NULL && Member != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DtWorkPool_Dismiss(Pool, Member);
+    DT_ASSERT_OK(DtWorkPool_Join(Pool, Member));
+    DtWorkPool_DismissAll(Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, Pool, 0));
+    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, NULL, 0));
+    DtWorkPoolMember_Freep(&Member);
+    DtWorkPoolMember_Free(Member);
+    DtWorkPool_Freep(&Pool);
+
     // The functions of ASI, which an SDI channel does not have.
     int NumInv = 0, ClkDet = 0, AsiLock = 0, RateOk = 0, AsiInv = 0, Count = 0;
     static uint32_t Packets[47];

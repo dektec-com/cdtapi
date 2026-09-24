@@ -35,8 +35,11 @@
 void DtWorkPool_Hold(DtWorkPool* Pool);
 
 // How many pieces the pool runs at once: its threads, the NumThreads its dispatch
-// function was given, or 1 with neither.
+// function was given, the most threads of the program's that join it, or 1 with none.
 int DtWorkPool_NumThreads(const DtWorkPool* Pool);
+
+// How many of the program's threads are in DtWorkPool_Join now.
+int DtWorkPool_NumJoined(DtWorkPool* Pool);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtWork +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

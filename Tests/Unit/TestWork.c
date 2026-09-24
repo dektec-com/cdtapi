@@ -6,6 +6,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <stdbool.h>
+
 // CDTAPI includes
 #include "Core/DtAtomic.h" // The pieces counted from the pool's threads.
 #include "Core/DtWork.h"   // Interface under test.
@@ -327,6 +330,252 @@ DT_TEST(PoolRefusesWhatIsInvalid)
     DtWorkPool_Freep(NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Joined threads +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// A thread of the test's that joins Pool as Member, and what its DtWorkPool_Join gave.
+typedef struct Joiner
+{
+    DtWorkPool* Pool;
+    DtWorkPoolMember* Member;
+    OsThread* Thread;
+    DtapiResult Result;
+} Joiner;
+
+static void JoinPool(void* Context)
+{
+    Joiner* J = (Joiner*)Context;
+
+    J->Result = DtWorkPool_Join(J->Pool, J->Member);
+}
+
+// Starts a thread that joins Pool, and waits up to five seconds until NumJoined threads
+// are in it.
+static bool StartJoiner(Joiner* J, DtWorkPool* Pool, int NumJoined)
+{
+    J->Pool = Pool;
+    J->Member = DtWorkPoolMember_Alloc();
+    J->Result = DTAPI_E;
+    J->Thread = J->Member == NULL ? NULL : OsThread_Start(JoinPool, J);
+    if (J->Thread == NULL)
+        return false;
+    for (int Ms = 0; DtWorkPool_NumJoined(Pool) < NumJoined; Ms++)
+    {
+        if (Ms == 5000)
+            return false;
+        OsTime_SleepMs(1);
+    }
+    return true;
+}
+
+// Waits for the joined thread to come back, frees its member, and gives what its
+// DtWorkPool_Join gave.
+static DtapiResult StopJoiner(Joiner* J)
+{
+    OsThread_Join(J->Thread);
+    DtWorkPoolMember_Freep(&J->Member);
+    return J->Result;
+}
+
+// Two threads of the test's join a pool that expects two, and run every piece of
+// NUM_JOBS jobs of two pieces once; sent back, both return DTAPI_OK.
+DT_TEST(JoinedThreadsRunEveryPiece)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    Joiner A;
+    Joiner B;
+    DtWork Work;
+
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
+    DT_ASSERT_EQ(DtWorkPool_NumThreads(Pool), 2);
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DT_ASSERT(StartJoiner(&B, Pool, 2));
+    DtWork_Init(&Work);
+    DT_ASSERT_OK(DtWork_SetPool(&Work, Pool, 0));
+    DT_ASSERT_EQ(DtWork_Pieces(&Work), 2);
+
+    for (int j = 0; j < NUM_JOBS; j++)
+    {
+        Tally T;
+        TallyInit(&T, 2);
+        DtWork_Run(&Work, CountPiece, &T);
+        DT_ASSERT(EachPieceOnce(&T));
+    }
+    DtWork_Free(&Work);
+    DtWorkPool_DismissAll(Pool);
+    DT_ASSERT_OK(StopJoiner(&A));
+    DT_ASSERT_OK(StopJoiner(&B));
+    DT_ASSERT_EQ(DtWorkPool_NumJoined(Pool), 0);
+    DtWorkPool_Free(Pool);
+}
+
+// A job asked for while no thread is joined runs in the calling thread, all three of its
+// pieces, before any thread has joined and after the only one has been sent back.
+DT_TEST(JobWithNoThreadJoinedRunsInTheCaller)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    Joiner A;
+    DtWork Work;
+    Tally T;
+
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 3));
+    DtWork_Init(&Work);
+    DT_ASSERT_OK(DtWork_SetPool(&Work, Pool, 0));
+    DT_ASSERT_EQ(DtWork_Pieces(&Work), 3);
+    TallyInit(&T, 3);
+    DtWork_Run(&Work, CountPiece, &T);
+    DT_ASSERT(EachPieceOnce(&T));
+
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DtWorkPool_Dismiss(Pool, A.Member);
+    DT_ASSERT_OK(StopJoiner(&A));
+    TallyInit(&T, 3);
+    DtWork_Run(&Work, CountPiece, &T);
+    DT_ASSERT(EachPieceOnce(&T));
+
+    DtWork_Free(&Work);
+    DtWorkPool_Free(Pool);
+}
+
+// One of two joined threads is sent back and returns, and the other runs every piece of
+// the jobs after it alone until it is sent back too.
+DT_TEST(OneThreadSentBackWhileTheOtherStays)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    Joiner A;
+    Joiner B;
+    DtWork Work;
+
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DT_ASSERT(StartJoiner(&B, Pool, 2));
+    DtWork_Init(&Work);
+    DT_ASSERT_OK(DtWork_SetPool(&Work, Pool, 0));
+
+    DtWorkPool_Dismiss(Pool, A.Member);
+    DT_ASSERT_OK(StopJoiner(&A));
+    DT_ASSERT_EQ(DtWorkPool_NumJoined(Pool), 1);
+    for (int j = 0; j < NUM_JOBS; j++)
+    {
+        Tally T;
+        TallyInit(&T, 2);
+        DtWork_Run(&Work, CountPiece, &T);
+        DT_ASSERT(EachPieceOnce(&T));
+    }
+
+    DtWorkPool_Dismiss(Pool, B.Member);
+    DT_ASSERT_OK(StopJoiner(&B));
+    DtWork_Free(&Work);
+    DtWorkPool_Free(Pool);
+}
+
+// A Dismiss that comes before the Join is not lost: the Join returns at once, in the
+// calling thread, and the member may join again later.
+DT_TEST(DismissBeforeJoinReturnsAtOnce)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
+    Joiner A;
+
+    DT_ASSERT(Pool != NULL && Member != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DtWorkPool_Dismiss(Pool, Member);
+    DT_ASSERT_OK(DtWorkPool_Join(Pool, Member));
+    DT_ASSERT_EQ(DtWorkPool_NumJoined(Pool), 0);
+    DtWorkPoolMember_Freep(&Member);
+    DT_ASSERT(Member == NULL);
+
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DtWorkPool_Dismiss(Pool, A.Member);
+    DT_ASSERT_OK(StopJoiner(&A));
+    DtWorkPool_Free(Pool);
+}
+
+// The program frees its pool while a thread is still joined and sends it back after:
+// the joined thread's hold keeps the pool until it returns, which ASan would report
+// otherwise.
+DT_TEST(JoinedThreadHoldsThePool)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    Joiner A;
+
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DtWorkPool_DismissAll(Pool);
+    DtWorkPool_Free(Pool);
+    DT_ASSERT_OK(StopJoiner(&A));
+}
+
+// What Join refuses, and that a pool with a thread joined is not set again.
+DT_TEST(JoinRefusesWhatIsInvalid)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
+    Program P;
+    Joiner A;
+
+    DT_ASSERT(Pool != NULL && Member != NULL);
+    DT_ASSERT_EQ(DtWorkPool_Join(NULL, Member), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_Join(Pool, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_Join(Pool, Member), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(Pool, 0), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(NULL, 1), DTAPI_E_INVALID_ARG);
+
+    // One expected and one joined: a second member, or the same one again, is refused,
+    // and so is setting the pool again.
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 1));
+    DT_ASSERT(StartJoiner(&A, Pool, 1));
+    DT_ASSERT_EQ(DtWorkPool_Join(Pool, Member), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtWorkPool_Join(Pool, A.Member), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtWorkPool_StartThreads(Pool, 2), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtWorkPool_SetDispatch(Pool, SerialDispatch, &P, 2), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtWorkPool_ExpectThreads(Pool, 2), DTAPI_E_IN_USE);
+    DtWorkPool_DismissAll(Pool);
+    DT_ASSERT_OK(StopJoiner(&A));
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
+
+    DtWorkPool_Dismiss(NULL, Member);
+    DtWorkPool_Dismiss(Pool, NULL);
+    DtWorkPool_DismissAll(NULL);
+    DtWorkPoolMember_Free(Member);
+    DtWorkPoolMember_Free(NULL);
+    DtWorkPoolMember_Freep(NULL);
+    DtWorkPool_Free(Pool);
+}
+
+// A thread joins and is sent back fifty times while another thread runs NUM_JOBS jobs of
+// two pieces on the pool: every piece runs once and no job waits for a thread that left,
+// whether it came while one was joined, while none was, or while one was leaving.
+DT_TEST(ThreadsComeAndGoWhileJobsRun)
+{
+    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWork Work;
+
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
+    DtWork_Init(&Work);
+    DT_ASSERT_OK(DtWork_SetPool(&Work, Pool, 0));
+
+    Caller C = {&Work, 0};
+    OsThread* Thread = OsThread_Start(RunJobs, &C);
+    DT_ASSERT(Thread != NULL);
+    for (int i = 0; i < 50; i++)
+    {
+        Joiner A;
+        DT_ASSERT(StartJoiner(&A, Pool, 1));
+        DtWorkPool_Dismiss(Pool, A.Member);
+        DT_ASSERT_OK(StopJoiner(&A));
+    }
+    OsThread_Join(Thread);
+    DT_ASSERT_EQ(C.NumBad, 0);
+
+    DtWork_Free(&Work);
+    DtWorkPool_Free(Pool);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Split +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 DT_TEST(SplitCoversEveryItemOnce)
@@ -377,5 +626,9 @@ DT_TEST_MAIN("Work", DT_RUN(WithoutPoolOnePieceInCallingThread),
              DT_RUN(TwoCallersShareAPoolSmallerThanTheirPieces),
              DT_RUN(ProgramDispatchIsCalledFromTwoCallers),
              DT_RUN(PoolFreedByProgramLivesWhileHeld), DT_RUN(HeldPoolRefusesToChange),
-             DT_RUN(PoolRefusesWhatIsInvalid), DT_RUN(SplitCoversEveryItemOnce),
-             DT_RUN(SplitIsEvenToAUnit))
+             DT_RUN(PoolRefusesWhatIsInvalid), DT_RUN(JoinedThreadsRunEveryPiece),
+             DT_RUN(JobWithNoThreadJoinedRunsInTheCaller),
+             DT_RUN(OneThreadSentBackWhileTheOtherStays),
+             DT_RUN(DismissBeforeJoinReturnsAtOnce), DT_RUN(JoinedThreadHoldsThePool),
+             DT_RUN(JoinRefusesWhatIsInvalid), DT_RUN(ThreadsComeAndGoWhileJobsRun),
+             DT_RUN(SplitCoversEveryItemOnce), DT_RUN(SplitIsEvenToAUnit))
