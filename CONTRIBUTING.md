@@ -99,6 +99,38 @@ The names the driver's interface itself uses — the commands, structures and pr
 `Source/DtPcie/Abi/` that travel over the wire — are this library's own vocabulary and
 belong wherever they are needed.
 
+### What a comment says, and where
+
+- **One place per fact.** A function's contract — its parameters, units, results and side
+  effects — stands above its declaration in the header. The `.c` file says how and why
+  the body works, not the contract again. A static function is described where it is
+  defined.
+- **A result list is complete and in the order the code checks.** It names every code the
+  function can return, successes other than `DTAPI_OK` included. It says "in DTAPI's
+  order" only where a test holds it to that.
+- **Units and origins are stated once, on the declaration**: bytes, symbols, raw or coded
+  lines, sections; milliseconds or microseconds; counting from 0 or from 1. A name that
+  carries its unit already, as plan 0020 names them, needs the comment only for what the
+  name cannot say.
+- **A number in a comment is the code's number.** Name the constant rather than spelling
+  out its value. A figure derived from the code, a frame size or a count of standards, is
+  worked out again when that code changes.
+- **Scope words mean what they say.** "Every", "only", "always", "never", "guards" and
+  "clears" are written where the code makes them true; otherwise the cases are named.
+- **A banner names the function directly below it**, and `Scripts/fix_banners.py`
+  draws it.
+- **A test's comment says what its assertions check**, with the numbers they use. A
+  suite that promises coverage has a check that fails when the promise breaks.
+- **A change of behaviour updates every description of it**, not only the comment above
+  the change: search `Include/`, `Docs/`, `README.md` and `Examples/` for what the old
+  behaviour was called.
+- **No other project's names in any file**: the rule above holds for `.inc`, `.py`,
+  `.md` and CMake files as much as for C. A design document is cited as "plan NNNN".
+- **Plain English.** Write "that is not an input", not "that is no input"; "except",
+  not "but", for an exception; "part-way through a byte", not "half-way a byte". Split
+  a sentence rather than stack relative clauses, and reflow the whole paragraph after an
+  edit rather than leave a short line behind.
+
 ## How the rules are enforced
 
 | Rule | Enforced by |
