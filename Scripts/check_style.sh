@@ -14,7 +14,8 @@
 #   Rule 5  Every source file starts with a header naming the file.
 #   Rule 8  Every header guards itself with #pragma once, right after the file header.
 #
-# Source/DtPcie/Abi is skipped: it holds files vendored verbatim from the SDK.
+# Source/DtPcie/Abi is skipped by the rules: it holds files vendored verbatim from the
+# SDK. What is checked there is that they are still the bytes SHA256SUMS records.
 
 set -uo pipefail
 
@@ -121,6 +122,22 @@ Notes=$(git ls-files 'CLAUDE.md' 'CLAUDE.local.md' 2>/dev/null | head -5)
 if [ -n "$Notes" ]; then
     Fail "Internal notes are not published: $(echo $Notes)"
 fi
+
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Vendored ABI -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+#
+# Source/DtPcie/Abi holds the driver's headers byte for byte as the SDK has them, and
+# SHA256SUMS beside them records those bytes. A refresh from the SDK writes the sums
+# again in the same commit; any other change to a vendored file fails here, as does a
+# header added to the directory without a sum.
+#
+echo "Vendored ABI unchanged"
+if ! (cd Source/DtPcie/Abi && sha256sum --quiet -c SHA256SUMS) >/dev/null 2>&1; then
+    Fail "Source/DtPcie/Abi: a file differs from SHA256SUMS; see VENDORED.md"
+fi
+for File in $(git ls-files 'Source/DtPcie/Abi/*.h'); do
+    grep -qE "[ *]${File##*/}\$" Source/DtPcie/Abi/SHA256SUMS \
+        || Fail "$File: vendored without a sum in SHA256SUMS"
+done
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rules 4 and 6: format -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 

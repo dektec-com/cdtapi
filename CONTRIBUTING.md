@@ -133,8 +133,9 @@ blocks a merge, so a contributor without the hook installed is still stopped.
 
 `Source/DtPcie/Abi/` holds files copied verbatim from the DekTec SDK. They keep their
 original formatting so that a `diff` against the SDK copy stays clean and a future
-driver-ABI update is a copy rather than a merge. Do not reformat them. See
-[Source/DtPcie/Abi/VENDORED.md](Source/DtPcie/Abi/VENDORED.md).
+driver-ABI update is a copy rather than a merge. Do not reformat them: `SHA256SUMS`
+beside them records their bytes, and `Scripts/check_style.sh` fails on a file that no
+longer matches. See [Source/DtPcie/Abi/VENDORED.md](Source/DtPcie/Abi/VENDORED.md).
 
 ## This repository will become public
 

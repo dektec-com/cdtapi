@@ -66,18 +66,3 @@ jobs:
 
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
-
-  vendored:
-    name: Vendored ABI is unmodified
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # Source/DtPcie/Abi holds files copied verbatim from the SDK. Reformatting one of
-      # them turns the next driver-ABI update from a copy into a merge, so catch it here.
-      - name: No local edits to vendored files
-        run: |
-          if git log --oneline -1 --name-only | grep -q '^Source/DtPcie/Abi/DtCommon.h$'; then
-            echo "DtCommon.h changed in this commit; confirm it is a verbatim refresh."
-          fi
-          test -f Source/DtPcie/Abi/VENDORED.md
