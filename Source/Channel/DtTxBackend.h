@@ -81,7 +81,8 @@ struct DtTxBackend
 
     // What the side does around DtOutpChannel.c setting Config on the port, the side
     // staying the same: BeforeIoConfig first, when there is one, and ApplyIoConfig with
-    // the result of setting it, which it gives back unless it fails itself.
+    // the result of that or of the setting, which it returns when it is a failure, and
+    // its own result otherwise.
     DtapiResult (*BeforeIoConfig)(DtTx* Tx);
     DtapiResult (*ApplyIoConfig)(DtTx* Tx, const DtIoConfig* Config,
                                  DtapiResult SetResult);

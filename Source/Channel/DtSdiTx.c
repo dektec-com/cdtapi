@@ -105,7 +105,7 @@ typedef struct DtSdiTx
     uint8_t* RawBuf;     // The raw bytes of a line not yet complete
     uint16_t* Scratch;   // The working symbols of a 4K line, one set a band
 
-    // The threads a batch of 4K lines is coded over. Scratch holds DtWork_Pieces(&Work)
+    // The threads a batch of lines is coded over. Scratch holds DtWork_Pieces(&Work)
     // sets of ScratchSymbols symbols, so that a band uses its own.
     DtWork Work;
     size_t ScratchSymbols;
@@ -678,11 +678,12 @@ static void FreeBuffer(DtSdiTx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets the channel up for the port's I/O standard, while idle: format events, the stream
-// alignment and the format, the start-of-frame offset, the switches around the
-// demultiplexer, and a buffer for the standard, registered anew only when its size
-// changes. 2160p over one 6G or 12G link is sent as raw frames (0014); a 4K standard over
-// four links, or of level-B links, leaves the channel without a buffer; see IdleToHold.
+// Sets the channel up for the port's I/O standard, while idle: the layout from the
+// formatter's stream alignment, format events, the start-of-frame offset, the switches
+// around the demultiplexer, and a buffer for the standard, registered anew when its size
+// or the frame's geometry changes. 2160p over one 6G or 12G link is sent as raw frames
+// (plan 0014); a 4K standard over four links, or of level-B links, leaves the channel
+// without a buffer; see IdleToHold.
 //
 static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 {
@@ -1093,8 +1094,8 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Codes the band of raw lines this piece takes straight into the buffer. The bands are
-// independent: a raw line's two coded lines and their headers are its own, no coding
-// writes past them, and the working symbols are per band.
+// independent: a raw line's coded lines, one or the two of 4K with their headers, are
+// its own, no coding writes past them, and the working symbols are per band.
 //
 typedef struct CodeBand
 {
@@ -1225,8 +1226,8 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Into the buffer: every byte is taken, a frame at a time. The lock is released after
-// every line, so that the thread is not kept waiting, and the state is looked at again
-// after it was.
+// every line or batch of lines, so that the thread is not kept waiting, and the state is
+// looked at again after it was.
 //
 static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
 {
@@ -1291,8 +1292,8 @@ static DtapiResult CheckFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteWhole -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Codes a frame into the buffer line by line, as WriteSdi does, and commits it, waiting
-// for room until Deadline. The lock is released after every line. When the thread
+// Codes a frame into the buffer as WriteSdi does, and commits it, waiting for room until
+// Deadline. The lock is released after every line or batch of lines. When the thread
 // writes a black frame in the place of the lines written, or the channel was set idle
 // and holding again meanwhile, the frame is checked again and written from its start.
 // On a failure nothing of the frame is committed. Write then looks for a frame again.

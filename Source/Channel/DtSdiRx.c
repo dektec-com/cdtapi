@@ -896,7 +896,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
         return Result;
     }
 
-    // Exclusive access: the down-scaling read, the default receive mode.
+    // The down-scaling read, and the default receive mode.
     if ((Port->Caps & DT_CAP_SCALE_12GTO3G) != 0)
     {
         DtIoConfig Scale = *IoStd;

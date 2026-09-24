@@ -45,7 +45,8 @@
 #define DT_ASITX_WRITE_BLOCK (1024 * 1024)
 #define DT_ASITX_WRITE_POLL_MS 5
 
-// WaitForBurstFifo reads the burst FIFO's load five times, a millisecond apart.
+// WaitForBurstFifo waits up to five milliseconds, reading the burst FIFO's load every
+// millisecond.
 #define DT_ASITX_BURST_POLLS 5
 
 // A detach waiting until everything is sent looks every 10 ms, and gives up after a
@@ -620,8 +621,9 @@ static DtapiResult IdleToHold(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForBurstFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Five reads a millisecond apart for the burst FIFO to hold three quarters of itself, or
-// of what the buffer holds when that is less; DTAPI_E_TIMEOUT otherwise.
+// Up to five milliseconds, reading every millisecond, for the burst FIFO to hold three
+// quarters of itself, or of what the buffer holds when that is less; DTAPI_E_TIMEOUT
+// otherwise.
 //
 static DtapiResult WaitForBurstFifo(DtAsiTx* Tx)
 {
@@ -903,7 +905,7 @@ static void FifoPut(DtAsiTx* Tx, const uint8_t* Data, size_t Size)
         Tx->LoadInHold += Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Room -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasRoom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Whether the FIFO takes Size more bytes: its own room and the load reported.
 //
