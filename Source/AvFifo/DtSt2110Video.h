@@ -26,8 +26,8 @@
 // scheduling. The second field of PsF video repeats the first field's RTP timestamp.
 //
 
-// The bytes of video a packet holds at most: a UDP datagram less the UDP and RTP headers
-// and a payload header of three rows.
+// The headers in a video packet's UDP datagram: the UDP and RTP headers and a payload
+// header of three rows. The rest of the datagram is video.
 #define DT_ST2110_VIDEO_HEADERS                                                          \
     (DT_AV_UDP_HEADER_SIZE + DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE + 3 * DT_AV_SRD_SIZE)
 

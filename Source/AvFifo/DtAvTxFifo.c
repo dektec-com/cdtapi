@@ -148,8 +148,9 @@ static size_t RoundToPages(uint64_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The shared buffer size: 80 ms of video, at least two frames of it, or 80 ms of audio
-// samples; and at least the room a frame's packets need.
+// The shared buffer size: 80 ms of video, at least two frames of it and the room a
+// frame's packets need; or 80 ms of audio samples, at least two of the largest packets.
+// Never less than TX_MIN_BUFFER.
 //
 static size_t BufferSize(AvFifo_TxFifo* Fifo)
 {
@@ -203,10 +204,11 @@ static uint32_t ByteSwapped(uint32_t Value)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Starting, in its order: the network, the pipe and its buffer, the own address and a
-// socket bound to it, the destination's MAC address, the stream, an empty FIFO and
-// statistics, the pipe running, and the thread. The synchronisation source is the pipe's
-// UUID with its bytes in the processor's order.
+// Starting, in its order: the network, the pipe, the own address and a socket bound to
+// it, the destination's MAC address, the stream, the pipe's buffer, sized for the
+// stream, an empty FIFO and statistics, the pipe running, and the thread. The
+// synchronisation source is the pipe's UUID with its bytes reversed, so that the RTP
+// header carries it least significant byte first.
 //
 static DtapiResult Start(AvFifo_TxFifo* Fifo)
 {
@@ -571,7 +573,7 @@ int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_TxFifo_Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The frame is checked here rather than when it is packetized, so that a frame of the
+// The frame is checked here as well as when it is packetized, so that a frame of the
 // wrong size fails the write. A frame the FIFO has no room for stays the application's.
 //
 DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame)

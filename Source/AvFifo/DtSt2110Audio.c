@@ -87,8 +87,7 @@ int DtSt2110AudioTx_PacketBytes(const DtSt2110AudioTx* Tx, const DtAvTxStream* S
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sends a packet of Size bytes of samples, of which the first First come from First and
-// the rest from Rest.
+// Sends a packet of samples: FirstSize bytes from First, then RestSize bytes from Rest.
 //
 static void SendPacket(DtAvTxStream* Stream, const DtAvSink* Sink, uint32_t RtpTime,
                        uint64_t TodNs, const uint8_t* First, int FirstSize,

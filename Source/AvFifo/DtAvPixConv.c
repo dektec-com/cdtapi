@@ -24,10 +24,10 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Portable C +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The 10-bit conversions take whole words rather than single bytes: a step reads eight
-// bytes, which hold at least the pixel group it converts, and writes eight, of which the
-// next step overwrites what was too much. A step therefore runs while two pixel groups
-// remain, and the byte-by-byte conversion beside it does the last pixel group. Compilers
-// turn Swap64 into one instruction.
+// bytes, which hold at least the pixel group it converts, and writes up to eight, of
+// which the next step overwrites what was too much. A step therefore runs while two pixel
+// groups remain, and the byte-by-byte conversion beside it does the last pixel group.
+// Compilers turn Swap64 into one instruction.
 //
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Swap64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
