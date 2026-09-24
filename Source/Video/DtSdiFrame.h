@@ -145,7 +145,8 @@ void DtSdiFrame_EncodeHeader(const DtSdiFrameHeader* Header, uint8_t* Bytes);
 DtapiResult DtSdiFrame_CheckHeader(const DtSdiFrameLayout* Layout,
                                    const DtSdiFrameHeader* Header, int ExpectedId);
 
-// A transmit header, decoded. Fields keep the widths the header gives them.
+// A transmit header, decoded: each field holds the value of its bit field, unscaled.
+// Encoding cuts a wider value to the field's width in the header.
 typedef struct DtSdiFrameTxHeader
 {
     uint32_t SyncWord;
