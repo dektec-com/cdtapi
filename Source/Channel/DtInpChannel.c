@@ -68,8 +68,7 @@ struct DtInpChannel
 
     // The pool the channel's work is divided over, NULL for none, and the pieces asked
     // for, 0 for as many as the signal calls for. Held from the setting until the next
-    // one or DtInpChannel_Free, across attaching, detaching and a change of side, and
-    // given to every side the channel attaches.
+    // one or the detach, across a change of side, and given to every side attached.
     DtWorkPool* WorkPool;
     int WorkThreads;
 };
@@ -112,16 +111,26 @@ static void GiveWork(DtInpChannel* Chan)
         Chan->Rx->Ops->SetWorkPool(Chan->Rx, Chan->WorkPool, Chan->WorkThreads);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Lets go of the pool when the channel detaches, as it forgets its other settings then.
+//
+static void DropWork(DtInpChannel* Chan)
+{
+    DtWorkPool_Freep(&Chan->WorkPool);
+    Chan->WorkThreads = 0;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Holds Pool for the channel and gives it to the side, if attached, with the lock taken
+// Holds Pool for the channel and gives it to the side, with the lock taken, attached,
 // and no call between its start and its return. The pool is kept when the side is short
 // of memory, so that the next standard tries again.
 //
 static DtapiResult SetWorkPool(DtInpChannel* Chan, DtWorkPool* Pool, int NumThreads)
 {
     DtapiResult Result = DTAPI_OK;
-    if (Chan->Attached && Chan->Rx->Ops->SetWorkPool != NULL)
+    if (Chan->Rx->Ops->SetWorkPool != NULL)
         Result = Chan->Rx->Ops->SetWorkPool(Chan->Rx, Pool, NumThreads);
 
     DtWorkPool_Hold(Pool);
@@ -174,6 +183,7 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
     ReleaseSide(Chan);
     DtDevice_Release(&Chan->Device);
     Chan->Attached = false;
+    DropWork(Chan);
     OsMutex_Unlock(Chan->Lock);
     return DTAPI_OK;
 }
@@ -211,7 +221,6 @@ void DtInpChannel_Free(DtInpChannel* InpChannel)
         return;
 
     Detach(InpChannel, DT_INSTANT_DETACH, -1);
-    DtWorkPool_Free(InpChannel->WorkPool);
     OsMutex_Destroy(InpChannel->Lock);
     DtAlloc_Free(InpChannel);
 }
@@ -377,17 +386,16 @@ DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Not attached, the channel keeps the pool for the side it attaches next.
-//
 DtapiResult DtInpChannel_SetWorkPool(DtInpChannel* InpChannel, DtWorkPool* Pool,
                                      int NumThreads)
 {
     if (InpChannel == NULL || NumThreads < 0)
         return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
 
     // The side sizes its working buffers here, so a read between its start and its
     // return would find them changing under it.
-    OsMutex_Lock(InpChannel->Lock);
     DtapiResult Result =
         InpChannel->Reading ? DTAPI_E_IN_USE : SetWorkPool(InpChannel, Pool, NumThreads);
     OsMutex_Unlock(InpChannel->Lock);
@@ -572,6 +580,7 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
             {
                 DtDevice_Release(&InpChannel->Device);
                 InpChannel->Attached = false;
+                DropWork(InpChannel);
             }
             else
                 GiveWork(InpChannel);

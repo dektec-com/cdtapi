@@ -537,11 +537,10 @@ CDTAPI_API void DtWorkPool_Free(DtWorkPool* Pool);
 CDTAPI_API void DtWorkPool_Freep(DtWorkPool** Pool);
 
 // Divides the channel's work over Pool, NULL for the reading thread alone, which is the
-// default. The channel holds the pool until it is set again or the channel is freed;
-// detaching the channel, and switching it to ASI and back, keep it, and it may be set
-// before the channel is attached. A channel whose signal has no lines, such as ASI,
-// takes the pool and keeps it for when it has. The frames are the same whatever the
-// pool.
+// default. The channel holds the pool until it is set again or the channel is detached;
+// switching it to ASI and back keeps it. A channel whose signal has no lines, such as
+// ASI, takes the pool and keeps it for when it has. The frames are the same whatever
+// the pool.
 //
 // NumThreads is how many pieces the channel divides a frame into, no more than the pool
 // runs at once. 0 leaves it to the library, which follows the standard the channel is
@@ -559,8 +558,9 @@ CDTAPI_API void DtWorkPool_Freep(DtWorkPool** Pool);
 // this channel's pieces wait for one. A channel that must not wait gets a pool of its
 // own.
 //
-// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0; DTAPI_E_IN_USE
-// while a read has not returned, as the buffers must not change under one; and
+// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
+// DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a read has
+// not returned, as the buffers must not change under one; and
 // DTAPI_E_OUT_OF_MEM when the buffers cannot be had for those pieces, after which the
 // channel converts in the reading thread until its standard changes or the pool is set
 // again.
@@ -770,8 +770,9 @@ CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
 // frame at a time gets the same as WriteFrame, and a caller that writes a line at a time
 // gets no division, because there is nothing in that call to divide.
 //
-// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0; DTAPI_E_IN_USE
-// while a write has not returned; and DTAPI_E_OUT_OF_MEM when the buffers cannot be had
+// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
+// DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a write
+// has not returned; and DTAPI_E_OUT_OF_MEM when the buffers cannot be had
 // for those pieces, after which the channel codes in the writing thread until its
 // standard changes or the pool is set again.
 CDTAPI_API DtapiResult DtOutpChannel_SetWorkPool(DtOutpChannel* OutpChannel,

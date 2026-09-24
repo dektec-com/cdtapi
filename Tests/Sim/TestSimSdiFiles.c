@@ -941,8 +941,8 @@ static void ThroughAsi(DtInpChannel* In, DtWorkPool* Between, int* DtFailures)
         DtInpChannel_SetIoConfig(In, DTAPI_IOCONFIG_IOSTD, Value, SubValue, -1, -1));
 }
 
-// A pool set before the channel is attached is given to it at the attach, and stays
-// through a switch to ASI and back: the first frame and the one after the switch go
+// A pool is set on an attached channel only, and stays through a switch to ASI and
+// back, but not through a detach: the first frame and the one after the switch go
 // through it. ASI takes a pool of its own without complaint and keeps it for when it
 // has lines again, and the frame after that switch goes through the new one. Every
 // frame is byte for byte the one in the file.
@@ -963,10 +963,11 @@ DT_TEST(PoolStaysThroughAsiAndBack)
     DtWorkPool* Pool = DispatchPool(&First, 4);
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Pool != NULL);
 
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 4));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_EQ(DtInpChannel_SetWorkPool(In, Pool, 4), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_1080I50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 4));
+    DtWorkPool_Freep(&Pool);
     ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 1);
 
@@ -980,6 +981,13 @@ DT_TEST(PoolStaysThroughAsiAndBack)
     DtWorkPool_Freep(&Pool);
     ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 2);
+    DT_ASSERT_EQ(Second.Calls, 1);
+
+    // A detach lets go of the pool: attached again, the channel reads in its own thread.
+    DT_ASSERT_OK(DtInpChannel_Detach(In, DTAPI_INSTANT_DETACH));
+    DT_ASSERT_EQ(DtInpChannel_SetWorkPool(In, NULL, 0), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(Second.Calls, 1);
 
     DtInpChannel_Free(In);
