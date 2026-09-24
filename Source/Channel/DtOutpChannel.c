@@ -551,9 +551,9 @@ DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The channel's checks, then the side's: no 192-byte packets, and an SDI mode with the
-// full frame when it names neither the full frame nor active video, and with compression
-// and network byte order only on a port that has them.
+// The channel's checks, then the side's: no 192-byte packets; on SDI, the full frame
+// added to a mode that names neither the full frame nor active video; and compression and
+// network byte order only on a port that has them.
 //
 DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int StuffMode)
 {

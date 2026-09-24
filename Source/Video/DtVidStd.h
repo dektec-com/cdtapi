@@ -52,7 +52,7 @@ typedef struct DtVidStdInfo
     int OneLinkVidStd;  // For 2160p the 1080p standard of one link, else unknown
 } DtVidStdInfo;
 
-// The information of a video standard; NULL for a code that is no standard.
+// The information of a video standard; NULL for a code that is not a standard.
 const DtVidStdInfo* DtVidStd_Find(int VidStd);
 
 // The standards in the order deduction tries them: DtVidStd_At(Index) for an Index from
@@ -91,5 +91,5 @@ void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
                           bool Is3gLevelB, uint32_t Vpid, int SdiRate);
 
 // The number of cables a link standard uses: four for SMPTE 425 quad links, one for the
-// others, 0 for a value that is no link standard.
+// others, 0 for a value that is not a link standard.
 int DtVidStd_NumPhysicalLinks(int LinkStd);

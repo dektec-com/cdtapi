@@ -207,9 +207,9 @@ DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
 //   10 bits   packed, least significant bit first, as in the coded frame
 //   16 bits   its value unshifted, little endian
 //
-// A line of 10-bit symbols takes whole bytes in every standard but 720p23.98 and 720p24.
-// Their lines end half-way a byte, so every other line starts at bit 4 of a byte it
-// shares with the line before it.
+// A line of 10-bit symbols takes whole bytes in every standard except 720p23.98 and
+// 720p24. Their lines end half-way through a byte, so every other line starts at bit 4 of
+// a byte it shares with the line before it.
 //
 
 // The bytes of a raw frame whose symbols take BitsPerSymbol, 8, 10 or 16, padding
@@ -217,7 +217,7 @@ DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
 size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 
 // The bits one line of a raw frame takes whose symbols take BitsPerSymbol, 8, 10 or 16; 0
-// for any other symbol size. Line LineIndex, from 0, starts at LineIndex times that bit.
+// for any other symbol size. Line LineIndex, from 0, starts at bit LineIndex times that.
 size_t DtSdiFrame_RawLineNumBits(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 
 // The fewest lines whose raw bits make a whole number of bytes, from 1 to 8. A band of
@@ -291,9 +291,9 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Black frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // A black frame holds the lines of a standard with nothing in them: every symbol that is
-// no timing reference is 200 in the chrominance and 040 in the luminance, which is black
-// in the active video and empty blanking elsewhere. The timing references are those of
-// the line: EAV and SAV with the field, vertical blanking and protection bits of the
+// not a timing reference is 200 in the chrominance and 040 in the luminance, which is
+// black in the active video and empty blanking elsewhere. The timing references are those
+// of the line: EAV and SAV with the field, vertical blanking and protection bits of the
 // video standard's field layout, and in HD and 3G, for each channel, the line number and
 // SMPTE 292's CRC-18 over that channel's active part of the line before it, then the EAV
 // and the line number. For the first line the line before it is the frame's last line,

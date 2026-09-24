@@ -66,8 +66,8 @@ typedef bool (*LinNetHandler)(const struct nlmsghdr* Msg, void* Context);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MsgOk -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// NLMSG_OK and NLMSG_NEXT, and RTA_OK and RTA_NEXT below, with the signed byte count
-// they mean but whose macros mix with unsigned lengths.
+// NLMSG_OK and NLMSG_NEXT, and RTA_OK and RTA_NEXT below, with the byte count kept
+// signed; the macros mix it with unsigned lengths.
 //
 static bool MsgOk(const struct nlmsghdr* Msg, int Left)
 {

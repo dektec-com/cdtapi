@@ -81,7 +81,7 @@ typedef struct DtAvWriter
     uint8_t Scratch[DT_AV_PIPE_MAX_PACKET];
     bool InScratch;
     int Unflushed;      // Packets the driver has not heard of
-    DtapiResult Result; // The first failure to tell the driver
+    DtapiResult Result; // The first failed flush since the last DtAvWriter_Flush
 } DtAvWriter;
 
 // Sets up a writer on a pipe with a buffer, from the pipe's offset.

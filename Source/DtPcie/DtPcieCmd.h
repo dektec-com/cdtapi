@@ -389,7 +389,8 @@ DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtDrvObject Object,
 DtapiResult DtPcieCmd_BurstFifoClearMax(OsDrv* Drv, DtDrvObject Object, bool ClearMaxFree,
                                         bool ClearMaxLoad);
 
-// Reads the count of overflows and underflows. It stands still while data flows.
+// Reads the count of overflows and underflows. It does not change while data flows
+// without interruption, so a change since the last reading means one occurred.
 DtapiResult DtPcieCmd_BurstFifoGetOvfUflCount(OsDrv* Drv, DtDrvObject Object,
                                               uint32_t* Count);
 
@@ -624,8 +625,7 @@ DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtDrvObject Pipe,
 //
 // The Vital Product Data a card holds in its own EEPROM: a read-only section the factory
 // writes, a read-write section, and whatever lies beyond them. The commands go to the
-// device rather than to a port. Only reading is here; writing, the items by keyword and
-// a public interface are for later.
+// device rather than to a port. This layer only reads.
 //
 
 // Where the sections lie in the EEPROM, and how large it is, as GET_PROPERTIES gives it.

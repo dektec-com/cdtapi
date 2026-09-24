@@ -27,7 +27,7 @@
 //
 // What a receive channel delivers of each is, per receive mode, the packet or the valid
 // bytes, a time stamp before it when asked, and nothing of a packet without its
-// packet-sync bit but in DTAPI_RXMODE_STRAW and DTAPI_RXMODE_STTRP.
+// packet-sync bit except in DTAPI_RXMODE_STRAW and DTAPI_RXMODE_STTRP.
 //
 
 #define DT_TRP_SIZE 216
@@ -54,8 +54,8 @@ DtapiResult DtTsTrp_CheckMode(int RxMode);
 void DtTsTrp_Start(DtTsTrp* Trp, int RxMode);
 
 // What packet P converts to, into Out, which has room for DT_TRP_MAX_OUTPUT bytes: the
-// number of bytes, 0 for a packet that is dropped, or -1 for bytes that are no packet in
-// sync, with a sync nibble or a valid count that is wrong, after which the stream must
+// number of bytes, 0 for a packet that is dropped, or -1 for bytes that are not a packet
+// in sync, with a sync nibble or a valid count that is wrong, after which the stream must
 // be found again. With Out NULL only the number is given, and the flags set. The number
 // depends on P and the mode alone.
 int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out);
@@ -64,7 +64,7 @@ int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out);
 // consecutive sequence numbers and a valid count the mode accepts, the first packet's any
 // up to 204. On success *Offset is where a whole packet starts: the one found, or the
 // next when the one found started before Buf. Returns false when none is found; Buf is
-// then all but its last DT_TRP_NUM_SYNC packets' worth of bytes without one.
+// then all except its last DT_TRP_NUM_SYNC packets' worth of bytes without one.
 bool DtTsTrp_FindSync(const DtTsTrp* Trp, const uint8_t* Buf, size_t Size,
                       size_t* Offset);
 

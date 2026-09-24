@@ -59,7 +59,7 @@ const DtAvPixConv* DtAvPixConv_Avx2(void);
 // The fastest conversions the processor runs: AVX2, SSSE3 or portable C.
 const DtAvPixConv* DtAvPixConv_Best(void);
 
-// The SSSE3 and the AVX2 conversions, whatever the processor supports; only for the build
-// of this library on x86, as DtAvPixConv_Ssse3 and DtAvPixConv_Avx2 choose them.
+// The SSSE3 and the AVX2 conversions without the processor check; defined only in an
+// x86 build. Other code calls DtAvPixConv_Ssse3 or DtAvPixConv_Avx2, which check first.
 const DtAvPixConv* DtAvPixConv_Ssse3Table(void);
 const DtAvPixConv* DtAvPixConv_Avx2Table(void);

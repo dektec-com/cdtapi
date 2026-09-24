@@ -161,8 +161,8 @@ static uint32_t LinLastError(const void* State)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Shared, readable and writable, at the offset the driver reads as which memory is
-// meant.
+// Maps the memory shared, readable and writable. The driver tells from Offset which of
+// its memory is meant.
 //
 static void* LinMapMemory(void* State, uint64_t Offset, size_t Size)
 {

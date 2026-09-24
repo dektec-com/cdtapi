@@ -590,7 +590,7 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
     if (InpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    // The old meaning of DTAPI_RXMODE_SDI alone is the full frame.
+    // DTAPI_RXMODE_SDI without a mode bit means the full frame, as in DTAPI.
     if ((RxMode & DTAPI_RXMODE_SDI) != 0 && (RxMode & DTAPI_RXMODE_SDI_MODE_BITS) == 0)
         RxMode |= DTAPI_RXMODE_SDI_FULL;
     if ((RxMode & DT_RXMODE_TS) != 0 && (RxMode & DTAPI_RXMODE_SDI) != 0)

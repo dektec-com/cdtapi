@@ -153,9 +153,10 @@ static DtapiResult Skip(DtAsiRx* Rx, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// An overflow while the burst FIFO's count moved since the previous GetFlags, or since
-// the flag was cleared. Only GetFlags looks, so that a scan between two of them, which
-// every read and every load makes, does not take the change away before it is reported.
+// Sets the overflow flag when the burst FIFO's count has moved since the previous
+// GetFlags, or since the flag was cleared, and latches it. Only GetFlags looks, so that a
+// scan between two of them, which every read and every load makes, does not take the
+// change away before it is reported.
 //
 static DtapiResult UpdateBurst(DtAsiRx* Rx)
 {
@@ -552,8 +553,8 @@ static DtapiResult AfterWait(DtRx* Base, const DtRxWait* Wait)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The rate on the wire, as the rate of 188-byte packets when the receiver found 204-byte
-// ones, but in DTAPI_RXMODE_STRAW.
+// The rate on the wire, given as the rate of 188-byte packets when the receiver found
+// 204-byte ones, except in DTAPI_RXMODE_STRAW.
 //
 static DtapiResult GetTsRateBps(DtRx* Base, int* TsRate)
 {

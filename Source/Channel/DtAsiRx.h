@@ -21,7 +21,7 @@
 // A scan walks what the card has written since the last: the packets that convert are
 // counted in the load, the bytes Read would deliver in the receive mode; a packet that
 // would take the load over DT_ASIRX_FIFO_SIZE is dropped, with DTAPI_RX_FIFO_OVF; and
-// bytes that are no packet are searched for the stream. What a scan drops or searches
+// bytes that are not a packet are searched for the stream. What a scan drops or searches
 // past is noted, so that taking the bytes later converts the same packets again without
 // looking at the flags. Taking converts straight from the buffer into the caller's,
 // keeping at most one packet's output for the next take.

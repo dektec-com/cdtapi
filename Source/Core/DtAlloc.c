@@ -16,9 +16,9 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Fault injection +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The counters are atomic, because allocations can happen on several threads at once.
-// Arming a failure is meant for a test
-// that allocates from one thread: with allocations on other threads at the same time, a
-// different allocation than the intended one may fail, or none.
+// Arming a failure is meant for a test that allocates from one thread: with allocations
+// on other threads at the same time, a different allocation than the intended one may
+// fail, or none.
 //
 
 static DtAtomicInt g_AllocCount = 0;

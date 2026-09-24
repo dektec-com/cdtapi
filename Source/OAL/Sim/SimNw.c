@@ -418,8 +418,8 @@ static bool IpMatches(const DtIoctlPipeCmdSetIpFilterInput* Filter,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The index of the enabled port of the three that is Port, starting at the flag of the
-// first; -1 when none is, and 3 when none is enabled.
+// Which of the filter's three ports, enabled by FirstFlag and the two flags after it,
+// equals Port: its index; -1 when no enabled one does, 3 when none is enabled.
 //
 static int PortIndex(uint32_t Flags, uint32_t FirstFlag, const UInt16* Ports,
                      uint16_t Port)
@@ -1142,7 +1142,7 @@ static int Scheduled(int Id)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Sets the pipe's operational mode. A software pipe takes any value; a hardware pipe's
-// DMA controller only the three modes, and any but IDLE only with a buffer. A hardware
+// DMA controller only the three modes, and any except IDLE only with a buffer. A hardware
 // transmit pipe going from STANDBY to RUN applies the write offset it kept.
 //
 static uint32_t SetOpMode(SimPipe* Pipe, int OpMode)

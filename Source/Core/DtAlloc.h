@@ -30,9 +30,8 @@ void* DtAlloc_Malloc(size_t Size);
 void* DtAlloc_Realloc(void* Ptr, size_t Size);
 void DtAlloc_Free(void* Ptr);
 
-// Makes the next allocation after Count more succeed-then-fail: 0 fails the very next
-// one, 1 lets one through and fails the one after it. A negative value disarms the
-// injection, which is the default.
+// Lets Count allocations through and fails the one after them: 0 fails the very next
+// one. A negative value disarms the injection, which is the default.
 void DtAlloc_FailAfter(int Count);
 
 // How many allocations have been made since the last DtAlloc_ResetCount. Lets a test

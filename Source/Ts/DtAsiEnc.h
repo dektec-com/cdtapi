@@ -96,7 +96,7 @@ DtapiResult DtAsiEnc_SetRate(DtAsiEnc* Enc, int64_t Rate);
 
 // Starts a stream: positive running disparity, an empty accumulator, no packet begun,
 // the synchronisation error cleared. Returns DTAPI_E_INVALID_RATE, and starts nothing,
-// when the rate does not fit the packet size, but with DTAPI_TXMODE_TXONTIME, whose
+// when the rate does not fit the packet size, except with DTAPI_TXMODE_TXONTIME, whose
 // packets go out at their times whatever the rate.
 DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc);
 

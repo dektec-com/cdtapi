@@ -22,11 +22,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// A decoded symbol that is K28.5, and one that is no code.
+// A decoded symbol that is K28.5, and one that is not a code.
 #define SIM_ASI_K28_5 0x100
 #define SIM_ASI_NO_CODE (-1)
 
-// The bytes the output takes from its buffer a millisecond: 27 M symbols of 16 bits.
+// The bytes the output takes from its buffer a millisecond: 27 M symbols a second, of 16
+// bits each.
 #define SIM_ASI_BYTES_PER_MS 54000
 
 // The symbols the sink measures the rate over.

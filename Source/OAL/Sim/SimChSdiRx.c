@@ -162,7 +162,7 @@ static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DataSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A symbol that is no timing reference, between 040 and 3BF.
+// A symbol that is not a timing reference, between 040 and 3BF.
 //
 static uint32_t DataSymbol(uint32_t FrameNumber, int Line, int Index)
 {

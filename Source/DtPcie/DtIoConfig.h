@@ -66,7 +66,6 @@ DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue);
 // configurations can be read of, and DTAPI_E_INVALID_ARG otherwise.
 DtapiResult DtIoConfig_CheckGroup(int Group);
 
-// True when a port with the capability named after Code, CAP_ and the code's name, has
-// Group, which is how a group's capabilities are collected: a boolean I/O capability is
-// its own, a group has those of its values.
+// True when capability CAP_<name of Code> on a port means that the port has Group. A
+// boolean I/O capability is its own capability; a group has those of its values.
 bool DtIoConfig_IsCapOfGroup(int Code, int Group);

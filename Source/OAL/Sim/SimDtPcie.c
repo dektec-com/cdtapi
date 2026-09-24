@@ -271,7 +271,7 @@ static int CheckSizes(SimDevice* Dev, size_t InSize, size_t InNeeded, const void
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeFromName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Reads a name field of a request, which the emulator terminates itself rather than
-// trusting the caller to have done so. Returns false for a name that is no code.
+// trusting the caller to have done so. Returns false for a name that is not a code.
 //
 static bool CodeFromName(const char* Field, int* Code)
 {
@@ -286,7 +286,7 @@ static bool CodeFromName(const char* Field, int* Code)
 //
 // True when the port has the capability named after Code, as CAP_<name>, overridden or
 // not. The callers pass valid codes only; a name lookup that failed anyway would leave
-// the bare prefix, which is no capability.
+// the bare prefix, which is not a capability.
 //
 static bool IsSupported(int PortIndex, int Code)
 {
@@ -764,7 +764,7 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A command for a transmit block of the port at PortIndex. The blocks are enabled while
-// the port is an output with an SDI I/O standard, but for the PHY, which an ASI output
+// the port is an output with an SDI I/O standard, except for the PHY, which an ASI output
 // uses too.
 //
 static int SdiTxCmd(SimDevice* Dev, int Uuid, int PortIndex, int FunctionCode, int Type,

@@ -118,9 +118,9 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FramesInRing -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The complete frames the ring holds at the largest load the driver allows. Each frame
-// in the ring carries its header and the padding of every section to the alignment, and
-// the driver keeps one data word free, so the rest of the ring never holds a frame.
+// The complete frames the ring holds at the largest load the driver allows, which is the
+// ring less the data word the driver keeps free. A frame in the ring takes its coded
+// size, header and padding included; what is left over holds no whole frame.
 //
 static size_t FramesInRing(const DtSdiRx* Sdi)
 {
@@ -876,7 +876,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     DtWork_Init(&Sdi->Work);
 
-    // The receiver and the receive channel of the port's ASI/SDI receiver.
+    // The receiver and the receive channel, in the port's AF_ASISDIRX.
     DtFuncInstance Instance;
     DtapiResult Result = DtFunc_Find(Drv, Port->PortIndex, "AF_ASISDIRX", "", &Instance);
     if (Result != DTAPI_OK)

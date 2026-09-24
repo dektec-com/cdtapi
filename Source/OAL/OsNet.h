@@ -41,7 +41,7 @@ typedef struct OsNetItf
 {
     uint32_t Index; // The operating system's interface index
     uint8_t Mac[6];
-    int VlanId;           // 0 for an interface that is no VLAN
+    int VlanId;           // 0 for an interface that is not a VLAN
     uint32_t ParentIndex; // The interface a VLAN interface is on; 0 for none
     bool AdminUp;         // Enabled
     bool LinkUp;          // Enabled and connected
@@ -68,12 +68,13 @@ typedef struct OsNetAddr
 // are more.
 int OsNet_ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs);
 
-// Finds the interface with MAC address Mac that is no VLAN when VlanId is 0, or the VLAN
-// interface with that ID on it otherwise.
+// Finds the interface with MAC address Mac that is not a VLAN when VlanId is 0, or the
+// VLAN interface with that ID on it otherwise.
 int OsNet_FindInterface(const uint8_t* Mac, int VlanId, OsNetItf* Itf);
 
 // Lists the IPv4 or IPv6 addresses of the interface with index IfIndex, in the order the
-// operating system gives them, as OsNet_ListInterfaces lists.
+// operating system gives them, filling Addrs and *NumAddrs as OsNet_ListInterfaces fills
+// its output. OS_NET_NOT_FOUND when there is no such interface.
 int OsNet_GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAddrs,
                        int* NumAddrs);
 

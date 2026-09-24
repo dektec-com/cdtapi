@@ -155,7 +155,7 @@ typedef struct SimAsiTxStats
     int64_t Symbols;
     int64_t DataBytes;
     int64_t K28;             // K28.5 comma symbols
-    int64_t CodeErrors;      // Symbols that are no code
+    int64_t CodeErrors;      // Symbols that are not a code
     int64_t DisparityErrors; // Codes of the wrong running disparity
     int64_t TsBitrate;       // Data bits a second on the wire, the last measured
 } SimAsiTxStats;

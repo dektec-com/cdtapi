@@ -178,8 +178,9 @@ static void StoreGroups(const __m128i Group[4], int BitsPerSymbol, uint8_t* Raw,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Store10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The ten bytes of eight symbols. A wide store writes six bytes more, which the bytes
-// after them are; at the end of a section, where they are not, Safe copies them.
+// The ten bytes of eight symbols. A wide store also writes the six bytes after them,
+// which a later store overwrites; at the end of a section, where none does, Safe
+// copies the ten through a buffer.
 //
 static void Store10(uint8_t* To, __m128i Packed, bool Safe)
 {

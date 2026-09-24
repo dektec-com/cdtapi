@@ -123,8 +123,8 @@ static void ReceiveThread(void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The filter takes the destination address and port, the sources' address and each
-// source's port but -1, and the VLAN ID, which the filter's flags do not enable.
+// The filter takes the destination address and port, the sources' address, each source
+// port that is not -1, and the VLAN ID, which the filter's flags do not enable.
 //
 static DtapiResult SetFilter(AvFifo_RxFifo* Fifo, bool Enable)
 {

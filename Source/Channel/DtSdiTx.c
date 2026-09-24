@@ -646,7 +646,7 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocScratch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The conversion's working symbols, one set for every band a batch of lines divides into.
-// NULL for a standard that has none, which is every standard but 4K.
+// NULL for a standard that has none, which is every standard except 4K.
 //
 static uint16_t* AllocScratch(DtSdiTx* Sdi)
 {
@@ -1151,14 +1151,14 @@ static void CodeLines(void* Context, int Index, int Count)
 //
 // Codes as many whole lines as this call brings, over the threads the channel has, and
 // returns how many it did. Zero where there is nothing to divide, and the caller then
-// takes one line the way it always did: a channel of one thread; a frame whose room is
-// not reserved yet, which is its first line; bytes of a line left over from the call
-// before; and a batch that would be a single line.
+// takes one line with TakeLine: a channel of one thread; a frame whose room is not
+// reserved yet, which is its first line; bytes of a line left over from the call before;
+// and a batch that would be a single line.
 //
 // Every standard divides. The coded lines a band writes are its own whatever the
 // standard, since each begins on a byte of its own; the raw lines a band reads can share
 // a byte with the line before or after, which with 10-bit symbols they do, but reading
-// the same byte on two threads is no risk. So a band starts wherever it likes and the
+// the same byte on two threads is not a risk. So a band starts wherever it likes and the
 // line's own bit is worked out from the phase the batch began at.
 //
 // Only the lines that lie in one piece before the end of the buffer are taken. The line

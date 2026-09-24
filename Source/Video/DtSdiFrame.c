@@ -596,12 +596,8 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A raw 4K line is built from, and split into, its four links four symbols at a time:
-// two pixels of one link, which pack into exactly five bytes and which the raw line
-// carries as two groups of eight words. Every section of a 4K line holds a multiple of
-// four symbols, so a line is a whole number of such tiles and every tile lies on a byte
-// boundary on both sides. The scratch buffer holds the raw line's symbols, which one
-// pass then writes in the symbol size of the raw frame.
+// The tiles are described in DtSdi4k.h. The scratch buffer holds the raw line's symbols,
+// which one pass then writes in the symbol size of the raw frame.
 //
 
 // The links, from 0, whose C words and then Y words take the four places of a group of

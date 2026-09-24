@@ -14,10 +14,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame geometry +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// What is held of a frame, without its audio properties: the lines of each field, where
-// the active video and the switching line are, and how many symbols each part of a line
-// has. For a 2160p standard these are the properties of one link, the 1080p frame of the
-// same rate.
+// The geometry of a frame: the lines of each field, where the active video and the
+// switching line are, and how many symbols each part of a line has. For a 2160p standard
+// these are the properties of one link, the 1080p frame of the same rate.
 //
 // Symbol counts count both components, so a 1920-sample active line is 3840 symbols.
 //
@@ -53,7 +52,7 @@ typedef struct DtFrameProps
 #define DT_SDIRATE_12G 4
 
 // Fills Props for a video standard. Returns false, with Props->VidStd
-// DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is no standard.
+// DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is not a standard.
 bool DtFrameProps_Init(DtFrameProps* Props, int VidStd);
 
 // The frame rate of a video standard as a reduced fraction; 0/1 for anything else.

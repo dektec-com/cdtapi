@@ -14,7 +14,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The addresses an interface is looked at for.
+// The most addresses of an interface that are looked at; the rest are ignored.
 #define DT_NET_MAX_ADDRS 32
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Length -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

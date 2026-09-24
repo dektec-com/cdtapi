@@ -1,6 +1,6 @@
 // *#*#*#*#*#*#*#*#*#*#*#* cdtapi_constants.h *#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Result codes and configuration constants shared with CDTAPI and DTAPI
+// CDTAPI - Result codes and configuration constants, with DTAPI's values
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -13,7 +13,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Result codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // Every call that can fail returns one of these. The values are part of the binary
-// interface shared with CDTAPI and DTAPI, including their irregularities: DTAPI_E + 10
+// interface CDTAPI shares with DTAPI, including their irregularities: DTAPI_E + 10
 // is unused, and DTAPI_E_NO_DT_OUTPUT/NO_TS_OUTPUT and DTAPI_E_NO_DT_INPUT/NO_TS_INPUT
 // are pairs of names for one value each. Do not renumber, reorder or close the gap.
 //
@@ -332,7 +332,7 @@
 //
 // I/O configuration groups and values, receive and transmit control, video standards,
 // receive and transmit modes, and status flags. Like the result codes, the values are
-// part of the binary interface shared with CDTAPI and DTAPI and must not change.
+// part of the binary interface CDTAPI shares with DTAPI and must not change.
 //
 // Each DTAPI_IOCONFIG_ value also has a name, which is what actually travels to the
 // driver: the macro name without its DTAPI_IOCONFIG_ prefix. DTAPI_IOCONFIG_2160P50 is
@@ -383,7 +383,7 @@
 // SubValues for group DTAPI_IOCONFIG_IODIR, values DTAPI_IOCONFIG_OUTPUT and INTOUTPUT
 #define DTAPI_IOCONFIG_DBLBUF            27      // Double buffered output
 #define DTAPI_IOCONFIG_LOOPS2L3          28      // Loop-through of DVB-S2 in L3-frames
-#define DTAPI_IOCONFIG_LOOPS2TS          29      // Loop-through of an DVB-S(2) input
+#define DTAPI_IOCONFIG_LOOPS2TS          29      // Loop-through of a DVB-S(2) input
 #define DTAPI_IOCONFIG_LOOPTHR           30      // Loop-through of another input
 
 // Values for group DTAPI_IOCONFIG_IOSTD (I/O standard)

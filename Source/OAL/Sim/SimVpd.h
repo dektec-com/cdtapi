@@ -16,8 +16,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= EEPROM +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // An EEPROM of SIM_VPD_EEPROM_SIZE bytes: a read-only section, a read-write section, and
-// behind them the bytes that are no section's, where the data a card is activated with
-// lies.
+// behind them the bytes that belong to no section, where the data a card is activated
+// with lies.
 //
 
 #define SIM_VPD_EEPROM_SIZE 1024

@@ -471,7 +471,8 @@ static DtapiResult SlavesToAsi(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateUfl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// An underflow while the burst FIFO's count moved since the last look.
+// Sets the underflow flag when the burst FIFO's count has moved since the last look, and
+// latches it.
 //
 static DtapiResult UpdateUfl(DtAsiTx* Tx)
 {

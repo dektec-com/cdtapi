@@ -28,8 +28,8 @@
 // Where the four links' five bytes of tile Tile lie in their coded lines, links 1 and 2
 // in the first and links 3 and 4 in the second: the HANC sections first, tile by tile,
 // and then the active part, whose blocks of four symbols a picture line gives to the two
-// links of a coded line in turn and a blanking line in halves. The one rule both ways,
-// and for every instruction set.
+// links of a coded line in turn and a blanking line in halves. Both directions and every
+// instruction set use this one rule.
 static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blanking,
                                       size_t Tile, size_t Offset[4])
 {

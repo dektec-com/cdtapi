@@ -51,7 +51,7 @@ int OsNet_ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsNet_FindInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Lists the interfaces, growing the list until it holds them all, and looks for the one
-// with the MAC address: the interface that is no VLAN, then the VLAN on it.
+// with the MAC address: the interface that is not a VLAN, then the VLAN on it.
 //
 int OsNet_FindInterface(const uint8_t* Mac, int VlanId, OsNetItf* Itf)
 {

@@ -75,7 +75,7 @@ CDTAPI_API DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, in
                                          int* SubValue);
 
 // Returns the name of a result code's macro, for example "DTAPI_E_IN_USE", or "???" for a
-// value that is no result code. The names are those DTAPI gives: of each pair of names
+// value that is not a result code. The names are those DTAPI gives: of each pair of names
 // for one value the first, DTAPI_E_NO_DT_INPUT and DTAPI_E_NO_DT_OUTPUT, and "???" for
 // DTAPI_E_INVALID_NUM_INPUTS, DTAPI_E_DISABLED and DTAPI_E_EXCEPTION, which DTAPI does
 // not name. The returned string is static and must not be freed.
@@ -86,8 +86,8 @@ CDTAPI_API const char* DtapiResult2Str(DtapiResult Result);
 // A time from a device's time-of-day clock.
 typedef struct DtTimeOfDay
 {
-    uint32_t Seconds;     // Integer number of seconds part of the TOD time
-    uint32_t Nanoseconds; // Number of nanoseconds part of the TOD time
+    uint32_t Seconds;     // Whole seconds
+    uint32_t Nanoseconds; // Nanoseconds within the second, below 1e9
 } DtTimeOfDay;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtHwFuncDesc +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -527,7 +527,7 @@ CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flag
 // crosses between SDI and ASI switches the channel to the other, with that side's
 // default receive mode, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B or
 // DTAPI_RXMODE_ST188; when the switch fails the channel is left detached. Returns
-// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an output
+// DTAPI_E_INVALID_ARG for a combination that is not a configuration, for an output
 // direction and for an input that shares the antenna of a port ParXtra0 does not name,
 // and DTAPI_E_NOT_SUPPORTED for any other direction, which DTAPI would apply.
 CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
@@ -604,7 +604,7 @@ CDTAPI_API DtapiResult DtInpChannel_GetStatus(DtInpChannel* InpChannel, int* Pac
                                               int* RateOk, int* AsiInv);
 
 // The rate of the transport stream, in bits a second of 188-byte packets: the card
-// measures 204-byte packets with their 16 extra bytes, which are left out but in
+// measures 204-byte packets with their 16 extra bytes, which are left out except in
 // DTAPI_RXMODE_STRAW.
 CDTAPI_API DtapiResult DtInpChannel_GetTsRateBps(DtInpChannel* InpChannel, int* TsRate);
 
@@ -725,7 +725,7 @@ CDTAPI_API DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int Deta
 // complete frames written and not yet taken, and what was written of the next; 0 while
 // idle. Never more than the FIFO size. On ASI, as DTAPI estimates it: while holding what
 // was written, while sending the FIFO and what the symbols in the card's buffers carry,
-// but with DTAPI_TXMODE_TXONTIME the FIFO alone.
+// except with DTAPI_TXMODE_TXONTIME the FIFO alone.
 CDTAPI_API DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel,
                                                  int* FifoLoad);
 
@@ -755,9 +755,9 @@ CDTAPI_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* S
 // standard reconfigures the channel for it; the transmit mode is kept. A standard that
 // crosses between SDI and ASI switches the channel to the other, with that side's
 // default transmit mode; when the switch fails the channel is left detached. Returns
-// DTAPI_E_INVALID_ARG for a combination that is no configuration, for an input
+// DTAPI_E_INVALID_ARG for a combination that is not a configuration, for an input
 // direction, and for an output that names another port, DTAPI_IOCONFIG_DBLBUF,
-// LOOPS2L3, LOOPS2TS or LOOPTHR, when ParXtra0 is no port.
+// LOOPS2L3, LOOPS2TS or LOOPTHR, when ParXtra0 is not a port.
 CDTAPI_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group,
                                                  int Value, int SubValue,
                                                  int64_t ParXtra0, int64_t ParXtra1);

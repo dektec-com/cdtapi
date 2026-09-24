@@ -171,7 +171,7 @@ static void StopPipeline(SimTxPort* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Disable -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The port is no SDI output: the blocks of the transmitter are idle. Those of the DMA
+// The port is not an SDI output: the blocks of the transmitter are idle. Those of the DMA
 // stay as they are.
 //
 static void Disable(SimTxPort* Port)

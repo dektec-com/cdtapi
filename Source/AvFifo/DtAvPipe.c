@@ -46,9 +46,6 @@ DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_SetBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Idles the pipe, allocates a whole number of prefetch sizes, and hands the buffer to
-// the driver.
-//
 DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
 {
     if (Pipe->Ref.Uuid == 0 || Pipe->Buf.Data != NULL || Size == 0 ||
