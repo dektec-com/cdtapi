@@ -4,8 +4,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Everything here runs without DekTec hardware. The hardware-only conformance suite runs
-# on a self-hosted runner and is not part of this workflow.
+# Everything here runs without DekTec hardware, against the emulated device; tests on a
+# card are run by hand on a machine that has one.
 
 name: CI
 
