@@ -32,10 +32,11 @@
 // interface has VLAN ID 0.
 //
 
-// The flags of GetAdaptersAddresses: prefixes and gateways, nothing that is not needed.
+// The flags of GetAdaptersAddresses: nothing that is not read. The prefix length comes
+// with each unicast address, the gateway from the routing table.
 #define WIN_NET_ADAPTER_FLAGS                                                            \
     (GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER |        \
-     GAA_FLAG_SKIP_FRIENDLY_NAME | GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS)
+     GAA_FLAG_SKIP_FRIENDLY_NAME)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Adapters -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
