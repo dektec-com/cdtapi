@@ -152,7 +152,9 @@ static DtapiResult Skip(DtAsiRx* Rx, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// An overflow while the burst FIFO's count moved since the last look.
+// An overflow while the burst FIFO's count moved since the previous GetFlags, or since
+// the flag was cleared. Only GetFlags looks, so that a scan between two of them, which
+// every read and every load makes, does not take the change away before it is reported.
 //
 static DtapiResult UpdateBurst(DtAsiRx* Rx)
 {
@@ -239,8 +241,6 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
         Rx->SkipHead = DtVec_Count(&Rx->Skips);
         Result = Advance(Rx, Rx->Scanned);
     }
-    if (Result == DTAPI_OK)
-        Result = UpdateBurst(Rx);
     return Result;
 }
 
