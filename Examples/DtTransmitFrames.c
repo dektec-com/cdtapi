@@ -86,20 +86,20 @@ static uint64_t Fnv1a64(const char* Data, int Size)
 // The transmit mode and symbol size for a name on the command line. False for another
 // name.
 //
-static bool TxModeFrom(const char* Name, int* TxMode, int* SymbolBits)
+static bool TxModeFrom(const char* Name, int* TxMode, int* BitsPerSymbol)
 {
     *TxMode = DTAPI_TXMODE_SDI_FULL;
     if (Name == NULL || strcmp(Name, "10B") == 0)
     {
         *TxMode |= DTAPI_TXMODE_SDI_10B;
-        *SymbolBits = 10;
+        *BitsPerSymbol = 10;
     }
     else if (strcmp(Name, "8B") == 0)
-        *SymbolBits = 8;
+        *BitsPerSymbol = 8;
     else if (strcmp(Name, "16B") == 0)
     {
         *TxMode |= DTAPI_TXMODE_SDI_16B;
-        *SymbolBits = 16;
+        *BitsPerSymbol = 16;
     }
     else
         return false;
@@ -226,7 +226,7 @@ typedef struct Pattern
     int LineSymbols;
     int Fields[2][4]; // Start line, end line, first and last active line of each field
     bool TwoFields;
-    int SymbolBits;
+    int BitsPerSymbol;
     int FrameSize;
     uint16_t* Line;  // The line being made
     uint16_t* Video; // The active part of the current frame's video lines
@@ -239,7 +239,7 @@ typedef struct Pattern
 // The layout of the pattern for VidStd, from the geometry of the video standard. False
 // for a standard the pattern does not know or when memory runs out.
 //
-static bool PatternInit(Pattern* Pat, int VidStd, int SymbolBits)
+static bool PatternInit(Pattern* Pat, int VidStd, int BitsPerSymbol)
 {
     const Geometry* Geo = NULL;
 
@@ -291,8 +291,8 @@ static bool PatternInit(Pattern* Pat, int VidStd, int SymbolBits)
     Pat->LineSymbols =
         Pat->EavSymbols + Geo->HancSymbols + Pat->SavSymbols + Pat->ActiveSymbols;
     Pat->TwoFields = Geo->TwoFields;
-    Pat->SymbolBits = SymbolBits;
-    int64_t Bits = (int64_t)Pat->NumLines * Pat->LineSymbols * SymbolBits;
+    Pat->BitsPerSymbol = BitsPerSymbol;
+    int64_t Bits = (int64_t)Pat->NumLines * Pat->LineSymbols * BitsPerSymbol;
     Pat->FrameSize = (int)((Bits + 63) / 64 * 8);
     Pat->Line = (uint16_t*)malloc((size_t)Pat->LineSymbols * sizeof(uint16_t));
     Pat->Video = (uint16_t*)malloc((size_t)Pat->ActiveSymbols * sizeof(uint16_t));
@@ -470,12 +470,12 @@ static void MakeFrame(Pattern* Pat, int64_t FrameNumber, char* Frame)
         {
             uint32_t Symbol = Pat->Line[i];
 
-            if (Pat->SymbolBits == 16)
+            if (Pat->BitsPerSymbol == 16)
             {
                 *Out++ = (uint8_t)Symbol;
                 *Out++ = (uint8_t)(Symbol >> 8);
             }
-            else if (Pat->SymbolBits == 8)
+            else if (Pat->BitsPerSymbol == 8)
                 *Out++ = (uint8_t)(Symbol >> 2);
             else
             {
@@ -638,7 +638,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
 //
 // Reads the files, or prepares the pattern. False, having printed why, when that fails.
 //
-static bool LoadSource(const char* In, int VidStd, int SymbolBits, Source* Src)
+static bool LoadSource(const char* In, int VidStd, int BitsPerSymbol, Source* Src)
 {
     memset(Src, 0, sizeof(*Src));
     if (In != NULL)
@@ -649,7 +649,7 @@ static bool LoadSource(const char* In, int VidStd, int SymbolBits, Source* Src)
         printf("Give --in, or --vidstd for the test pattern\n");
         return false;
     }
-    if (!PatternInit(&Src->Pat, VidStd, SymbolBits))
+    if (!PatternInit(&Src->Pat, VidStd, BitsPerSymbol))
     {
         printf("No test pattern for video standard %s\n", Example_VidStdName(VidStd));
         return false;
@@ -682,8 +682,8 @@ int main(int Argc, char** Argv)
         return EXAMPLE_FAILED;
     }
     int TxMode = 0;
-    int SymbolBits = 0;
-    if (!TxModeFrom(Example_Value(Argc, Argv, "--txmode"), &TxMode, &SymbolBits))
+    int BitsPerSymbol = 0;
+    if (!TxModeFrom(Example_Value(Argc, Argv, "--txmode"), &TxMode, &BitsPerSymbol))
     {
         printf("Unknown transmit mode: %s; 8B, 10B or 16B\n",
                Example_Value(Argc, Argv, "--txmode"));
@@ -698,7 +698,7 @@ int main(int Argc, char** Argv)
     }
 
     Source Src;
-    if (!LoadSource(Example_Value(Argc, Argv, "--in"), VidStd, SymbolBits, &Src))
+    if (!LoadSource(Example_Value(Argc, Argv, "--in"), VidStd, BitsPerSymbol, &Src))
     {
         FreeFrames(&Src.Files);
         PatternFree(&Src.Pat);

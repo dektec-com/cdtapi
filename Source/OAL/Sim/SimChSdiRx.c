@@ -1134,10 +1134,10 @@ void SimDtPcie_LimitRxRing(size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcie_SetRxAlignment(int AlignmentBits)
+void SimDtPcie_SetRxAlignment(int AlignmentInBits)
 {
     EnsureRx();
-    g_Rx.Alignment = AlignmentBits;
+    g_Rx.Alignment = AlignmentInBits;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_MapRxRingAsLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

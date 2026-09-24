@@ -156,9 +156,10 @@ static void FromGroups(const __m128i Group[4], __m128i Link[4])
 // The four groups into a raw line, forty bytes of ten-bit symbols or sixty-four of
 // sixteen-bit ones. Safe copies through a buffer, for a step at the end of a line.
 //
-static void StoreGroups(const __m128i Group[4], int SymbolBits, uint8_t* Raw, bool Safe)
+static void StoreGroups(const __m128i Group[4], int BitsPerSymbol, uint8_t* Raw,
+                        bool Safe)
 {
-    if (SymbolBits == 16)
+    if (BitsPerSymbol == 16)
     {
         for (int i = 0; i < 4; i++)
             _mm_storeu_si128((__m128i*)(Raw + 16 * i), Group[i]);
@@ -198,9 +199,9 @@ static void Store10(uint8_t* To, __m128i Packed, bool Safe)
 // The four groups of a raw line. Safe copies through a buffer, for a step at the end of
 // a line.
 //
-static void LoadGroups(const uint8_t* Raw, int SymbolBits, __m128i Group[4], bool Safe)
+static void LoadGroups(const uint8_t* Raw, int BitsPerSymbol, __m128i Group[4], bool Safe)
 {
-    if (SymbolBits == 16)
+    if (BitsPerSymbol == 16)
     {
         for (int i = 0; i < 4; i++)
         {
@@ -230,10 +231,10 @@ static void LoadGroups(const uint8_t* Raw, int SymbolBits, __m128i Group[4], boo
 // otherwise.
 //
 static void TileC(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
-                  uint8_t* CodedA, uint8_t* CodedB, int SymbolBits, uint8_t* RawLine,
+                  uint8_t* CodedA, uint8_t* CodedB, int BitsPerSymbol, uint8_t* RawLine,
                   bool Gather)
 {
-    const size_t RawBytes = SymbolBits == 16 ? 32 : 20;
+    const size_t RawBytes = BitsPerSymbol == 16 ? 32 : 20;
     uint8_t* Raw = RawLine + Tile * RawBytes;
     uint16_t Symbols[16];
     size_t Offset[4];
@@ -245,7 +246,7 @@ static void TileC(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
             const size_t Bit = i * 10;
             uint32_t Value;
 
-            if (SymbolBits == 16)
+            if (BitsPerSymbol == 16)
                 Value = (uint32_t)Raw[2 * i] | (uint32_t)Raw[2 * i + 1] << 8;
             else
             {
@@ -286,7 +287,7 @@ static void TileC(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
 
     if (Gather)
     {
-        if (SymbolBits == 16)
+        if (BitsPerSymbol == 16)
         {
             for (size_t i = 0; i < 16; i++)
             {
@@ -328,7 +329,7 @@ static void LinkSources(const DtSdiFrameLayout* Layout, bool Blanking, size_t Ti
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+static void ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                         const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                         uint8_t* RawLine, uint16_t* Scratch)
 {
@@ -336,13 +337,13 @@ static void ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
     const size_t Tiles =
         (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
-    const size_t RawBytes = SymbolBits == 16 ? 32 : 20;
+    const size_t RawBytes = BitsPerSymbol == 16 ? 32 : 20;
     uint8_t* A = (uint8_t*)(uintptr_t)CodedA;
     uint8_t* B = (uint8_t*)(uintptr_t)CodedB;
 
-    if (SymbolBits == 8)
+    if (BitsPerSymbol == 8)
     {
-        DtSdi4kConv_C()->ConvertLine(Layout, SymbolBits, CodedA, CodedB, LineIndex,
+        DtSdi4kConv_C()->ConvertLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
                                      RawLine, Scratch);
         return;
     }
@@ -377,17 +378,17 @@ static void ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
                 Link[p] = Unpack8(From, Pairs);
             }
             ToGroups(Link, Group);
-            StoreGroups(Group, SymbolBits, RawLine + Tile * RawBytes,
+            StoreGroups(Group, BitsPerSymbol, RawLine + Tile * RawBytes,
                         Edge && Region == 1);
         }
         if (Tile < End)
-            TileC(Layout, Blanking, Tile, A, B, SymbolBits, RawLine, true);
+            TileC(Layout, Blanking, Tile, A, B, BitsPerSymbol, RawLine, true);
     }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+static void CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                      const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                      uint8_t* CodedB, uint16_t* Scratch)
 {
@@ -395,13 +396,13 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
     const size_t Tiles =
         (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
-    const size_t RawBytes = SymbolBits == 16 ? 32 : 20;
+    const size_t RawBytes = BitsPerSymbol == 16 ? 32 : 20;
     uint8_t* Raw = (uint8_t*)(uintptr_t)RawLine;
 
-    if (SymbolBits == 8)
+    if (BitsPerSymbol == 8)
     {
-        DtSdi4kConv_C()->CodeLine(Layout, SymbolBits, RawLine, LineIndex, CodedA, CodedB,
-                                  Scratch);
+        DtSdi4kConv_C()->CodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
+                                  CodedB, Scratch);
         return;
     }
 
@@ -420,7 +421,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
             __m128i Group[4];
 
             LinkSources(Layout, Blanking, Tile, CodedA, CodedB, Src, &Split);
-            LoadGroups(Raw + Tile * RawBytes, SymbolBits, Group, Edge && Region == 1);
+            LoadGroups(Raw + Tile * RawBytes, BitsPerSymbol, Group, Edge && Region == 1);
             FromGroups(Group, Link);
             if (Split)
             {
@@ -443,7 +444,7 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
             }
         }
         if (Tile < End)
-            TileC(Layout, Blanking, Tile, CodedA, CodedB, SymbolBits, Raw, false);
+            TileC(Layout, Blanking, Tile, CodedA, CodedB, BitsPerSymbol, Raw, false);
     }
 }
 

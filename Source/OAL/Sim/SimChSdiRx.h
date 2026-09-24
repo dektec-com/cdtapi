@@ -132,7 +132,7 @@ void SimDtPcie_RunRxEvents(int PortIndex, int Events);
 void SimDtPcie_LimitRxRing(size_t Size);
 
 // Makes every channel report this stream alignment in bits.
-void SimDtPcie_SetRxAlignment(int AlignmentBits);
+void SimDtPcie_SetRxAlignment(int AlignmentInBits);
 
 // Makes the driver report a mapped ring as on Linux, when true, or as on Windows.
 void SimDtPcie_MapRxRingAsLinux(bool AsLinux);

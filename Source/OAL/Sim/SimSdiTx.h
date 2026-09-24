@@ -126,7 +126,7 @@ bool SimSdiTx_RealTime(void);
 void SimDtPcie_RegisterTxBufferAsLinux(bool AsLinux);
 
 // Makes every formatter report this stream alignment in bits.
-void SimDtPcie_SetTxAlignment(int AlignmentBits);
+void SimDtPcie_SetTxAlignment(int AlignmentInBits);
 
 // Lets the port at PortIndex send Events parts of frames without anyone waiting for their
 // events, as a card goes on while an application does not wait. Stops at an underflow.

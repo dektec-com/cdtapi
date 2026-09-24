@@ -1407,11 +1407,11 @@ void SimDtPcie_RegisterTxBufferAsLinux(bool AsLinux)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetTxAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcie_SetTxAlignment(int AlignmentBits)
+void SimDtPcie_SetTxAlignment(int AlignmentInBits)
 {
     SimDtPcie_Lock();
     EnsureTx();
-    g_Tx.Alignment = AlignmentBits;
+    g_Tx.Alignment = AlignmentInBits;
     SimDtPcie_Unlock();
 }
 

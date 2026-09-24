@@ -99,7 +99,7 @@ typedef struct DtSdiFrameLayout
 // Fills Layout for a video standard and a stream alignment in bits. Returns false for an
 // unknown standard, a 4K standard made of level-B links, and an alignment that is not a
 // positive number of whole bytes.
-bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits);
+bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentInBits);
 
 // The bytes one coded frame takes: its header and its lines, for reception and for
 // transmission.
@@ -212,37 +212,40 @@ DtapiResult DtSdiFrame_CheckLines(const DtSdiFrameLayout* Layout,
 // shares with the line before it.
 //
 
-// The bytes of a raw frame whose symbols take SymbolBits, 8, 10 or 16, padding included;
+// The bytes of a raw frame whose symbols take BitsPerSymbol, 8, 10 or 16, padding
+// included;
 // 0 for any other symbol size.
-size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits);
+size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 
-// The bits one line of a raw frame takes whose symbols take SymbolBits, 8, 10 or 16; 0
+// The bits one line of a raw frame takes whose symbols take BitsPerSymbol, 8, 10 or 16; 0
 // for any other symbol size. Line LineIndex, from 0, starts at LineIndex times that bit.
-size_t DtSdiFrame_RawLineNumBits(const DtSdiFrameLayout* Layout, int SymbolBits);
+size_t DtSdiFrame_RawLineNumBits(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 
 // The fewest lines whose raw bits make a whole number of bytes, from 1 to 8. A band of
 // lines that starts on a multiple of them shares no byte of the raw frame with the band
 // before it, so bands cut that way may be converted at once on more than one thread. It
 // is 1 wherever every line starts on a byte of its own, which is every 8- and 16-bit
 // frame and every 4K one; only a 10-bit frame that is not 4K can need more.
-int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int SymbolBits);
+int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 
 // Converts the coded line at CodedLine, the line with index LineIndex from 0, into its
-// place in the raw frame at Raw, whose symbols take SymbolBits, 8, 10 or 16. With 10 bits
+// place in the raw frame at Raw, whose symbols take BitsPerSymbol, 8, 10 or 16. With
+// 10 bits
 // a line can share a byte with the line before or after it, so the raw frame must be
 // cleared beforehand; the lines can then be converted in any order. Padding bits of the
 // coded line are not copied.
-void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                             const uint8_t* CodedLine, int LineIndex, uint8_t* Raw);
 
 // Codes one raw line into the coded line at CodedLine, Layout->Stride bytes: the HANC
-// section and the video section, each padded with zero bits. The symbols take SymbolBits,
+// section and the video section, each padded with zero bits. The symbols take
+// BitsPerSymbol,
 // 8, 10 or 16; a 16-bit symbol gives its lower ten bits, and an 8-bit one its eight bits
 // shifted up by two. The line's first bit is bit Phase, from 0 for the least significant
 // to 7, of the byte at RawLine, and no byte after the one holding its last bit is read.
 // Returns false, writing nothing, for another symbol size, for a Phase outside 0 to 7,
 // and for a Phase other than 0 with 8 or 16 bits.
-bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine);
 
 // A raw 4K line is the link's data stream as a 6G or 12G link carries it (SMPTE ST
@@ -270,21 +273,22 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
 size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout);
 
 // Converts coded lines 2n-1 and 2n of a 4K frame, at CodedA and CodedB, into raw line
-// LineIndex, n-1 from 0, at RawLine, whose symbols take SymbolBits, 8, 10 or 16: the
+// LineIndex, n-1 from 0, at RawLine, whose symbols take BitsPerSymbol, 8, 10 or 16: the
 // line's DtSdiFrame_RawLineNumBits / 8 bytes, which in a raw 4K frame start at LineIndex
 // times that. Does nothing for another symbol size or a standard that is not 4K. Padding
 // bits of the coded lines are not copied.
-void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch);
 
-// Codes raw line LineIndex of a 4K frame, whose symbols take SymbolBits, 8, 10 or 16, at
+// Codes raw line LineIndex of a 4K frame, whose symbols take BitsPerSymbol, 8, 10 or
+// 16, at
 // RawLine, into coded lines 2n-1 and 2n at CodedA and CodedB, Layout->Stride bytes each,
 // their sections padded with zero bits; the line headers of transmission are not written.
 // A 16-bit symbol gives its lower ten bits, and an 8-bit one its eight bits shifted up by
 // two. Returns false, writing nothing, for another symbol size or a standard that is not
 // 4K.
-bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                            const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                            uint8_t* CodedB, uint16_t* Scratch);
 

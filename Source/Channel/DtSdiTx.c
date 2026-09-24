@@ -84,7 +84,7 @@ typedef struct DtSdiTx
 
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
-    int SymbolBits; // 8, 10 or 16, from the transmit mode
+    int BitsPerSymbol; // 8, 10 or 16, from the transmit mode
 
     // Flags.
     bool FifoUfl, FifoUflLatched;
@@ -512,7 +512,7 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
 
     if (UnsentFrames(Sdi) < 1)
         return DTAPI_E_INSUF_LOAD;
-    if (Sdi->SymbolBits == 8)
+    if (Sdi->BitsPerSymbol == 8)
         return DTAPI_E_CONFIG_RAW_SDI;
 
     DtapiResult Result;
@@ -747,7 +747,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     }
     Sdi->Layout = Layout;
     Sdi->CodedSize = DtSdiFrame_TxCodedSize(&Layout);
-    Sdi->RawSize = DtSdiFrame_RawSize(&Layout, Sdi->SymbolBits);
+    Sdi->RawSize = DtSdiFrame_RawSize(&Layout, Sdi->BitsPerSymbol);
 
     // The standard's black frame and the buffers of a write.
     size_t Line = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8 + 2;
@@ -824,9 +824,9 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 //
 static uint32_t StartSymbol(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t Index)
 {
-    if (Sdi->SymbolBits == 16)
+    if (Sdi->BitsPerSymbol == 16)
         return ((uint32_t)Bytes[2 * Index] | (uint32_t)Bytes[2 * Index + 1] << 8) & 0x3FF;
-    else if (Sdi->SymbolBits == 8)
+    else if (Sdi->BitsPerSymbol == 8)
         return (uint32_t)Bytes[Index] << 2;
     else
     {
@@ -848,7 +848,7 @@ static size_t StartBytes(const DtSdiTx* Sdi)
                      : Sdi->Layout.Is4k                   ? 48
                                                           : 12;
 
-    return Symbols * (size_t)Sdi->SymbolBits / 8;
+    return Symbols * (size_t)Sdi->BitsPerSymbol / 8;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsFrameStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -1012,7 +1012,7 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
                             uint64_t Deadline)
 {
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits);
+    size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
     size_t Need = ((size_t)Sdi->Phase + Bits + 7) / 8;
     size_t Used = ((size_t)Sdi->Phase + Bits) / 8;
 
@@ -1062,13 +1062,13 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone + 1,
                                       Dst + Layout->TxStride);
-        DtSdiFrame_CodeLine4k(Layout, Sdi->SymbolBits, Src, Sdi->LinesDone,
+        DtSdiFrame_CodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesDone,
                               Dst + Layout->TxLineHeaderNumBytes,
                               Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
                               Sdi->Scratch);
     }
     else
-        DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, Sdi->Phase, Dst);
+        DtSdiFrame_CodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->Phase, Dst);
     if (Dst == Sdi->LineBuf)
         PutAt(Sdi, Offset, Sdi->LineBuf, Coded);
 
@@ -1130,13 +1130,13 @@ static void CodeLines(void* Context, int Index, int Count)
 
         if (!Layout->Is4k)
         {
-            DtSdiFrame_CodeLine(Layout, Sdi->SymbolBits, Src, (int)(At % 8), Dst);
+            DtSdiFrame_CodeLine(Layout, Sdi->BitsPerSymbol, Src, (int)(At % 8), Dst);
             continue;
         }
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
         DtSdiFrame_CodeLine4k(
-            Layout, Sdi->SymbolBits, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
+            Layout, Sdi->BitsPerSymbol, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
             Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Scratch);
     }
 }
@@ -1173,7 +1173,7 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
         return 0;
     }
 
-    const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits);
+    const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
     const size_t Phase = (size_t)Sdi->Phase;
     const size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
     const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
@@ -1494,7 +1494,7 @@ static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
     if (!Sdi->Registered)
         return NoBuffer;
     return (int)(Sdi->MaxLoad / Sdi->CodedSize *
-                 DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits));
+                 DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1544,11 +1544,11 @@ static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
     else
     {
         Tx->TxMode = TxMode;
-        Sdi->SymbolBits = (TxMode & DTAPI_TXMODE_SDI_10B) != 0   ? 10
-                          : (TxMode & DTAPI_TXMODE_SDI_16B) != 0 ? 16
-                                                                 : 8;
+        Sdi->BitsPerSymbol = (TxMode & DTAPI_TXMODE_SDI_10B) != 0   ? 10
+                             : (TxMode & DTAPI_TXMODE_SDI_16B) != 0 ? 16
+                                                                    : 8;
         if (Sdi->Registered)
-            Sdi->RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits);
+            Sdi->RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol);
     }
     return Result;
 }
@@ -1765,7 +1765,7 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
 
     // The default transmit mode and cleared flags; the I/O standard is applied again.
     Sdi->Base.TxMode = DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B;
-    Sdi->SymbolBits = 10;
+    Sdi->BitsPerSymbol = 10;
     Sdi->Base.TxControl = DTAPI_TXCTRL_IDLE;
     DtapiResult Result = DtPcieCmd_SetIoConfig(DrvOf(Sdi), IoStd);
 

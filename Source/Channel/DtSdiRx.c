@@ -53,7 +53,7 @@ typedef struct DtSdiRx
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
 
-    int SymbolBits; // 8, 10 or 16, from the receive mode
+    int BitsPerSymbol; // 8, 10 or 16, from the receive mode
     bool FifoOvf;
     bool FifoOvfLatched;
 
@@ -86,11 +86,11 @@ static OsDrv* DrvOf(const DtSdiRx* Sdi)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SymbolBitsOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BitsPerSymbolOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The symbol size of a receive mode.
 //
-static int SymbolBitsOf(int RxMode)
+static int BitsPerSymbolOf(int RxMode)
 {
     if ((RxMode & DTAPI_RXMODE_SDI_10B) != 0)
         return 10;
@@ -418,7 +418,7 @@ static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
     DtapiResult Result;
     if (RxControl == DTAPI_RXCTRL_IDLE)
         Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
-    else if (Sdi->SymbolBits == 8 || Sdi->Ring.Base == NULL)
+    else if (Sdi->BitsPerSymbol == 8 || Sdi->Ring.Base == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
@@ -462,7 +462,7 @@ static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
     if (Rx->RxControl != DTAPI_RXCTRL_IDLE)
         return DTAPI_E_NOT_IDLE;
     Rx->RxMode = RxMode;
-    Sdi->SymbolBits = SymbolBitsOf(RxMode);
+    Sdi->BitsPerSymbol = BitsPerSymbolOf(RxMode);
     return DTAPI_OK;
 }
 
@@ -528,7 +528,7 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
     if (Result == DTAPI_OK)
     {
         size_t Frames = DtRing_Load(&Sdi->Ring) / DtSdiFrame_CodedSize(&Sdi->Layout);
-        *FifoLoad = (int)(Frames * DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits));
+        *FifoLoad = (int)(Frames * DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
     }
     return Result;
 }
@@ -545,8 +545,8 @@ static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
     if (Sdi->Ring.Base == NULL)
         *MaxFifoSize = DT_RX_FIFO_SIZE;
     else
-        *MaxFifoSize =
-            (int)(FramesInRing(Sdi) * DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits));
+        *MaxFifoSize = (int)(FramesInRing(Sdi) *
+                             DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
     return DTAPI_OK;
 }
 
@@ -596,7 +596,7 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
 {
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
-    *RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits);
+    *RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol);
     if ((size_t)FrameSize < *RawSize)
         return DTAPI_E_BUF_TOO_SMALL;
     if (*RawSize > DT_RX_FIFO_SIZE)
@@ -634,7 +634,7 @@ static void ConvertLines(void* Context, int Index, int Count)
     int Last;
 
     DtWork_Band(Layout->NumLines, Index, Count,
-                DtSdiFrame_BandLineStep(Layout, Sdi->SymbolBits), &First, &Last);
+                DtSdiFrame_BandLineStep(Layout, Sdi->BitsPerSymbol), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset =
@@ -648,10 +648,10 @@ static void ConvertLines(void* Context, int Index, int Count)
         }
         if (Layout->Is4k)
             DtSdiFrame_ConvertLine4k(
-                Layout, Sdi->SymbolBits, Coded, Coded + Layout->Stride, Line,
+                Layout, Sdi->BitsPerSymbol, Coded, Coded + Layout->Stride, Line,
                 Band->Buffer + (size_t)Line * Band->RawLineNumBytes, Scratch);
         else
-            DtSdiFrame_ConvertLine(Layout, Sdi->SymbolBits, Coded, Line, Band->Buffer);
+            DtSdiFrame_ConvertLine(Layout, Sdi->BitsPerSymbol, Coded, Line, Band->Buffer);
     }
 }
 
@@ -727,9 +727,9 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
     size_t CodedBytesPerLine = DtSdiFrame_CodedBytesPerLine(Layout);
-    size_t RawLineNumBytes = DtSdiFrame_RawLineNumBits(Layout, Sdi->SymbolBits) / 8;
+    size_t RawLineNumBytes = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol) / 8;
     if (!Layout->Is4k)
-        memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->SymbolBits));
+        memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->BitsPerSymbol));
     ConvertBand Band;
     Band.Sdi = Sdi;
     Band.Buffer = Buffer;
@@ -906,7 +906,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
                             Scale.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
     }
     Sdi->Base.RxMode = DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B;
-    Sdi->SymbolBits = 10;
+    Sdi->BitsPerSymbol = 10;
     Sdi->Base.RxControl = DTAPI_RXCTRL_IDLE;
 
     // The I/O standard is applied again, and the receive channel set up for it.

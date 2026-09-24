@@ -60,12 +60,12 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
 
 // Fills the raw line with the two coded lines 2n-1 and 2n at CodedA and CodedB, as
 // DtSdiFrame_ConvertLine4k does.
-typedef void (*DtSdi4kGather)(const DtSdiFrameLayout* Layout, int SymbolBits,
+typedef void (*DtSdi4kGather)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch);
 
 // Fills the two coded lines with the raw line, as DtSdiFrame_CodeLine4k does.
-typedef void (*DtSdi4kScatter)(const DtSdiFrameLayout* Layout, int SymbolBits,
+typedef void (*DtSdi4kScatter)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                                const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                                uint8_t* CodedB, uint16_t* Scratch);
 

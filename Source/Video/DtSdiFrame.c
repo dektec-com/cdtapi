@@ -19,23 +19,23 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PaddedBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PadToAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The bytes Symbols 10-bit symbols take, padded to Alignment bytes.
 //
-static int PaddedBytes(int Symbols, int Alignment)
+static int PadToAlignment(int Symbols, int Alignment)
 {
     int Bits = Symbols * 10;
-    int AlignmentBits = Alignment * 8;
+    int AlignmentInBits = Alignment * 8;
 
-    return (Bits + AlignmentBits - 1) / AlignmentBits * Alignment;
+    return (Bits + AlignmentInBits - 1) / AlignmentInBits * Alignment;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_LayoutInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AlignedBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AlignUp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static int AlignedBytes(int Bytes, int Alignment)
+static int AlignUp(int Bytes, int Alignment)
 {
     return (Bytes + Alignment - 1) / Alignment * Alignment;
 }
@@ -44,7 +44,7 @@ static int AlignedBytes(int Bytes, int Alignment)
 //
 // The frame properties of a 2160p standard describe one of its links.
 //
-bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBits)
+bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentInBits)
 {
     memset(Layout, 0, sizeof(*Layout));
     Layout->VidStd = DTAPI_VIDSTD_UNKNOWN;
@@ -52,7 +52,7 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
     const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
     const bool Is4k = DtVidStd_Is4k(VidStd);
     DtFrameProps Props;
-    if (AlignmentBits <= 0 || AlignmentBits % 8 != 0 || Info == NULL ||
+    if (AlignmentInBits <= 0 || AlignmentInBits % 8 != 0 || Info == NULL ||
         (Is4k && Info->IsLevelB) || !DtFrameProps_Init(&Props, VidStd))
     {
         return false;
@@ -60,10 +60,9 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
 
     const int Links = Is4k ? 4 : 1;
     Layout->Is4k = Is4k;
-    Layout->Alignment = AlignmentBits / 8;
-    Layout->HeaderNumBytes = AlignedBytes(DT_SDIFRAME_HEADER_BYTES, Layout->Alignment);
-    Layout->TxHeaderNumBytes =
-        AlignedBytes(DT_SDIFRAME_TX_HEADER_BYTES, Layout->Alignment);
+    Layout->Alignment = AlignmentInBits / 8;
+    Layout->HeaderNumBytes = AlignUp(DT_SDIFRAME_HEADER_BYTES, Layout->Alignment);
+    Layout->TxHeaderNumBytes = AlignUp(DT_SDIFRAME_TX_HEADER_BYTES, Layout->Alignment);
     Layout->NumLines = DtFrameProps_NumLines(&Props);
     Layout->NumCodedLines = Layout->NumLines * (Is4k ? 2 : 1);
     Layout->NumHancSections = Is4k ? 2 : 1;
@@ -71,12 +70,13 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentBi
     Layout->SectionNumSymsVideo = Props.LineNumSymVanc * (Is4k ? 2 : 1);
     Layout->LineNumSymsHanc = Layout->SectionNumSymsHanc * Links;
     Layout->LineNumSymsVideo = Props.LineNumSymVanc * Links;
-    Layout->SectionBytesHanc = PaddedBytes(Layout->SectionNumSymsHanc, Layout->Alignment);
+    Layout->SectionBytesHanc =
+        PadToAlignment(Layout->SectionNumSymsHanc, Layout->Alignment);
     Layout->SectionBytesVideo =
-        PaddedBytes(Layout->SectionNumSymsVideo, Layout->Alignment);
+        PadToAlignment(Layout->SectionNumSymsVideo, Layout->Alignment);
     Layout->Stride =
         Layout->NumHancSections * Layout->SectionBytesHanc + Layout->SectionBytesVideo;
-    Layout->TxLineHeaderNumBytes = Is4k ? AlignedBytes(4, Layout->Alignment) : 0;
+    Layout->TxLineHeaderNumBytes = Is4k ? AlignUp(4, Layout->Alignment) : 0;
     Layout->TxStride = Layout->TxLineHeaderNumBytes + Layout->Stride;
     Layout->PictureStart = Props.Fields[0].VidStartLine;
     Layout->PictureEnd = Props.Fields[0].VidEndLine;
@@ -261,27 +261,27 @@ void DtSdiFrame_EncodeTxHeader(const DtSdiFrameTxHeader* Header, uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_RawSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The frame's symbols, at SymbolBits each, padded to an alignment of 64 bits.
+// The frame's symbols, at BitsPerSymbol each, padded to an alignment of 64 bits.
 //
-size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int SymbolBits)
+size_t DtSdiFrame_RawSize(const DtSdiFrameLayout* Layout, int BitsPerSymbol)
 {
     size_t Symbols = (size_t)Layout->NumLines *
                      (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
-    if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
+    if (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16)
         return 0;
 
-    return (Symbols * (size_t)SymbolBits + 63) / 64 * 8;
+    return (Symbols * (size_t)BitsPerSymbol + 63) / 64 * 8;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_RawLineNumBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtSdiFrame_RawLineNumBits(const DtSdiFrameLayout* Layout, int SymbolBits)
+size_t DtSdiFrame_RawLineNumBits(const DtSdiFrameLayout* Layout, int BitsPerSymbol)
 {
-    if (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16)
+    if (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16)
         return 0;
     return (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) *
-           (size_t)SymbolBits;
+           (size_t)BitsPerSymbol;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -411,7 +411,7 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
 //
 // The line starts at LineIndex times the bits of a line.
 //
-void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                             const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
 {
     size_t Hanc = (size_t)Layout->LineNumSymsHanc;
@@ -419,7 +419,7 @@ void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     size_t Start = (size_t)LineIndex * (Hanc + Video);
     const uint8_t* VideoSection = CodedLine + Layout->SectionBytesHanc;
 
-    switch (SymbolBits)
+    switch (BitsPerSymbol)
     {
     case 8:
         CopySection8(CodedLine, Hanc, Raw + Start);
@@ -560,7 +560,7 @@ static void Pack16(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
 // The video section starts where the HANC section ends, which in a line of 10-bit symbols
 // need not be a byte boundary either.
 //
-bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
+bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
 {
     size_t Hanc = (size_t)Layout->LineNumSymsHanc;
@@ -570,7 +570,7 @@ bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int SymbolBits,
     if (Phase < 0 || Phase > 7)
         return false;
 
-    switch (SymbolBits)
+    switch (BitsPerSymbol)
     {
     case 10:
         CopyBits(RawLine, (size_t)Phase, Hanc * 10, CodedLine,
@@ -656,13 +656,13 @@ static void ClearPadding(uint8_t* Section, size_t Count, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Count symbols of a raw line whose symbols take SymbolBits, 8, 10 or 16.
+// Count symbols of a raw line whose symbols take BitsPerSymbol, 8, 10 or 16.
 //
-static void ReadRaw(const uint8_t* Raw, int SymbolBits, size_t Count, uint16_t* Out)
+static void ReadRaw(const uint8_t* Raw, int BitsPerSymbol, size_t Count, uint16_t* Out)
 {
-    if (SymbolBits == 10)
+    if (BitsPerSymbol == 10)
         Unpack10(Raw, Count, Out);
-    else if (SymbolBits == 16)
+    else if (BitsPerSymbol == 16)
     {
         for (size_t i = 0; i < Count; i++)
             Out[i] = (uint16_t)(((uint32_t)Raw[2 * i] | (uint32_t)Raw[2 * i + 1] << 8) &
@@ -677,13 +677,13 @@ static void ReadRaw(const uint8_t* Raw, int SymbolBits, size_t Count, uint16_t* 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Count symbols into a raw line whose symbols take SymbolBits, 8, 10 or 16.
+// Count symbols into a raw line whose symbols take BitsPerSymbol, 8, 10 or 16.
 //
-static void WriteRaw(const uint16_t* In, int SymbolBits, size_t Count, uint8_t* Raw)
+static void WriteRaw(const uint16_t* In, int BitsPerSymbol, size_t Count, uint8_t* Raw)
 {
-    if (SymbolBits == 10)
+    if (BitsPerSymbol == 10)
         Pack10(In, Count, Raw);
-    else if (SymbolBits == 16)
+    else if (BitsPerSymbol == 16)
     {
         for (size_t i = 0; i < Count; i++)
         {
@@ -758,9 +758,9 @@ static void ScatterLine(const DtSdiFrameLayout* Layout, const uint16_t* Raw,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_BandLineStep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int SymbolBits)
+int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int BitsPerSymbol)
 {
-    const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, SymbolBits);
+    const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, BitsPerSymbol);
     int Lines = 1;
 
     // Eight lines of any whole number of bits make whole bytes, so the search ends.
@@ -780,36 +780,37 @@ size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void ConvertLineC(const DtSdiFrameLayout* Layout, int SymbolBits,
+static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                          uint8_t* RawLine, uint16_t* Scratch)
 {
     const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
     GatherLine(Layout, CodedA, CodedB, LineIndex, Scratch);
-    WriteRaw(Scratch, SymbolBits, LineSyms, RawLine);
+    WriteRaw(Scratch, BitsPerSymbol, LineSyms, RawLine);
 }
 
-void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch)
 {
-    if (!Layout->Is4k || (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16))
+    if (!Layout->Is4k ||
+        (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16))
         return;
 
-    DtSdi4kConv_Best()->ConvertLine(Layout, SymbolBits, CodedA, CodedB, LineIndex,
+    DtSdi4kConv_Best()->ConvertLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
                                     RawLine, Scratch);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void CodeLineC(const DtSdiFrameLayout* Layout, int SymbolBits,
+static void CodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                       const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                       uint8_t* CodedB, uint16_t* Scratch)
 {
     const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
-    ReadRaw(RawLine, SymbolBits, LineSyms, Scratch);
+    ReadRaw(RawLine, BitsPerSymbol, LineSyms, Scratch);
     ScatterLine(Layout, Scratch, LineIndex, CodedA, CodedB);
 }
 
@@ -823,7 +824,7 @@ const DtSdi4kConv* DtSdi4kConv_C(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
+bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                            const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                            uint8_t* CodedB, uint16_t* Scratch)
 {
@@ -832,11 +833,12 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int SymbolBits,
     const size_t HancNumBytes = (size_t)Layout->SectionBytesHanc;
     const size_t VideoBytes = (size_t)Layout->SectionBytesVideo;
 
-    if (!Layout->Is4k || (SymbolBits != 8 && SymbolBits != 10 && SymbolBits != 16))
+    if (!Layout->Is4k ||
+        (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16))
         return false;
 
-    DtSdi4kConv_Best()->CodeLine(Layout, SymbolBits, RawLine, LineIndex, CodedA, CodedB,
-                                 Scratch);
+    DtSdi4kConv_Best()->CodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
+                                 CodedB, Scratch);
 
     // The padding of every section, which its symbols do not reach.
     ClearPadding(CodedA, SectionHanc, HancNumBytes);

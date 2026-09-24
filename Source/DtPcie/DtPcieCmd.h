@@ -415,7 +415,7 @@ DtapiResult DtPcieCmd_SdiTxFSetFmtEventSetting(OsDrv* Drv, DtDrvObject Object,
 
 // Reads the bits every part of the buffer's format is padded to.
 DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
-                                               int* AlignmentBits);
+                                               int* AlignmentInBits);
 
 // Waits up to TimeoutMs milliseconds, -1 to 1000, for the next format event. Gives
 // DTAPI_E_TIMEOUT when none comes, and DTAPI_E_INVALID_MODE at once while the formatter

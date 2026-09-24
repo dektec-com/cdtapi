@@ -402,9 +402,9 @@ DtapiResult DtPcieCmd_SdiTxFSetFmtEventSetting(OsDrv* Drv, DtDrvObject Object,
 // .-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SdiTxFGetStreamAlignment -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
-                                               int* AlignmentBits)
+                                               int* AlignmentInBits)
 {
-    if (AlignmentBits == NULL)
+    if (AlignmentInBits == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlSdiTxFCmdGetStreamAlignmentOutput Out;
@@ -414,7 +414,7 @@ DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    *AlignmentBits = Out.m_StreamAlignment;
+    *AlignmentInBits = Out.m_StreamAlignment;
     return DTAPI_OK;
 }
 

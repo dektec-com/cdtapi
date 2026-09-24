@@ -84,8 +84,8 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int Line, bool PadOnes,
     }
 }
 
-// Writes into Raw, bit by bit, what line Line of Layout becomes with SymbolBits.
-static void ExpectLine(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
+// Writes into Raw, bit by bit, what line Line of Layout becomes with BitsPerSymbol.
+static void ExpectLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol, int Line,
                        uint8_t* Raw)
 {
     const int Syms[2] = {Layout->LineNumSymsHanc, Layout->LineNumSymsVideo};
@@ -96,12 +96,12 @@ static void ExpectLine(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
         for (size_t i = 0; i < (size_t)Syms[s]; i++)
         {
             uint32_t Value = Symbol(Line, s, i);
-            size_t Bit = (Symbol0 + i) * (size_t)SymbolBits;
+            size_t Bit = (Symbol0 + i) * (size_t)BitsPerSymbol;
 
-            if (SymbolBits == 8)
+            if (BitsPerSymbol == 8)
                 Value >>= 2;
             size_t b;
-            for (b = 0; b < (size_t)SymbolBits; b++)
+            for (b = 0; b < (size_t)BitsPerSymbol; b++)
             {
                 if (Value >> b & 1)
                     SetBit(Raw, Bit + b);
@@ -111,12 +111,12 @@ static void ExpectLine(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
     }
 }
 
-// Converts lines Lines of Layout with SymbolBits and compares the raw frame with the
+// Converts lines Lines of Layout with BitsPerSymbol and compares the raw frame with the
 // expected one. Returns false, having reported it, when they differ.
-static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits,
+static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const int* Lines, int NumLines, int* DtFailures)
 {
-    size_t Size = DtSdiFrame_RawSize(Layout, SymbolBits);
+    size_t Size = DtSdiFrame_RawSize(Layout, BitsPerSymbol);
     uint8_t* Coded = (uint8_t*)malloc((size_t)Layout->Stride);
     uint8_t* Raw = (uint8_t*)calloc(Size, 1);
     uint8_t* Expected = (uint8_t*)calloc(Size, 1);
@@ -127,15 +127,15 @@ static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits,
         for (int i = 0; i < NumLines; i++)
         {
             CodeLine(Layout, Lines[i], true, Coded);
-            DtSdiFrame_ConvertLine(Layout, SymbolBits, Coded, Lines[i], Raw);
-            ExpectLine(Layout, SymbolBits, Lines[i], Expected);
+            DtSdiFrame_ConvertLine(Layout, BitsPerSymbol, Coded, Lines[i], Raw);
+            ExpectLine(Layout, BitsPerSymbol, Lines[i], Expected);
         }
         Same = memcmp(Raw, Expected, Size) == 0;
     }
     if (!Same)
     {
         printf("    FAIL: standard %d, %d bits: the raw frame differs\n", Layout->VidStd,
-               SymbolBits);
+               BitsPerSymbol);
         (*DtFailures)++;
     }
     free(Coded);
@@ -633,18 +633,19 @@ static void PutBits(uint8_t* Bytes, size_t Bit, uint32_t Value, int Count)
     }
 }
 
-// Codes line Line of Layout in SymbolBits from a buffer that holds only the line's bytes,
+// Codes line Line of Layout in BitsPerSymbol from a buffer that holds only the line's
+// bytes,
 // with the line starting at bit Phase and every bit around it set, and with 16 bits the
 // six unused bits of every symbol set too. The coded line must equal the reference
 // packer's, and converted back into a raw frame it must give the line's raw frame.
 // Returns false, having reported it, when anything differs.
-static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits, int Line,
+static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, int Line,
                            int Phase, int* DtFailures)
 {
     const int Syms[2] = {Layout->LineNumSymsHanc, Layout->LineNumSymsVideo};
-    const size_t LineBits = DtSdiFrame_RawLineNumBits(Layout, SymbolBits);
+    const size_t LineBits = DtSdiFrame_RawLineNumBits(Layout, BitsPerSymbol);
     const size_t LineBytes = ((size_t)Phase + LineBits + 7) / 8;
-    const size_t Size = DtSdiFrame_RawSize(Layout, SymbolBits);
+    const size_t Size = DtSdiFrame_RawSize(Layout, BitsPerSymbol);
     const size_t Stride = (size_t)Layout->Stride;
     uint8_t* RawLine = (uint8_t*)malloc(LineBytes);
     uint8_t* Coded = (uint8_t*)malloc(Stride);
@@ -670,23 +671,24 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits, int L
         {
             for (i = 0; i < (size_t)Syms[s]; i++, Index++)
             {
-                uint32_t Value = Symbol(Line, s, i) | (SymbolBits == 16 ? 0xFC00u : 0u);
+                uint32_t Value =
+                    Symbol(Line, s, i) | (BitsPerSymbol == 16 ? 0xFC00u : 0u);
 
-                PutBits(RawLine, (size_t)Phase + Index * (size_t)SymbolBits, Value,
-                        SymbolBits);
+                PutBits(RawLine, (size_t)Phase + Index * (size_t)BitsPerSymbol, Value,
+                        BitsPerSymbol);
             }
         }
         CodeLine(Layout, Line, false, Reference);
-        ExpectLine(Layout, SymbolBits, Line, Expected);
+        ExpectLine(Layout, BitsPerSymbol, Line, Expected);
         memset(Coded, 0xEE, Stride);
 
-        if (!DtSdiFrame_CodeLine(Layout, SymbolBits, RawLine, Phase, Coded))
+        if (!DtSdiFrame_CodeLine(Layout, BitsPerSymbol, RawLine, Phase, Coded))
             Failure = "refused";
         else if (memcmp(Coded, Reference, Stride) != 0)
             Failure = "the coded line differs from the reference";
         else
         {
-            DtSdiFrame_ConvertLine(Layout, SymbolBits, Coded, Line, Raw);
+            DtSdiFrame_ConvertLine(Layout, BitsPerSymbol, Coded, Line, Raw);
             Failure = memcmp(Raw + From, Expected + From, Compared) == 0
                           ? NULL
                           : "converted back, the raw line differs";
@@ -695,7 +697,7 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int SymbolBits, int L
     if (Failure != NULL)
     {
         printf("    FAIL: standard %d, %d bits, line %d, phase %d: %s\n", Layout->VidStd,
-               SymbolBits, Line, Phase, Failure);
+               BitsPerSymbol, Line, Phase, Failure);
         (*DtFailures)++;
     }
     free(RawLine);
@@ -1267,27 +1269,27 @@ static void Line4kMake(const DtSdiFrameLayout* Layout, int Line, Line4k* L)
     }
 }
 
-// Symbol Index of a raw line whose symbols take SymbolBits, read bit by bit.
-static uint32_t RawSymbol(const uint8_t* Line, int SymbolBits, size_t Index)
+// Symbol Index of a raw line whose symbols take BitsPerSymbol, read bit by bit.
+static uint32_t RawSymbol(const uint8_t* Line, int BitsPerSymbol, size_t Index)
 {
     uint32_t Value = 0;
 
-    for (size_t b = 0; b < (size_t)SymbolBits; b++)
+    for (size_t b = 0; b < (size_t)BitsPerSymbol; b++)
     {
-        size_t Bit = Index * (size_t)SymbolBits + b;
+        size_t Bit = Index * (size_t)BitsPerSymbol + b;
         Value |= (uint32_t)(Line[Bit / 8] >> (Bit % 8) & 1) << b;
     }
-    return SymbolBits == 8 ? Value << 2 : Value & 0x3FF;
+    return BitsPerSymbol == 8 ? Value << 2 : Value & 0x3FF;
 }
 
 // Checks that the raw line at Raw holds L's links in the two-sample interleave order.
 // Returns false, having reported the first difference, when it does not.
-static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int SymbolBits,
+static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* Raw, const Line4k* L, int* DtFailures)
 {
     size_t Words =
         (size_t)Layout->SectionNumSymsHanc + (size_t)Layout->SectionNumSymsVideo / 2;
-    uint32_t Mask = SymbolBits == 8 ? 0x3FC : 0x3FF;
+    uint32_t Mask = BitsPerSymbol == 8 ? 0x3FC : 0x3FF;
 
     for (size_t w = 0; w < Words / 2; w++)
     {
@@ -1295,14 +1297,14 @@ static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int SymbolBits,
         {
             const uint16_t* Link = L->Links[g_Order4k[p % 4]];
             uint32_t Want = Link[2 * w + p / 4] & Mask;
-            uint32_t Have = RawSymbol(Raw, SymbolBits, 8 * w + p);
+            uint32_t Have = RawSymbol(Raw, BitsPerSymbol, 8 * w + p);
 
             if (Have != Want)
             {
                 printf(
                     "    FAIL: standard %d, %d bits: word %zu of the raw line is %03X, "
                     "not %03X\n",
-                    Layout->VidStd, SymbolBits, 8 * w + p, Have, Want);
+                    Layout->VidStd, BitsPerSymbol, 8 * w + p, Have, Want);
                 (*DtFailures)++;
                 return false;
             }
