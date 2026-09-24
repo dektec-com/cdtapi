@@ -5,7 +5,9 @@ and carried it in its archive. This CDTAPI is the interface itself. It talks to 
 `DtPcie` driver directly, links nothing closed, and is BSD-3-Clause, so a program that
 uses it can be redistributed like any other.
 
-The interface is the same one. This page lists what an application notices.
+The interface is the same one. This page lists what an application notices. It describes
+the wrapper as DekTec's SDK shipped it; the `wrapper-final` tag in this repository holds
+the same interface under other file names.
 
 ## What does not change
 
