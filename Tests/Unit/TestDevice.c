@@ -45,10 +45,12 @@ DT_TEST(SubTypeIsALetter)
     DT_ASSERT_STR(Describe(2174, -1, 2), "DTA-2174 port 2");
 }
 
-// A special case, with the type name repeated.
-DT_TEST(Dta2178AsiRepeatsTheName)
+// A special case: the DTA-2178 of subtype 1 is the DTA-2178-ASI, named so rather than
+// with a letter. DTAPI appends that whole name to the type and so repeats it,
+// "DTA-2178DTA-2178-ASI"; CDTAPI names the card once.
+DT_TEST(Dta2178AsiIsNamedOnce)
 {
-    DT_ASSERT_STR(Describe(2178, 1, 1), "DTA-2178DTA-2178-ASI port 1");
+    DT_ASSERT_STR(Describe(2178, 1, 1), "DTA-2178-ASI port 1");
     DT_ASSERT_STR(Describe(2179, 1, 1), "DTA-2179A port 1");
 }
 
@@ -157,7 +159,7 @@ DT_TEST(ScanArgumentsAreChecked)
 }
 
 DT_TEST_MAIN("Device", DT_RUN(DescriptionHasTypeAndPort), DT_RUN(SubTypeIsALetter),
-             DT_RUN(Dta2178AsiRepeatsTheName), DT_RUN(DescriptionMustFit),
+             DT_RUN(Dta2178AsiIsNamedOnce), DT_RUN(DescriptionMustFit),
              DT_RUN(DriverVersionFrom131), DT_RUN(NullDeviceIsRefused),
              DT_RUN(DetachedDeviceIsNotAttached), DT_RUN(AllocSurvivesAllocationFailure),
              DT_RUN(ScanArgumentsAreChecked))

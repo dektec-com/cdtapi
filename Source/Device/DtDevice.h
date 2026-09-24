@@ -62,7 +62,7 @@
 #define DT_CAP_FAILSAFE UINT64_C(0x800000)    // A fail-safe relay
 #define DT_CAP_SPI UINT64_C(0x1000000)        // SPI
 #define DT_CAP_SPISDI UINT64_C(0x2000000)     // SDI over SPI
-#define DT_CAP_QUADLINK UINT64_C(0x4000000)   // 12G, also sending quad link
+#define DT_CAP_QUADLINK UINT64_C(0x4000000)   // Quad-link 4K with the next three ports
 
 // The capabilities of an SMPTE ST 2110 port.
 #define DT_CAP_PTP UINT64_C(0x8000000)     // PTP time from the network
@@ -101,9 +101,9 @@ void DtDevice_Release(DtDevice* Device);
 
 // Writes the description of a port in the type-and-port format of a PCI device: "DTA-"
 // and the type number, the sub-type as a letter, and " port " with the port number, as
-// "DTA-2178 port 1" or "DTA-2172A port 3". For a DTA-2178 with sub-type 1, the full name
-// follows the type number: "DTA-2178DTA-2178-ASI port 1". Returns DTAPI_E_BUF_TOO_SMALL,
-// with an empty Buf, when Size cannot hold it.
+// "DTA-2178 port 1" or "DTA-2172A port 3". A DTA-2178 with sub-type 1 is the
+// DTA-2178-ASI: "DTA-2178-ASI port 1". Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf,
+// when Size cannot hold it.
 DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
                               size_t Size);
 

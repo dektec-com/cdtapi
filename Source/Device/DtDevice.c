@@ -201,7 +201,7 @@ DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
     if (SubType > 0)
     {
         if (TypeNumber == 2178 && SubType == 1)
-            snprintf(SubTypeText, sizeof(SubTypeText), "DTA-2178-ASI");
+            snprintf(SubTypeText, sizeof(SubTypeText), "-ASI");
         else
             snprintf(SubTypeText, sizeof(SubTypeText), "%c", 'A' + SubType - 1);
     }
