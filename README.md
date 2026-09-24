@@ -9,7 +9,7 @@ needs, and the driver is open source as well.
 - **Licence:** BSD-3-Clause. See [LICENSE](LICENSE).
 - **Language:** C11. No dependencies beyond libc and the OS API.
 - **Platforms:** Linux and Windows.
-- **Status:** early development.
+- **Status:** in use; released through vcpkg, versions follow DTAPI's (see Versions below).
 
 ## What it makes possible
 
