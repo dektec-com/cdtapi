@@ -45,9 +45,11 @@ bool ExampleAv_IsIpPort(const DtHwFuncDesc* Port);
 // to live of 32, DiffServ 0x88 and RTP over UDP.
 void ExampleAv_IpPars(const ExampleAvConfig* Config, AvFifo_IpPars* Pars);
 
-// Prints "<serial>:<port>  <pipe>  <address>:<port>  <format>".
+// Prints "<serial>:<port>  <pipe>  <address>:<port>  <format>". The format of video is
+// "video as <RxFormat>" for a receiver, which learns the rest from the stream, and the
+// size, rate and sample width of Config for a transmitter, whose RxFormat is NULL.
 void ExampleAv_PrintStream(const DtHwFuncDesc* Port, const char* Pipe,
-                           const ExampleAvConfig* Config);
+                           const ExampleAvConfig* Config, const char* RxFormat);
 
 // As Example_Failed, and then the failure's text from GetLastException.
 int ExampleAv_Failed(const char* What, unsigned int Result);

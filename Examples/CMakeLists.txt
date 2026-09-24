@@ -225,7 +225,7 @@ cdtapi_example_test(Transmit2110BadPipe DtTransmit2110
 cdtapi_example_test(Transmit2110Help DtTransmit2110 "^Usage: .*--audio" --help)
 
 cdtapi_example_test(Receive2110WithoutStream DtReceive2110
-    "9211000001:1  hardware pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit\n9211000001:1  no frame within 100 ms\n9211000001:1  ok 0  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0"
+    "9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b\n9211000001:1  no frame within 100 ms\n9211000001:1  ok 0  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0"
     --count 1 --timeout 100)
 cdtapi_example_test(Receive2110SoftwarePipe DtReceive2110
     "^9211000001:1  software pipe" --count 1 --timeout 20 --pipe sw)

@@ -133,7 +133,7 @@ void ExampleAv_IpPars(const ExampleAvConfig* Config, AvFifo_IpPars* Pars)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_PrintStream -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void ExampleAv_PrintStream(const DtHwFuncDesc* Port, const char* Pipe,
-                           const ExampleAvConfig* Config)
+                           const ExampleAvConfig* Config, const char* RxFormat)
 {
     char What[64];
     if (Config->Channels > 0)
@@ -141,6 +141,8 @@ void ExampleAv_PrintStream(const DtHwFuncDesc* Port, const char* Pipe,
         snprintf(What, sizeof(What), "%d channels L24 %d Hz", Config->Channels,
                  Config->SampleRate);
     }
+    else if (RxFormat != NULL)
+        snprintf(What, sizeof(What), "video as %s", RxFormat);
     else
     {
         snprintf(What, sizeof(What), "%dx%d %dHz %s", Config->Width, Config->Height,

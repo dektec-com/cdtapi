@@ -194,7 +194,7 @@ static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
     if (Result != DTAPI_OK)
         return ExampleAv_Failed("AvFifo_TxFifo_Start", Result);
 
-    ExampleAv_PrintStream(Port, ExampleAv_TxPipeKind(Fifo), Config);
+    ExampleAv_PrintStream(Port, ExampleAv_TxPipeKind(Fifo), Config, NULL);
     int Exit = SendFrames(Fifo, Device, Port, Config, Count);
     AvFifo_TxFifo_Stop(Fifo);
     return Exit;

@@ -9,7 +9,7 @@
 // its RTP timestamp and a 64-bit FNV-1a hash of its bytes. At the end it prints what the
 // FIFO counted.
 //
-//     9211000001:1  hardware pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit
+//     9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b
 //     9211000001:1  frame 0  5184000 bytes  1080 rows  tod 1800000000.100000000  rtp
 //     2296742400  hash 3C0F2E6D89A1B437
 //     9211000001:1  ok 3  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0
@@ -125,7 +125,8 @@ static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Coun
 //
 static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
                             const DtHwFuncDesc* Port, const ExampleAvConfig* Config,
-                            St2110_RxFrameFormat Format, int Count, int TimeoutMs)
+                            St2110_RxFrameFormat Format, const char* FormatName,
+                            int Count, int TimeoutMs)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
     if (Result != DTAPI_OK)
@@ -165,7 +166,7 @@ static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
     if (Result != DTAPI_OK)
         return ExampleAv_Failed("AvFifo_RxFifo_Start", Result);
 
-    ExampleAv_PrintStream(Port, ExampleAv_RxPipeKind(Fifo), Config);
+    ExampleAv_PrintStream(Port, ExampleAv_RxPipeKind(Fifo), Config, FormatName);
     int Exit = ReceiveFrames(Fifo, Port, Count, TimeoutMs);
     AvFifo_RxFifo_Stop(Fifo);
     return Exit;
@@ -192,12 +193,15 @@ int main(int Argc, char** Argv)
         return EXAMPLE_FAILED;
     }
     St2110_RxFrameFormat Format = St2110_RxFrameFormat_Uyvy422_10b;
-    if (!FormatFrom(Example_Value(Argc, Argv, "--format"), &Format))
+    const char* FormatName = Example_Value(Argc, Argv, "--format");
+    if (!FormatFrom(FormatName, &Format))
     {
         printf("Unknown receive format: %s; raw, 8b, 10b, 10bto8b or planar\n",
-               Example_Value(Argc, Argv, "--format"));
+               FormatName);
         return EXAMPLE_FAILED;
     }
+    if (FormatName == NULL)
+        FormatName = "10b";
 
     DtHwFuncDesc Port;
     int Exit = EXAMPLE_FAILED;
@@ -215,8 +219,8 @@ int main(int Argc, char** Argv)
     else if (Device == NULL || Fifo == NULL)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
-        Exit = AttachAndReceive(Device, Fifo, &Port, &Config, Format, (int)Count,
-                                (int)Timeout);
+        Exit = AttachAndReceive(Device, Fifo, &Port, &Config, Format, FormatName,
+                                (int)Count, (int)Timeout);
 
     AvFifo_RxFifo_Free(Fifo);
     DtDevice_Free(Device);
