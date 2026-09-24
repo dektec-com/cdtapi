@@ -31,8 +31,6 @@ static int PadToAlignment(int Symbols, int Alignment)
     return (Bits + AlignmentInBits - 1) / AlignmentInBits * Alignment;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_LayoutInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AlignUp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static int AlignUp(int Bytes, int Alignment)
@@ -778,7 +776,7 @@ size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout)
     return (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                          const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
@@ -790,6 +788,8 @@ static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     WriteRaw(Scratch, BitsPerSymbol, LineSyms, RawLine);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
 void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch)
@@ -802,7 +802,7 @@ void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                                     RawLine, Scratch);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static void CodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                       const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,

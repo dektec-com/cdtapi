@@ -86,8 +86,8 @@ int DtEthIp_NumWords(int FrameSize, int Alignment);
 int DtEthIp_HeaderSize(int PacketType);
 
 // Writes Header into the DT_ETHIP_HEADER_SIZE bytes at Bytes. Fields wider than their
-// bit field are cut to it, and version 1's frame size or version 2's padding is derived
-// from NumWords and FrameSize.
+// bit field are cut to it. Version 1 carries FrameSize as it is; version 2's padding is
+// derived from NumWords and FrameSize.
 void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes);
 
 // Reads the DT_ETHIP_HEADER_SIZE bytes at Bytes into *Header. False, with *Header filled

@@ -19,8 +19,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The firmware exchanges SDI frames with the DMA buffers in two formats: "SDI RX simple"
-// from a receiver and "SDI TX simple" to a transmitter. They differ only in the header.
-// Per frame:
+// from a receiver and "SDI TX simple" to a transmitter. They differ in the header and,
+// for 4K, in a line header before each coded line sent. Per frame:
 //
 //   header      padded to the stream alignment
 //                 receive, 16 bytes
@@ -107,8 +107,8 @@ size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
 // The coded lines one raw line is made of, and the bytes all of them together take as
-// they are received and as they are sent. For 4K that is two coded lines, so none of
-// the three is the size of a single coded line: that is Stride, or TxStride.
+// they are received and as they are sent. For 4K a raw line is two coded lines, so the
+// two sizes are not those of a single coded line, which are Stride and TxStride.
 static inline int DtSdiFrame_NumCodedLinesPerLine(const DtSdiFrameLayout* Layout)
 {
     return Layout->NumCodedLines / Layout->NumLines;

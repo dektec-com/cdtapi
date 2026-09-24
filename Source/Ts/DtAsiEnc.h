@@ -23,13 +23,13 @@
 // Every byte of the transport stream becomes its 8b/10b code for the running disparity,
 // and K28.5 comma symbols fill the line so that the stream has the rate asked for.
 //
-// The rate is kept as an accumulator over an interval of 188 x 8 symbol times, so that a
-// rate in whole bits a second has no fraction. Before each packet go two K28.5, one when
-// the rate leaves no room for two, none when it leaves none. In burst mode a packet's
-// bytes go together and the fill between packets; in normal mode the fill is spread
-// between the bytes. With DTAPI_TXMODE_TXONTIME every packet is preceded by a 32-bit
-// little-endian time in 54 MHz ticks, and goes out when that time comes, counted from
-// the first packet's.
+// The rate is kept as an accumulator over an interval of 188 x 8 seconds, so that the
+// bytes a rate in whole bits a second sends in it are a whole number. Before each packet
+// go two K28.5, one when the rate leaves no room for two, none when it leaves none. In
+// burst mode a packet's bytes go together and the fill between packets; in normal mode
+// the fill is spread between the bytes. With DTAPI_TXMODE_TXONTIME every packet is
+// preceded by a 32-bit little-endian time in 54 MHz ticks, and goes out when that time
+// comes, counted from the first packet's.
 //
 // A byte where a packet should start that is not 0x47 sets the synchronisation error,
 // and bytes are skipped up to the next 0x47; DTAPI_TXMODE_RAW has no packets and checks
@@ -61,7 +61,7 @@ typedef struct DtAsiEnc
 
     // What the rate sets.
     int K28BeforePacket;
-    int64_t Needed;    // Symbols a packet's bytes need per interval, times the bytes
+    int64_t Needed;    // The stream's bytes in an interval, a symbol each
     int64_t Available; // Symbols the interval has, less the K28.5 before packets
 
     // The state of the stream.

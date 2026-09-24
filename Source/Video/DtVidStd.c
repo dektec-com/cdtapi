@@ -29,7 +29,7 @@ static const DtVidStdInfo g_VidStds[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_Find -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A linear search over the forty-one standards.
+// A linear search over the table, which is short.
 //
 const DtVidStdInfo* DtVidStd_Find(int VidStd)
 {
@@ -124,10 +124,10 @@ static int FindStd(int IoStd, int NumLines, int Scan, int Num, int Den, bool Lev
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStdProps_FromSmpte352 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Each payload identifier admits the standards of one I/O standard, and some of those
-// only; a VPID outside that set gives no standard. SD takes the rate alone; 1080-line HD
-// separates progressive, PsF and interlaced; all other payloads must be progressive. The
-// 2160p payloads set their link standard whether or not the rest decodes.
+// Each payload identifier admits some standards of one I/O standard, and the level-A
+// quad-link payload those of 6G and 12G; a VPID outside that set gives no standard. SD
+// takes the rate alone; 1080-line HD separates progressive, PsF and interlaced; all other
+// payloads must be progressive.
 //
 void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid)
 {

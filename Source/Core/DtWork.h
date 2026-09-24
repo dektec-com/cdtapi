@@ -45,11 +45,11 @@ void DtWork_Free(DtWork* Work);
 // stops rather than per frame. Replaces a dispatch function set before it.
 //
 // Tag names the threads, so that a process viewer tells one pool's from another's: the
-// threads are called Tag.1, Tag.2 and so on, counting from 1 because piece 0 runs in the
-// calling thread. A caller with more than one pool gives each a tag of its own, such as
-// the direction and the port. Fifteen characters are shown, which is what Linux allows,
-// so a tag of about ten leaves room for the number; a longer one is composed in full and
-// cut when the thread is named.
+// threads are called Tag.1, Tag.2 and so on, counting from 1 because the calling thread
+// takes pieces too, and DtConv.1 and so on without a Tag. A caller with more than one
+// pool gives each a tag of its own, such as the direction and the port. Fifteen
+// characters are shown, which is what Linux allows, so a tag of about ten leaves room for
+// the number; a longer one is composed in full and cut when the thread is named.
 //
 // Returns DTAPI_E_INVALID_ARG below 1, DTAPI_E_OUT_OF_MEM when a thread or an event
 // cannot be created, and then leaves the DtWork running every piece in the calling

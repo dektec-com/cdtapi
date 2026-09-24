@@ -12,8 +12,8 @@
 //   Lines    the lines of a frame: 525, 625, 750 or 1125
 //   Scan     P for progressive, I for interlaced, PSF for progressive segmented frames,
 //            as DT_SCAN_ values
-//   Hanc     the symbols per line in the horizontal blanking, EAV and SAV not included
-//            (MxVideoProps.cpp:1252-1460)
+//   Hanc     the symbols per line in the horizontal blanking, EAV and SAV not included:
+//            the samples of a whole line times two, less the active symbols, EAV and SAV
 //   LevelB   true for 3G level B, and for the 2160p standards made of level-B links
 //   IoStd    the I/O standard that carries it, a DTAPI_IOCONFIG_ name without its prefix
 //   OneLink  for a 2160p standard the 1080p standard of one of its links, whose frame the
@@ -25,7 +25,7 @@
 //     #include "Tables/DtVidStdList.inc"
 //     #undef X
 //
-// The order is the order in which MxFramePropsSdi::Deduce tries the standards. It decides
+// The order is the order in which DtFrameProps_Deduce tries the standards. It decides
 // results: the first match wins, so a 1080p standard is found before the 2160p standard
 // with the same geometry, and a level-A 2160p before its level-B form.
 

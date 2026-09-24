@@ -149,8 +149,8 @@ static void PutByte(DtAsiEnc* Enc, uint16_t** Out, uint8_t Byte)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Settings +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The interval the rate is kept over, in symbol times: 188 x 8, so that a rate in whole
-// bits a second has no fraction.
+// The interval the rate is kept over, in seconds: 188 x 8, so that the bytes a rate in
+// whole bits a second sends in it are a whole number.
 #define INTERVAL (188 * 8)
 
 // The states of a DTAPI_TXMODE_TXONTIME conversion.
