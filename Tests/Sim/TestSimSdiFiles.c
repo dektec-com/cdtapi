@@ -489,26 +489,28 @@ DT_TEST(SinkWritesWhatIsSent)
     remove(SINK_FILE);
 }
 
-// Threads are not for 4K alone: a 1080i50 frame divides too. Over four threads the frame
-// read and the frame sent are the ones a single thread gives. Its 10-bit lines are 6600
-// bytes each, so no line shares a byte with the next.
-DT_TEST(HdOverThreads)
+// Threads are not for 4K alone: a frame of VidStd, named Name, divides over four threads
+// too, and the frame read and the frame sent are the ones a single thread gives. A
+// 1080i50 line of 10-bit symbols is 6600 bytes, so its bands meet on whole bytes; a
+// 720p24 line shares a byte with the lines before and after it, which is what a band
+// has to get right where it starts and ends.
+static void ThreadsGiveOneThreadsBytes(int VidStd, const char* Name, int* DtFailures)
 {
     Fixture Fix;
     if (!Start(&Fix, DtFailures))
         return;
-    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_1080I50, 0, 1, 0));
-    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080I50", SOURCE_FILE)));
+    DT_ASSERT(WriteFrames(SOURCE_FILE, VidStd, 0, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue(Name, SOURCE_FILE)));
     DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
 
     size_t Size = 0, Padded = 0;
-    uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_1080I50, 0, &Size, &Padded);
+    uint8_t* Expected = PatternFrame(VidStd, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
     DtInpChannel* In = DtInpChannel_Alloc();
     DtOutpChannel* Out = DtOutpChannel_Alloc();
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
 
-    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
     DT_ASSERT_OK(DtInpChannel_SetConversionThreads(In, 4));
     DT_ASSERT_OK(
@@ -520,7 +522,7 @@ DT_TEST(HdOverThreads)
     DT_ASSERT_MEM(Buffer, Expected, Size);
     DtInpChannel_Free(In);
 
-    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_1080I50));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
     DT_ASSERT_OK(DtOutpChannel_SetConversionThreads(Out, 4));
     DT_ASSERT_OK(
@@ -558,6 +560,12 @@ DT_TEST(HdOverThreads)
     FINISH(Fix);
     remove(SOURCE_FILE);
     remove(SINK_FILE);
+}
+
+DT_TEST(HdOverThreads)
+{
+    ThreadsGiveOneThreadsBytes(DTAPI_VIDSTD_1080I50, "1080I50", DtFailures);
+    ThreadsGiveOneThreadsBytes(DTAPI_VIDSTD_720P24, "720P24", DtFailures);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
