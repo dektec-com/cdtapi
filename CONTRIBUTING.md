@@ -142,7 +142,7 @@ belong wherever they are needed.
 | 6 | `clang-format` |
 | 7 | Review |
 | 8 | `Scripts/check_style.sh` |
-| 9 | Review |
+| 9 | `Scripts/check_style.sh` for `goto`, then review |
 | 10 | Review |
 | Everything else | The compilers' warnings, as errors, and review. `.clang-tidy` configures clang-tidy for a run by hand; no gate runs it |
 

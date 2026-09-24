@@ -13,6 +13,7 @@
 #           because clang-format reflows code but leaves an over-long comment alone.
 #   Rule 5  Every source file starts with a header naming the file.
 #   Rule 8  Every header guards itself with #pragma once, right after the file header.
+#   Rule 9  No goto.
 #
 # It also fails when Documentation/ or the internal notes, CLAUDE.md and CLAUDE.local.md,
 # are tracked: both belong outside this public repository.
@@ -125,6 +126,18 @@ Notes=$(git ls-files 'CLAUDE.md' 'CLAUDE.local.md' 2>/dev/null | head -5)
 if [ -n "$Notes" ]; then
     Fail "Internal notes are not published: $(echo $Notes)"
 fi
+
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 9: no goto -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+#
+# A function that must clean up after failures hands its steps to a helper and cleans up
+# after it; a goto, even to a cleanup label, is refused. Comments are not looked at.
+#
+echo "Rule 9: no goto"
+while IFS= read -r File; do
+    while IFS= read -r Hit; do
+        Fail "$File:${Hit%%:*}: goto"
+    done < <(grep -nE '^[^/]*\bgoto\b' "$File")
+done < <(OwnFiles)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Vendored ABI -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 #
