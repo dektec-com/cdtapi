@@ -46,15 +46,15 @@ extern "C"
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Results +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // What every function that can fail returns: a DTAPI_OK or DTAPI_E_ code from
-// cdtapi_constants.h. Results below DTAPI_E are successes. The type is unsigned int
-// on every platform CDTAPI supports, as DTAPI's DTAPI_RESULT is.
+// cdtapi_constants.h. Results below DTAPI_E are successes. The type is uint32_t, which
+// is the unsigned int of DTAPI's DTAPI_RESULT on every platform CDTAPI supports.
 //
 
 typedef uint32_t DtapiResult;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Global functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Returns the library version as a string, for example "6.13.0": the major and minor
+// Returns the library version as a string, for example "6.14.0": the major and minor
 // number of the DTAPI whose behaviour the library reproduces, and a patch number of its
 // own. The returned pointer is static storage owned by the library and must not be freed.
 CDTAPI_API const char* DtapiGetVersion(void);
@@ -64,9 +64,10 @@ CDTAPI_API const char* DtapiGetVersion(void);
 // 4K; for 4K it says how the picture is carried: 0 and 1 are four 3G links per SMPTE 425
 // level A and annex B, 2 is one 6G link, 3 is one 12G link.
 //
-// Sets *Value and *SubValue to -1 before anything can fail. Returns DTAPI_E_INVALID_ARG
-// for a null output pointer, DTAPI_E_INVALID_LINKSTD for a link standard that does not
-// suit the video standard, and DTAPI_E_INVALID_VIDSTD for an unknown video standard.
+// Returns DTAPI_E_INVALID_ARG for a null output pointer, which leaves both outputs as
+// they are. Otherwise sets *Value and *SubValue to -1 before anything else can fail, and
+// returns DTAPI_E_INVALID_LINKSTD for a link standard that does not suit the video
+// standard and DTAPI_E_INVALID_VIDSTD for an unknown video standard.
 // 4K that is not on the one link of its rate, 6G up to 30 frames and 12G from 50, gives
 // the I/O standard of one of its links: HD-SDI or 3G-SDI with the 1080p standard of the
 // same rate.
@@ -204,9 +205,9 @@ typedef struct DtDeviceDesc
 // A device that cannot be attached, for example because its driver is too old, is left
 // out.
 //
-// A port counts as an input or output by its capabilities; a port that can be both
-// counts by its current I/O direction. When reading a direction fails, DTAPI stops
-// counting, and so does this.
+// A port that can only be an input, or only an output, counts as that. Any other port
+// counts as both when it is an IP port, and otherwise by its current I/O direction.
+// When reading a direction fails, DTAPI stops counting, and so does this.
 //
 // Returns DTAPI_OK; DTAPI_E_BUF_TOO_SMALL when there are more devices than NumEntries,
 // after filling all NumEntries; with NumEntries 0 and DvcDescArr NULL this asks for the
@@ -249,9 +250,10 @@ typedef struct DtDetVidStd
 } DtDetVidStd;
 
 // One I/O configuration of a port, as DTAPI's DtIoConfig. Group, Value and SubValue are
-// DTAPI_IOCONFIG_ codes, -1 for none. ParXtra holds what some values take besides: the
-// port a double-buffered or monitor output copies, numbered from 1, in ParXtra[0]; the
-// ISI of a loop-through to a transport stream in ParXtra[1]; -1 where nothing is taken.
+// DTAPI_IOCONFIG_ codes, -1 for none. ParXtra holds what some values take besides: in
+// ParXtra[0] the port, numbered from 1, that a double-buffered, loop-through or monitor
+// output or a shared-antenna input takes its signal from; in ParXtra[1] the ISI of a
+// loop-through to a transport stream; -1 where nothing is taken.
 typedef struct DtIoConfig
 {
     int Port; // Numbered from 1
@@ -273,7 +275,7 @@ CDTAPI_API void DtDevice_Free(DtDevice* Device);
 CDTAPI_API void DtDevice_Freep(DtDevice** Device);
 
 // Attaches to the device with this serial number. Returns DTAPI_E_ATTACHED when already
-// attached, DTAPI_E_DRIVER_INCOMP for a driver that is too old, and
+// attached, DTAPI_E_DRIVER_INCOMP for a driver that is too old, DTAPI_E_OUT_OF_MEM, and
 // DTAPI_E_NO_SUCH_DEVICE when no device has the serial number. Succeeds with
 // DTAPI_OK_OBSOLETE_FW or DTAPI_OK_TAINTED_FW when the device's firmware is obsolete or
 // tainted.
@@ -326,7 +328,7 @@ CDTAPI_API DtDetVidStd DtDevice_WaitForSignal(DtDevice* Device, int Port);
 // Returns DTAPI_E_INVALID_ARG for a null pointer; DTAPI_E_DEVICE when Device is not
 // attached; DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT for a port
 // outside the device's ports, the internal ones included; DTAPI_E_NOT_SUPPORTED for a
-// port that is not an input or has no SDI receiver the high-level Matrix API can use;
+// port that cannot be an input or lacks the capability CAP_MATRIX2;
 // DTAPI_E_NOT_FOUND when the driver describes no SDI receiver for the port;
 // DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111; and the driver's result when
 // reading the receiver fails, such as DTAPI_E_INVALID_MODE for a port that is not
@@ -337,8 +339,10 @@ CDTAPI_API DtapiResult DtDevice_DetectVidStd(DtDevice* Device, int Port, int* Vi
 // milliseconds, retrying detection every 5 ms; 0 tries once, and a negative TimeoutMs
 // waits without a limit. Returns DTAPI_OK with *Result filled in when a standard is
 // detected, DTAPI_E_TIMEOUT with every field of *Result unknown when none is within the
-// time, and DTAPI_E_INVALID_ARG for a null Device or Result. The reasons attaching can
-// fail, as DtDevice_DetectVidStd lists them, are returned at once.
+// time, and DTAPI_E_INVALID_ARG for a null Device or Result. DTAPI_E_DEVICE, the
+// firmware results, DTAPI_E_NO_SUCH_PORT, DTAPI_E_NOT_SUPPORTED and DTAPI_E_NOT_FOUND
+// are returned at once; a detection that fails, DTAPI_E_DRIVER_INCOMP included, is tried
+// again until the time runs out.
 CDTAPI_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
                                                      int TimeoutMs, DtDetVidStd* Result);
 
@@ -353,7 +357,7 @@ CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
 //
 // On SDI it delivers DTAPI's raw SDI frames: every line, EAV first, with 10- or 16-bit
 // symbols. It works directly on the DMA ring of the card's receive channel, without a
-// thread of its own: ReadFrame waits for the card's format events and assembles each
+// thread that receives: ReadFrame waits for the card's format events and assembles each
 // frame straight into the caller's buffer. SD, HD and 3G standards are received, and
 // 2160p over one 6G or 12G link; 4K over four links or of level-B links, 8-bit symbols,
 // active-video-only and compressed modes are not.
@@ -377,9 +381,9 @@ typedef struct DtInpChannel DtInpChannel;
 // Allocates a detached input channel. Returns NULL when memory runs out.
 CDTAPI_API DtInpChannel* DtInpChannel_Alloc(void);
 
-// Detaches the channel, discarding what it has received, and frees it. A ReadFrame
-// waiting on another thread returns DTAPI_E_CANCELLED first; this waits for that as long
-// as it takes. NULL is allowed.
+// Detaches the channel, discarding what it has received, and frees it. A ReadFrame or
+// Read waiting on another thread returns DTAPI_E_CANCELLED first; this waits for that as
+// long as it takes. NULL is allowed.
 CDTAPI_API void DtInpChannel_Free(DtInpChannel* InpChannel);
 
 // Frees *InpChannel as DtInpChannel_Free does and sets *InpChannel to NULL.
@@ -388,12 +392,16 @@ CDTAPI_API void DtInpChannel_Freep(DtInpChannel** InpChannel);
 // Attaches to a port of an attached device, numbered from 1, exclusively. The channel
 // uses its own handle to the device, so the device object may be detached afterwards.
 //
-// Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
+// Returns, in the order checked: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT
-// for a port that cannot be, or is not configured as, an input; DTAPI_E_NOT_SUPPORTED for
-// a port without an ASI/SDI receiver; DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a
-// receiver the driver does not describe or is too old for; DTAPI_E_IN_USE when another
-// user has the port; and the driver's result of any command.
+// for a port that cannot be an input and is not an IP port; DTAPI_E_NOT_SUPPORTED for a
+// port without an ASI/SDI receiver, or with the capability CAP_MATRIX; what opening the
+// channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE, DTAPI_E_DRIVER_INCOMP or
+// DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_INPUT for a port not configured as an input;
+// DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a receiver the driver does not describe
+// or is too old for; DTAPI_E_IN_USE when another user has the port; and the driver's
+// result of any command. Succeeds with DTAPI_OK_FAILSAFE on a fail-safe port in
+// fail-safe mode.
 CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
                                                  DtDevice* Device, int Port);
 
@@ -412,8 +420,8 @@ CDTAPI_API DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel,
 //
 
 // Does piece Index of Count pieces of a conversion. The pieces are independent and may
-// run in any order, on any thread. The library gives this to a DtDispatchFunc; a program
-// does not call it itself.
+// run in any order, on any thread. The library gives this to a DtDispatchFunc, which
+// calls it; a program has no other use for it.
 typedef void (*DtWorkFunc)(void* Context, int Index, int Count);
 
 // Runs Work(Context, Index, Count) for every Index below Count, on whatever threads the
@@ -425,9 +433,10 @@ typedef void (*DtWorkFunc)(void* Context, int Index, int Count);
 typedef void (*DtDispatchFunc)(void* User, DtWorkFunc Work, void* Context, int Count);
 
 // Sets how many threads the channel converts a frame's lines over. The default is 1: the
-// thread that calls DtInpChannel_ReadFrame does the whole frame itself, as it always has.
-// Any number above that starts threads of the library's own, which live until the channel
-// is detached or the count is set again. The frames are the same whatever the count.
+// thread that calls DtInpChannel_ReadFrame does the whole frame itself. Any number above
+// that starts threads of the library's own, which live until the channel is detached,
+// the count or a dispatch is set again, or the channel switches to ASI, after which it
+// is 1 again. The frames are the same whatever the count.
 //
 // How many to ask for:
 //
@@ -548,16 +557,16 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int R
 CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
 // Reads one frame into FrameBuffer, which holds *FrameSize bytes, and sets *FrameSize to
-// the frame's size. Waits up to TimeOut milliseconds, or without a limit for -1. The
-// buffer is a void pointer, so that a buffer of any type is passed without a cast.
+// the frame's size. Waits up to TimeOut milliseconds, or without a limit for -1.
 //
-// Returns, in DTAPI's order: DTAPI_E_BUF_TOO_SMALL for a size of 0;
+// Returns, in the order checked: DTAPI_E_BUF_TOO_SMALL for a size of 0;
 // DTAPI_E_INVALID_TIMEOUT for a time-out of 0 or below -1; DTAPI_E_INVALID_SIZE for a
-// negative size or one not a multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not
-// a multiple of 4; DTAPI_E_IN_USE while a ReadFrame on another thread has not returned,
-// where DTAPI lets both wait; DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame;
-// DTAPI_E_NOT_SDI_MODE on ASI; DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is
-// detached meanwhile. *FrameSize is 0 after a failure from the buffer size check on.
+// negative size or one not a multiple of 4; DTAPI_E_INVALID_BUF for a null buffer or an
+// address not a multiple of 4; DTAPI_E_IN_USE while a ReadFrame or Read on another
+// thread has not returned, where DTAPI lets both wait; DTAPI_E_NOT_SDI_MODE on ASI;
+// DTAPI_E_BUF_TOO_SMALL for a buffer smaller than a frame; DTAPI_E_TIMEOUT; and
+// DTAPI_E_CANCELLED when the channel is detached meanwhile. *FrameSize is 0 after a
+// failure from the check against a frame's size on.
 CDTAPI_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
                                               int* FrameSize, int TimeOut);
 
@@ -576,10 +585,10 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 // to TimeOut milliseconds, or without a limit for -1, for all of it, and reads nothing
 // when the time runs out.
 //
-// Returns, in DTAPI's order: DTAPI_OK at once for 0 bytes; DTAPI_E_INVALID_TIMEOUT for a
-// time-out below -1; DTAPI_E_IN_USE while a Read on another thread has not returned,
-// where DTAPI lets both wait; DTAPI_E_INVALID_SIZE for a negative size or one not a
-// multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not a multiple of 4;
+// Returns, in the order checked: DTAPI_OK at once for 0 bytes; DTAPI_E_INVALID_TIMEOUT
+// for a time-out below -1; DTAPI_E_IN_USE while a Read on another thread has not
+// returned, where DTAPI lets both wait; DTAPI_E_INVALID_SIZE for a negative size or one
+// not a multiple of 4; DTAPI_E_INVALID_BUF for a buffer address not a multiple of 4;
 // DTAPI_E_INVALID_SIZE, with a time-out, for more than the FIFO's 8 MB;
 // DTAPI_E_TIMEOUT; and DTAPI_E_CANCELLED when the channel is detached meanwhile, which
 // DTAPI does not see with a time-out of 0.
@@ -655,20 +664,24 @@ CDTAPI_API void DtOutpChannel_Freep(DtOutpChannel** OutpChannel);
 // needs a moment to lock to it, and a stream sent at once loses its start. DekTec's
 // DtPlay waits 200 ms before sending, as DtTransmitTs does.
 //
-// Returns, in DTAPI's order: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
+// Returns, in the order checked: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_OUTPUT
-// for a port that cannot be, or is not configured as, an output; DTAPI_E_NOT_SUPPORTED
-// for a port without an ASI/SDI transmitter; DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP
-// for a transmitter the driver does not describe or is too old for; DTAPI_E_IN_USE when
-// another user has the port, or on ASI one of its slaves; and the driver's result of any
-// command.
+// for a port that cannot be an output and is not an IP port; DTAPI_E_NOT_SUPPORTED for a
+// port without an ASI/SDI transmitter, or with the capability CAP_MATRIX; what opening
+// the channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE, DTAPI_E_DRIVER_INCOMP or
+// DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_OUTPUT for a port not configured as an output;
+// DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a transmitter the driver does not
+// describe or is too old for; DTAPI_E_IN_USE when another user has the port, or on ASI
+// one of its slaves; and the driver's result of any command. Succeeds with
+// DTAPI_OK_FAILSAFE on a fail-safe port in fail-safe mode.
 CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
                                                   DtDevice* Device, int Port);
 
 // Sets how many threads the channel codes a frame's lines over. The default is 1: the
-// thread that writes does the whole frame itself, as it always has. Any number above that
-// starts threads of the library's own, which live until the channel is detached or the
-// count is set again. The signal is the same whatever the count.
+// thread that writes does the whole frame itself. Any number above that starts threads
+// of the library's own, which live until the channel is detached, the count or a
+// dispatch is set again, or the channel switches to ASI, after which it is 1 again. The
+// signal is the same whatever the count.
 // DtInpChannel_SetConversionThreads says how many threads to ask for; the same numbers
 // hold here.
 //
@@ -693,17 +706,19 @@ CDTAPI_API DtapiResult DtOutpChannel_SetConversionDispatch(DtOutpChannel* OutpCh
                                                            DtDispatchFunc Dispatch,
                                                            void* User, int Pieces);
 
-// Stops transmitting, discards what the channel has not sent, and clears the flags.
+// Stops transmitting, discards what the channel has not sent, and clears the underflow
+// flags; on ASI DTAPI_TX_SYNC_ERR stays set. When stopping fails no flag is cleared.
 CDTAPI_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 
 // Detaches. With DTAPI_INSTANT_DETACH, 1, what the channel has not sent is discarded;
 // with DTAPI_WAIT_UNTIL_SENT, 2, and while sending, this waits until the card has sent
-// what was written, which ends when no more goes out for a second; on SDI it first writes
-// a black frame after the last frame, as the card sends a frame only when data follows
-// it. Both together give DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write or
-// WriteFrame waiting on another thread returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it
-// has not returned after 100 ms, and the channel then stays attached and usable.
-// DTAPI_E_NOT_ATTACHED when another thread detached it meanwhile.
+// what was written, giving up when nothing more goes out for a second. On SDI a frame a
+// Write left incomplete is dropped, and a black frame follows the last frame, as the
+// card sends a frame only when data follows it. Both together give
+// DTAPI_E_INVALID_FLAGS. Every mode stops transmitting. A Write or WriteFrame waiting on
+// another thread returns DTAPI_E_CANCELLED; DTAPI_E_TIMEOUT when it has not returned
+// after 100 ms, and the channel then stays attached and usable. DTAPI_E_NOT_ATTACHED
+// when another thread detached it meanwhile.
 CDTAPI_API DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode);
 
 // The bytes the card has yet to send, as raw frames in the current transmit mode: the
@@ -754,22 +769,25 @@ CDTAPI_API DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int
                                                  int64_t* ParXtra0, int64_t* ParXtra1);
 
 // DTAPI_TXCTRL_HOLD starts the card's pipeline without sending, so that what is written
-// is kept; DTAPI_TXCTRL_SEND sends, and needs a frame written (DTAPI_E_INSUF_LOAD), also
-// from idle, which goes through hold; DTAPI_TXCTRL_IDLE stops and discards what was
-// written. In the 8-bit mode the channel holds and takes frames, but sending a frame
-// fails with DTAPI_E_CONFIG_RAW_SDI, as in DTAPI; holding on a port configured for 4K
-// over four links or of level-B links fails with the same code. On ASI sending needs no
-// data, but waits a few milliseconds for the card's burst FIFO to fill, DTAPI_E_TIMEOUT
-// when it does not; holding refuses a rate that does not fit the packet size with
-// DTAPI_E_INVALID_RATE.
+// is kept; DTAPI_TXCTRL_SEND sends; DTAPI_TXCTRL_IDLE stops and discards what was
+// written. SEND from idle goes through hold. On SDI sending needs a frame written
+// (DTAPI_E_INSUF_LOAD), so from idle it fails and leaves the channel holding. In the
+// 8-bit mode the channel holds and takes frames, but sending a frame fails with
+// DTAPI_E_CONFIG_RAW_SDI, as in DTAPI; holding on a port configured for 4K over four
+// links or of level-B links fails with the same code. On ASI sending needs no data, but
+// waits a few milliseconds for the card's burst FIFO to fill, DTAPI_E_TIMEOUT when it
+// does not; holding refuses a rate that does not fit the packet size with
+// DTAPI_E_INVALID_RATE, except with DTAPI_TXMODE_TXONTIME.
 CDTAPI_API DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel,
                                                   int TxControl);
 
-// Sets the transmit mode. On SDI while idle: DTAPI_TXMODE_SDI_FULL, optionally with
-// DTAPI_TXMODE_SDI_10B or DTAPI_TXMODE_SDI_16B, 8-bit without either; StuffMode is not
-// used; any other mode gives DTAPI_E_INVALID_MODE, and a channel that is not idle
-// DTAPI_E_NOT_IDLE. On ASI in any state: one of the modes above, DTAPI_E_NOT_IMPLEMENTED
-// for DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another; StuffMode 0 or 1, else
+// Sets the transmit mode. A mode with both transport-stream and SDI bits gives
+// DTAPI_E_INVALID_MODE before DTAPI_E_NOT_ATTACHED. On SDI while idle:
+// DTAPI_TXMODE_SDI_FULL, optionally with DTAPI_TXMODE_SDI_10B or DTAPI_TXMODE_SDI_16B,
+// 8-bit without either; StuffMode is not used; any other mode gives DTAPI_E_INVALID_MODE,
+// and a channel that is not idle DTAPI_E_NOT_IDLE. On ASI in any state: one of the modes
+// above, DTAPI_E_INVALID_MODE for DTAPI_TXMODE_192, DTAPI_E_NOT_IMPLEMENTED for
+// DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another; StuffMode 0 or 1, else
 // DTAPI_E_INVALID_ARG, and not 1 with DTAPI_TXMODE_RAW, DTAPI_E_INVALID_MODE. With
 // stuffing the channel keeps 50 ms of symbols in the card's buffer with null packets.
 CDTAPI_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode,
@@ -781,10 +799,10 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int T
 // to tell are kept for the next Write. On ASI they are the transport stream. Waits while
 // the card, or on ASI the FIFO, has no room, for as long as that takes.
 //
-// Returns, in DTAPI's order: DTAPI_E_INVALID_SIZE for a negative size; DTAPI_E_IDLE while
-// idle; DTAPI_E_INVALID_BUF for a size or a buffer address not a multiple of 4, which
-// takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write while not
-// idle, where DTAPI would read it;
+// Returns, in the order checked: DTAPI_E_INVALID_SIZE for a negative size; DTAPI_E_IDLE
+// while idle; DTAPI_E_INVALID_BUF for a size or a buffer address not a multiple of 4,
+// which takes precedence over DTAPI_E_IDLE, and for a null buffer with bytes to write
+// while not idle, where DTAPI would read it;
 // DTAPI_E_IN_USE while a Write or WriteFrame on another thread has not returned, where
 // DTAPI waits for it; and DTAPI_E_CANCELLED when the channel is detached meanwhile, or
 // DTAPI_E_IDLE when it is set idle meanwhile.

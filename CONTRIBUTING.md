@@ -16,10 +16,11 @@
    `int32_t`, `uint32_t`, `int64_t` and the like — also in `cdtapi.h`. Counters,
    indices and port numbers stay `int`; sizes stay `size_t`, text `char`. `long` and
    `unsigned long` appear only where an operating-system interface defines them, such
-   as `timespec.tv_nsec`. The result code is `unsigned int`, as DTAPI's is, and the
-   vendored driver ABI keeps its own types.
-8. **A header guards itself with `#pragma once`**, as the first line after the file
-   header, rather than with an `#ifndef` guard, as `LibDekTec_C` does. The vendored driver
+   as `timespec.tv_nsec`. The result code, `DtapiResult`, is `uint32_t`, which is
+   DTAPI's `unsigned int` on every platform CDTAPI supports, and the vendored driver ABI
+   keeps its own types.
+8. **A header guards itself with `#pragma once`**, as `LibDekTec_C` does, as the first
+   line after the file header, rather than with an `#ifndef` guard. The vendored driver
    ABI keeps its own guards.
 9. **A variable is declared where it is first needed**, with its first value when it has
    one, one declaration per line; a loop counter in its `for`. Results are `DtapiResult`.

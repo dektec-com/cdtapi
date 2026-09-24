@@ -10,8 +10,9 @@ The interface is the same one. This page lists what an application notices.
 ## What does not change
 
 - **The functions.** Every function the wrapper's `CDTAPI.h` and `CDTAPI_AvFifo.h`
-  declared is declared here, with the same meaning, and with the same prototype but for
-  the three that set an I/O configuration; see below.
+  declared is declared here, with the same meaning, and with the same prototype except
+  for the three that set an I/O configuration, see below, and for `ReadFrame` and
+  `Write`, which take a `void*` and a `const void*` buffer where the wrapper had `char*`.
 - **The names and the values.** The structures, enumerations and macros are DTAPI's, as
   they were, down to the numbers: `DTAPI_OK`, the `DTAPI_E_` codes, `DTAPI_VIDSTD_`,
   `DTAPI_IOCONFIG_`, `MAX_DEVICE_NAME_SIZE`, and the rest.

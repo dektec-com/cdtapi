@@ -54,7 +54,8 @@ The sources are at <https://github.com/dektec-com/cdtapi>, BSD-3-Clause:
     Scripts/build.sh          # configure, build and test for the host
 
 `Scripts\build.ps1` does the same from PowerShell. CMake 3.21 or newer and a C11
-compiler are all it asks for; `Scripts/check_tools.sh` reports what is installed.
+compiler, with Ninja on Linux, are all it asks for; `Scripts/check_tools.sh` reports
+what is installed.
 
 To install the headers and the library somewhere of your own:
 
@@ -165,7 +166,7 @@ Building the sources as part of a project needs no install step:
     include(FetchContent)
     FetchContent_Declare(cdtapi
         GIT_REPOSITORY https://github.com/dektec-com/cdtapi.git
-        GIT_TAG v6.13.0)
+        GIT_TAG v6.14.0)
     FetchContent_MakeAvailable(cdtapi)
     target_link_libraries(myapp PRIVATE cdtapi::cdtapi)
 
@@ -234,8 +235,9 @@ transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all o
     CDTAPI_SIM=1 ./list_ports
 
 The emulated DTA-2178 has ten ports and no IP port. `CDTAPI_SIM_DTA2110=1` adds an
-emulated DTA-2110, which has one, and `CDTAPI_SIM_LOOPBACK=1` makes the packets a
-program sends arrive at its own receive side. The emulator starts afresh in each
+emulated DTA-2110, which has one, at device index 1: the value is the index, and 0 is
+the DTA-2178's. `CDTAPI_SIM_LOOPBACK=1` makes the packets a program sends arrive at its
+own receive side. The emulator starts afresh in each
 process, so a configuration one program sets is gone for the next.
 
 Two more give the emulated SDI ports something to receive and somewhere to send to,
@@ -259,7 +261,7 @@ use is reported on stderr and ignored.
   port, detect a video standard, receive and transmit SDI frames and ASI transport
   streams, and receive and transmit SMPTE ST 2110 video and audio, with the command
   lines to run them.
-- The headers are the reference. `cdtapi.h` documents every function above its
-  declaration: what it does, what it writes, and every result code it returns.
+- The headers are the reference: each function's comment, and the notes at the head of
+  its section, say what it does, what it writes and which result codes it returns.
 - [`migrating-from-the-wrapper.md`](migrating-from-the-wrapper.md), for an application
   built against the C wrapper that CDTAPI replaces.

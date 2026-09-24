@@ -312,10 +312,10 @@
 #define DTAPI_E_CONFIG_RAW_SDI      (DTAPI_E + 278)
 #define DTAPI_E_CONFIG_VIDEO        (DTAPI_E + 279)
 #define DTAPI_E_CONFIG_VIDEO_WEAVE  (DTAPI_E + 280)
+#define DTAPI_E_CONFIG_VIDEO_ZEROCOPY (DTAPI_E + 281)
 
 // DTAPI_E_ALREADY_EXCL_ACCESS is what a driver reports when another process holds a
 // port exclusively.
-#define DTAPI_E_CONFIG_VIDEO_ZEROCOPY (DTAPI_E + 281)
 #define DTAPI_E_ALREADY_EXCL_ACCESS   (DTAPI_E + 282)
 #define DTAPI_E_DISABLED              (DTAPI_E + 283)
 #define DTAPI_E_CPU_NO_AVX2           (DTAPI_E + 284)
@@ -369,7 +369,7 @@
 #define DTAPI_IOCONFIG_TRUE              18      // Turn I/O capability on
 #define DTAPI_IOCONFIG_FALSE             19      // Turn I/O capability off
 
-// Values for group IO_CONFIG_IODIR (I/O direction)
+// Values for group DTAPI_IOCONFIG_IODIR (I/O direction)
 #define DTAPI_IOCONFIG_DISABLED          20      // Port is disabled
 #define DTAPI_IOCONFIG_INPUT             21      // Uni-directional input
 #define DTAPI_IOCONFIG_INTINPUT          22      // Internal input port
@@ -380,13 +380,13 @@
 // SubValues for group DTAPI_IOCONFIG_IODIR, value DTAPI_IOCONFIG_INPUT
 #define DTAPI_IOCONFIG_SHAREDANT         26      // Get antenna signal from another port
 
-// SubValues for group DTAPI_IOCONFIG_IODIR, value DTAPI_IOCONFIG_INTOUTPUT
+// SubValues for group DTAPI_IOCONFIG_IODIR, values DTAPI_IOCONFIG_OUTPUT and INTOUTPUT
 #define DTAPI_IOCONFIG_DBLBUF            27      // Double buffered output
 #define DTAPI_IOCONFIG_LOOPS2L3          28      // Loop-through of DVB-S2 in L3-frames
 #define DTAPI_IOCONFIG_LOOPS2TS          29      // Loop-through of an DVB-S(2) input
 #define DTAPI_IOCONFIG_LOOPTHR           30      // Loop-through of another input
 
-// Values for group IO_CONFIG_IOSTD (I/O standard)
+// Values for group DTAPI_IOCONFIG_IOSTD (I/O standard)
 #define DTAPI_IOCONFIG_12GSDI            31      // 12G-SDI
 #define DTAPI_IOCONFIG_3GSDI             32      // 3G-SDI
 #define DTAPI_IOCONFIG_6GSDI             33      // 6G-SDI
@@ -461,40 +461,40 @@
 #define DTAPI_IOCONFIG_SPI525I59_94      90      // SPI 525i/59.94
 #define DTAPI_IOCONFIG_SPI625I50         91      // SPI 625i/50
 
-// Values for group IO_CONFIG_IODOWNSCALE (I/O down-scaling)
+// Values for group DTAPI_IOCONFIG_IODOWNSCALE (I/O down-scaling)
 #define DTAPI_IOCONFIG_SCALE_12GTO3G     92      // Downscale 12G-SDI to 3G-SDI
 #define DTAPI_IOCONFIG_SCALE_BYPASS      93      // Bypass the downscaler
 
-// Values for group IO_CONFIG_PWRMODE (Power mode)
+// Values for group DTAPI_IOCONFIG_PWRMODE (Power mode)
 #define DTAPI_IOCONFIG_MODHQ             94      // High-quality modulation
 #define DTAPI_IOCONFIG_LOWPWR            95      // Low-power mode
 
-// Values for group IO_CONFIG_RFCLKSEL (RF clock source selection)
+// Values for group DTAPI_IOCONFIG_RFCLKSEL (RF clock source selection)
 #define DTAPI_IOCONFIG_RFCLKEXT          96      // External RF clock input
 #define DTAPI_IOCONFIG_RFCLKINT          97      // Internal RF clock reference
 
-// Values for group IO_CONFIG_SPICLKSEL (Parallel port clock source selection)
+// Values for group DTAPI_IOCONFIG_SPICLKSEL (Parallel port clock source selection)
 #define DTAPI_IOCONFIG_SPICLKEXT         98      // External clock input
 #define DTAPI_IOCONFIG_SPICLKINT         99      // Internal clock reference
 
-// Values for group IO_CONFIG_SPIMODE (Parallel port mode)
+// Values for group DTAPI_IOCONFIG_SPIMODE (Parallel port mode)
 #define DTAPI_IOCONFIG_SPIFIXEDCLK       100     // SPI fixed clock with valid signal
 #define DTAPI_IOCONFIG_SPIDVBMODE        101     // SPI DVB mode
 #define DTAPI_IOCONFIG_SPISER8B          102     // SPI serial 8-bit mode
 #define DTAPI_IOCONFIG_SPISER10B         103     // SPI serial 10-bit mode
 
-// Values for group IO_CONFIG_SPISTD (Parallel port I/O standard)
+// Values for group DTAPI_IOCONFIG_SPISTD (Parallel port I/O standard)
 #define DTAPI_IOCONFIG_SPILVDS1          104     // LVDS1
 #define DTAPI_IOCONFIG_SPILVDS2          105     // LVDS2
 #define DTAPI_IOCONFIG_SPILVTTL          106     // LVTTL
 
-// Values for group IO_CONFIG_TSRATESEL (Transport-stream rate selection)
+// Values for group DTAPI_IOCONFIG_TSRATESEL (Transport-stream rate selection)
 #define DTAPI_IOCONFIG_EXTTSRATE         107     // External TS rate clock input
 #define DTAPI_IOCONFIG_EXTRATIO          108     // External TS rate clock with ratio
 #define DTAPI_IOCONFIG_INTTSRATE         109     // Internal TS rate clock reference
 #define DTAPI_IOCONFIG_LOCK2INP          110     // Lock TS rate to input port
 
-// Values for group IO_CONFIG_TODREFSEL (TimeOfDay reference selection)
+// Values for group DTAPI_IOCONFIG_TODREFSEL (TimeOfDay reference selection)
 #define DTAPI_IOCONFIG_TODREF_INTERNAL   111     // Internal clock reference
 #define DTAPI_IOCONFIG_TODREF_STEADYCLOCK 112    // Steady clock reference
 

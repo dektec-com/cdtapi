@@ -112,8 +112,8 @@ took longer to make than a frame period, and its frames would go out late.
 
 The output is plain text, one line per item in a stable order, with results by their
 names, so that two runs can be compared line by line. A program exits with 0 when it did
-what was asked, 1 when an API call failed or the command line was wrong, and 2 when it
-found nothing, such as no ports or no signal.
+what was asked, 1 when a call or a check failed or the command line was wrong, `--help`
+included, and 2 when it found nothing, such as no ports or no signal.
 
 ## The headers they use
 

@@ -36,8 +36,8 @@ build that comes out is redistributable like any other.
 - [`Examples/README.md`](Examples/README.md) — the example programs and the command
   lines to run them, with and without a card.
 
-The headers are the reference: `cdtapi.h` documents every function above its
-declaration, with the result codes it returns.
+The headers are the reference: each function's comment, and the notes at the head of
+its section, say what it does and which result codes it returns.
 
 ## Building
 
@@ -58,8 +58,7 @@ The build and every test suite are verified on Windows, with Visual Studio 2026 
 `windows-*` presets, and on Linux (Ubuntu, gcc 15) with the `linux-*` presets. The
 Linux driver backend has also talked to a DTA-2178: it reads the card's identity,
 properties, I/O configuration and SDI receiver status, and receives and transmits SD, HD
-and 3G frames, which arrive through a loopback cable bit for bit, as the real CDTAPI's
-do.
+and 3G frames, which arrive through a loopback cable bit for bit, as DTAPI's do.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and
@@ -70,6 +69,7 @@ is selected at run time with `CDTAPI_SIM=1`.
 | Path | Contents |
 |---|---|
 | `Include/` | Public headers |
+| `Source/Api/` | The global functions and the result names |
 | `Source/Core/` | Containers used throughout the library |
 | `Source/OAL/` | OS abstraction: `Linux/`, `Windows/`, and the `Sim/` emulator |
 | `Source/DtPcie/` | Commands of the DtPcie driver, with its vendored ABI under `Abi/` |
@@ -77,7 +77,9 @@ is selected at run time with `CDTAPI_SIM=1`.
 | `Source/Channel/` | Input and output channels, with an SDI and an ASI side each |
 | `Source/Ts/` | Transport-stream packets from the card's receive format, and ASI's 8b/10b code |
 | `Source/Video/` | Video-standard tables and detection |
-| `Source/Tables/` | Tables generated from the SDK capability descriptions |
+| `Source/AvFifo/` | SMPTE ST 2110 receive and transmit FIFOs, with pixel conversion |
+| `Source/Net/` | An IP port in the operating system's network: its addresses and neighbours, for the AV FIFO |
+| `Source/Tables/` | X-macro tables of the result codes, video standards and I/O configuration codes |
 | `Tests/` | `Unit/`, `Abi/`, `Sim/`, `Compat/`, `Conformance/` and `Bench/` suites |
 | `Examples/` | Example programs that list devices, configure a port, detect a video standard, receive and transmit SDI frames and ASI transport streams, and receive and transmit SMPTE ST 2110 video and audio |
 | `Scripts/` | Build and style-check entry points |
@@ -94,8 +96,9 @@ Beside that surface it has what an application needs and DTAPI's C wrapper left 
 `DtapiDeviceScan` with DTAPI's `DtDeviceDesc`, `DtInpChannel_ReadFrame2` with each
 frame's time of arrival, and `DtOutpChannel_WriteFrame`, which writes one whole frame
 with a time-out. `DtInpChannel` receives SD, HD, 3G and 2160p over one 6G or 12G link,
-and DVB-ASI, and `DtOutpChannel` transmits them. `cdtapi_avfifo.h` carries SMPTE ST 2110 video and audio, with a choice between
-hardware and software pipes and a specific result code for every failure.
+and DVB-ASI, and `DtOutpChannel` transmits them. `cdtapi_avfifo.h` carries SMPTE ST
+2110 video and audio, with a choice between hardware and software pipes and a specific
+result code for every failure.
 
 ## Versions
 

@@ -42,7 +42,7 @@ typedef struct VideoSize
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SMPTE 2110 receive +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The pixel format the frames of received ST 2110-20 video get.
-typedef enum St2110_RxFrameFormatC
+typedef enum St2110_RxFrameFormat
 {
     St2110_RxFrameFormat_Raw,               // The pixel groups as received
     St2110_RxFrameFormat_Uyvy422_8b,        // 8-bit UYVY
@@ -53,22 +53,23 @@ typedef enum St2110_RxFrameFormatC
 } St2110_RxFrameFormat;
 
 // The format of ST 2110-30 audio samples.
-typedef enum St2110_AudioFormatC
+typedef enum St2110_AudioFormat
 {
     St2110_AudioFormat_L16BE, // 16-bit PCM, big endian
     St2110_AudioFormat_L24BE, // 24-bit PCM, big endian
     St2110_AudioFormat_Raw
 } St2110_AudioFormat;
 
-// Configures the reception of ST 2110-30 audio.
-typedef struct St2110_RxConfigAudioC
+// Configures the reception of ST 2110-30 audio. Each frame is one packet's samples as
+// received; the format and the sample rate do not change them.
+typedef struct St2110_RxConfigAudio
 {
     St2110_AudioFormat Format;
     int SampleRate; // In Hz
 } St2110_RxConfigAudio;
 
 // Configures the reception of ST 2110-20 video.
-typedef struct St2110_RxConfigVideoC
+typedef struct St2110_RxConfigVideo
 {
     St2110_RxFrameFormat Format;
 } St2110_RxConfigVideo;
@@ -109,7 +110,8 @@ typedef struct St2110_VideoPacking
 {
     int OneLinePerPacket;
     St2110_PackingMode PackingMode;
-    int PayloadSize; // Bytes of video per packet, or -1 for the most a packet holds
+    int PayloadSize; // Bytes of video per packet, whole pixel groups; -1 for the most a
+                     // standard-size packet holds. Checked when the FIFO starts.
 } St2110_VideoPacking;
 
 // Configures the transmission of ST 2110-40 ancillary data.
@@ -183,7 +185,7 @@ typedef enum IpTransportProtocol
 typedef struct IpSrcFlt
 {
     uint8_t IpAddr[16]; // 4 bytes for IPv4, 16 for IPv6
-    int Port;
+    int Port;           // The source's UDP port, or -1 for any
 } IpSrcFlt;
 
 // An IP end point.
@@ -210,10 +212,11 @@ typedef struct AvFifo_IpPars
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= AvFifo_Frame +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // A frame of video, a field of interlaced video, or audio samples.
-typedef struct AvFifo_FrameC
+typedef struct AvFifo_Frame
 {
-    uint32_t RtpTime; // RTP timestamp of the frame's packets
-    DtTimeOfDay ToD;  // Time of day of the frame's first sample
+    uint32_t RtpTime; // RTP timestamp of the frame's first sample
+    DtTimeOfDay ToD;  // Transmit: when the frame starts; receive: when its first packet
+                      // arrived
 
     uint8_t* Data;     // The frame's bytes
     int Field;         // Interlaced and PsF video: the field, 0 or 1
@@ -230,12 +233,12 @@ typedef struct AvFifo_FrameC
 // What a receive FIFO counted.
 typedef struct RxStatistics
 {
-    int FramesOk;         // Frames received
+    int FramesOk;         // Frames received whole, those the FIFO had no room for too
     int FramesIncomplete; // Frames that missed packets
     int FramesSizeError;  // Frames of an unexpected size
     int Gaps;             // Gaps in the RTP sequence numbers between frames
     int IpPacketErrors;   // Packets with a corrupt header
-    int DroppedFrames;    // Frames the FIFO had no room for
+    int DroppedFrames;    // Frames the FIFO or the frame pool had no room for
     int SyncErrors;       // Losses of synchronisation
 } RxStatistics;
 
@@ -255,7 +258,8 @@ typedef enum ChromaSubsampling
     ChromaSubsampling_444,
 } ChromaSubsampling;
 
-// The video format a received frame is in.
+// The video format a received frame is in. For interlaced video the frame is a field:
+// NLines and BytesPerFrame are the field's, Height the picture's.
 typedef struct FrameProperties
 {
     int Is420;
@@ -289,7 +293,8 @@ CDTAPI_API int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Pr
 // count it.
 //
 // Every function that returns a result gives DTAPI_OK or a failure, and a failure also
-// sets the text GetLastException gives on the calling thread. The failures:
+// sets the text GetLastException gives on the calling thread. GetFromMemPool and
+// SetMaxSize, which return no result, set the text when they fail. The failures:
 //
 //   DTAPI_E_INVALID_ARG         a NULL FIFO, frame or parameter, a parameter out of range
 //   DTAPI_E_DEVICE              a device that is NULL or not attached
@@ -310,7 +315,7 @@ CDTAPI_API int GetFrameProperties(const AvFifo_Frame* Frame, FrameProperties* Pr
 //   DTAPI_E_NO_ADAPTER_IP_ADDR  Start without an address of the IP version
 //   DTAPI_E_BIND                Start when the port's address cannot be bound
 //   DTAPI_E_OUT_OF_RESOURCES    Start with HwOrSwPipe_ForceHwPipe and no hardware pipe
-//                               free
+//                               free, or when the FIFO's thread cannot start
 //   DTAPI_E_MULTICASTJOIN       Start when joining the multicast group fails
 //   DTAPI_E_DST_MAC_ADDR        Start of a transmit FIFO whose destination does not
 //                               answer
@@ -361,10 +366,10 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
 
 // Starts receiving: checks the network, opens a pipe, programs its filter and joins a
-// multicast group. The statistics start from zero.
+// multicast group. The FIFO starts empty and the statistics from zero.
 CDTAPI_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
 
-// Stops receiving and gives up the pipe; the frames in the FIFO stay.
+// Stops receiving and gives up the pipe; the frames in the FIFO stay until Start.
 CDTAPI_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
 
 // Configures the FIFO for audio, with a FIFO of 400 frames unless its size was set, or
@@ -389,7 +394,9 @@ CDTAPI_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
                                                      AvFifo_Frame* Frame);
 
-// The most frames the FIFO holds, 4 unless set, and setting it while stopped.
+// The most frames the FIFO holds: 4, or 400 once configured for audio, unless set; and
+// setting it while stopped. A size below 1, a started FIFO or a lack of memory keeps the
+// size and sets GetLastException's text.
 CDTAPI_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
 CDTAPI_API void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size);
 
@@ -417,12 +424,17 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
 
 // Starts transmitting: checks the network, resolves the destination's MAC address and
-// opens a pipe. Frames are sent at their time of day, as the card's clock has it.
+// opens a pipe. The FIFO starts empty and the statistics from zero. The card sends each
+// frame's packets from its time of day on, as its clock has it; video starts one
+// transmit offset into the frame period.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
 
-// Stops transmitting; frames not yet sent are dropped from the pipe but stay in the FIFO.
+// Stops transmitting; frames not yet sent are dropped from the pipe, and those in the
+// FIFO stay until Start.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
 
+// As for the receive FIFO; the transmit FIFO also checks the configuration at once,
+// DTAPI_E_INVALID_ARG when it does not hold.
 CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
                                                     const St2110_TxConfigAudio* Config);
 CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
@@ -435,13 +447,14 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
 
 CDTAPI_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
 
-// Queues a frame from GetFromMemPool for sending; once sent it returns to the pool. The
-// frame's valid bytes must be those of the configuration.
+// Queues a frame from GetFromMemPool for sending; once sent, or found unsendable, it
+// returns to the pool. The frame's valid bytes must be those of the configuration.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame);
 
 // A frame of Size bytes to fill, or NULL before Configure or without memory.
 CDTAPI_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
 
+// As for the receive FIFO; the statistics count the frames sent since Start.
 CDTAPI_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
 CDTAPI_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
 CDTAPI_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
