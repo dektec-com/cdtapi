@@ -278,6 +278,14 @@ DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtDispatchFunc Dispatch, vo
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Hold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtWorkPool_Hold(DtWorkPool* Pool)
+{
+    if (Pool != NULL)
+        DtAtomic_Increment(&Pool->NumRefs);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtWorkPool_Free(DtWorkPool* Pool)
@@ -354,48 +362,6 @@ DtapiResult DtWork_SetPool(DtWork* Work, DtWorkPool* Pool, int NumThreads)
     Work->Done = Done;
     Work->Pieces = NumThreads > 0 && NumThreads < Cap ? NumThreads : Cap;
     return DTAPI_OK;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_SetThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-DtapiResult DtWork_SetThreads(DtWork* Work, int Threads)
-{
-    if (Threads < 1)
-        return DTAPI_E_INVALID_ARG;
-
-    DtWork_Free(Work);
-    if (Threads == 1)
-        return DTAPI_OK;
-
-    DtWorkPool* Pool = DtWorkPool_Alloc();
-    DtapiResult Result =
-        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, Threads);
-    if (Result == DTAPI_OK)
-        Result = DtWork_SetPool(Work, Pool, 0);
-    DtWorkPool_Free(Pool);
-    return Result;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_SetDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-DtapiResult DtWork_SetDispatch(DtWork* Work, DtDispatchFunc Dispatch, void* User,
-                               int Pieces)
-{
-    if (Dispatch != NULL && Pieces < 1)
-        return DTAPI_E_INVALID_ARG;
-
-    DtWork_Free(Work);
-    if (Dispatch == NULL)
-        return DTAPI_OK;
-
-    DtWorkPool* Pool = DtWorkPool_Alloc();
-    DtapiResult Result = Pool == NULL
-                             ? DTAPI_E_OUT_OF_MEM
-                             : DtWorkPool_SetDispatch(Pool, Dispatch, User, Pieces);
-    if (Result == DTAPI_OK)
-        Result = DtWork_SetPool(Work, Pool, 0);
-    DtWorkPool_Free(Pool);
-    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

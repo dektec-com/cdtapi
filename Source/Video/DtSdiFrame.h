@@ -106,6 +106,15 @@ bool DtSdiFrame_LayoutInit(DtSdiFrameLayout* Layout, int VidStd, int AlignmentIn
 size_t DtSdiFrame_CodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
+// The pieces a channel divides a frame's lines into when the program leaves the number to
+// the library. It follows the standard of the layout, the one the channel is set to, and
+// not the fastest the port can carry: 4 for 2160p50 and 2160p60, which a 12G link
+// carries; 2 for 2160p24 to 2160p30, which a 6G link carries; and 1 for everything up to
+// 3G, where dividing costs more than it saves, SD on a 12G port included. The coding a
+// second grows with the standard's rate, so each piece gets about the work of one 3G
+// link. A port that sends 4K over four 3G links codes it as 12G.
+int DtSdiFrame_NumWorkPieces(const DtSdiFrameLayout* Layout);
+
 // The coded lines one raw line is made of, and the bytes all of them together take as
 // they are received and as they are sent. For 4K a raw line is two coded lines, so the
 // two sizes are not those of a single coded line, which are Stride and TxStride.

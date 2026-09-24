@@ -66,8 +66,13 @@ typedef struct DtSdiRx
     uint16_t* Scratch; // The conversion's working symbols of a 4K line, one set a band
     int QuarterMs;     // A quarter frame period, at least 1 ms
 
-    // The threads a frame's lines are converted over, and what one band of them needs.
-    // The buffers above hold DtWork_Pieces(&Work) sets, so a band uses its own.
+    // The pool the channel gave, and the pieces it asked for: 0 for as many as the
+    // standard calls for. The channel holds the pool.
+    DtWorkPool* WorkPool;
+    int WorkThreads;
+
+    // The pieces a frame's lines are converted in, and what one band of them needs. The
+    // buffers above hold DtWork_Pieces(&Work) sets, so a band uses its own.
     DtWork Work;
     size_t LineBufNumBytes;
     size_t ScratchSymbols;
@@ -175,6 +180,30 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
     if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
         return DTAPI_E_OUT_OF_MEM;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SizeWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Divides the lines over the pool the channel gave, into the pieces it asked for or, with
+// 0, the ones the standard calls for, and sizes the working buffers by them. Buffers that
+// cannot be had for those pieces are taken for one, so that the side converts in the
+// reading thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; LineBuf is NULL
+// when not even those can be had.
+//
+static DtapiResult SizeWork(DtSdiRx* Sdi)
+{
+    const int Pieces =
+        Sdi->WorkThreads > 0 ? Sdi->WorkThreads : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
+
+    DtapiResult Result = DtWork_SetPool(&Sdi->Work, Sdi->WorkPool, Pieces);
+    if (Result == DTAPI_OK)
+        Result = AllocBands(Sdi);
+    if (Result != DTAPI_OK)
+    {
+        DtWork_SetPool(&Sdi->Work, NULL, 0);
+        AllocBands(Sdi);
+    }
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -286,7 +315,9 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     if (Result == DTAPI_OK)
     {
         Sdi->RingMapped = MappedHere;
-        Result = AllocBands(Sdi);
+        SizeWork(Sdi);
+        if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
+            Result = DTAPI_E_OUT_OF_MEM;
     }
     if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_RING_MIN_FRAMES)
         Result = DTAPI_E_DEV_DRIVER;
@@ -797,6 +828,21 @@ static DtapiResult AfterWait(DtRx* Rx, const DtRxWait* Wait)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A side with no layout yet keeps the pool for ConfigureChannel, which sizes the work.
+//
+static DtapiResult SetWorkPool(DtRx* Rx, DtWorkPool* Pool, int NumThreads)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+
+    Sdi->WorkPool = Pool;
+    Sdi->WorkThreads = NumThreads;
+    if (Sdi->LineBuf == NULL)
+        return DtWork_SetPool(&Sdi->Work, NULL, 0);
+    return SizeWork(Sdi);
+}
+
 static const DtRxBackend g_Ops = {
     .Release = Release,
     .SetRxMode = SetRxModeSdi,
@@ -808,54 +854,13 @@ static const DtRxBackend g_Ops = {
     .GetMaxFifoSize = GetMaxFifoSize,
     .ApplyIoConfig = ApplyIoConfig,
     .DetectIoStd = DetectIoStd,
-    .SetConversionThreads = DtSdiRx_SetConversionThreads,
-    .SetConversionDispatch = DtSdiRx_SetConversionDispatch,
+    .SetWorkPool = SetWorkPool,
     .CheckFrame = CheckFrame,
     .TakeFrame = TakeFrame,
     .PrepareWait = PrepareWait,
     .Wait = Wait,
     .AfterWait = AfterWait,
 };
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BandsFollow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// The working buffers are one set a band, so they follow a change in the number of bands.
-// A channel without a layout yet takes them from ConfigureChannel instead. Buffers that
-// cannot be had for the bands asked for are taken for one band again, so that the channel
-// is left converting in the reading thread rather than without them.
-//
-static DtapiResult BandsFollow(DtSdiRx* Sdi, DtapiResult Result)
-{
-    if (Result != DTAPI_OK || Sdi->LineBuf == NULL)
-        return Result;
-
-    Result = AllocBands(Sdi);
-    if (Result != DTAPI_OK)
-    {
-        DtWork_SetThreads(&Sdi->Work, 1);
-        AllocBands(Sdi);
-    }
-    return Result;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-DtapiResult DtSdiRx_SetConversionThreads(DtRx* Rx, int Threads)
-{
-    DtSdiRx* Sdi = (DtSdiRx*)Rx;
-
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-DtapiResult DtSdiRx_SetConversionDispatch(DtRx* Rx, DtDispatchFunc Dispatch, void* User,
-                                          int Pieces)
-{
-    DtSdiRx* Sdi = (DtSdiRx*)Rx;
-
-    return BandsFollow(Sdi, DtWork_SetDispatch(&Sdi->Work, Dispatch, User, Pieces));
-}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //

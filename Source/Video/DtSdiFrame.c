@@ -109,6 +109,15 @@ size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout)
            (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_NumWorkPieces -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int DtSdiFrame_NumWorkPieces(const DtSdiFrameLayout* Layout)
+{
+    return Layout->SdiRate == DT_SDIRATE_12G  ? 4
+           : Layout->SdiRate == DT_SDIRATE_6G ? 2
+                                              : 1;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Read32 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 static uint32_t Read32(const uint8_t* Bytes)

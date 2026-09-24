@@ -51,7 +51,13 @@ DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads);
 DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtDispatchFunc Dispatch, void* User,
                                    int NumThreads);
 
-// Lets go of the program's hold. Passing NULL does nothing.
+// Takes a hold on the pool, which DtWorkPool_Free lets go of; a channel holds the pool it
+// is given this way. Unlike a DtWork's hold, it does not keep the pool from being set
+// again, since it sizes no buffers by it. Passing NULL does nothing.
+void DtWorkPool_Hold(DtWorkPool* Pool);
+
+// Lets go of one hold: the program's, or one DtWorkPool_Hold took. Passing NULL does
+// nothing.
 void DtWorkPool_Free(DtWorkPool* Pool);
 void DtWorkPool_Freep(DtWorkPool** Pool);
 
@@ -87,18 +93,6 @@ void DtWork_Free(DtWork* Work);
 // Returns DTAPI_E_INVALID_ARG below 0, and DTAPI_E_OUT_OF_MEM when the event cannot be
 // had; either way the DtWork is left as it was.
 DtapiResult DtWork_SetPool(DtWork* Work, DtWorkPool* Pool, int NumThreads);
-
-// Divides the jobs into Threads pieces over a pool of the DtWork's own with as many
-// threads; 1 is the calling thread alone. Returns DTAPI_E_INVALID_ARG below 1, changing
-// nothing, and DTAPI_E_OUT_OF_MEM when the pool cannot be had, leaving the DtWork running
-// every piece in the calling thread.
-DtapiResult DtWork_SetThreads(DtWork* Work, int Threads);
-
-// Divides the jobs into Pieces pieces and gives each job to Dispatch, over a pool of the
-// DtWork's own. Dispatch NULL restores the calling thread. Returns DTAPI_E_INVALID_ARG
-// for a Pieces below 1 with a Dispatch, and DTAPI_E_OUT_OF_MEM as DtWork_SetThreads does.
-DtapiResult DtWork_SetDispatch(DtWork* Work, DtDispatchFunc Dispatch, void* User,
-                               int Pieces);
 
 // How many pieces DtWork_Run divides a job into: how many sets of working buffers a
 // caller of it needs, and how many parts it should cut its work into.

@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
+#include "Core/DtWork.h"     // The pool a frame's lines are coded over.
 #include "Device/DtDevice.h" // The device and its port capabilities.
 #include "DtPcieCmd.h"       // DtIoConfig.
 #include "OAL/OsThread.h"    // The channel's lock.
@@ -94,12 +95,13 @@ struct DtTxBackend
     DtapiResult (*GetTsRateBps)(DtTx* Tx, int* TsRate);
     DtapiResult (*SetTsRateBps)(DtTx* Tx, int TsRate);
 
-    // Codes a frame's lines over Threads threads of the library's own, 1 for the writing
-    // thread alone, or over the caller's own threads by giving each piece to Dispatch.
-    // NULL where the side codes nothing to divide, which gives DTAPI_E_NOT_SUPPORTED.
-    DtapiResult (*SetConversionThreads)(DtTx* Tx, int Threads);
-    DtapiResult (*SetConversionDispatch)(DtTx* Tx, DtDispatchFunc Dispatch, void* User,
-                                         int Pieces);
+    // Divides the side's work over Pool, NULL for the writing thread alone, in NumThreads
+    // pieces, or with 0 in as many as the signal calls for. The channel holds the pool
+    // and gives it again to every side it attaches, and calls this with no write going
+    // on. DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces,
+    // after which the side works in the writing thread. NULL where the side has nothing
+    // to divide.
+    DtapiResult (*SetWorkPool)(DtTx* Tx, DtWorkPool* Pool, int NumThreads);
 
     // Write, while not idle and with no other write going on.
     DtapiResult (*Write)(DtTx* Tx, const uint8_t* Data, size_t Size);

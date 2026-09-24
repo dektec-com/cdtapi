@@ -386,8 +386,12 @@ static void Sdi4k(int Seconds, int Threads)
     // One pool for the whole run, as a channel keeps one between Start and Stop.
     DtWork Work;
     DtWork_Init(&Work);
-    if (DtWork_SetThreads(&Work, Threads) != DTAPI_OK)
+    DtWorkPool* Pool = Threads > 1 ? DtWorkPool_Alloc() : NULL;
+    if ((Threads > 1 &&
+         (Pool == NULL || DtWorkPool_StartThreads(Pool, Threads) != DTAPI_OK)) ||
+        DtWork_SetPool(&Work, Pool, 0) != DTAPI_OK)
     {
+        DtWorkPool_Free(Pool);
         printf("Cannot start %d threads\n", Threads);
         return;
     }
@@ -450,6 +454,7 @@ static void Sdi4k(int Seconds, int Threads)
                 for (int b = 0; b < Threads; b++)
                     free(Buf.Scratch[b]);
                 DtWork_Free(&Work);
+                DtWorkPool_Free(Pool);
                 return;
             }
             uint32_t State = 2160;
@@ -505,6 +510,7 @@ static void Sdi4k(int Seconds, int Threads)
         }
     }
     DtWork_Free(&Work);
+    DtWorkPool_Free(Pool);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

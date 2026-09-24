@@ -105,8 +105,13 @@ typedef struct DtSdiTx
     uint8_t* RawBuf;     // The raw bytes of a line not yet complete
     uint16_t* Scratch;   // The working symbols of a 4K line, one set a band
 
-    // The threads a batch of lines is coded over. Scratch holds DtWork_Pieces(&Work)
-    // sets of ScratchSymbols symbols, so that a band uses its own.
+    // The pool the channel gave, and the pieces it asked for: 0 for as many as the
+    // standard calls for. The channel holds the pool.
+    DtWorkPool* WorkPool;
+    int WorkThreads;
+
+    // The pieces a batch of lines is coded in. Scratch holds DtWork_Pieces(&Work) sets of
+    // ScratchSymbols symbols, so that a band uses its own.
     DtWork Work;
     size_t ScratchSymbols;
 
@@ -655,6 +660,32 @@ static uint16_t* AllocScratch(DtSdiTx* Sdi)
                                      Sdi->ScratchSymbols * sizeof(uint16_t));
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SizeWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Divides the lines over the pool the channel gave, into the pieces it asked for or, with
+// 0, the ones the standard calls for, and sizes the working symbols by them. Symbols that
+// cannot be had for those pieces are taken for one, so that the side codes in the writing
+// thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; Scratch is NULL for a
+// standard that needs it when not even those can be had.
+//
+static DtapiResult SizeWork(DtSdiTx* Sdi)
+{
+    const int Pieces =
+        Sdi->WorkThreads > 0 ? Sdi->WorkThreads : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
+
+    DtapiResult Result = DtWork_SetPool(&Sdi->Work, Sdi->WorkPool, Pieces);
+    DtAlloc_Free(Sdi->Scratch);
+    Sdi->Scratch = Result == DTAPI_OK ? AllocScratch(Sdi) : NULL;
+    if (Result == DTAPI_OK && Sdi->ScratchSymbols != 0 && Sdi->Scratch == NULL)
+        Result = DTAPI_E_OUT_OF_MEM;
+    if (Result != DTAPI_OK)
+    {
+        DtWork_SetPool(&Sdi->Work, NULL, 0);
+        Sdi->Scratch = AllocScratch(Sdi);
+    }
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The DMA controller lets go of the buffer, which is then freed, and the standard's
@@ -766,7 +797,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Layout);
-    Sdi->Scratch = AllocScratch(Sdi);
+    SizeWork(Sdi);
     if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
         (Layout.Is4k && Sdi->Scratch == NULL) ||
         !DtSdiFrame_BlackLines(&Layout, Sdi->Black))
@@ -1683,10 +1714,24 @@ static void WaitUntilSent(DtTx* Tx)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A side with no standard yet keeps the pool for ConfigureChannel, which sizes the work.
+//
+static DtapiResult SetWorkPool(DtTx* Tx, DtWorkPool* Pool, int NumThreads)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+
+    Sdi->WorkPool = Pool;
+    Sdi->WorkThreads = NumThreads;
+    if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN)
+        return DtWork_SetPool(&Sdi->Work, NULL, 0);
+    return SizeWork(Sdi);
+}
+
 static const DtTxBackend g_Ops = {
     .Release = Release,
-    .SetConversionThreads = DtSdiTx_SetConversionThreads,
-    .SetConversionDispatch = DtSdiTx_SetConversionDispatch,
+    .SetWorkPool = SetWorkPool,
     .SetTxControl = SetTxControlSdi,
     .ClearFifo = ClearFifo,
     .GetFifoLoad = GetFifoLoad,
@@ -1702,49 +1747,6 @@ static const DtTxBackend g_Ops = {
     .Wake = Wake,
     .WaitUntilSent = WaitUntilSent,
 };
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BandsFollow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// The working symbols are one set a band, so they follow a change in the number of bands.
-// A side without working symbols, having no buffer yet or a standard that needs none,
-// takes them from the buffer's allocation instead. Symbols that cannot be had for the
-// bands asked for are taken for one band again, so that the side is left coding in the
-// writing thread rather than without them.
-//
-static DtapiResult BandsFollow(DtSdiTx* Sdi, DtapiResult Result)
-{
-    if (Result != DTAPI_OK || Sdi->Scratch == NULL)
-        return Result;
-
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Scratch = AllocScratch(Sdi);
-    if (Sdi->Scratch == NULL)
-    {
-        DtWork_SetThreads(&Sdi->Work, 1);
-        Sdi->Scratch = AllocScratch(Sdi);
-        Result = DTAPI_E_OUT_OF_MEM;
-    }
-    return Result;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-DtapiResult DtSdiTx_SetConversionThreads(DtTx* Tx, int Threads)
-{
-    DtSdiTx* Sdi = (DtSdiTx*)Tx;
-
-    return BandsFollow(Sdi, DtWork_SetThreads(&Sdi->Work, Threads));
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-DtapiResult DtSdiTx_SetConversionDispatch(DtTx* Tx, DtDispatchFunc Dispatch, void* User,
-                                          int Pieces)
-{
-    DtSdiTx* Sdi = (DtSdiTx*)Tx;
-
-    return BandsFollow(Sdi, DtWork_SetDispatch(&Sdi->Work, Dispatch, User, Pieces));
-}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //

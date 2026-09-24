@@ -18,6 +18,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"    // Allocation seam.
+#include "Core/DtWork.h"     // The pool the channel's work is divided over.
 #include "Device/DtDevice.h" // The device and its port capabilities.
 #include "DtAsiTx.h"         // The ASI side.
 #include "DtIoConfig.h"      // Validating I/O configurations.
@@ -50,6 +51,13 @@ struct DtOutpChannel
     DtDevice Device; // The channel's own handle to the device
     DtTxPort Port;
     DtTx* Tx; // The side that transmits, while attached
+
+    // The pool the channel's work is divided over, NULL for none, and the pieces asked
+    // for, 0 for as many as the signal calls for. Held from the setting until the next
+    // one or DtOutpChannel_Free, across attaching, detaching and a change of side, and
+    // given to every side the channel attaches.
+    DtWorkPool* WorkPool;
+    int WorkThreads;
 };
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -80,6 +88,37 @@ static void ReleaseAll(DtOutpChannel* Chan)
         Chan->Tx->Ops->Release(Chan->Tx);
     Chan->Tx = NULL;
     DtDevice_Release(&Chan->Device);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GiveWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Gives the side the channel's pool. A side short of memory for the pieces works in the
+// writing thread, which is not a reason to fail an attach, so the result is ignored.
+//
+static void GiveWork(DtOutpChannel* Chan)
+{
+    if (Chan->Tx->Ops->SetWorkPool != NULL)
+        Chan->Tx->Ops->SetWorkPool(Chan->Tx, Chan->WorkPool, Chan->WorkThreads);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Holds Pool for the channel and gives it to the side, with the lock taken and no call
+// between its start and its return. The pool is kept when the side is short of memory,
+// so that the next standard tries again.
+//
+static DtapiResult SetWorkPool(DtOutpChannel* Chan, DtWorkPool* Pool, int NumThreads)
+{
+    const DtTxBackend* Ops = Chan->Tx->Ops;
+    DtapiResult Result = Ops->SetWorkPool == NULL
+                             ? DTAPI_OK
+                             : Ops->SetWorkPool(Chan->Tx, Pool, NumThreads);
+
+    DtWorkPool_Hold(Pool);
+    DtWorkPool_Free(Chan->WorkPool);
+    Chan->WorkPool = Pool;
+    Chan->WorkThreads = NumThreads;
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -171,6 +210,7 @@ void DtOutpChannel_Free(DtOutpChannel* OutpChannel)
         return;
 
     Detach(OutpChannel, DT_INSTANT_DETACH, -1);
+    DtWorkPool_Free(OutpChannel->WorkPool);
     OsMutex_Destroy(OutpChannel->Lock);
     DtAlloc_Free(OutpChannel);
 }
@@ -230,6 +270,7 @@ static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
         Result = DtSdiTx_Attach(&Chan->Port, &Config, &Chan->Tx);
     if (Result != DTAPI_OK)
         return Result;
+    GiveWork(Chan);
 
     // A fail-safe port in fail-safe mode is reported, as a success.
     if ((Caps & DT_CAP_FAILSAFE) != 0)
@@ -309,7 +350,10 @@ DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.- DtOutpChannel_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetConversionThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A pool of the channel's own, which the channel then holds alone. When the threads
+// cannot be had, the channel works in the writing thread again.
 //
 DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel, int Threads)
 {
@@ -318,18 +362,28 @@ DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel, int T
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    // The threads are started and stopped here, and the working buffers with them, so a
-    // write that is between its start and its return would find them changing under it.
-    const DtTxBackend* Ops = OutpChannel->Tx->Ops;
-    DtapiResult Result = OutpChannel->Writing ? DTAPI_E_IN_USE
-                         : Ops->SetConversionThreads == NULL
-                             ? DTAPI_E_NOT_SUPPORTED
-                             : Ops->SetConversionThreads(OutpChannel->Tx, Threads);
+    // The side sizes its working buffers here, so a write between its start and its
+    // return would find them changing under it.
+    DtapiResult Result = Threads < 1            ? DTAPI_E_INVALID_ARG
+                         : OutpChannel->Writing ? DTAPI_E_IN_USE
+                                                : DTAPI_OK;
+    DtWorkPool* Pool = NULL;
+    if (Result == DTAPI_OK && Threads > 1)
+    {
+        Pool = DtWorkPool_Alloc();
+        Result =
+            Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, Threads);
+    }
+    if (Result == DTAPI_OK)
+        Result = SetWorkPool(OutpChannel, Pool, Threads > 1 ? Threads : 0);
+    else if (Result == DTAPI_E_OUT_OF_MEM)
+        SetWorkPool(OutpChannel, NULL, 0);
+    DtWorkPool_Free(Pool);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
 
-// .-.-.-.-.-.-.-.- DtOutpChannel_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetConversionDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtOutpChannel_SetConversionDispatch(DtOutpChannel* OutpChannel,
                                                 DtDispatchFunc Dispatch, void* User,
@@ -340,12 +394,19 @@ DtapiResult DtOutpChannel_SetConversionDispatch(DtOutpChannel* OutpChannel,
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    const DtTxBackend* Ops = OutpChannel->Tx->Ops;
-    DtapiResult Result =
-        OutpChannel->Writing ? DTAPI_E_IN_USE
-        : Ops->SetConversionDispatch == NULL
-            ? DTAPI_E_NOT_SUPPORTED
-            : Ops->SetConversionDispatch(OutpChannel->Tx, Dispatch, User, Pieces);
+    DtapiResult Result = Dispatch != NULL && Pieces < 1 ? DTAPI_E_INVALID_ARG
+                         : OutpChannel->Writing         ? DTAPI_E_IN_USE
+                                                        : DTAPI_OK;
+    DtWorkPool* Pool = NULL;
+    if (Result == DTAPI_OK && Dispatch != NULL)
+    {
+        Pool = DtWorkPool_Alloc();
+        Result = Pool == NULL ? DTAPI_E_OUT_OF_MEM
+                              : DtWorkPool_SetDispatch(Pool, Dispatch, User, Pieces);
+    }
+    if (Result == DTAPI_OK)
+        Result = SetWorkPool(OutpChannel, Pool, Dispatch != NULL ? Pieces : 0);
+    DtWorkPool_Free(Pool);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -421,7 +482,7 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetIoConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // -1 in every output first, the group checked, and then what DtDevice_GetIoConfig
 // checks and reads of the channel's port.
@@ -521,6 +582,8 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
                 ReleaseAll(OutpChannel);
                 OutpChannel->Attached = false;
             }
+            else
+                GiveWork(OutpChannel);
         }
         else
         {

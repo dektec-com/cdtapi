@@ -184,6 +184,32 @@ DT_TEST(LayoutOtherAlignments)
     DT_ASSERT_EQ(Layout.Stride, 345 + 1800);
 }
 
+// The pieces the library divides a frame into follow the standard: 4 for the 2160p
+// standards a 12G link carries, 2 for those a 6G link carries, and 1 for everything up
+// to 3G, SD included, whatever port it goes over.
+DT_TEST(NumWorkPiecesFollowTheStandard)
+{
+    static const struct
+    {
+        int VidStd;
+        int Pieces;
+    } Rows[] = {
+        {DTAPI_VIDSTD_2160P60, 4},    {DTAPI_VIDSTD_2160P59_94, 4},
+        {DTAPI_VIDSTD_2160P50, 4},    {DTAPI_VIDSTD_2160P30, 2},
+        {DTAPI_VIDSTD_2160P29_97, 2}, {DTAPI_VIDSTD_2160P25, 2},
+        {DTAPI_VIDSTD_2160P24, 2},    {DTAPI_VIDSTD_2160P23_98, 2},
+        {DTAPI_VIDSTD_1080P60, 1},    {DTAPI_VIDSTD_1080I50, 1},
+        {DTAPI_VIDSTD_720P60, 1},     {DTAPI_VIDSTD_525I59_94, 1},
+    };
+
+    for (size_t i = 0; i < sizeof(Rows) / sizeof(Rows[0]); i++)
+    {
+        DtSdiFrameLayout Layout;
+        DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, Rows[i].VidStd, 128));
+        DT_ASSERT_EQ(DtSdiFrame_NumWorkPieces(&Layout), Rows[i].Pieces);
+    }
+}
+
 DT_TEST(LayoutRefuses)
 {
     DtSdiFrameLayout Layout;
@@ -1676,7 +1702,8 @@ DT_TEST(Conv4kSetsAgree)
 }
 
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
-             DT_RUN(LayoutRefuses), DT_RUN(LayoutEveryStandard), DT_RUN(EncodedHeader),
+             DT_RUN(LayoutRefuses), DT_RUN(NumWorkPiecesFollowTheStandard),
+             DT_RUN(LayoutEveryStandard), DT_RUN(EncodedHeader),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
              DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
              DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),

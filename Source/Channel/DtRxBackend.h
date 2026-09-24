@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
+#include "Core/DtWork.h"     // The pool a frame's lines are converted over.
 #include "Device/DtDevice.h" // The device and its port capabilities.
 #include "DtPcieCmd.h"       // DtIoConfig and DtDrvObject.
 #include "cdtapi.h"          // Results and DtTimeOfDay.
@@ -85,13 +86,13 @@ struct DtRxBackend
     // DetectIoStd; NULL gives DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*DetectIoStd)(DtRx* Rx, int* Value, int* SubValue);
 
-    // Converts a frame's lines over Threads threads of the library's own, 1 for the
-    // reading thread alone, or over the caller's own threads by giving each piece to
-    // Dispatch. NULL where the side converts nothing to divide, which gives
-    // DTAPI_E_NOT_SUPPORTED.
-    DtapiResult (*SetConversionThreads)(DtRx* Rx, int Threads);
-    DtapiResult (*SetConversionDispatch)(DtRx* Rx, DtDispatchFunc Dispatch, void* User,
-                                         int Pieces);
+    // Divides the side's work over Pool, NULL for the reading thread alone, in NumThreads
+    // pieces, or with 0 in as many as the signal calls for. The channel holds the pool
+    // and gives it again to every side it attaches, and calls this with no read going on.
+    // DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces, after
+    // which the side works in the reading thread. NULL where the side has nothing to
+    // divide.
+    DtapiResult (*SetWorkPool)(DtRx* Rx, DtWorkPool* Pool, int NumThreads);
 
     // ReadFrame: CheckFrame checks a buffer of FrameSize bytes and gives the size of a
     // frame, TakeFrame delivers one when there is one. NULL gives DTAPI_E_NOT_SDI_MODE.

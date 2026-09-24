@@ -436,9 +436,10 @@ typedef void (*DtDispatchFunc)(void* User, DtWorkFunc Work, void* Context, int C
 
 // Sets how many threads the channel converts a frame's lines over. The default is 1: the
 // thread that calls DtInpChannel_ReadFrame does the whole frame itself. Any number above
-// that starts threads of the library's own, which live until the channel is detached,
-// the count or a dispatch is set again, or the channel switches to ASI, after which it
-// is 1 again. The frames are the same whatever the count.
+// that starts as many threads of the library's own, which the reading thread waits for.
+// They live until the channel is freed or the count or a dispatch is set again; detaching
+// the channel, and switching it to ASI and back, keep them. The frames are the same
+// whatever the count.
 //
 // How many to ask for:
 //
@@ -450,11 +451,13 @@ typedef void (*DtDispatchFunc)(void* User, DtWorkFunc Work, void* Context, int C
 //                   processor, so the fifth thread and the ones after it add little and
 //                   take cores from the rest of the program.
 //
+// A channel whose signal has no lines, such as ASI, takes the setting and keeps it for
+// when it has.
+//
 // Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a read has not returned, as
-// the threads and their buffers must not change under one; DTAPI_E_NOT_SUPPORTED on a
-// channel whose signal has no lines, such as ASI; and DTAPI_E_OUT_OF_MEM when the threads
-// or their buffers cannot be had, after which the channel converts in the reading thread
-// again.
+// the threads and their buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
+// the threads or their buffers cannot be had, after which the channel converts in the
+// reading thread again.
 CDTAPI_API DtapiResult DtInpChannel_SetConversionThreads(DtInpChannel* InpChannel,
                                                          int Threads);
 
@@ -681,10 +684,10 @@ CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
                                                   DtDevice* Device, int Port);
 
 // Sets how many threads the channel codes a frame's lines over. The default is 1: the
-// thread that writes does the whole frame itself. Any number above that starts threads
-// of the library's own, which live until the channel is detached, the count or a
-// dispatch is set again, or the channel switches to ASI, after which it is 1 again. The
-// signal is the same whatever the count.
+// thread that writes does the whole frame itself. Any number above that starts as many
+// threads of the library's own, which the writing thread waits for. They live until the
+// channel is freed or the count or a dispatch is set again; detaching the channel, and
+// switching it to ASI and back, keep them. The signal is the same whatever the count.
 // DtInpChannel_SetConversionThreads says how many threads to ask for; the same numbers
 // hold here.
 //
@@ -694,11 +697,13 @@ CDTAPI_API DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel,
 // frame at a time gets the same as WriteFrame, and a caller that writes a line at a time
 // gets no division, because there is nothing in that call to divide.
 //
+// A channel whose signal has no lines, such as ASI, takes the setting and keeps it for
+// when it has.
+//
 // Returns DTAPI_E_INVALID_ARG below 1; DTAPI_E_IN_USE while a write has not returned, as
-// the threads and their buffers must not change under one; DTAPI_E_NOT_SUPPORTED on a
-// channel whose signal has no lines, such as ASI; and DTAPI_E_OUT_OF_MEM when the threads
-// or their buffers cannot be had, after which the channel codes in the writing thread
-// again.
+// the threads and their buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
+// the threads or their buffers cannot be had, after which the channel codes in the
+// writing thread again.
 CDTAPI_API DtapiResult DtOutpChannel_SetConversionThreads(DtOutpChannel* OutpChannel,
                                                           int Threads);
 
