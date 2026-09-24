@@ -37,8 +37,7 @@
 // eight words of a raw 4K line: links 4, 2, 3 and 1.
 static const size_t g_LinkOrder[4] = {3, 1, 2, 0};
 
-// The symbols a step takes from each link, and the bytes they pack into.
-#define STEP_SYMBOLS 8
+// The bytes the eight symbols a step takes from each link pack into.
 #define STEP_BYTES 10
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unpack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

@@ -26,8 +26,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The size of the FIFO a load and a frame size are measured against.
-#define DT_FIFO_SIZE_MAX (48 * 1024 * 1024)
+// The FIFO size a load and a frame size are measured against, and what a port without a
+// ring reports as its maximum.
+#define DT_RX_FIFO_SIZE (48 * 1024 * 1024)
 
 // The bounds on the ring, the frames it asks room for, and the fewest frames a ring must
 // hold.
@@ -107,7 +108,7 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
     size_t Coded = DtSdiFrame_CodedSize(Layout);
     size_t Raw = DtSdiFrame_RawSize(Layout, 10);
-    size_t Wanted = (DT_RING_FRAMES + DT_FIFO_SIZE_MAX / Raw) * Coded;
+    size_t Wanted = (DT_RING_FRAMES + DT_RX_FIFO_SIZE / Raw) * Coded;
     size_t Size = DT_RING_MIN;
 
     while (Size < Wanted && Size < DT_RING_MAX)
@@ -542,7 +543,7 @@ static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
     if (Sdi->Ring.Base == NULL)
-        *MaxFifoSize = DT_FIFO_SIZE_MAX;
+        *MaxFifoSize = DT_RX_FIFO_SIZE;
     else
         *MaxFifoSize =
             (int)(FramesInRing(Sdi) * DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits));
@@ -598,7 +599,7 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
     *RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->SymbolBits);
     if ((size_t)FrameSize < *RawSize)
         return DTAPI_E_BUF_TOO_SMALL;
-    if (*RawSize > DT_FIFO_SIZE_MAX)
+    if (*RawSize > DT_RX_FIFO_SIZE)
         return DTAPI_E_INVALID_SIZE;
     return DTAPI_OK;
 }

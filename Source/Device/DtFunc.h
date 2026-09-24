@@ -40,7 +40,6 @@ typedef struct DtFuncObject
 
 typedef struct DtFuncInstance
 {
-    int PortIndex;
     DtVec Objects; // DtFuncObject, in the order the driver lists them
 } DtFuncInstance;
 

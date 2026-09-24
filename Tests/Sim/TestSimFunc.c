@@ -91,11 +91,11 @@ DT_TEST(ObjectsOfTheReceiverFunction)
 
     DtFuncInstance Func;
     DT_ASSERT_OK(DtFunc_Find(Drv, 5, "AF_ASISDIRX", "", &Func));
-    DT_ASSERT_EQ(Func.PortIndex, 5);
     DT_ASSERT_EQ(DtVec_Count(&Func.Objects), OBJECT_COUNT);
     for (size_t i = 0; i < OBJECT_COUNT && i < DtVec_Count(&Func.Objects); i++)
     {
         const DtFuncObject* Object = ObjectAt(&Func, i);
+        DT_ASSERT_EQ(Object->Ref.PortIndex, 5);
         int Uuid = 0;
 
         DT_ASSERT_STR(Object->Name, g_Objects[i].Name);

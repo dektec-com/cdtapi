@@ -84,7 +84,6 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
 {
     int Number = 0;
 
-    Instance->PortIndex = PortIndex;
     DtVec_Init(&Instance->Objects, sizeof(DtFuncObject));
 
     DtapiResult Result = FindInstance(Drv, PortIndex, Name, Role, &Number);

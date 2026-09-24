@@ -26,8 +26,8 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The typical and maximum FIFO size, reported for a port without a buffer.
-#define DT_FIFO_SIZE_TYP (48 * 1024 * 1024)
-#define DT_FIFO_SIZE_MAX (64 * 1024 * 1024)
+#define DT_TX_FIFO_SIZE_TYP (48 * 1024 * 1024)
+#define DT_TX_FIFO_SIZE_MAX (64 * 1024 * 1024)
 
 // The bounds on the DMA buffer, the frames it is sized for, and the fewest it must hold.
 #define DT_BUF_MIN (8 * 1024 * 1024)
@@ -103,7 +103,6 @@ typedef struct DtSdiTx
     uint8_t* Black;    // The coded lines of a black frame, line headers included
     uint8_t* LineBuf;  // A raw line's coded lines when they run across the end
     uint8_t* RawBuf;   // The raw bytes of a line not yet complete
-    size_t RawBufSize;
     uint16_t* Scratch; // The working symbols of a 4K line, one set a band
 
     // The threads a batch of 4K lines is coded over. Scratch holds DtWork_Pieces(&Work)
@@ -630,7 +629,7 @@ static DtapiResult ResetFifo(DtSdiTx* Sdi)
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
     size_t Raw = DtSdiFrame_RawSize(&Sdi->Layout, 10);
-    size_t Wanted = (DT_BUF_FRAMES + DT_FIFO_SIZE_TYP / Raw) * Sdi->CodedSize;
+    size_t Wanted = (DT_BUF_FRAMES + DT_TX_FIFO_SIZE_TYP / Raw) * Sdi->CodedSize;
     size_t Unit = 4096 * (size_t)(PrefetchSize > 0 ? PrefetchSize : 1);
     size_t Size = DT_BUF_MIN;
 
@@ -672,7 +671,6 @@ static void FreeBuffer(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->Scratch);
     Sdi->Black = Sdi->LineBuf = Sdi->RawBuf = NULL;
     Sdi->Scratch = NULL;
-    Sdi->RawBufSize = 0;
     memset(&Sdi->Layout, 0, sizeof(Sdi->Layout));
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     Sdi->CodedSize = Sdi->RawSize = 0;
@@ -761,7 +759,6 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         (uint8_t*)DtAlloc_Malloc((size_t)Layout.CodedLines * (size_t)Layout.TxStride);
     Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxLineBytes(&Layout));
     Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
-    Sdi->RawBufSize = Line;
     Sdi->ScratchSymbols = DtSdiFrame_ScratchSymbols(&Layout);
     Sdi->Scratch = AllocScratch(Sdi);
     if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
@@ -1501,7 +1498,7 @@ static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
 //
 static DtapiResult GetFifoSize(DtTx* Tx, int* FifoSize)
 {
-    *FifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_FIFO_SIZE_TYP);
+    *FifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_TX_FIFO_SIZE_TYP);
     return DTAPI_OK;
 }
 
@@ -1509,7 +1506,7 @@ static DtapiResult GetFifoSize(DtTx* Tx, int* FifoSize)
 //
 static DtapiResult GetMaxFifoSize(DtTx* Tx, int* MaxFifoSize)
 {
-    *MaxFifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_FIFO_SIZE_MAX);
+    *MaxFifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_TX_FIFO_SIZE_MAX);
     return DTAPI_OK;
 }
 
