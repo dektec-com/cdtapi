@@ -421,6 +421,54 @@ DtapiResult DtPcieCmd_GetPropertyStr(OsDrv* Drv, const char* Name, int PortIndex
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetIoConfigSteps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The steps of DtPcieCmd_GetIoConfigList with its buffers: the request, the command, and
+// the answers converted into Got, copied into Configs only when every one converted.
+//
+static DtapiResult GetIoConfigSteps(OsDrv* Drv, DtIoConfig* Configs, int Count,
+                                    DtIoctlIoConfigCmdGetIoConfigInput* In, size_t InSize,
+                                    DtIoctlIoConfigCmdGetIoConfigOutput* Out,
+                                    size_t OutSize, DtIoConfig* Got)
+{
+    DtapiResult Result = DTAPI_OK;
+
+    memset(In, 0, InSize);
+    memset(Out, 0, OutSize);
+    InitHeader(&In->m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
+    In->m_IoConfigCount = Count;
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        In->m_IoCfgId[i].m_PortIndex = Configs[i].Port - 1;
+        Result = DtIoConfig_GetName(Configs[i].Group, In->m_IoCfgId[i].m_Group,
+                                    sizeof(In->m_IoCfgId[i].m_Group));
+    }
+    if (Result != DTAPI_OK)
+        return Result;
+
+    Result =
+        DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, Out, OutSize);
+    if (!DT_SUCCEEDED(Result))
+        return Result;
+
+    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
+    {
+        DtIoctlIoConfigValue* Value = &Out->m_IoCfgValue[i];
+        Got[i] = Configs[i];
+        Result = CodeFromDriver(Value->m_Value, sizeof(Value->m_Value), &Got[i].Value);
+        if (Result == DTAPI_OK)
+            Result = CodeFromDriver(Value->m_SubValue, sizeof(Value->m_SubValue),
+                                    &Got[i].SubValue);
+        Got[i].ParXtra[0] = Value->m_ParXtra[0];
+        Got[i].ParXtra[1] = Value->m_ParXtra[1];
+        if (IsBuddyPort(&Got[i]))
+            Got[i].ParXtra[0] = Value->m_ParXtra[0] + 1;
+    }
+    if (Result == DTAPI_OK)
+        memcpy(Configs, Got, (size_t)Count * sizeof(DtIoConfig));
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_GetIoConfigList -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The request and the answer each end in an array of one element per configuration. The
@@ -441,48 +489,10 @@ DtapiResult DtPcieCmd_GetIoConfigList(OsDrv* Drv, DtIoConfig* Configs, int Count
     DtIoctlIoConfigCmdGetIoConfigOutput* Out =
         (DtIoctlIoConfigCmdGetIoConfigOutput*)DtAlloc_Malloc(OutSize);
     DtIoConfig* Got = (DtIoConfig*)DtAlloc_Malloc((size_t)Count * sizeof(DtIoConfig));
-    DtapiResult Result = DTAPI_OK;
-    if (In == NULL || Out == NULL || Got == NULL)
-    {
-        Result = DTAPI_E_OUT_OF_MEM;
-        goto Cleanup;
-    }
+    DtapiResult Result = DTAPI_E_OUT_OF_MEM;
+    if (In != NULL && Out != NULL && Got != NULL)
+        Result = GetIoConfigSteps(Drv, Configs, Count, In, InSize, Out, OutSize, Got);
 
-    memset(In, 0, InSize);
-    memset(Out, 0, OutSize);
-    InitHeader(&In->m_CmdHdr, DT_IOCONFIG_CMD_GET_IOCONFIG);
-    In->m_IoConfigCount = Count;
-    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
-    {
-        In->m_IoCfgId[i].m_PortIndex = Configs[i].Port - 1;
-        Result = DtIoConfig_GetName(Configs[i].Group, In->m_IoCfgId[i].m_Group,
-                                    sizeof(In->m_IoCfgId[i].m_Group));
-    }
-    if (Result != DTAPI_OK)
-        goto Cleanup;
-
-    Result =
-        DtPcieCmd_Issue(Drv, DT_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, Out, OutSize);
-    if (!DT_SUCCEEDED(Result))
-        goto Cleanup;
-
-    for (int i = 0; i < Count && Result == DTAPI_OK; i++)
-    {
-        DtIoctlIoConfigValue* Value = &Out->m_IoCfgValue[i];
-        Got[i] = Configs[i];
-        Result = CodeFromDriver(Value->m_Value, sizeof(Value->m_Value), &Got[i].Value);
-        if (Result == DTAPI_OK)
-            Result = CodeFromDriver(Value->m_SubValue, sizeof(Value->m_SubValue),
-                                    &Got[i].SubValue);
-        Got[i].ParXtra[0] = Value->m_ParXtra[0];
-        Got[i].ParXtra[1] = Value->m_ParXtra[1];
-        if (IsBuddyPort(&Got[i]))
-            Got[i].ParXtra[0] = Value->m_ParXtra[0] + 1;
-    }
-    if (Result == DTAPI_OK)
-        memcpy(Configs, Got, (size_t)Count * sizeof(DtIoConfig));
-
-Cleanup:
     DtAlloc_Free(In);
     DtAlloc_Free(Out);
     DtAlloc_Free(Got);
