@@ -549,7 +549,7 @@ DT_TEST(FullRingDropsAndWraps)
     FINISH(Fix);
 }
 
-// A refused command, and the channel's status is its receiver's without the carrier.
+// A refused command, and the channel's status is its receiver's, carrier included.
 DT_TEST(RefusesAndReportsStatus)
 {
     Fixture Fix;
@@ -573,7 +573,7 @@ DT_TEST(RefusesAndReportsStatus)
     SimDtPcie_SetSdiSignal(PORT, &Signal);
     DtSdiRxStatus Status;
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetSdiStatus(Fix.Drv, Fix.Ch, &Status));
-    DT_ASSERT(!Status.CarrierDetect);
+    DT_ASSERT(Status.CarrierDetect);
     DT_ASSERT(Status.SdiLock);
     DT_ASSERT(Status.Valid);
     DT_ASSERT_EQ(Status.NumLinesF1, 312);

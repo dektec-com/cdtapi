@@ -731,7 +731,8 @@ static int SdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, size_t InSize, void*
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChSdiRxCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The receive channel of the port at PortIndex. Its status is the receiver's, which the
-// emulator keeps here, with the carrier left 0; everything else is the channel's own.
+// emulator keeps here, as the driver answers with its receiver's; everything else is the
+// channel's own.
 //
 static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
                       size_t InSize, void* Out, size_t* OutSize, uint32_t* DrvStatus)
@@ -747,10 +748,7 @@ static int ChSdiRxCmd(SimDevice* Dev, int PortIndex, int Cmd, const void* In,
         int Outcome = SdiRxCmd(Dev, PortIndex, DT_SDIRX_CMD_GET_SDI_STATUS2, InSize, Out,
                                &Size, DrvStatus);
         if (Outcome == OS_IOCTL_OK)
-        {
-            ((DtIoctlChSdiRxCmdGetSdiStatusOutput*)Out)->m_CarrierDetect = 0;
             *OutSize = Size;
-        }
         return Outcome;
     }
 

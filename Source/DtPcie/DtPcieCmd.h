@@ -270,7 +270,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtDrvObject Object,
                                       DtChSdiRxProps* Props);
 
 // Reads the status of the channel's input, as DtPcieCmd_SdiRxGetStatus does for the
-// receiver, except that CarrierDetect is always false: the answer has no carrier.
+// receiver, whose status the driver answers with.
 DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
                                           DtSdiRxStatus* Status);
 

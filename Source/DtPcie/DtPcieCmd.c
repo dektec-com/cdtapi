@@ -855,6 +855,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
     if (!DT_SUCCEEDED(Result))
         return Result;
 
+    Status->CarrierDetect = Out.m_CarrierDetect != 0;
     Status->SdiLock = Out.m_SdiLock != 0;
     Status->LineLock = Out.m_LineLock != 0;
     Status->Valid = Out.m_Valid != 0;
