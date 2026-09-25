@@ -12,6 +12,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <math.h> // NAN and INFINITY.
 #include <string.h>
 
 // CDTAPI includes
@@ -519,9 +520,8 @@ DT_TEST(DeviceSetsAnOffset)
     DT_ASSERT_OK(DtDevice_GetTxClockOffset(Device, 0, &OffsetPpm));
     DT_ASSERT(OffsetPpm == 0.000002);
 
-    double Zero = 0.0;
-    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, Zero / Zero), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, 1.0 / Zero), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, NAN), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, INFINITY), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, 3000.0), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, -1, 0.0), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_GetTxClockOffset(Device, -1, &OffsetPpm), DTAPI_E_INVALID_ARG);
