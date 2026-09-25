@@ -54,6 +54,16 @@ Where a call had no extra arguments, pass `-1, -1`; a single configuration of th
 device is a `DtIoConfig` of `{Port, Group, Value, SubValue, {-1, -1}}` and a count of 1.
 The compiler finds every call that is left.
 
+## The flags of `DtHwFuncDesc` are `bool`
+
+`IsSdi`, `IsAvFifo`, `IsInput`, `IsOutput` and `IsAsi` are `bool` rather than `int`. A
+program that reads them compiles as it did; one built against the wrapper's header
+must be built again, as the descriptor is smaller.
+
+`IsSdi` and `IsAsi` say that the port supports SDI or ASI input or output. A port that
+can be neither an input nor an output, such as the genlock reference ports of a
+DTA-2178, is neither, where the wrapper reported the SDI rates such a port has.
+
 ## `ENABLE_AVFIFO` is gone
 
 The AV FIFO is always built and always declared. Remove the CMake option and the
@@ -123,7 +133,7 @@ definitions. Include one or the other.
 
 ## What the wrapper did not have
 
-CDTAPI declares 35 functions besides those of the wrapper:
+CDTAPI declares 41 functions besides those of the wrapper:
 
 | Function | Does |
 |---|---|
@@ -133,6 +143,9 @@ CDTAPI declares 35 functions besides those of the wrapper:
 | `DtOutpChannel_WriteFrame` | Writes one whole frame, with a time-out |
 | `DtDevice_WaitForSignalTimeout` | `DtDevice_WaitForSignal` with a time limit and a result, for a program that must carry on when there is no signal |
 | `DtDevice_GetIoConfig`, `DtInpChannel_GetIoConfig`, `DtOutpChannel_GetIoConfig` | Read a port's I/O configuration |
+| `DtDevice_GetGenlockState`, `DtDevice_GetTimeOfDayState` | The state of the device's genlock and of its time-of-day clock |
+| `DtDevice_GetTxClockProperties`, `DtDevice_GetTxClockCount` | The device's transmit clocks, and a count of one's periods |
+| `DtDevice_GetTxClockOffset`, `DtDevice_SetTxClockOffset` | Read or set a transmit clock's offset from its centre frequency |
 | `DtWorkPool_Alloc`, `DtWorkPool_Free`, `DtWorkPool_Freep` | A pool of threads that channels share, for the work they divide |
 | `DtWorkPool_StartThreads`, `DtWorkPool_SetDispatch` | Run a pool's work on threads of the library's own, or on the program's pool |
 | `DtWorkPool_ExpectThreads`, `DtWorkPool_Join`, `DtWorkPool_Dismiss`, `DtWorkPool_DismissAll` | Let the program's own threads join a pool, and send them back one by one or all at once |
