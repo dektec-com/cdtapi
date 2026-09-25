@@ -462,15 +462,16 @@ CDTAPI_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Parallel work +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // Some of a channel's work divides into pieces that do not depend on one another, so it
-// can run on more than one thread: converting a frame between the raw frame a program
-// holds and the coded lines the card carries is the first. A DtWorkerPool is where those
-// pieces run, and any number of channels may share one.
+// can run on more than one thread: encoding the raw frame a program holds into the coded
+// lines the card carries, and decoding one from them, are the first. Such a unit of work
+// is a job, of a number of pieces. A DtWorkerPool is where jobs run, and any number of
+// channels may share one.
 //
-// A pool runs the pieces on threads of the library's own, which DtWorkerPool_StartThreads
-// asks for; hands them to a program that has a pool of threads of its own, through
-// DtWorkerPool_SetDispatch; or takes the program's own threads that join it, which
-// DtWorkerPool_ExpectThreads sets up. A channel given no pool does all its work in the
-// thread that calls it, which is the default and what costs nothing.
+// A pool runs a job's pieces on threads of the library's own, which
+// DtWorkerPool_StartThreads asks for; hands them to a program that has a pool of threads
+// of its own, through DtWorkerPool_SetDispatch; or takes the program's own threads that
+// join it, which DtWorkerPool_ExpectThreads sets up. A channel given no pool does all its
+// work in the thread that calls it, which is the default and what costs nothing.
 //
 // Whichever it is, the bytes are the same.
 //
@@ -491,7 +492,7 @@ typedef void (*DtJobFunc)(void* Context, int PieceIndex, int NumPieces);
 typedef void (*DtJobDispatchFunc)(void* User, DtJobFunc Job, void* Context,
                                   int NumPieces);
 
-// The threads a channel's work runs on. A pool is reference counted: the program holds
+// Where a channel's jobs run. A pool is reference counted: the program holds
 // it from DtWorkerPool_Alloc until DtWorkerPool_Free, every channel given it holds it
 // too, and it goes when the last of them lets go. So a program may free its pool as soon
 // as it has given it to its channels.
@@ -586,10 +587,11 @@ CDTAPI_API DtapiResult DtWorkerPool_SetDispatch(DtWorkerPool* Pool,
 // How many to start: as many pieces as the channels that share the pool run at once,
 // which DtInpChannel_SetWorkerPool says for one channel, and no more than the cores the
 // rest of the program can spare. More threads than that add nothing: past four on one
-// frame the conversion waits on memory rather than on the processor. Fewer than two
-// divide nothing, so a pool refuses them: a job of one piece runs in the thread that
-// asks for it, which waits for it anyway, and a single thread of the pool's would never
-// be woken. The same holds for DtWorkerPool_SetDispatch and DtWorkerPool_ExpectThreads.
+// frame the encoding or decoding waits on memory rather than on the processor. Fewer
+// than two divide nothing, so a pool refuses them: a job of one piece runs in the thread
+// that asks for it, which waits for it anyway, and a single thread of the pool's would
+// never be woken. The same holds for DtWorkerPool_SetDispatch and
+// DtWorkerPool_ExpectThreads.
 //
 // Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 2; DTAPI_E_IN_USE
 // while a channel with a signal to divide holds the pool, as it has sized its buffers
@@ -801,7 +803,7 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 //                        50 or 60 frames a second is more than one slow core has to
 //                        spare.
 //   2160p24 to 2160p30   2. The same frame, half as often.
-//   up to 3G-SDI         1. The conversion is a small part of a frame period even on a
+//   up to 3G-SDI         1. The decoding is a small part of a frame period even on a
 //                        slow core, so dividing it costs more than it saves; a pool
 //                        given to such a channel with 0 goes unused.
 //
@@ -812,7 +814,7 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 // Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
 // DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a read has
 // not returned, as the buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
-// the buffers for those pieces cannot be allocated, after which the channel converts in
+// the buffers for those pieces cannot be allocated, after which the channel decodes in
 // the reading thread until its standard changes or the pool is set again.
 CDTAPI_API DtapiResult DtInpChannel_SetWorkerPool(DtInpChannel* InpChannel,
                                                   DtWorkerPool* Pool, int NumThreads);
@@ -1004,7 +1006,7 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
 // Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
 // DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a write
 // has not returned; and DTAPI_E_OUT_OF_MEM when the buffers for those pieces cannot be
-// allocated, after which the channel codes in the writing thread until its standard
+// allocated, after which the channel encodes in the writing thread until its standard
 // changes or the pool is set again.
 CDTAPI_API DtapiResult DtOutpChannel_SetWorkerPool(DtOutpChannel* OutpChannel,
                                                    DtWorkerPool* Pool, int NumThreads);
