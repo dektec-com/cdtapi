@@ -31,9 +31,9 @@ typedef uint32_t UInt;
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Fills a header with values that differ per field, as version 2 when IsVersion2.
-static DtEthIpFields Values(bool IsVersion2)
+static DtEthIpHeaderFields Values(bool IsVersion2)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.IsVersion2 = IsVersion2;
@@ -56,7 +56,7 @@ static DtEthIpFields Values(bool IsVersion2)
 }
 
 // The same values through the SDK's bit fields.
-static void FillSdk(const DtEthIpFields* Values, DtEthIp* EthIp)
+static void FillSdk(const DtEthIpHeaderFields* Values, DtEthIp* EthIp)
 {
     memset(EthIp, 0, sizeof(*EthIp));
     if (Values->IsVersion2)
@@ -97,7 +97,7 @@ DT_TEST(SizesAgree)
 
 DT_TEST(Version1BytesAgree)
 {
-    DtEthIpFields Header = Values(false);
+    DtEthIpHeaderFields Header = Values(false);
     DtEthIp Sdk;
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
 
@@ -108,7 +108,7 @@ DT_TEST(Version1BytesAgree)
 
 DT_TEST(Version2BytesAgree)
 {
-    DtEthIpFields Header = Values(true);
+    DtEthIpHeaderFields Header = Values(true);
     DtEthIp Sdk;
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
 

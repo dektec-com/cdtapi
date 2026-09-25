@@ -58,7 +58,9 @@
 #define DT_ETHIP_MAX_FRAME_V1 (255 * DT_ETHIP_WORD_SIZE - DT_ETHIP_HEADER_SIZE)
 #define DT_ETHIP_MAX_FRAME_V2 (2047 * DT_ETHIP_WORD_SIZE - DT_ETHIP_HEADER_SIZE)
 
-typedef struct DtEthIpFields
+// The fields of the driver's DtEthIpHeader, unpacked from its words and bits; the ABI
+// keeps the plain name (CONTRIBUTING, rule 12).
+typedef struct DtEthIpHeaderFields
 {
     bool IsVersion2;     // Version 2
     int NumWords;        // The packet's size in 64-bit words
@@ -76,7 +78,7 @@ typedef struct DtEthIpFields
     int Fingerprint;
     uint32_t Seconds;     // Time of day
     uint32_t Nanoseconds; // Time of day, 0 to 999,999,999
-} DtEthIpFields;
+} DtEthIpHeaderFields;
 
 // The words a packet with a frame of FrameSize bytes takes, padded to Alignment bytes, a
 // multiple of 8.
@@ -88,9 +90,9 @@ int DtEthIp_HeaderSize(int PacketType);
 // Writes Header into the DT_ETHIP_HEADER_SIZE bytes at Bytes. Fields wider than their
 // bit field are cut to it. Version 1 carries FrameSize as it is; version 2's padding is
 // derived from NumWords and FrameSize.
-void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes);
+void DtEthIp_Write(const DtEthIpHeaderFields* Header, uint8_t* Bytes);
 
 // Reads the DT_ETHIP_HEADER_SIZE bytes at Bytes into *Header. False, with *Header filled
 // as far as it could be read, for an unknown sync word or a frame that does not fit the
 // packet's words.
-bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpFields* Header);
+bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpHeaderFields* Header);

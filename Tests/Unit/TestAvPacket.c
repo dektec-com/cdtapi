@@ -69,7 +69,7 @@ DT_TEST(Ipv4PacketBytes)
         DT_ASSERT_EQ(Packet[i], 0);
     DT_ASSERT_EQ(Packet[160], 0xAA);
 
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
     DT_ASSERT(!Header.IsVersion2);
     DT_ASSERT_EQ(Header.NumWords, 20);
@@ -127,7 +127,7 @@ DT_TEST(Ipv6VlanHeaderV2PacketBytes)
     DT_ASSERT_EQ(DtAvPacket_Get16(Packet + 18 + 58 + 4), 1008);
     DT_ASSERT_EQ(Net.IpIdentification, 0x1234);
 
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
     DT_ASSERT(Header.IsVersion2);
     DT_ASSERT_EQ(Header.NumWords * 8, Size);
@@ -151,7 +151,7 @@ DT_TEST(ParsingReceivedPackets)
     DT_ASSERT_EQ(Rx.SubStream, 0);
 
     // A frame that ends in the Ethernet checksum, on substream 2.
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
     DtEthIp_Read(Packet, &Header);
     Header.FrameSize += 4;
     Header.NumWords++;

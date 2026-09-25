@@ -26,9 +26,9 @@ static const uint8_t g_V1[DT_ETHIP_HEADER_SIZE] = {
     0x00, 0x00,                                     // Alignment
 };
 
-static DtEthIpFields V1Header(void)
+static DtEthIpHeaderFields V1Header(void)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.NumWords = 158;
@@ -48,9 +48,9 @@ static DtEthIpFields V1Header(void)
 // 14 bytes of padding, every flag but the valid time stamp set, fingerprint 2Ah.
 static const uint8_t g_V2[8] = {0xEF, 0xEF, 0xEC, 0x73, 0x58, 0x0D, 0xE4, 0xA9};
 
-static DtEthIpFields V2Header(void)
+static DtEthIpHeaderFields V2Header(void)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.IsVersion2 = true;
@@ -91,7 +91,7 @@ DT_TEST(HeaderSizes)
 DT_TEST(WritesVersion1)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Header = V1Header();
+    DtEthIpHeaderFields Header = V1Header();
 
     memset(Bytes, 0x55, sizeof(Bytes));
     DtEthIp_Write(&Header, Bytes);
@@ -100,8 +100,8 @@ DT_TEST(WritesVersion1)
 
 DT_TEST(ReadsVersion1)
 {
-    DtEthIpFields Expected = V1Header();
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Expected = V1Header();
+    DtEthIpHeaderFields Header;
 
     DT_ASSERT(DtEthIp_Read(g_V1, &Header));
     DT_ASSERT(memcmp(&Header, &Expected, sizeof(Header)) == 0);
@@ -110,8 +110,8 @@ DT_TEST(ReadsVersion1)
 DT_TEST(WritesAndReadsVersion2)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Expected = V2Header();
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Expected = V2Header();
+    DtEthIpHeaderFields Header;
 
     DtEthIp_Write(&Expected, Bytes);
     DT_ASSERT(memcmp(Bytes, g_V2, sizeof(g_V2)) == 0);
@@ -124,7 +124,7 @@ DT_TEST(WritesAndReadsVersion2)
 DT_TEST(FieldsAreCutAndKeptApart)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.NumWords = 255;
@@ -162,7 +162,7 @@ DT_TEST(FieldsAreCutAndKeptApart)
 DT_TEST(TimestampPacketHasNoAlignment)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.IsVersion2 = true;
@@ -177,7 +177,7 @@ DT_TEST(TimestampPacketHasNoAlignment)
 DT_TEST(RefusesUnknownSyncWord)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memcpy(Bytes, g_V1, sizeof(Bytes));
     Bytes[0] = 0xEF;
@@ -189,7 +189,7 @@ DT_TEST(RefusesUnknownSyncWord)
 DT_TEST(RefusesAFrameLargerThanItsWords)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-    DtEthIpFields Header = V1Header();
+    DtEthIpHeaderFields Header = V1Header();
 
     Header.FrameSize = 158 * 8 - 18 + 1;
     DtEthIp_Write(&Header, Bytes);

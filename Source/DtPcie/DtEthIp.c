@@ -79,7 +79,7 @@ int DtEthIp_HeaderSize(int PacketType)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtEthIp_Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
+void DtEthIp_Write(const DtEthIpHeaderFields* Header, uint8_t* Bytes)
 {
     uint64_t Word = 0;
 
@@ -120,7 +120,7 @@ void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtEthIp_Read -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpFields* Header)
+bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpHeaderFields* Header)
 {
     uint64_t Word = ReadLe64(Bytes);
     uint64_t Tod = ReadLe64(Bytes + 8);

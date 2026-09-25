@@ -249,7 +249,7 @@ DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Conte
     uint32_t Load = (WriteOffset + Pipe->BufferSize - Offset) % Pipe->BufferSize;
     while (Load >= DT_ETHIP_HEADER_SIZE)
     {
-        DtEthIpFields Header;
+        DtEthIpHeaderFields Header;
         bool Valid =
             DtEthIp_Read(PacketInOnePiece(Reader, Offset, DT_ETHIP_HEADER_SIZE), &Header);
         uint32_t PacketSize = (uint32_t)Header.NumWords * DT_ETHIP_WORD_SIZE;

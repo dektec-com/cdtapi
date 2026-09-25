@@ -511,7 +511,7 @@ static bool SwPipeTakes(const SimPipe* Pipe, const SimFrameInfo* Info)
 static uint8_t* BuildPacket(const uint8_t* Frame, size_t Size, const SimFrameInfo* Info,
                             int SubStream, uint64_t TimeNs, size_t* PacketSize)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.FrameSize = (int)Size;
@@ -605,7 +605,7 @@ static void Arrive(SimQueuedFrame* Frame)
 //
 static void Send(SimQueuedFrame* Packet)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     DtEthIp_Read(Packet->Data, &Header);
     int HeaderSize = DtEthIp_HeaderSize(Header.PacketType);
@@ -635,7 +635,7 @@ static void Send(SimQueuedFrame* Packet)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static uint64_t TodOf(const DtEthIpFields* Header)
+static uint64_t TodOf(const DtEthIpHeaderFields* Header)
 {
     return (uint64_t)Header->Seconds * 1000000000u + Header->Nanoseconds;
 }
@@ -646,7 +646,7 @@ static uint64_t TodOf(const DtEthIpFields* Header)
 // holds no whole packet; a header that does not check is counted, and the pipe's data
 // skipped.
 //
-static bool ReadHeadPacket(SimPipe* Pipe, DtEthIpFields* Header)
+static bool ReadHeadPacket(SimPipe* Pipe, DtEthIpHeaderFields* Header)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
     size_t Available = Load(Pipe);
@@ -675,7 +675,7 @@ static bool IsFarFrom(uint64_t A, uint64_t B)
 // Moves the packet at a transmit pipe's read offset into the scheduler at NowNs, to be
 // sent at its time or at once. False when the scheduler has no room.
 //
-static bool Schedule(SimPipe* Pipe, const DtEthIpFields* Header, uint64_t NowNs)
+static bool Schedule(SimPipe* Pipe, const DtEthIpHeaderFields* Header, uint64_t NowNs)
 {
     size_t Size = (size_t)Header->NumWords * DT_ETHIP_WORD_SIZE;
     uint64_t Tod = TodOf(Header);
@@ -713,7 +713,7 @@ static void TakeHwPackets(uint64_t NowNs)
     for (int i = 0; i < SIM_DTA2110_HW_PIPES; i++)
     {
         SimPipe* Pipe = &g_Nw.HwPipes[i];
-        DtEthIpFields Header;
+        DtEthIpHeaderFields Header;
 
         while (CanTransmit(Pipe) && ReadHeadPacket(Pipe, &Header))
         {
@@ -766,12 +766,12 @@ static void RunInterval(uint64_t TickNs)
     {
         int Earliest = -1;
         uint64_t EarliestTod = 0;
-        DtEthIpFields EarliestHeader = {0};
+        DtEthIpHeaderFields EarliestHeader = {0};
 
         for (int i = 0; i < NumCandidates; i++)
         {
             SimPipe* Pipe = g_Nw.DueSwTxPipes[i];
-            DtEthIpFields Header = {0};
+            DtEthIpHeaderFields Header = {0};
             uint64_t Tod = 0;
             bool Due = CanTransmit(Pipe) && ReadHeadPacket(Pipe, &Header);
 
@@ -853,7 +853,7 @@ static uint64_t NextWorkNs(uint64_t TickNs)
     {
         SimPipe* Pipe = g_Nw.SwPipes[Id];
         uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
-        DtEthIpFields Header;
+        DtEthIpHeaderFields Header;
 
         if (!CanTransmit(Pipe) || Load(Pipe) < DT_ETHIP_HEADER_SIZE)
             continue;

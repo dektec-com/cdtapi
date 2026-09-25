@@ -605,7 +605,7 @@ static void Make(Maker* M, int Row, int Offset, int Length, bool Marker, uint32_
     int FrameSize = 14 + 20 + Udp;
     memset(P, 0, sizeof(M->Packet));
 
-    DtEthIpFields H;
+    DtEthIpHeaderFields H;
     memset(&H, 0, sizeof(H));
     H.NumWords = DtEthIp_NumWords(FrameSize, 8);
     H.FrameSize = FrameSize;

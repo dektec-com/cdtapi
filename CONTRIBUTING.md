@@ -34,6 +34,11 @@
     that a function is found without searching; types come first, where the functions
     need them. A new function goes in its alphabetical place in any file, header or
     implementation.
+12. **A decoded form of a driver structure is named after its block and content**, as
+    `DtSdiRxStatus` and `DtBurstFifoProps` are. Where that name would be the driver's
+    own, the vendored ABI under `Source/DtPcie/Abi` keeps it, and ours is the full ABI
+    name with `Fields` after it: `DtEthIpHeaderFields` holds the fields of the driver's
+    `DtEthIpHeader`, unpacked.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,

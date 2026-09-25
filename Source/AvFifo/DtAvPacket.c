@@ -120,7 +120,7 @@ int DtAvNet_WriteHeaders(DtAvNet* Net, uint8_t* Packet, int PayloadSize,
     DtAvPacket_Put16(0, Udp + 6);
 
     // The packet header, and the padding.
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
     memset(&Header, 0, sizeof(Header));
     Header.IsVersion2 = Net->IsVersion2;
     Header.NumWords = DtEthIp_NumWords(FrameSize, Net->Alignment);
@@ -146,7 +146,7 @@ int DtAvNet_WriteHeaders(DtAvNet* Net, uint8_t* Packet, int PayloadSize,
 //
 bool DtAvRxPacket_Parse(const uint8_t* Packet, int Size, DtAvRxPacket* Rx)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(Rx, 0, sizeof(*Rx));
     if (Size < DT_ETHIP_HEADER_SIZE || !DtEthIp_Read(Packet, &Header))

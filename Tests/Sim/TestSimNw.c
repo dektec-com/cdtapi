@@ -140,7 +140,7 @@ static size_t MakeFrame(uint8_t* Frame, uint16_t SrcPort, uint16_t DstPort, int 
 static size_t PutPacket(OsDmaBuffer* Buf, size_t Offset, const uint8_t* Frame,
                         size_t Size, uint64_t TodNs)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     memset(&Header, 0, sizeof(Header));
     Header.NumWords = DtEthIp_NumWords((int)Size, 8);
@@ -810,7 +810,7 @@ DT_TEST(BadHeaderIsSkipped)
 static size_t CheckPacket(const OsDmaBuffer* Buf, size_t Offset, const uint8_t* Frame,
                           size_t Size, uint64_t TodNs, int SubStream)
 {
-    DtEthIpFields Header;
+    DtEthIpHeaderFields Header;
 
     if (!DtEthIp_Read(Buf->Data + Offset, &Header) || Header.IsVersion2 ||
         Header.FrameSize != (int)Size ||
