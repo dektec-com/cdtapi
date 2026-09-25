@@ -349,11 +349,8 @@ CDTAPI_API const char* GetLastException(void);
 
 typedef struct AvFifo_RxFifoC AvFifo_RxFifo;
 
-// Makes a receive FIFO, or returns NULL when there is no memory; frees it, detaching it
-// first; and frees it and sets *Fifo to NULL.
+// Makes a receive FIFO, or returns NULL when there is no memory.
 CDTAPI_API AvFifo_RxFifo* AvFifo_RxFifo_Alloc(void);
-CDTAPI_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
-CDTAPI_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
 
 // Attaches the FIFO to a port, counted from 1, with HwOrSwPipe_Auto or a pipe
 // preference. The FIFO opens its own handle to the device.
@@ -362,18 +359,8 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_Attach(AvFifo_RxFifo* Fifo, const DtDevice*
 CDTAPI_API DtapiResult AvFifo_RxFifo_Attach2(AvFifo_RxFifo* Fifo, const DtDevice* Device,
                                              int Port, HwOrSwPipe Pipe);
 
-// Stops and detaches the FIFO. Frames the application holds stay valid until Free.
-CDTAPI_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
-
 // Returns the frames in the FIFO to the pool.
 CDTAPI_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
-
-// Starts receiving: checks the network, opens a pipe, programs its filter and joins a
-// multicast group. The FIFO starts empty and the statistics from zero.
-CDTAPI_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
-
-// Stops receiving and gives up the pipe; the frames in the FIFO stay until Start.
-CDTAPI_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
 
 // Configures the FIFO for audio, with a FIFO of 400 frames unless its size was set, or
 // for video.
@@ -382,12 +369,23 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo,
 CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo,
                                                     const St2110_RxConfigVideo* Config);
 
-// Sets the stream to receive. The sources are copied; at most three, of one address.
-CDTAPI_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
-                                               const AvFifo_IpPars* IpPars);
+// Stops and detaches the FIFO. Frames the application holds stay valid until Free.
+CDTAPI_API DtapiResult AvFifo_RxFifo_Detach(AvFifo_RxFifo* Fifo);
+
+// Frees the FIFO, detaching it first.
+CDTAPI_API void AvFifo_RxFifo_Free(AvFifo_RxFifo* Fifo);
+
+// Frees *Fifo as AvFifo_RxFifo_Free does and sets *Fifo to NULL.
+CDTAPI_API void AvFifo_RxFifo_Freep(AvFifo_RxFifo** Fifo);
 
 // The frames in the FIFO, 0 for a NULL FIFO.
 CDTAPI_API int AvFifo_RxFifo_GetFifoLoad(const AvFifo_RxFifo* Fifo);
+
+// The most frames the FIFO holds: 4, or 400 once configured for audio, unless set.
+CDTAPI_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
+
+// What the FIFO counted since Start.
+CDTAPI_API RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo);
 
 // Takes the oldest frame, or returns NULL when there is none. The frame is the
 // application's until it returns it to the pool.
@@ -397,14 +395,20 @@ CDTAPI_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
                                                      AvFifo_Frame* Frame);
 
-// The most frames the FIFO holds: 4, or 400 once configured for audio, unless set; and
-// setting it while stopped. A size below 1, a started FIFO or a lack of memory keeps the
-// size and sets GetLastException's text.
-CDTAPI_API int AvFifo_RxFifo_GetMaxSize(const AvFifo_RxFifo* Fifo);
+// Sets the stream to receive. The sources are copied; at most three, of one address.
+CDTAPI_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
+                                               const AvFifo_IpPars* IpPars);
+
+// Sets the most frames the FIFO holds, while stopped. A size below 1, a started FIFO or
+// a lack of memory keeps the size and sets GetLastException's text.
 CDTAPI_API void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size);
 
-// What the FIFO counted since Start.
-CDTAPI_API RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo);
+// Starts receiving: checks the network, opens a pipe, programs its filter and joins a
+// multicast group. The FIFO starts empty and the statistics from zero.
+CDTAPI_API DtapiResult AvFifo_RxFifo_Start(AvFifo_RxFifo* Fifo);
+
+// Stops receiving and gives up the pipe; the frames in the FIFO stay until Start.
+CDTAPI_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
 
 // Whether the FIFO receives through a hardware pipe: known once started, and before for
 // HwOrSwPipe_ForceHwPipe and HwOrSwPipe_UseSwPipe.
@@ -413,18 +417,48 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
+// A transmit FIFO's function without a comment of its own does as the receive FIFO's
+// of the same name.
 typedef struct AvFifo_TxFifoC AvFifo_TxFifo;
 
-// As for the receive FIFO.
 CDTAPI_API AvFifo_TxFifo* AvFifo_TxFifo_Alloc(void);
-CDTAPI_API void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo);
-CDTAPI_API void AvFifo_TxFifo_Freep(AvFifo_TxFifo** Fifo);
+
 CDTAPI_API DtapiResult AvFifo_TxFifo_Attach(AvFifo_TxFifo* Fifo, const DtDevice* Device,
                                             int Port);
 CDTAPI_API DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo, const DtDevice* Device,
                                              int Port, HwOrSwPipe Pipe);
-CDTAPI_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
+
 CDTAPI_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
+
+// As the receive FIFO's; the transmit FIFO also checks the configuration at once,
+// DTAPI_E_INVALID_ARG when it does not hold.
+CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
+                                                    const St2110_TxConfigAudio* Config);
+CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
+                                                    const St2110_TxConfigVideo* Config);
+
+CDTAPI_API DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo);
+
+CDTAPI_API void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo);
+
+CDTAPI_API void AvFifo_TxFifo_Freep(AvFifo_TxFifo** Fifo);
+
+CDTAPI_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
+
+// A frame of Size bytes to fill, or NULL before Configure or without memory.
+CDTAPI_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
+
+CDTAPI_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
+
+// The frames sent since Start.
+CDTAPI_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
+
+// Sets the stream to send: destination, RTP payload type from 0 to 127 and port from 0
+// to 65535. The transport protocol is not used: the streams are RTP, as in DTAPI.
+CDTAPI_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
+                                               const AvFifo_IpPars* IpPars);
+
+CDTAPI_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
 
 // Starts transmitting: checks the network, resolves the destination's MAC address and
 // opens a pipe. The FIFO starts empty and the statistics from zero. The card sends each
@@ -436,33 +470,12 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
 // FIFO stay until Start.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
 
-// As for the receive FIFO; the transmit FIFO also checks the configuration at once,
-// DTAPI_E_INVALID_ARG when it does not hold.
-CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
-                                                    const St2110_TxConfigAudio* Config);
-CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
-                                                    const St2110_TxConfigVideo* Config);
-
-// Sets the stream to send: destination, RTP payload type from 0 to 127 and port from 0
-// to 65535. The transport protocol is not used: the streams are RTP, as in DTAPI.
-CDTAPI_API DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo,
-                                               const AvFifo_IpPars* IpPars);
-
-CDTAPI_API int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo);
+CDTAPI_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
+                                                int* UsesHwPipe);
 
 // Queues a frame from GetFromMemPool for sending; once sent, or found unsendable, it
 // returns to the pool. The frame's valid bytes must be those of the configuration.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame);
-
-// A frame of Size bytes to fill, or NULL before Configure or without memory.
-CDTAPI_API AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size);
-
-// As for the receive FIFO; the statistics count the frames sent since Start.
-CDTAPI_API int AvFifo_TxFifo_GetMaxSize(const AvFifo_TxFifo* Fifo);
-CDTAPI_API void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size);
-CDTAPI_API TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo);
-CDTAPI_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
-                                                int* UsesHwPipe);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Timing helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -474,12 +487,6 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
 // frame can lie a quarter, a half or three quarters of a tick after its timestamp.
 //
 
-// The time of day on the audio grid of SampleRate Hz nearest to *ToD.
-CDTAPI_API DtTimeOfDay Tod2Grid_Audio(const DtTimeOfDay* ToD, int SampleRate);
-
-// The time of day on the video grid of *Rate frames or fields per second nearest to *ToD.
-CDTAPI_API DtTimeOfDay Tod2Grid_Video(const DtTimeOfDay* ToD, const FrameRate* Rate);
-
 // The time of day of an audio RTP timestamp of SampleRate Hz: the one nearest to the
 // approximate time of day *ToD, typically the current time, of the times at which the
 // 32-bit timestamp has that value.
@@ -488,6 +495,12 @@ CDTAPI_API DtTimeOfDay Rtp2Tod_Audio(uint32_t RtpTime, const DtTimeOfDay* ToD,
 
 // The time of day of a video RTP timestamp, as Rtp2Tod_Audio at 90 kHz.
 CDTAPI_API DtTimeOfDay Rtp2Tod_Video(uint32_t RtpTime, const DtTimeOfDay* ToD);
+
+// The time of day on the audio grid of SampleRate Hz nearest to *ToD.
+CDTAPI_API DtTimeOfDay Tod2Grid_Audio(const DtTimeOfDay* ToD, int SampleRate);
+
+// The time of day on the video grid of *Rate frames or fields per second nearest to *ToD.
+CDTAPI_API DtTimeOfDay Tod2Grid_Video(const DtTimeOfDay* ToD, const FrameRate* Rate);
 
 // The audio RTP timestamp of SampleRate Hz of *ToD, rounded to the nearest sample.
 CDTAPI_API uint32_t Tod2Rtp_Audio(const DtTimeOfDay* ToD, int SampleRate);

@@ -30,6 +30,10 @@
     or the component it belongs to, then an underscore, as `OsMutex_Lock`,
     `DtRing_Skip`, `DtPcieCmd_CdmacSetOpMode`, `OsTime_SleepMs` and `SimDtPcie_Reset`,
     and as the public API and `LibDekTec_C` have it. A static function has a plain name.
+11. **The public headers declare each section's functions in alphabetical order**, so
+    that a function is found without searching; types come first, where the functions
+    need them. A new function goes in its alphabetical place in any file, header or
+    implementation.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
 invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,

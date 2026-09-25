@@ -14,6 +14,7 @@
 #   Rule 5  Every source file starts with a header naming the file.
 #   Rule 8  Every header guards itself with #pragma once, right after the file header.
 #   Rule 9  No goto.
+#   Rule 11 The public headers declare each section's functions in alphabetical order.
 #
 # It also fails when Documentation/ or the internal notes, CLAUDE.md and CLAUDE.local.md,
 # are tracked: both belong outside this public repository.
@@ -93,7 +94,7 @@ while IFS= read -r File; do
     esac
 done < <(OwnFiles)
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 8: #pragma once -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 8: #pragma once -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 #
 # The first line of a header that is neither a comment nor blank must be #pragma once.
 
@@ -126,7 +127,7 @@ HistoryHits=$(while IFS= read -r File; do
 done < <(OwnFiles) | awk '{ s += $1 } END { print s + 0 }')
 [ "$HistoryHits" -ne 0 ] && Failures=$((Failures + HistoryHits))
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- No internal documents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- No internal documents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 #
 # The design documents live in a repository of their own, because they describe DTAPI's
 # internals and DekTec's own infrastructure. This repository is public.
@@ -144,7 +145,7 @@ if [ -n "$Notes" ]; then
     Fail "Internal notes are not published: $(echo $Notes)"
 fi
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 9: no goto -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rule 9: no goto -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 #
 # A function that must clean up after failures hands its steps to a helper and cleans up
 # after it; a goto, even to a cleanup label, is refused. Comments are not looked at.
@@ -156,7 +157,31 @@ while IFS= read -r File; do
     done < <(grep -nE '^[^/]*\bgoto\b' "$File")
 done < <(OwnFiles)
 
-# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Vendored ABI -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+# .-.-.-.-.-.-.-.-.- Rule 11: public functions in alphabetical order -.-.-.-.-.-.-.-.-.-.-
+#
+# In each section of a public header, from one banner to the next, the functions come in
+# alphabetical order, ignoring case; the types between them are not looked at.
+#
+echo "Rule 11: public functions in alphabetical order"
+while IFS= read -r File; do
+    while IFS= read -r Hit; do
+        Fail "$Hit"
+    done < <(LC_ALL=C awk -v f="$File" '
+        /^\/\/ (\+=|\.-)/ { Last = ""; next }
+        /^CDTAPI_API/ {
+            Name = $0
+            sub(/\(.*/, "", Name)
+            match(Name, /[A-Za-z0-9_]+$/)
+            Name = substr(Name, RSTART, RLENGTH)
+            Key = tolower(Name)
+            if (Last != "" && Key < Last)
+                printf "%s:%d: %s after %s\n", f, NR, Name, LastName
+            Last = Key
+            LastName = Name
+        }' "$File")
+done < <(OwnFiles | grep '^Include/')
+
+# .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Vendored ABI -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 #
 # Source/DtPcie/Abi holds the driver's headers byte for byte as the SDK has them, and
 # SHA256SUMS beside them records those bytes. A refresh from the SDK writes the sums
