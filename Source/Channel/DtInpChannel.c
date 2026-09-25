@@ -59,8 +59,8 @@ struct DtInpChannel
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;
-    int Detachers; // Detaches waiting for the read to return
-    bool Reading;  // A read is between its start and its return
+    int WaitingDetaches; // Detaches waiting for the read to return
+    bool Reading;        // A read is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
     DtRxPort Port;
@@ -155,12 +155,12 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
     if (LockAttached(Chan) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    Chan->Detachers++;
+    Chan->WaitingDetaches++;
     for (int Try = 0; Chan->Attached && Chan->Reading; Try++)
     {
         if (Try == Tries)
         {
-            Chan->Detachers--;
+            Chan->WaitingDetaches--;
             OsMutex_Unlock(Chan->Lock);
             return DTAPI_E_TIMEOUT;
         }
@@ -168,7 +168,7 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
         OsTime_SleepMs(DT_DETACH_PAUSE_MS);
         OsMutex_Lock(Chan->Lock);
     }
-    Chan->Detachers--;
+    Chan->WaitingDetaches--;
 
     if (!Chan->Attached)
     {
@@ -707,11 +707,11 @@ static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
         OsMutex_Unlock(Chan->Lock);
         Result = Wait.Backend->Wait(&Wait, Ms);
         OsMutex_Lock(Chan->Lock);
-        if (Result == DTAPI_OK && Chan->Detachers == 0 &&
+        if (Result == DTAPI_OK && Chan->WaitingDetaches == 0 &&
             Chan->Rx->Backend == Wait.Backend)
             Result = Chan->Rx->Backend->AfterWait(Chan->Rx, &Wait);
     }
-    return Chan->Detachers > 0 ? DTAPI_E_CANCELLED : Result;
+    return Chan->WaitingDetaches > 0 ? DTAPI_E_CANCELLED : Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ReadFrame2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -742,7 +742,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         return DTAPI_E_INVALID_BUF;
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
-    if (InpChannel->Detachers > 0)
+    if (InpChannel->WaitingDetaches > 0)
     {
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_NOT_ATTACHED;
@@ -837,7 +837,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
     DtRx* Rx = InpChannel->Rx;
     int MaxFifoSize = 0;
     DtapiResult Result = DTAPI_OK;
-    if (InpChannel->Detachers > 0)
+    if (InpChannel->WaitingDetaches > 0)
         Result = DTAPI_E_NOT_ATTACHED;
     else if (InpChannel->Reading)
         Result = DTAPI_E_IN_USE;

@@ -46,9 +46,9 @@ typedef struct DtTxPort
     DtDevice* Device;
     int Port; // From 1
     int PortIndex;
-    uint64_t Caps;        // DT_CAP_ flags of the port
-    OsMutex* Lock;        // The channel's
-    const int* Detachers; // Detaches waiting for a write to return
+    uint64_t Caps;              // DT_CAP_ flags of the port
+    OsMutex* Lock;              // The channel's
+    const int* WaitingDetaches; // Detaches waiting for a write to return
 } DtTxPort;
 
 // What every side has: its backend, its port, and the transmit mode and control, which

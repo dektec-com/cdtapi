@@ -957,7 +957,7 @@ static DtapiResult Write(DtTx* Base, const uint8_t* Data, size_t Size)
         OsMutex_Unlock(Base->Port.Lock);
         OsEvent_Wait(Tx->Room, DT_ASITX_WRITE_POLL_MS);
         OsMutex_Lock(Base->Port.Lock);
-        if (*Base->Port.Detachers > 0)
+        if (*Base->Port.WaitingDetaches > 0)
             Result = DTAPI_E_CANCELLED;
         else if (Base->TxControl == DTAPI_TXCTRL_IDLE)
             Result = DTAPI_E_IDLE;

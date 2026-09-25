@@ -45,8 +45,8 @@ struct DtOutpChannel
 {
     OsMutex* Lock; // Guards everything below
     bool Attached;
-    int Detachers; // Detaches waiting for the write to return
-    bool Writing;  // A Write or WriteFrame call is between its start and its return
+    int WaitingDetaches; // Detaches waiting for the write to return
+    bool Writing;        // A Write or WriteFrame call is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
     DtTxPort Port;
@@ -150,12 +150,12 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
         return DTAPI_E_INVALID_FLAGS;
     }
 
-    Chan->Detachers++;
+    Chan->WaitingDetaches++;
     for (int Try = 0; Chan->Attached && Chan->Writing; Try++)
     {
         if (Try == Tries)
         {
-            Chan->Detachers--;
+            Chan->WaitingDetaches--;
             OsMutex_Unlock(Chan->Lock);
             return DTAPI_E_TIMEOUT;
         }
@@ -166,7 +166,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
     }
     if (!Chan->Attached)
     {
-        Chan->Detachers--;
+        Chan->WaitingDetaches--;
         OsMutex_Unlock(Chan->Lock);
         return DTAPI_E_NOT_ATTACHED;
     }
@@ -181,7 +181,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
     ReleaseAll(Chan);
     Chan->Attached = false;
     DropWork(Chan);
-    Chan->Detachers--;
+    Chan->WaitingDetaches--;
     OsMutex_Unlock(Chan->Lock);
     return DTAPI_OK;
 }
@@ -246,7 +246,7 @@ static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
     Chan->Port.PortIndex = Port - 1;
     Chan->Port.Caps = Caps;
     Chan->Port.Lock = Chan->Lock;
-    Chan->Port.Detachers = &Chan->Detachers;
+    Chan->Port.WaitingDetaches = &Chan->WaitingDetaches;
 
     // The DMA-rate test mode is switched off first.
     DtIoConfig Config;
@@ -647,7 +647,7 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
         return DTAPI_E_INVALID_SIZE;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
-    if (OutpChannel->Detachers > 0)
+    if (OutpChannel->WaitingDetaches > 0)
     {
         OsMutex_Unlock(OutpChannel->Lock);
         return DTAPI_E_NOT_ATTACHED;
@@ -696,7 +696,7 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
 
     DtTx* Tx = OutpChannel->Tx;
     DtapiResult Result = DTAPI_OK;
-    if (OutpChannel->Detachers > 0)
+    if (OutpChannel->WaitingDetaches > 0)
         Result = DTAPI_E_NOT_ATTACHED;
     else if (Tx->TxControl == DTAPI_TXCTRL_IDLE)
         Result = DTAPI_E_IDLE;

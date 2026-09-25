@@ -1010,7 +1010,7 @@ static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
 {
     for (;;)
     {
-        if (*Sdi->Base.Port.Detachers > 0)
+        if (*Sdi->Base.Port.WaitingDetaches > 0)
             return DTAPI_E_CANCELLED;
         if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
@@ -1270,7 +1270,7 @@ static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
 
     while (Result == DTAPI_OK)
     {
-        if (*Sdi->Base.Port.Detachers > 0)
+        if (*Sdi->Base.Port.WaitingDetaches > 0)
             return DTAPI_E_CANCELLED;
         if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
@@ -1342,7 +1342,7 @@ static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
 
     while (Result == DTAPI_OK && Sdi->Stage != DT_STAGE_PADDING)
     {
-        if (*Sdi->Base.Port.Detachers > 0)
+        if (*Sdi->Base.Port.WaitingDetaches > 0)
             Result = DTAPI_E_CANCELLED;
         else if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
             Result = DTAPI_E_IDLE;
