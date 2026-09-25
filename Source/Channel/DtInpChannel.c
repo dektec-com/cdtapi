@@ -51,7 +51,7 @@
 #define DT_IDLE_POLL_MS 10
 
 // The most a read with a time-out of 0 takes at a time.
-#define DT_READ_BLOCK (1024 * 1024)
+#define DT_READ_BLOCK_BYTES (1024 * 1024)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -63,7 +63,7 @@ struct DtInpChannel
     bool Reading;        // A read is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
-    DtRxPort Port;
+    DtRxAttachedPort Port;
     DtRx* Rx; // The side that receives, while attached
 
     // The pool the channel's work is divided over, NULL for none, and the pieces asked
@@ -100,22 +100,22 @@ static void ReleaseSide(DtInpChannel* Chan)
     Chan->Rx = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GiveWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePoolToSide -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Gives the side the channel's pool. A side short of memory for the pieces works in the
 // reading thread, which is not a reason to fail an attach, so the result is ignored.
 //
-static void GiveWork(DtInpChannel* Chan)
+static void GivePoolToSide(DtInpChannel* Chan)
 {
     if (Chan->Rx->Backend->SetWorkerPool != NULL)
         Chan->Rx->Backend->SetWorkerPool(Chan->Rx, Chan->WorkerPool, Chan->WorkerThreads);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Lets go of the pool when the channel detaches, as it forgets its other settings then.
 //
-static void DropWork(DtInpChannel* Chan)
+static void DropPool(DtInpChannel* Chan)
 {
     DtWorkerPool_Freep(&Chan->WorkerPool);
     Chan->WorkerThreads = 0;
@@ -183,7 +183,7 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
     ReleaseSide(Chan);
     DtDevice_Release(&Chan->Device);
     Chan->Attached = false;
-    DropWork(Chan);
+    DropPool(Chan);
     OsMutex_Unlock(Chan->Lock);
     return DTAPI_OK;
 }
@@ -236,12 +236,12 @@ void DtInpChannel_Freep(DtInpChannel** InpChannel)
     *InpChannel = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFailSafe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReportFailSafe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A fail-safe port in fail-safe mode is reported, as a success. A failure to read it
-// releases the side the channel attached.
+// A fail-safe port in fail-safe mode is reported, as a success; a failure to read it is
+// the driver's result.
 //
-static DtapiResult CheckFailSafe(DtInpChannel* Chan, const DtIoConfig* Config)
+static DtapiResult ReportFailSafe(DtInpChannel* Chan, const DtIoConfig* Config)
 {
     if ((Chan->Port.Caps & DT_CAP_FAILSAFE) == 0)
         return DTAPI_OK;
@@ -250,23 +250,19 @@ static DtapiResult CheckFailSafe(DtInpChannel* Chan, const DtIoConfig* Config)
     FailSafe.Group = DTAPI_IOCONFIG_FAILSAFE;
     DtapiResult Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &FailSafe);
     if (Result != DTAPI_OK)
-    {
-        ReleaseSide(Chan);
         return Result;
-    }
     return FailSafe.Value == DTAPI_IOCONFIG_TRUE ? DTAPI_OK_FAILSAFE : DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachSide -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // AttachToPort's steps once the channel has its own handle to the device, which the
 // caller releases when they fail.
 //
-static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint64_t Caps)
+static DtapiResult AttachSide(DtInpChannel* Chan, int Port, uint64_t Caps)
 {
     Chan->Port.Device = &Chan->Device;
     Chan->Port.Port = Port;
-    Chan->Port.PortIndex = Port - 1;
     Chan->Port.Caps = Caps;
 
     // The DMA-rate test mode is switched off first.
@@ -305,8 +301,11 @@ static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint64_t Caps)
         Result = DtSdiRx_Attach(&Chan->Port, &Config, &Chan->Rx);
     if (Result != DTAPI_OK)
         return Result;
-    GiveWork(Chan);
-    return CheckFailSafe(Chan, &Config);
+    GivePoolToSide(Chan);
+    Result = ReportFailSafe(Chan, &Config);
+    if (Result != DTAPI_OK)
+        ReleaseSide(Chan);
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -337,7 +336,7 @@ static DtapiResult Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = AttachPort(Chan, Port, Caps);
+    Result = AttachSide(Chan, Port, Caps);
     if (Result >= DTAPI_E)
         DtDevice_Release(&Chan->Device);
     return Result;
@@ -428,8 +427,8 @@ DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched)
 //
 DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value, int* SubValue)
 {
-    const uint64_t Usable = DT_CAP_ASI | DT_CAP_SDI | DT_CAP_HDSDI | DT_CAP_3GSDI |
-                            DT_CAP_SPI | DT_CAP_SPISDI;
+    const uint64_t DetectableCaps = DT_CAP_ASI | DT_CAP_SDI | DT_CAP_HDSDI |
+                                    DT_CAP_3GSDI | DT_CAP_SPI | DT_CAP_SPISDI;
 
     if (InpChannel == NULL || Value == NULL || SubValue == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -438,7 +437,7 @@ DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value, int* 
 
     const DtRxBackend* Backend = InpChannel->Rx->Backend;
     DtapiResult Result;
-    if ((InpChannel->Port.Caps & Usable) == 0 || Backend->DetectIoStd == NULL)
+    if ((InpChannel->Port.Caps & DetectableCaps) == 0 || Backend->DetectIoStd == NULL)
         Result = DTAPI_E_NOT_SUPPORTED;
     else
         Result = Backend->DetectIoStd(InpChannel->Rx, Value, SubValue);
@@ -577,14 +576,14 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Config.SubValue = SubValue;
         Config.ParXtra[0] = ParXtra0;
         Config.ParXtra[1] = ParXtra1;
-        const bool IsAsi = InpChannel->Rx->Backend->DeliverBytes != NULL;
-        const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
+        const bool SideIsAsi = InpChannel->Rx->IsAsi;
+        const bool NewStdIsAsi = Value == DTAPI_IOCONFIG_ASI;
 
-        if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
+        if (Group == DTAPI_IOCONFIG_IOSTD && NewStdIsAsi != SideIsAsi)
         {
             ReleaseSide(InpChannel);
             Result = DtPcieCmd_SetIoConfig(InpChannel->Device.Drv, &Config);
-            if (Result == DTAPI_OK && NewAsi)
+            if (Result == DTAPI_OK && NewStdIsAsi)
                 Result = DtAsiRx_Attach(&InpChannel->Port, &InpChannel->Rx);
             else if (Result == DTAPI_OK)
                 Result = DtSdiRx_Attach(&InpChannel->Port, &Config, &InpChannel->Rx);
@@ -592,10 +591,10 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
             {
                 DtDevice_Release(&InpChannel->Device);
                 InpChannel->Attached = false;
-                DropWork(InpChannel);
+                DropPool(InpChannel);
             }
             else
-                GiveWork(InpChannel);
+                GivePoolToSide(InpChannel);
         }
         else
         {
@@ -681,20 +680,20 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reading +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitMore -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A read's wait, without the lock, for at most Remaining milliseconds or without a limit
+// A read's wait, without the lock, for at most RemainingMs, or without a limit
 // for -1: while not receiving a sleep, and otherwise the side's wait. While this read
 // waited, another thread may have changed the side; what the wait saw is then not the
 // new side's to deal with. Gives DTAPI_E_CANCELLED while a detach waits.
 //
-static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
+static DtapiResult WaitForData(DtInpChannel* Chan, int64_t RemainingMs)
 {
-    DtRxWait Wait;
+    DtRxWaitState Wait;
     Chan->Rx->Backend->PrepareWait(Chan->Rx, &Wait);
     int Ms = Wait.MaxMs;
-    if (Remaining >= 0 && Remaining < Ms)
-        Ms = (int)Remaining;
+    if (RemainingMs >= 0 && RemainingMs < Ms)
+        Ms = (int)RemainingMs;
 
     DtapiResult Result = DTAPI_OK;
     if (Chan->Rx->RxControl == DTAPI_RXCTRL_IDLE)
@@ -726,7 +725,7 @@ static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
 DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
                                     int* FrameSize, int TimeOut, DtTimeOfDay* ArrivalTime)
 {
-    uint64_t Start = OsTime_MonotonicMs();
+    uint64_t StartMs = OsTime_MonotonicMs();
     DtTimeOfDay Arrival = {0, 0};
 
     if (ArrivalTime != NULL)
@@ -753,7 +752,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_IN_USE;
     }
-    if (InpChannel->Rx->Backend->CheckFrame == NULL)
+    if (InpChannel->Rx->Backend->CheckFrameBuffer == NULL)
     {
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_NOT_SDI_MODE;
@@ -761,7 +760,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
 
     size_t RawSize;
     DtapiResult Result =
-        InpChannel->Rx->Backend->CheckFrame(InpChannel->Rx, *FrameSize, &RawSize);
+        InpChannel->Rx->Backend->CheckFrameBuffer(InpChannel->Rx, *FrameSize, &RawSize);
 
     InpChannel->Reading = true;
     while (Result == DTAPI_OK)
@@ -769,7 +768,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         // While this read waited without the lock, another thread may have stopped the
         // channel, changed its standard or receive mode, and started it again.
         DtRx* Rx = InpChannel->Rx;
-        if (Rx->Backend->CheckFrame == NULL)
+        if (Rx->Backend->CheckFrameBuffer == NULL)
         {
             Result = DTAPI_E_NOT_SDI_MODE;
             break;
@@ -778,7 +777,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         {
             bool Delivered = false;
 
-            Result = Rx->Backend->CheckFrame(Rx, *FrameSize, &RawSize);
+            Result = Rx->Backend->CheckFrameBuffer(Rx, *FrameSize, &RawSize);
             if (Result == DTAPI_OK)
                 Result = Rx->Backend->DeliverFrame(Rx, (uint8_t*)FrameBuffer, &Arrival,
                                                    &Delivered);
@@ -786,14 +785,14 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
                 break;
         }
 
-        uint64_t Elapsed = OsTime_MonotonicMs() - Start;
-        if (TimeOut != -1 && Elapsed >= (uint64_t)TimeOut)
+        uint64_t ElapsedMs = OsTime_MonotonicMs() - StartMs;
+        if (TimeOut != -1 && ElapsedMs >= (uint64_t)TimeOut)
         {
             Result = DTAPI_E_TIMEOUT;
             break;
         }
-        Result = WaitMore(InpChannel,
-                          TimeOut == -1 ? -1 : (int64_t)TimeOut - (int64_t)Elapsed);
+        Result = WaitForData(InpChannel,
+                             TimeOut == -1 ? -1 : (int64_t)TimeOut - (int64_t)ElapsedMs);
     }
     InpChannel->Reading = false;
 
@@ -824,7 +823,7 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
 DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumBytesToRead,
                               int TimeOut)
 {
-    const uint64_t Start = OsTime_MonotonicMs();
+    const uint64_t StartMs = OsTime_MonotonicMs();
 
     if (InpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -861,9 +860,9 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
     }
 
     uint8_t* Out = (uint8_t*)Buffer;
-    size_t Left = (size_t)NumBytesToRead;
+    size_t BytesLeft = (size_t)NumBytesToRead;
     InpChannel->Reading = true;
-    while (Result == DTAPI_OK && Left > 0)
+    while (Result == DTAPI_OK && BytesLeft > 0)
     {
         // While this read waited without the lock, another thread may have stopped the
         // channel, or switched it to SDI.
@@ -873,7 +872,9 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
             Result = DTAPI_E_NOT_SUPPORTED;
             break;
         }
-        const size_t Block = TimeOut == 0 && Left > DT_READ_BLOCK ? DT_READ_BLOCK : Left;
+        const size_t Block = TimeOut == 0 && BytesLeft > DT_READ_BLOCK_BYTES
+                                 ? DT_READ_BLOCK_BYTES
+                                 : BytesLeft;
         size_t Load = 0;
         if (Rx->RxControl == DTAPI_RXCTRL_RCV)
             Result = Rx->Backend->GetDeliverableBytes(Rx, &Load);
@@ -881,20 +882,20 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         {
             Result = Rx->Backend->DeliverBytes(Rx, Out, Block);
             Out += Block;
-            Left -= Block;
+            BytesLeft -= Block;
             continue;
         }
         if (Result != DTAPI_OK)
             break;
 
-        const uint64_t Elapsed = OsTime_MonotonicMs() - Start;
-        if (TimeOut > 0 && Elapsed >= (uint64_t)TimeOut)
+        const uint64_t ElapsedMs = OsTime_MonotonicMs() - StartMs;
+        if (TimeOut > 0 && ElapsedMs >= (uint64_t)TimeOut)
         {
             Result = DTAPI_E_TIMEOUT;
             break;
         }
-        Result =
-            WaitMore(InpChannel, TimeOut > 0 ? (int64_t)TimeOut - (int64_t)Elapsed : -1);
+        Result = WaitForData(InpChannel,
+                             TimeOut > 0 ? (int64_t)TimeOut - (int64_t)ElapsedMs : -1);
     }
     InpChannel->Reading = false;
     OsMutex_Unlock(InpChannel->Lock);

@@ -23,4 +23,5 @@
 // the receiver and the receive channel, reads the down-scaling, sets
 // DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B, applies the I/O standard again and sets
 // the receive channel up for it. *Rx is the side after a success, NULL otherwise.
-DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx** Rx);
+DtapiResult DtSdiRx_Attach(const DtRxAttachedPort* Port, const DtIoConfig* IoStd,
+                           DtRx** Rx);

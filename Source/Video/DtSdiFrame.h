@@ -67,6 +67,10 @@
 #define DT_SDIFRAME_HEADER_BYTES 16
 #define DT_SDIFRAME_TX_HEADER_BYTES 20
 
+// The format events per frame a channel asks the card for, in both directions; a
+// channel's waits are a quarter frame long because of it.
+#define DT_SDIFRAME_FMT_EVENTS_PER_FRAME 4
+
 // The formats a header names.
 #define DT_SDIFRAME_FORMAT_UNCOMPRESSED 0
 #define DT_SDIFRAME_FORMAT_UNCOMPRESSED_4K 1

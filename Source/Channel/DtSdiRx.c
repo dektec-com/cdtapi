@@ -28,26 +28,24 @@
 
 // The FIFO size the ring is sized for and a frame size is checked against, and what a
 // channel without a ring reports as its maximum.
-#define DT_RX_FIFO_SIZE (48 * 1024 * 1024)
+#define DT_SDIRX_FIFO_SIZE (48 * 1024 * 1024)
 
 // The bounds on the ring, the frames it asks room for, and the fewest frames a ring must
 // hold.
-#define DT_RING_MIN (8 * 1024 * 1024)
-#define DT_RING_MAX (256 * 1024 * 1024)
-#define DT_RING_FRAMES 5
-#define DT_RING_MIN_FRAMES 2
+#define DT_SDIRX_RING_MIN_SIZE (8 * 1024 * 1024)
+#define DT_SDIRX_RING_MAX_SIZE (256 * 1024 * 1024)
+#define DT_SDIRX_RING_ROOM_FRAMES 5
+#define DT_SDIRX_RING_MIN_FRAMES 2
 
-// The format event settings: events per frame, and the delay in microseconds from the
-// start of a frame to the first.
-#define DT_FMT_EVENTS_PER_FRAME 4
-#define DT_FMT_EVENT_DELAY 200
+// The delay in microseconds from the start of a frame to its first format event.
+#define DT_SDIRX_FMT_EVENT_DELAY_US 200
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 typedef struct DtSdiRx
 {
-    DtRx Base;
-    DtDrvObject Ch; // The receive channel
+    DtRx Rx;
+    DtDrvObject ChSdiRx; // The receive channel
     bool Scale12GTo3G;
 
     int IoStdValue; // The port's I/O standard
@@ -59,12 +57,14 @@ typedef struct DtSdiRx
 
     // The configured channel.
     bool ChannelAttached;
-    DtSdiFrameLayout Layout;
-    DtRing Ring;       // Base NULL without a ring
-    bool RingMapped;   // Mapped by CDTAPI rather than by the driver
-    uint8_t* LineBuf;  // Coded lines that run across the end of the ring, one a band
-    uint16_t* Scratch; // The conversion's working symbols of a 4K line, one set a band
-    int QuarterMs;     // A quarter frame period, at least 1 ms
+    DtSdiFrameLayout FrameLayout;
+    DtRing Ring;             // Base NULL without a ring
+    bool RingMappedByCdtapi; // Mapped by CDTAPI rather than by the driver
+    uint8_t*
+        WrapLineBuffer; // Coded lines that run across the end of the ring, one a band
+    uint16_t*
+        BandSymbols;    // The conversion's working symbols of a 4K line, one set a band
+    int QuarterFrameMs; // A quarter frame period, at least 1 ms
 
     // The pool the channel gave, and the pieces it asked for: 0 for as many as the
     // standard calls for. The channel holds the pool.
@@ -74,19 +74,19 @@ typedef struct DtSdiRx
     // The pieces a frame's lines are converted in, and what one band of them needs. The
     // buffers above hold DtJobRunner_NumPieces(&Work) sets, so a band uses its own.
     DtJobRunner JobRunner;
-    size_t LineBufNumBytes;
-    size_t ScratchSymbols;
+    size_t WrapLineBufferBytes;
+    size_t SymbolsPerBand;
 
     // Reading.
     bool InSync;
-    int ExpectedId;
+    int ExpectedFrameId;
 } DtSdiRx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static OsDrv* DrvOf(const DtSdiRx* Sdi)
 {
-    return Sdi->Base.Port.Device->Drv;
+    return Sdi->Rx.Port.Device->Drv;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -111,12 +111,13 @@ static int BitsPerSymbolOf(int RxMode)
 //
 static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
-    size_t Coded = DtSdiFrame_CodedSize(Layout);
-    size_t Raw = DtSdiFrame_RawSize(Layout, 10);
-    size_t Wanted = (DT_RING_FRAMES + DT_RX_FIFO_SIZE / Raw) * Coded;
-    size_t Size = DT_RING_MIN;
+    size_t CodedSize = DtSdiFrame_CodedSize(Layout);
+    size_t RawSize = DtSdiFrame_RawSize(Layout, 10);
+    size_t NeededSize =
+        (DT_SDIRX_RING_ROOM_FRAMES + DT_SDIRX_FIFO_SIZE / RawSize) * CodedSize;
+    size_t Size = DT_SDIRX_RING_MIN_SIZE;
 
-    while (Size < Wanted && Size < DT_RING_MAX)
+    while (Size < NeededSize && Size < DT_SDIRX_RING_MAX_SIZE)
         Size *= 2;
     return (int)Size;
 }
@@ -129,7 +130,7 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
 //
 static size_t FramesInRing(const DtSdiRx* Sdi)
 {
-    return Sdi->Ring.MaxLoad / DtSdiFrame_CodedSize(&Sdi->Layout);
+    return Sdi->Ring.MaxLoad / DtSdiFrame_CodedSize(&Sdi->FrameLayout);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -140,49 +141,50 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
 static void ReleaseChannel(DtSdiRx* Sdi)
 {
     DtPcieCmd_ChSdiRxUnmapDmaBuf(DrvOf(Sdi), Sdi->Ring.Base, (int)Sdi->Ring.Size,
-                                 Sdi->RingMapped);
+                                 Sdi->RingMappedByCdtapi);
     memset(&Sdi->Ring, 0, sizeof(Sdi->Ring));
-    Sdi->RingMapped = false;
-    DtAlloc_Free(Sdi->LineBuf);
-    Sdi->LineBuf = NULL;
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Scratch = NULL;
-    memset(&Sdi->Layout, 0, sizeof(Sdi->Layout));
-    Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    Sdi->RingMappedByCdtapi = false;
+    DtAlloc_Free(Sdi->WrapLineBuffer);
+    Sdi->WrapLineBuffer = NULL;
+    DtAlloc_Free(Sdi->BandSymbols);
+    Sdi->BandSymbols = NULL;
+    memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
+    Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
 
     if (Sdi->ChannelAttached)
     {
-        DtPcieCmd_ChSdiRxSetOpMode(DrvOf(Sdi), Sdi->Ch, DT_FUNC_OPMODE_IDLE);
-        DtPcieCmd_ChSdiRxDetach(DrvOf(Sdi), Sdi->Ch);
+        DtPcieCmd_ChSdiRxSetOpMode(DrvOf(Sdi), Sdi->ChSdiRx, DT_FUNC_OPMODE_IDLE);
+        DtPcieCmd_ChSdiRxDetach(DrvOf(Sdi), Sdi->ChSdiRx);
     }
     Sdi->ChannelAttached = false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocBandBuffers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The working buffers of the configured layout, one set for every band a frame's lines
 // divide into. Replaces what was there, so a change in the number of bands comes through
 // it too.
 //
-static DtapiResult AllocBands(DtSdiRx* Sdi)
+static DtapiResult AllocBandBuffers(DtSdiRx* Sdi)
 {
     const size_t Bands = (size_t)DtJobRunner_NumPieces(&Sdi->JobRunner);
 
-    DtAlloc_Free(Sdi->LineBuf);
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Scratch = NULL;
-    Sdi->LineBufNumBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->Layout);
-    Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Sdi->Layout);
-    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->LineBufNumBytes);
-    if (Sdi->Layout.Is4k)
-        Sdi->Scratch =
-            (uint16_t*)DtAlloc_Malloc(Bands * Sdi->ScratchSymbols * sizeof(uint16_t));
-    if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
+    DtAlloc_Free(Sdi->WrapLineBuffer);
+    DtAlloc_Free(Sdi->BandSymbols);
+    Sdi->BandSymbols = NULL;
+    Sdi->WrapLineBufferBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->FrameLayout);
+    Sdi->SymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Sdi->FrameLayout);
+    Sdi->WrapLineBuffer = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->WrapLineBufferBytes);
+    if (Sdi->FrameLayout.Is4k)
+        Sdi->BandSymbols =
+            (uint16_t*)DtAlloc_Malloc(Bands * Sdi->SymbolsPerBand * sizeof(uint16_t));
+    if (Sdi->WrapLineBuffer == NULL ||
+        (Sdi->FrameLayout.Is4k && Sdi->BandSymbols == NULL))
         return DTAPI_E_OUT_OF_MEM;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SizeWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureJobRunner -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working buffers by them. Buffers that
@@ -190,18 +192,19 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
 // reading thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; LineBuf is NULL
 // when not even those can be had.
 //
-static DtapiResult SizeWork(DtSdiRx* Sdi)
+static DtapiResult ConfigureJobRunner(DtSdiRx* Sdi)
 {
-    const int Pieces = Sdi->WorkerThreads > 0 ? Sdi->WorkerThreads
-                                              : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
+    const int Pieces = Sdi->WorkerThreads > 0
+                           ? Sdi->WorkerThreads
+                           : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
 
     DtapiResult Result = DtJobRunner_SetPool(&Sdi->JobRunner, Sdi->WorkerPool, Pieces);
     if (Result == DTAPI_OK)
-        Result = AllocBands(Sdi);
+        Result = AllocBandBuffers(Sdi);
     if (Result != DTAPI_OK)
     {
         DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
-        AllocBands(Sdi);
+        AllocBandBuffers(Sdi);
     }
     return Result;
 }
@@ -214,62 +217,63 @@ static DtapiResult SizeWork(DtSdiRx* Sdi)
 static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
-    const int PortIndex = Sdi->Base.Port.PortIndex;
+    const int PortIndex = Sdi->Rx.Port.Port - 1;
     DtChSdiRxProps Props;
-    uint8_t* Base = NULL;
+    uint8_t* RingBase = NULL;
     int BufSize = 0;
     int MaxLoad = 0;
-    bool MappedHere = false;
+    bool MappedByCdtapi = false;
 
     memset(&Props, 0, sizeof(Props));
     ReleaseChannel(Sdi);
 
     // The sub-value of an SDI standard is its video standard.
-    DtFrameProps Frame;
-    if (!DtFrameProps_Init(&Frame, Sdi->IoStdSubValue))
+    DtFrameProps FrameProps;
+    if (!DtFrameProps_Init(&FrameProps, Sdi->IoStdSubValue))
         return DTAPI_E_INVALID_VIDSTD;
 
     // A read waits a quarter frame at a time, also on a channel without a ring.
-    int Num;
-    int Den;
-    DtVidStd_Fps(Sdi->IoStdSubValue, &Num, &Den);
-    Sdi->QuarterMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
-    if (Sdi->QuarterMs < 1)
-        Sdi->QuarterMs = 1;
+    int FpsNum;
+    int FpsDen;
+    DtVidStd_Fps(Sdi->IoStdSubValue, &FpsNum, &FpsDen);
+    Sdi->QuarterFrameMs = FpsDen * 1000 / FpsNum / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
+    if (Sdi->QuarterFrameMs < 1)
+        Sdi->QuarterFrameMs = 1;
 
     // The friendly name is the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
     char Process[128];
     OsProcess_Name(Process, sizeof(Process));
-    char Full[160];
-    snprintf(Full, sizeof(Full), "%s:%" PRIu32, Process[0] != '\0' ? Process : "CDTAPI",
-             OsProcess_Id());
+    char FullName[160];
+    snprintf(FullName, sizeof(FullName), "%s:%" PRIu32,
+             Process[0] != '\0' ? Process : "CDTAPI", OsProcess_Id());
     char Name[DT_CHAN_FRIENDLY_NAME_MAX_LENGTH + 1];
-    memcpy(Name, Full, sizeof(Name) - 1);
+    memcpy(Name, FullName, sizeof(Name) - 1);
     Name[sizeof(Name) - 1] = '\0';
 
-    DtapiResult Result = DtPcieCmd_ChSdiRxAttach(Drv, Sdi->Ch, true, Name);
+    DtapiResult Result = DtPcieCmd_ChSdiRxAttach(Drv, Sdi->ChSdiRx, true, Name);
     if (Result != DTAPI_OK)
         return Result;
     Sdi->ChannelAttached = true;
 
-    Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
+    Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->ChSdiRx, DT_FUNC_OPMODE_IDLE);
 
     // 2160p over one 6G or 12G link receives as raw frames (plan 0014); a 4K standard
     // over four links, or of level-B links, attaches without a ring; see SetRxControl.
-    const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
+    const DtVidStdInfo* StdInfo = DtVidStd_Find(Sdi->IoStdSubValue);
     const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
                          Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
     if (Result == DTAPI_OK && (OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
-        (!OneLink || Info == NULL || Info->IsLevelB))
+        (!OneLink || StdInfo == NULL || StdInfo->IsLevelB))
     {
         return DTAPI_OK;
     }
 
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_ChSdiRxGetProps(Drv, Sdi->Ch, &Props);
+        Result = DtPcieCmd_ChSdiRxGetProps(Drv, Sdi->ChSdiRx, &Props);
     if (Result == DTAPI_OK &&
-        !DtSdiFrame_LayoutInit(&Sdi->Layout, Sdi->IoStdSubValue, Props.StreamAlignment))
+        !DtSdiFrame_LayoutInit(&Sdi->FrameLayout, Sdi->IoStdSubValue,
+                               Props.StreamAlignment))
     {
         Result = DTAPI_E_INTERNAL;
     }
@@ -283,43 +287,45 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     memset(&Config, 0, sizeof(Config));
     Config.NumPorts = 1;
     Config.PortIndices[0] = PortIndex;
-    Config.DmaMinSize = RingSizeFor(&Sdi->Layout);
-    Config.FmtIntInterval = (Den * 1000000 / Num) / DT_FMT_EVENTS_PER_FRAME;
-    Config.FmtIntDelay = DT_FMT_EVENT_DELAY;
-    Config.FmtNumIntsPerFrame = DT_FMT_EVENTS_PER_FRAME;
-    Config.NumSymsHanc = Sdi->Layout.LineNumSymsHanc;
-    Config.NumSymsVidVanc = Sdi->Layout.LineNumSymsVideo;
-    Config.NumLines = Sdi->Layout.NumLines;
-    Config.SdiRate = Sdi->Layout.SdiRate == DT_SDIRATE_12G  ? DT_DRV_SDIRATE_12G
-                     : Sdi->Layout.SdiRate == DT_SDIRATE_6G ? DT_DRV_SDIRATE_6G
-                     : DtFrameProps_IsSd(&Frame)            ? DT_DRV_SDIRATE_SD
-                     : DtFrameProps_Is3g(&Frame)            ? DT_DRV_SDIRATE_3G
-                                                            : DT_DRV_SDIRATE_HD;
-    Config.AssumeInterlaced = DtFrameProps_IsInterlaced(&Frame);
+    Config.DmaMinSize = RingSizeFor(&Sdi->FrameLayout);
+    Config.FmtIntInterval =
+        (FpsDen * 1000000 / FpsNum) / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
+    Config.FmtIntDelay = DT_SDIRX_FMT_EVENT_DELAY_US;
+    Config.FmtNumIntsPerFrame = DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
+    Config.NumSymsHanc = Sdi->FrameLayout.LineNumSymsHanc;
+    Config.NumSymsVidVanc = Sdi->FrameLayout.LineNumSymsVideo;
+    Config.NumLines = Sdi->FrameLayout.NumLines;
+    Config.SdiRate = Sdi->FrameLayout.SdiRate == DT_SDIRATE_12G  ? DT_DRV_SDIRATE_12G
+                     : Sdi->FrameLayout.SdiRate == DT_SDIRATE_6G ? DT_DRV_SDIRATE_6G
+                     : DtFrameProps_IsSd(&FrameProps)            ? DT_DRV_SDIRATE_SD
+                     : DtFrameProps_Is3g(&FrameProps)            ? DT_DRV_SDIRATE_3G
+                                                                 : DT_DRV_SDIRATE_HD;
+    Config.AssumeInterlaced = DtFrameProps_IsInterlaced(&FrameProps);
     Config.Scale12GTo3G = Sdi->Scale12GTo3G;
 
-    Result = DtPcieCmd_ChSdiRxConfigure(Drv, Sdi->Ch, &Config);
+    Result = DtPcieCmd_ChSdiRxConfigure(Drv, Sdi->ChSdiRx, &Config);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->Ch, &Base, &BufSize, &MaxLoad,
-                                            &MappedHere);
+        Result = DtPcieCmd_ChSdiRxMapDmaBuf(Drv, Sdi->ChSdiRx, &RingBase, &BufSize,
+                                            &MaxLoad, &MappedByCdtapi);
 
     // The driver keeps a data word of the ring free; a maximum load that keeps nothing
     // free, or leaves no room, describes no ring that can be read.
     if (Result == DTAPI_OK &&
-        (MaxLoad >= BufSize || DtRing_Init(&Sdi->Ring, Base, (size_t)BufSize,
+        (MaxLoad >= BufSize || DtRing_Init(&Sdi->Ring, RingBase, (size_t)BufSize,
                                            (size_t)(BufSize - MaxLoad)) != 0))
     {
-        DtPcieCmd_ChSdiRxUnmapDmaBuf(Drv, Base, BufSize, MappedHere);
+        DtPcieCmd_ChSdiRxUnmapDmaBuf(Drv, RingBase, BufSize, MappedByCdtapi);
         Result = DTAPI_E_DEV_DRIVER;
     }
     if (Result == DTAPI_OK)
     {
-        Sdi->RingMapped = MappedHere;
-        SizeWork(Sdi);
-        if (Sdi->LineBuf == NULL || (Sdi->Layout.Is4k && Sdi->Scratch == NULL))
+        Sdi->RingMappedByCdtapi = MappedByCdtapi;
+        ConfigureJobRunner(Sdi);
+        if (Sdi->WrapLineBuffer == NULL ||
+            (Sdi->FrameLayout.Is4k && Sdi->BandSymbols == NULL))
             Result = DTAPI_E_OUT_OF_MEM;
     }
-    if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_RING_MIN_FRAMES)
+    if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_SDIRX_RING_MIN_FRAMES)
         Result = DTAPI_E_DEV_DRIVER;
     if (Result != DTAPI_OK)
     {
@@ -331,15 +337,15 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Advance -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AdvanceReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Moves the read offset on by Bytes, which the ring holds, and tells the driver.
 //
-static DtapiResult Advance(DtSdiRx* Sdi, size_t Bytes)
+static DtapiResult AdvanceReadOffset(DtSdiRx* Sdi, size_t Bytes)
 {
     if (DtRing_Skip(&Sdi->Ring, Bytes) != 0)
         return DTAPI_E_INTERNAL;
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Ch,
+    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->ChSdiRx,
                                           (uint32_t)DtRing_ReadOffset(&Sdi->Ring));
 }
 
@@ -350,7 +356,7 @@ static DtapiResult Advance(DtSdiRx* Sdi, size_t Bytes)
 //
 static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
 {
-    size_t Alignment = (size_t)Sdi->Layout.Alignment;
+    size_t Alignment = (size_t)Sdi->FrameLayout.Alignment;
     size_t Aligned = (size_t)WriteOffset / Alignment * Alignment;
 
     Sdi->InSync = false;
@@ -359,20 +365,20 @@ static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
     {
         return DTAPI_E_DEV_DRIVER;
     }
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->Ch, (uint32_t)Aligned);
+    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->ChSdiRx, (uint32_t)Aligned);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SyncWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Brings the ring up to how far the channel has written. A write offset that would put
 // more in the ring than the driver allows means the two disagree about where reading
 // starts, and what the ring holds is discarded; one outside the ring is a driver fault.
 //
-static DtapiResult ReadWriteOffset(DtSdiRx* Sdi)
+static DtapiResult SyncWriteOffset(DtSdiRx* Sdi)
 {
     uint32_t WriteOffset = 0;
     DtapiResult Result =
-        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->Ch, &WriteOffset);
+        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->ChSdiRx, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -391,7 +397,7 @@ static DtapiResult DiscardAll(DtSdiRx* Sdi)
 {
     uint32_t WriteOffset = 0;
     DtapiResult Result =
-        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->Ch, &WriteOffset);
+        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->ChSdiRx, &WriteOffset);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -408,7 +414,7 @@ static DtapiResult DiscardAll(DtSdiRx* Sdi)
 //
 static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 {
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
     size_t Available = DtRing_Load(&Sdi->Ring);
 
     *Result = DTAPI_OK;
@@ -422,18 +428,18 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
         DtSdiFrame_DecodeHeader(Bytes, &Header);
         if (DtSdiFrame_CheckHeader(Layout, &Header, -1) == DTAPI_OK)
         {
-            *Result = Advance(Sdi, Offset);
+            *Result = AdvanceReadOffset(Sdi, Offset);
             Sdi->InSync = *Result == DTAPI_OK;
-            Sdi->ExpectedId = Header.FrameId;
+            Sdi->ExpectedFrameId = Header.FrameId;
             return Sdi->InSync;
         }
     }
     if (Offset > 0)
-        *Result = Advance(Sdi, Offset);
+        *Result = AdvanceReadOffset(Sdi, Offset);
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Anything but idle receives, and the value is kept as given. Receiving starts reading at
 // the start of the ring. With 8-bit symbols, as in DTAPI, and without a ring, receiving
@@ -441,30 +447,30 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 // links or of level-B links leaves the channel without a ring, since raw frames of one
 // link cannot carry it; 2160p over one 6G or 12G link receives (plan 0014).
 //
-static DtapiResult SetRxControl(DtSdiRx* Sdi, int RxControl)
+static DtapiResult ApplyRxControl(DtSdiRx* Sdi, int RxControl)
 {
     OsDrv* Drv = DrvOf(Sdi);
 
-    if (Sdi->Base.RxControl == RxControl)
+    if (Sdi->Rx.RxControl == RxControl)
         return DTAPI_OK;
 
     DtapiResult Result;
     if (RxControl == DTAPI_RXCTRL_IDLE)
-        Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_IDLE);
+        Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->ChSdiRx, DT_FUNC_OPMODE_IDLE);
     else if (Sdi->BitsPerSymbol == 8 || Sdi->Ring.Base == NULL)
         return DTAPI_E_CONFIG_RAW_SDI;
     else
     {
         DtRing_Restart(&Sdi->Ring, 0);
         Sdi->InSync = false;
-        Result = DtPcieCmd_ChSdiRxSetReadOffset(Drv, Sdi->Ch, 0);
+        Result = DtPcieCmd_ChSdiRxSetReadOffset(Drv, Sdi->ChSdiRx, 0);
         if (Result == DTAPI_OK)
-            Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->Ch, DT_FUNC_OPMODE_RUN);
+            Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->ChSdiRx, DT_FUNC_OPMODE_RUN);
     }
     if (Result != DTAPI_OK)
         return Result;
 
-    Sdi->Base.RxControl = RxControl;
+    Sdi->Rx.RxControl = RxControl;
     return DTAPI_OK;
 }
 
@@ -480,12 +486,12 @@ static void Release(DtRx* Rx)
     DtAlloc_Free(Sdi);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxModeSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The full frame without time stamps of any kind, while idle. A raw frame carries none;
 // ReadFrame2 gives its time of arrival.
 //
-static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
+static DtapiResult SetRxMode(DtRx* Rx, int RxMode)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
 
@@ -501,15 +507,16 @@ static DtapiResult SetRxModeSdi(DtRx* Rx, int RxMode)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControlSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Without a receive channel, which an I/O standard that failed leaves it, every value
 // gives DTAPI_E_NOT_INITIALIZED until a standard sets one up.
 //
-static DtapiResult SetRxControlSdi(DtRx* Rx, int RxControl)
+static DtapiResult SetRxControl(DtRx* Rx, int RxControl)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
-    return Sdi->ChannelAttached ? SetRxControl(Sdi, RxControl) : DTAPI_E_NOT_INITIALIZED;
+    return Sdi->ChannelAttached ? ApplyRxControl(Sdi, RxControl)
+                                : DTAPI_E_NOT_INITIALIZED;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -520,7 +527,7 @@ static DtapiResult SetRxControlSdi(DtRx* Rx, int RxControl)
 static DtapiResult ClearFifo(DtRx* Rx)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
-    DtapiResult Result = SetRxControl(Sdi, DTAPI_RXCTRL_IDLE);
+    DtapiResult Result = ApplyRxControl(Sdi, DTAPI_RXCTRL_IDLE);
 
     if (Result != DTAPI_OK)
         return Result;
@@ -560,11 +567,12 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
     *FifoLoad = 0;
     if (Rx->RxControl != DTAPI_RXCTRL_RCV || Sdi->Ring.Base == NULL)
         return DTAPI_OK;
-    DtapiResult Result = ReadWriteOffset(Sdi);
+    DtapiResult Result = SyncWriteOffset(Sdi);
     if (Result == DTAPI_OK)
     {
-        size_t Frames = DtRing_Load(&Sdi->Ring) / DtSdiFrame_CodedSize(&Sdi->Layout);
-        *FifoLoad = (int)(Frames * DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
+        size_t Frames = DtRing_Load(&Sdi->Ring) / DtSdiFrame_CodedSize(&Sdi->FrameLayout);
+        *FifoLoad =
+            (int)(Frames * DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol));
     }
     return Result;
 }
@@ -579,10 +587,10 @@ static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
     if (Sdi->Ring.Base == NULL)
-        *MaxFifoSize = DT_RX_FIFO_SIZE;
+        *MaxFifoSize = DT_SDIRX_FIFO_SIZE;
     else
         *MaxFifoSize = (int)(FramesInRing(Sdi) *
-                             DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
+                             DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol));
     return DTAPI_OK;
 }
 
@@ -622,20 +630,20 @@ static DtapiResult DetectIoStd(DtRx* Rx, int* Value, int* SubValue)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrameBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A frame read's last checks of the buffer: DTAPI_E_BUF_TOO_SMALL when it cannot hold a
 // frame of the channel's standard in its receive mode, and DTAPI_E_INVALID_SIZE for a
 // frame larger than the FIFO. Sets *RawSize to the size of that frame.
 //
-static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
+static DtapiResult CheckFrameBuffer(DtRx* Rx, int FrameSize, size_t* RawSize)
 {
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
-    *RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol);
+    *RawSize = DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol);
     if ((size_t)FrameSize < *RawSize)
         return DTAPI_E_BUF_TOO_SMALL;
-    if (*RawSize > DT_RX_FIFO_SIZE)
+    if (*RawSize > DT_SDIRX_FIFO_SIZE)
         return DTAPI_E_INVALID_SIZE;
     return DTAPI_OK;
 }
@@ -653,19 +661,20 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
 typedef struct DecodeBand
 {
     DtSdiRx* Sdi;
-    uint8_t* Buffer;
+    uint8_t* RawFrame;
     size_t CodedBytesPerLine;
-    size_t RawLineNumBytes;
+    size_t RawBytesPerLine;
 } DecodeBand;
 
 static void DecodeLines(void* Context, int Index, int Count)
 {
     const DecodeBand* Band = (const DecodeBand*)Context;
     DtSdiRx* Sdi = Band->Sdi;
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    uint8_t* LineBuf = Sdi->LineBuf + (size_t)Index * Sdi->LineBufNumBytes;
-    uint16_t* Scratch =
-        Sdi->Scratch == NULL ? NULL : Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    uint8_t* LineBuf = Sdi->WrapLineBuffer + (size_t)Index * Sdi->WrapLineBufferBytes;
+    uint16_t* Scratch = Sdi->BandSymbols == NULL
+                            ? NULL
+                            : Sdi->BandSymbols + (size_t)Index * Sdi->SymbolsPerBand;
     int First;
     int Last;
 
@@ -685,9 +694,10 @@ static void DecodeLines(void* Context, int Index, int Count)
         if (Layout->Is4k)
             DtSdiFrame_DecodeLine4k(
                 Layout, Sdi->BitsPerSymbol, Coded, Coded + Layout->Stride, Line,
-                Band->Buffer + (size_t)Line * Band->RawLineNumBytes, Scratch);
+                Band->RawFrame + (size_t)Line * Band->RawBytesPerLine, Scratch);
         else
-            DtSdiFrame_DecodeLine(Layout, Sdi->BitsPerSymbol, Coded, Line, Band->Buffer);
+            DtSdiFrame_DecodeLine(Layout, Sdi->BitsPerSymbol, Coded, Line,
+                                  Band->RawFrame);
     }
 }
 
@@ -701,11 +711,11 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
                                 bool* Delivered)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    size_t Frame = DtSdiFrame_CodedSize(Layout);
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    size_t CodedFrameSize = DtSdiFrame_CodedSize(Layout);
 
     *Delivered = false;
-    DtapiResult Result = ReadWriteOffset(Sdi);
+    DtapiResult Result = SyncWriteOffset(Sdi);
     if (Result != DTAPI_OK)
         return Result;
     size_t Available = DtRing_Load(&Sdi->Ring);
@@ -722,7 +732,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     // whose first or last line is not where it should be lost lines when the ring was
     // full, and holds the start of a later frame: it is not delivered, and the search
     // starts again after its header.
-    uint8_t Bytes[DT_SDIFRAME_HEADER_BYTES];
+    uint8_t HeaderBytes[DT_SDIFRAME_HEADER_BYTES];
     DtSdiFrameHeader Header;
     for (;;)
     {
@@ -732,27 +742,27 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
                 return Result;
             Available = DtRing_Load(&Sdi->Ring);
         }
-        if (Available < Frame)
+        if (Available < CodedFrameSize)
             return DTAPI_OK;
 
-        DtRing_PeekAt(&Sdi->Ring, 0, Bytes, sizeof(Bytes));
-        DtSdiFrame_DecodeHeader(Bytes, &Header);
-        if (DtSdiFrame_CheckHeader(Layout, &Header, Sdi->ExpectedId) == DTAPI_OK)
+        DtRing_PeekAt(&Sdi->Ring, 0, HeaderBytes, sizeof(HeaderBytes));
+        DtSdiFrame_DecodeHeader(HeaderBytes, &Header);
+        if (DtSdiFrame_CheckHeader(Layout, &Header, Sdi->ExpectedFrameId) == DTAPI_OK)
         {
-            uint8_t First[DT_SDIFRAME_LINE_START_BYTES];
+            uint8_t FirstLineStart[DT_SDIFRAME_LINE_START_BYTES];
 
-            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->HeaderNumBytes, First,
-                          sizeof(First));
-            uint8_t Last[DT_SDIFRAME_LINE_START_BYTES];
+            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->HeaderNumBytes, FirstLineStart,
+                          sizeof(FirstLineStart));
+            uint8_t LastLineStart[DT_SDIFRAME_LINE_START_BYTES];
             DtRing_PeekAt(&Sdi->Ring,
                           (size_t)Layout->HeaderNumBytes +
                               (size_t)(Layout->NumCodedLines - 1) *
                                   (size_t)Layout->Stride,
-                          Last, sizeof(Last));
-            if (DtSdiFrame_CheckLines(Layout, First, Last) == DTAPI_OK)
+                          LastLineStart, sizeof(LastLineStart));
+            if (DtSdiFrame_CheckLines(Layout, FirstLineStart, LastLineStart) == DTAPI_OK)
                 break;
 
-            Result = Advance(Sdi, (size_t)Layout->Alignment);
+            Result = AdvanceReadOffset(Sdi, (size_t)Layout->Alignment);
             if (Result != DTAPI_OK)
                 return Result;
             Available = DtRing_Load(&Sdi->Ring);
@@ -763,24 +773,24 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
     size_t CodedBytesPerLine = DtSdiFrame_CodedBytesPerLine(Layout);
-    size_t RawLineNumBytes = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol) / 8;
+    size_t RawBytesPerLine = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->BitsPerSymbol));
     DecodeBand Band;
     Band.Sdi = Sdi;
-    Band.Buffer = Buffer;
+    Band.RawFrame = Buffer;
     Band.CodedBytesPerLine = CodedBytesPerLine;
-    Band.RawLineNumBytes = RawLineNumBytes;
+    Band.RawBytesPerLine = RawBytesPerLine;
 
     DtJobRunner_Run(&Sdi->JobRunner, DecodeLines, &Band);
 
-    Result = Advance(Sdi, Frame);
+    Result = AdvanceReadOffset(Sdi, CodedFrameSize);
     if (Result != DTAPI_OK)
         return Result;
 
-    if (Available - Frame + (size_t)Layout->Stride < Sdi->Ring.MaxLoad)
+    if (Available - CodedFrameSize + (size_t)Layout->Stride < Sdi->Ring.MaxLoad)
         Sdi->FifoOvf = false;
-    Sdi->ExpectedId = (Header.FrameId + 1) & 0xFFFF;
+    Sdi->ExpectedFrameId = (Header.FrameId + 1) & 0xFFFF;
     ArrivalTime->Seconds = Header.PtpSeconds;
     ArrivalTime->Nanoseconds = Header.PtpNanoseconds;
     *Delivered = true;
@@ -791,15 +801,15 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
 //
 // A read waits for the receive channel's next format event, a quarter frame at most.
 //
-static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
+static void PrepareWait(DtRx* Rx, DtRxWaitState* State)
 {
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
-    memset(Wait, 0, sizeof(*Wait));
-    Wait->Backend = Rx->Backend;
-    Wait->Drv = DrvOf(Sdi);
-    Wait->Object = Sdi->Ch;
-    Wait->MaxMs = Sdi->QuarterMs;
+    memset(State, 0, sizeof(*State));
+    State->Backend = Rx->Backend;
+    State->Drv = DrvOf(Sdi);
+    State->WaitObject = Sdi->ChSdiRx;
+    State->MaxMs = Sdi->QuarterFrameMs;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -807,13 +817,13 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
 // Waits for the next format event, without the channel's lock. No event in time is no
 // failure.
 //
-static DtapiResult Wait(DtRxWait* Wait, int Ms)
+static DtapiResult Wait(DtRxWaitState* State, int Ms)
 {
     DtChSdiRxEvent Event;
     DtapiResult Result =
-        DtPcieCmd_ChSdiRxWaitForFmtEvent(Wait->Drv, Wait->Object, Ms, &Event);
+        DtPcieCmd_ChSdiRxWaitForFmtEvent(State->Drv, State->WaitObject, Ms, &Event);
 
-    Wait->OutOfSync = Result == DTAPI_OK && !Event.InSync;
+    State->EventOutOfSync = Result == DTAPI_OK && !Event.InSync;
     return Result == DTAPI_E_TIMEOUT ? DTAPI_OK : Result;
 }
 
@@ -821,9 +831,9 @@ static DtapiResult Wait(DtRxWait* Wait, int Ms)
 //
 // An event out of sync discards everything written so far.
 //
-static DtapiResult AfterWait(DtRx* Rx, const DtRxWait* Wait)
+static DtapiResult AfterWait(DtRx* Rx, const DtRxWaitState* State)
 {
-    return Wait->OutOfSync ? DiscardAll((DtSdiRx*)Rx) : DTAPI_OK;
+    return State->EventOutOfSync ? DiscardAll((DtSdiRx*)Rx) : DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -838,15 +848,15 @@ static DtapiResult SetWorkerPool(DtRx* Rx, DtWorkerPool* Pool, int NumThreads)
 
     Sdi->WorkerPool = Pool;
     Sdi->WorkerThreads = NumThreads;
-    if (Sdi->LineBuf == NULL)
+    if (Sdi->WrapLineBuffer == NULL)
         return DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
-    return SizeWork(Sdi);
+    return ConfigureJobRunner(Sdi);
 }
 
 static const DtRxBackend g_SdiRxBackend = {
     .Release = Release,
-    .SetRxMode = SetRxModeSdi,
-    .SetRxControl = SetRxControlSdi,
+    .SetRxMode = SetRxMode,
+    .SetRxControl = SetRxControl,
     .ClearFifo = ClearFifo,
     .ClearFlags = ClearFlags,
     .GetFlags = GetFlags,
@@ -855,7 +865,7 @@ static const DtRxBackend g_SdiRxBackend = {
     .ApplyIoConfig = ApplyIoConfig,
     .DetectIoStd = DetectIoStd,
     .SetWorkerPool = SetWorkerPool,
-    .CheckFrame = CheckFrame,
+    .CheckFrameBuffer = CheckFrameBuffer,
     .DeliverFrame = DeliverFrame,
     .PrepareWait = PrepareWait,
     .Wait = Wait,
@@ -864,7 +874,8 @@ static const DtRxBackend g_SdiRxBackend = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx** Rx)
+DtapiResult DtSdiRx_Attach(const DtRxAttachedPort* Port, const DtIoConfig* IoStd,
+                           DtRx** Rx)
 {
     OsDrv* Drv = Port->Device->Drv;
 
@@ -873,16 +884,16 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     if (Sdi == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Sdi, 0, sizeof(*Sdi));
-    Sdi->Base.Backend = &g_SdiRxBackend;
-    Sdi->Base.Port = *Port;
+    Sdi->Rx.Backend = &g_SdiRxBackend;
+    Sdi->Rx.Port = *Port;
     Sdi->IoStdValue = IoStd->Value;
     Sdi->IoStdSubValue = IoStd->SubValue;
-    Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     DtJobRunner_Init(&Sdi->JobRunner);
 
     // The receiver and the receive channel, in the port's AF_ASISDIRX.
     DtFuncInstance Instance;
-    DtapiResult Result = DtFunc_Find(Drv, Port->PortIndex, "AF_ASISDIRX", "", &Instance);
+    DtapiResult Result = DtFunc_Find(Drv, Port->Port - 1, "AF_ASISDIRX", "", &Instance);
     if (Result != DTAPI_OK)
     {
         DtAlloc_Free(Sdi);
@@ -898,7 +909,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
         Result = DtFunc_CheckDriverVersion(&Port->Device->DriverVersion, true,
                                            DT_FUNC_TYPE_CHSDIRX);
     if (Result == DTAPI_OK)
-        Sdi->Ch = ChSdiRx->Ref;
+        Sdi->ChSdiRx = ChSdiRx->Ref;
     DtFunc_Release(&Instance);
     if (Result != DTAPI_OK)
     {
@@ -909,15 +920,15 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     // The down-scaling read, and the default receive mode.
     if ((Port->Caps & DT_CAP_SCALE_12GTO3G) != 0)
     {
-        DtIoConfig Scale = *IoStd;
+        DtIoConfig ScaleConfig = *IoStd;
 
-        Scale.Group = DTAPI_IOCONFIG_IODOWNSCALE;
-        Sdi->Scale12GTo3G = DtPcieCmd_GetIoConfig(Drv, &Scale) == DTAPI_OK &&
-                            Scale.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
+        ScaleConfig.Group = DTAPI_IOCONFIG_IODOWNSCALE;
+        Sdi->Scale12GTo3G = DtPcieCmd_GetIoConfig(Drv, &ScaleConfig) == DTAPI_OK &&
+                            ScaleConfig.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
     }
-    Sdi->Base.RxMode = DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B;
+    Sdi->Rx.RxMode = DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B;
     Sdi->BitsPerSymbol = 10;
-    Sdi->Base.RxControl = DTAPI_RXCTRL_IDLE;
+    Sdi->Rx.RxControl = DTAPI_RXCTRL_IDLE;
 
     // The I/O standard is applied again, and the receive channel set up for it.
     Result = DtPcieCmd_SetIoConfig(Drv, IoStd);
@@ -925,9 +936,9 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
         Result = ConfigureChannel(Sdi);
     if (Result != DTAPI_OK)
     {
-        Release(&Sdi->Base);
+        Release(&Sdi->Rx);
         return Result;
     }
-    *Rx = &Sdi->Base;
+    *Rx = &Sdi->Rx;
     return DTAPI_OK;
 }

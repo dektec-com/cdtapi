@@ -35,34 +35,34 @@ typedef struct DtRxBackend DtRxBackend;
 
 // The port the channel attached to. Device is the channel's own, and lives as long as the
 // side does.
-typedef struct DtRxPort
+typedef struct DtRxAttachedPort
 {
     DtDevice* Device;
-    int Port; // From 1
-    int PortIndex;
+    int Port;      // From 1
     uint64_t Caps; // DT_CAP_ flags of the port
-} DtRxPort;
+} DtRxAttachedPort;
 
 // What every side has: its backend, its port, and the receive mode and control, which
 // the checks in DtInpChannel.c read.
 typedef struct DtRx
 {
     const DtRxBackend* Backend;
-    DtRxPort Port;
+    DtRxAttachedPort Port;
     int RxMode;
     int RxControl;
+    bool IsAsi; // The side is DtAsiRx.c, and Read delivers a transport stream
 } DtRx;
 
 // What a read waits with, copied from the side while the lock is held, so that the wait
 // needs nothing the lock guards.
-typedef struct DtRxWait
+typedef struct DtRxWaitState
 {
     const DtRxBackend* Backend; // Of the side that prepared the wait
     OsDrv* Drv;
-    DtDrvObject Object; // What the side waits on
-    int MaxMs;          // The longest a wait lasts
-    bool OutOfSync;     // Set by Wait for AfterWait
-} DtRxWait;
+    DtDrvObject WaitObject; // What the side waits on
+    int MaxMs;              // The longest a wait lasts
+    bool EventOutOfSync;    // What the event reported, for AfterWait
+} DtRxWaitState;
 
 struct DtRxBackend
 {
@@ -94,19 +94,19 @@ struct DtRxBackend
     // divide.
     DtapiResult (*SetWorkerPool)(DtRx* Rx, DtWorkerPool* Pool, int NumThreads);
 
-    // ReadFrame: CheckFrame checks a buffer of FrameSize bytes and gives the size of a
-    // frame, DeliverFrame delivers one when there is one. NULL gives
+    // ReadFrame: CheckFrameBuffer checks a buffer of FrameSize bytes and gives the size
+    // of a frame, DeliverFrame delivers one when there is one. NULL gives
     // DTAPI_E_NOT_SDI_MODE.
-    DtapiResult (*CheckFrame)(DtRx* Rx, int FrameSize, size_t* RawSize);
+    DtapiResult (*CheckFrameBuffer)(DtRx* Rx, int FrameSize, size_t* RawSize);
     DtapiResult (*DeliverFrame)(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
                                 bool* Delivered);
 
     // A read's wait while receiving: PrepareWait fills Wait, Wait waits up to Ms without
     // the lock, and AfterWait, with the lock and while no detach waits, deals with what
     // the wait saw.
-    void (*PrepareWait)(DtRx* Rx, DtRxWait* Wait);
-    DtapiResult (*Wait)(DtRxWait* Wait, int Ms);
-    DtapiResult (*AfterWait)(DtRx* Rx, const DtRxWait* Wait);
+    void (*PrepareWait)(DtRx* Rx, DtRxWaitState* Wait);
+    DtapiResult (*Wait)(DtRxWaitState* Wait, int Ms);
+    DtapiResult (*AfterWait)(DtRx* Rx, const DtRxWaitState* Wait);
 
     // Read: GetDeliverableBytes gives the bytes a read would deliver now, and
     // DeliverBytes delivers Size of them, which that count holds. NULL gives

@@ -36,4 +36,4 @@
 // buffer, sets the slaves to ASI, starts sending K28.5, and sets the defaults,
 // DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST without stuffing, 10 Mbit/s and normal polarity.
 // *Tx is the side after a success, NULL otherwise.
-DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Tx);
+DtapiResult DtAsiTx_Attach(const DtTxAttachedPort* Port, DtTx** Tx);

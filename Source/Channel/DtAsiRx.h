@@ -35,4 +35,4 @@
 // burst FIFO and CDMAC in IDLE, flushes CDMAC, registers the receive buffer, sets ASIRX
 // to automatic polarity, synchronisation and packets, clears the flags, and sets
 // DTAPI_RXMODE_ST188. *Rx is the side after a success, NULL otherwise.
-DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Rx);
+DtapiResult DtAsiRx_Attach(const DtRxAttachedPort* Port, DtRx** Rx);

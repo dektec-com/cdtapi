@@ -49,7 +49,7 @@ struct DtOutpChannel
     bool Writing;        // A Write or WriteFrame call is between its start and its return
 
     DtDevice Device; // The channel's own handle to the device
-    DtTxPort Port;
+    DtTxAttachedPort Port;
     DtTx* Tx; // The side that transmits, while attached
 
     // The pool the channel's work is divided over, NULL for none, and the pieces asked
@@ -79,32 +79,59 @@ static DtapiResult LockAttached(DtOutpChannel* Chan)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Lets go of the side and the device, ignoring failures.
+// Lets go of the side, ignoring failures.
 //
-static void ReleaseAll(DtOutpChannel* Chan)
+static void ReleaseSide(DtOutpChannel* Chan)
 {
     if (Chan->Tx != NULL)
         Chan->Tx->Backend->Release(Chan->Tx);
     Chan->Tx = NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Lets go of the side and the device, ignoring failures.
+//
+static void ReleaseAll(DtOutpChannel* Chan)
+{
+    ReleaseSide(Chan);
     DtDevice_Release(&Chan->Device);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GiveWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReportFailSafe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A fail-safe port in fail-safe mode is reported, as a success; a failure to read it is
+// the driver's result.
+//
+static DtapiResult ReportFailSafe(DtOutpChannel* Chan, const DtIoConfig* Config)
+{
+    if ((Chan->Port.Caps & DT_CAP_FAILSAFE) == 0)
+        return DTAPI_OK;
+
+    DtIoConfig FailSafe = *Config;
+    FailSafe.Group = DTAPI_IOCONFIG_FAILSAFE;
+    DtapiResult Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &FailSafe);
+    if (Result != DTAPI_OK)
+        return Result;
+    return FailSafe.Value == DTAPI_IOCONFIG_TRUE ? DTAPI_OK_FAILSAFE : DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePoolToSide -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Gives the side the channel's pool. A side short of memory for the pieces works in the
 // writing thread, which is not a reason to fail an attach, so the result is ignored.
 //
-static void GiveWork(DtOutpChannel* Chan)
+static void GivePoolToSide(DtOutpChannel* Chan)
 {
     if (Chan->Tx->Backend->SetWorkerPool != NULL)
         Chan->Tx->Backend->SetWorkerPool(Chan->Tx, Chan->WorkerPool, Chan->WorkerThreads);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Lets go of the pool when the channel detaches, as it forgets its other settings then.
 //
-static void DropWork(DtOutpChannel* Chan)
+static void DropPool(DtOutpChannel* Chan)
 {
     DtWorkerPool_Freep(&Chan->WorkerPool);
     Chan->WorkerThreads = 0;
@@ -159,7 +186,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
             OsMutex_Unlock(Chan->Lock);
             return DTAPI_E_TIMEOUT;
         }
-        Chan->Tx->Backend->Wake(Chan->Tx);
+        Chan->Tx->Backend->WakeWaitingWrite(Chan->Tx);
         OsMutex_Unlock(Chan->Lock);
         OsTime_SleepMs(DT_DETACH_PAUSE_MS);
         OsMutex_Lock(Chan->Lock);
@@ -180,7 +207,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 
     ReleaseAll(Chan);
     Chan->Attached = false;
-    DropWork(Chan);
+    DropPool(Chan);
     Chan->WaitingDetaches--;
     OsMutex_Unlock(Chan->Lock);
     return DTAPI_OK;
@@ -234,16 +261,15 @@ void DtOutpChannel_Freep(DtOutpChannel** OutpChannel)
     *OutpChannel = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachSide -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // AttachToPort's steps once the channel has its own handle to the device. The caller
 // releases everything when they fail.
 //
-static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
+static DtapiResult AttachSide(DtOutpChannel* Chan, int Port, uint64_t Caps)
 {
     Chan->Port.Device = &Chan->Device;
     Chan->Port.Port = Port;
-    Chan->Port.PortIndex = Port - 1;
     Chan->Port.Caps = Caps;
     Chan->Port.Lock = Chan->Lock;
     Chan->Port.WaitingDetaches = &Chan->WaitingDetaches;
@@ -281,21 +307,12 @@ static DtapiResult AttachPort(DtOutpChannel* Chan, int Port, uint64_t Caps)
         Result = DtSdiTx_Attach(&Chan->Port, &Config, &Chan->Tx);
     if (Result != DTAPI_OK)
         return Result;
-    GiveWork(Chan);
+    GivePoolToSide(Chan);
 
-    // A fail-safe port in fail-safe mode is reported, as a success.
-    if ((Caps & DT_CAP_FAILSAFE) != 0)
-    {
-        DtIoConfig FailSafe = Config;
-
-        FailSafe.Group = DTAPI_IOCONFIG_FAILSAFE;
-        Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &FailSafe);
-        if (Result != DTAPI_OK)
-            return Result;
-        if (FailSafe.Value == DTAPI_IOCONFIG_TRUE)
-            return DTAPI_OK_FAILSAFE;
-    }
-    return DTAPI_OK;
+    Result = ReportFailSafe(Chan, &Config);
+    if (Result != DTAPI_OK)
+        ReleaseSide(Chan);
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -327,7 +344,7 @@ static DtapiResult Attach(DtOutpChannel* Chan, DtDevice* Device, int Port)
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = AttachPort(Chan, Port, Caps);
+    Result = AttachSide(Chan, Port, Caps);
     if (Result >= DTAPI_E)
         ReleaseAll(Chan);
     return Result;
@@ -541,15 +558,14 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
         Config.ParXtra[0] = ParXtra0;
         Config.ParXtra[1] = ParXtra1;
         DtTx* Tx = OutpChannel->Tx;
-        const bool IsAsi = Tx->Backend->SetTsRateBps != NULL;
-        const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
+        const bool SideIsAsi = Tx->IsAsi;
+        const bool NewStdIsAsi = Value == DTAPI_IOCONFIG_ASI;
 
-        if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
+        if (Group == DTAPI_IOCONFIG_IOSTD && NewStdIsAsi != SideIsAsi)
         {
-            Tx->Backend->Release(Tx);
-            OutpChannel->Tx = NULL;
+            ReleaseSide(OutpChannel);
             Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
-            if (Result == DTAPI_OK && NewAsi)
+            if (Result == DTAPI_OK && NewStdIsAsi)
                 Result = DtAsiTx_Attach(&OutpChannel->Port, &OutpChannel->Tx);
             else if (Result == DTAPI_OK)
                 Result = DtSdiTx_Attach(&OutpChannel->Port, &Config, &OutpChannel->Tx);
@@ -557,10 +573,10 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
             {
                 ReleaseAll(OutpChannel);
                 OutpChannel->Attached = false;
-                DropWork(OutpChannel);
+                DropPool(OutpChannel);
             }
             else
-                GiveWork(OutpChannel);
+                GivePoolToSide(OutpChannel);
         }
         else
         {
@@ -681,7 +697,7 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
 DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Frame,
                                      int FrameSize, int TimeOut)
 {
-    uint64_t Start = OsTime_MonotonicMs();
+    uint64_t StartMs = OsTime_MonotonicMs();
 
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -706,7 +722,8 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
         Result = DTAPI_E_NOT_SDI_MODE;
     else
     {
-        uint64_t Deadline = TimeOut == -1 ? DT_TX_NO_DEADLINE : Start + (uint64_t)TimeOut;
+        uint64_t Deadline =
+            TimeOut == -1 ? DT_TX_NO_DEADLINE : StartMs + (uint64_t)TimeOut;
 
         OutpChannel->Writing = true;
         Result = Tx->Backend->WriteFrame(Tx, (const uint8_t*)Frame, FrameSize, Deadline);

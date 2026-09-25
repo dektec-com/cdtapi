@@ -26,4 +26,5 @@
 // standard again, takes the transmitter and the DMA exclusively, sets every block idle
 // and the encoder's corrections on, and sets the channel up for the standard. *Tx is the
 // side after a success, NULL otherwise.
-DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx** Tx);
+DtapiResult DtSdiTx_Attach(const DtTxAttachedPort* Port, const DtIoConfig* IoStd,
+                           DtTx** Tx);

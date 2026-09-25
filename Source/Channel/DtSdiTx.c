@@ -35,9 +35,6 @@
 #define DT_SDITX_BUF_ROOM_FRAMES 5
 #define DT_SDITX_BUF_MIN_FRAMES 2
 
-// The format events per frame the channel asks for.
-#define DT_FMT_EVENTS_PER_FRAME 4
-
 // A detach that waits until everything is sent gives up after a second without a format
 // event.
 #define DT_SDITX_SENT_STALL_MS 1000
@@ -754,8 +751,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
             Drv, Sdi->Txf,
-            (Layout.NumCodedLines + DT_FMT_EVENTS_PER_FRAME - 1) /
-                    DT_FMT_EVENTS_PER_FRAME +
+            (Layout.NumCodedLines + DT_SDIFRAME_FMT_EVENTS_PER_FRAME - 1) /
+                    DT_SDIFRAME_FMT_EVENTS_PER_FRAME +
                 1,
             1);
     if (Result == DTAPI_OK)
@@ -847,7 +844,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     int Num;
     int Den;
     DtVidStd_Fps(Sdi->IoStdSubValue, &Num, &Den);
-    Sdi->QuarterFrameMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
+    Sdi->QuarterFrameMs = Den * 1000 / Num / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
     if (Sdi->QuarterFrameMs < 1)
         Sdi->QuarterFrameMs = 1;
     ForgetPartialFrame(Sdi);
@@ -1443,10 +1440,10 @@ static DtapiResult FindDriverBlocks(DtSdiTx* Sdi)
          &Sdi->DemuxOutSwitch, HasQuadLink},
     };
 
-    DtapiResult Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.PortIndex, "AF_ASISDITX",
-                                     "", &Sdi->TxFunction);
+    DtapiResult Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.Port - 1, "AF_ASISDITX", "",
+                                     &Sdi->TxFunction);
     if (Result == DTAPI_OK)
-        Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.PortIndex, "AF_DMA", "",
+        Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.Port - 1, "AF_DMA", "",
                              &Sdi->DmaFunction);
     for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
          i++)
@@ -1666,9 +1663,9 @@ static DtapiResult WriteFrame(DtTx* Tx, const uint8_t* Frame, int FrameSize,
     return WriteOneFrame(Sdi, Frame, FrameSize, Deadline);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wake -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WakeWaitingWrite -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void Wake(DtTx* Tx)
+static void WakeWaitingWrite(DtTx* Tx)
 {
     OsEvent_Set(((DtSdiTx*)Tx)->RoomEvent);
 }
@@ -1758,13 +1755,14 @@ static const DtTxBackend g_SdiTxBackend = {
     .SetTxPolarity = SetTxPolarity,
     .Write = Write,
     .WriteFrame = WriteFrame,
-    .Wake = Wake,
+    .WakeWaitingWrite = WakeWaitingWrite,
     .WaitUntilSent = WaitUntilSent,
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiTx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx** Tx)
+DtapiResult DtSdiTx_Attach(const DtTxAttachedPort* Port, const DtIoConfig* IoStd,
+                           DtTx** Tx)
 {
     *Tx = NULL;
     DtSdiTx* Sdi = (DtSdiTx*)DtAlloc_Malloc(sizeof(DtSdiTx));

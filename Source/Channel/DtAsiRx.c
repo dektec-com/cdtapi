@@ -26,41 +26,41 @@
 #define DT_ASIRX_SEARCH_SIZE (64 * 1024)
 
 // The page a receive buffer's size is rounded to, times the prefetch size.
-#define DT_ASIRX_PAGE 4096
+#define DT_ASIRX_PAGE_SIZE 4096
 
 // How often a read looks for more.
-#define DT_ASIRX_POLL_MS 5
+#define DT_ASIRX_READ_POLL_MS 5
 
 // Bytes a scan passed over, which a take passes over too: a packet dropped for want of
 // room, or bytes searched for the stream.
 typedef struct DtAsiRxSkip
 {
-    uint64_t At; // Counted as DtAsiRx.ReadAt
+    uint64_t Position; // Counted as DtAsiRx.ReadPosition
     size_t Bytes;
 } DtAsiRxSkip;
 
 typedef struct DtAsiRx
 {
-    DtRx Base;
+    DtRx Rx;
     OsDrv* Drv;
     int PortIndex;
-    DtFuncInstance AfRx, AfDma;
-    bool Held; // Exclusive access to both
-    DtDrvObject AsiRx, Cdmac, Burst;
-    OsDmaBuffer Buf;
-    bool Registered;
+    DtFuncInstance RxFunction, DmaFunction;
+    bool HasExclusiveAccess; // Exclusive access to both
+    DtDrvObject AsiRx, Cdmac, BurstFifo;
+    OsDmaBuffer DmaBuffer;
+    bool BufferRegistered;
     DtRing Ring;
     bool Receiving;
 
     // What is scanned: bytes past the read offset, and whether the stream is found.
     DtTsTrp Scan, DeliverConverter;
     bool OutOfSync;
-    size_t Scanned;
-    size_t Load;     // Bytes to deliver, Pending's included
-    uint64_t ReadAt; // Bytes the read offset moved on since receiving started
-    DtVec Skips;     // DtAsiRxSkip, in order
-    size_t SkipHead;
-    uint8_t* Search; // Where the stream is searched for
+    size_t ScannedBytes;
+    size_t DeliverableBytes; // Bytes to deliver, Pending's included
+    uint64_t ReadPosition;   // Bytes the read offset moved on since receiving started
+    DtVec Skips;             // DtAsiRxSkip, in order
+    size_t NextSkipIndex;
+    uint8_t* SearchBuffer; // Where the stream is searched for
 
     // Output of a packet converted when the caller's buffer had less room than the
     // largest packet's output, kept for what the buffer could not take.
@@ -69,26 +69,26 @@ typedef struct DtAsiRx
 
     // DTAPI_RX_FIFO_OVF for packets dropped, and for the burst FIFO's count moving.
     bool FifoOvf, FifoOvfLatched;
-    bool BurstOvf, BurstOvfLatched;
-    uint32_t OvfCount;
+    bool BurstFifoOvf, BurstFifoOvfLatched;
+    uint32_t LastBurstFifoOvfCount;
 } DtAsiRx;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Empty -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Forgets what was scanned and kept, with the buffer starting again at its beginning.
 //
-static void Empty(DtAsiRx* Rx)
+static void ResetScan(DtAsiRx* Asi)
 {
-    if (Rx->Ring.Base != NULL)
-        DtRing_Restart(&Rx->Ring, 0);
-    Rx->Scanned = Rx->Load = 0;
-    Rx->ReadAt = 0;
-    DtVec_Clear(&Rx->Skips);
-    Rx->SkipHead = 0;
-    Rx->PendingPos = Rx->PendingLen = 0;
-    Rx->OutOfSync = false;
+    if (Asi->Ring.Base != NULL)
+        DtRing_Restart(&Asi->Ring, 0);
+    Asi->ScannedBytes = Asi->DeliverableBytes = 0;
+    Asi->ReadPosition = 0;
+    DtVec_Clear(&Asi->Skips);
+    Asi->NextSkipIndex = 0;
+    Asi->PendingPos = Asi->PendingLen = 0;
+    Asi->OutOfSync = false;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -96,77 +96,79 @@ static void Empty(DtAsiRx* Rx)
 // The transparent packet Offset bytes past the read offset, in place or copied into Copy
 // when it runs across the end of the buffer.
 //
-static const uint8_t* PacketAt(const DtAsiRx* Rx, size_t Offset, uint8_t* Copy)
+static const uint8_t* PacketAt(const DtAsiRx* Asi, size_t Offset, uint8_t* Copy)
 {
-    const uint8_t* P = DtRing_Span(&Rx->Ring, Offset, DT_TRP_SIZE);
+    const uint8_t* P = DtRing_Span(&Asi->Ring, Offset, DT_TRP_SIZE);
     if (P == NULL)
     {
-        DtRing_PeekAt(&Rx->Ring, Offset, Copy, DT_TRP_SIZE);
+        DtRing_PeekAt(&Asi->Ring, Offset, Copy, DT_TRP_SIZE);
         P = Copy;
     }
     return P;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Advance -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AdvanceReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Moves the read offset on by Bytes, which were scanned, and tells the driver.
 //
-static DtapiResult Advance(DtAsiRx* Rx, size_t Bytes)
+static DtapiResult AdvanceReadOffset(DtAsiRx* Asi, size_t Bytes)
 {
     if (Bytes == 0)
         return DTAPI_OK;
-    if (Bytes > Rx->Scanned || DtRing_Skip(&Rx->Ring, Bytes) != 0)
+    if (Bytes > Asi->ScannedBytes || DtRing_Skip(&Asi->Ring, Bytes) != 0)
         return DTAPI_E_INTERNAL;
-    Rx->Scanned -= Bytes;
-    Rx->ReadAt += Bytes;
-    if (Rx->SkipHead == DtVec_Count(&Rx->Skips))
+    Asi->ScannedBytes -= Bytes;
+    Asi->ReadPosition += Bytes;
+    if (Asi->NextSkipIndex == DtVec_Count(&Asi->Skips))
     {
-        DtVec_Clear(&Rx->Skips);
-        Rx->SkipHead = 0;
+        DtVec_Clear(&Asi->Skips);
+        Asi->NextSkipIndex = 0;
     }
-    return DtPcieCmd_CdmacSetRxReadOffset(Rx->Drv, Rx->Cdmac,
-                                          (uint32_t)DtRing_ReadOffset(&Rx->Ring));
+    return DtPcieCmd_CdmacSetRxReadOffset(Asi->Drv, Asi->Cdmac,
+                                          (uint32_t)DtRing_ReadOffset(&Asi->Ring));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Skip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SkipBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Passes over Bytes after what was scanned, noting them for the take.
 //
-static DtapiResult Skip(DtAsiRx* Rx, size_t Bytes)
+static DtapiResult SkipBytes(DtAsiRx* Asi, size_t Bytes)
 {
-    const uint64_t At = Rx->ReadAt + Rx->Scanned;
-    const size_t Count = DtVec_Count(&Rx->Skips);
-    DtAsiRxSkip* Last =
-        Count > Rx->SkipHead ? (DtAsiRxSkip*)DtVec_At(&Rx->Skips, Count - 1) : NULL;
+    const uint64_t Position = Asi->ReadPosition + Asi->ScannedBytes;
+    const size_t Count = DtVec_Count(&Asi->Skips);
+    DtAsiRxSkip* Last = Count > Asi->NextSkipIndex
+                            ? (DtAsiRxSkip*)DtVec_At(&Asi->Skips, Count - 1)
+                            : NULL;
 
-    if (Last != NULL && Last->At + Last->Bytes == At)
+    if (Last != NULL && Last->Position + Last->Bytes == Position)
         Last->Bytes += Bytes;
     else
     {
-        DtAsiRxSkip New = {At, Bytes};
-        if (DtVec_Push(&Rx->Skips, &New) != 0)
+        DtAsiRxSkip New = {Position, Bytes};
+        if (DtVec_Push(&Asi->Skips, &New) != 0)
             return DTAPI_E_OUT_OF_MEM;
     }
-    Rx->Scanned += Bytes;
+    Asi->ScannedBytes += Bytes;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateOvf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Sets the overflow flag when the burst FIFO's count has moved since the previous
 // GetFlags, or since the flag was cleared, and latches it. Only GetFlags looks, so that a
 // scan between two of them, which every read and every load makes, does not take the
 // change away before it is reported.
 //
-static DtapiResult UpdateBurst(DtAsiRx* Rx)
+static DtapiResult UpdateOvf(DtAsiRx* Asi)
 {
     uint32_t Count = 0;
-    DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(Rx->Drv, Rx->Burst, &Count);
+    DtapiResult Result =
+        DtPcieCmd_BurstFifoGetOvfUflCount(Asi->Drv, Asi->BurstFifo, &Count);
     if (Result != DTAPI_OK)
         return Result;
-    Rx->BurstOvf = Count != Rx->OvfCount;
-    Rx->BurstOvfLatched |= Rx->BurstOvf;
-    Rx->OvfCount = Count;
+    Asi->BurstFifoOvf = Count != Asi->LastBurstFifoOvfCount;
+    Asi->BurstFifoOvfLatched |= Asi->BurstFifoOvf;
+    Asi->LastBurstFifoOvfCount = Count;
     return DTAPI_OK;
 }
 
@@ -179,46 +181,46 @@ static DtapiResult UpdateBurst(DtAsiRx* Rx)
 // nothing is left to deliver, what was scanned is released at once, so that a stream the
 // application does not want does not fill the buffer.
 //
-static DtapiResult ScanBuffer(DtAsiRx* Rx)
+static DtapiResult ScanBuffer(DtAsiRx* Asi)
 {
-    if (!Rx->Receiving)
+    if (!Asi->Receiving)
         return DTAPI_OK;
 
     uint32_t WriteOffset = 0;
     DtapiResult Result =
-        DtPcieCmd_CdmacGetRxWriteOffset(Rx->Drv, Rx->Cdmac, &WriteOffset);
+        DtPcieCmd_CdmacGetRxWriteOffset(Asi->Drv, Asi->Cdmac, &WriteOffset);
     if (Result != DTAPI_OK)
         return Result;
-    if (WriteOffset >= Rx->Ring.Size ||
-        DtRing_SetWriteOffset(&Rx->Ring, WriteOffset) != 0)
+    if (WriteOffset >= Asi->Ring.Size ||
+        DtRing_SetWriteOffset(&Asi->Ring, WriteOffset) != 0)
         return DTAPI_E_DEV_DRIVER;
 
     while (Result == DTAPI_OK)
     {
-        const size_t Available = DtRing_Load(&Rx->Ring) - Rx->Scanned;
-        if (!Rx->OutOfSync)
+        const size_t Available = DtRing_Load(&Asi->Ring) - Asi->ScannedBytes;
+        if (!Asi->OutOfSync)
         {
             if (Available < DT_TRP_SIZE)
                 break;
             uint8_t Copy[DT_TRP_SIZE];
-            const int n =
-                DtTsTrp_Decode(&Rx->Scan, PacketAt(Rx, Rx->Scanned, Copy), NULL);
-            if (n < 0)
+            const int OutputBytes =
+                DtTsTrp_Decode(&Asi->Scan, PacketAt(Asi, Asi->ScannedBytes, Copy), NULL);
+            if (OutputBytes < 0)
             {
                 // The search accepts a first packet the conversion refuses, so it starts
                 // a byte further on, or it would find this packet again.
-                Rx->OutOfSync = true;
-                Result = Skip(Rx, 1);
+                Asi->OutOfSync = true;
+                Result = SkipBytes(Asi, 1);
             }
-            else if (Rx->Load + (size_t)n > DT_ASIRX_FIFO_SIZE)
+            else if (Asi->DeliverableBytes + (size_t)OutputBytes > DT_ASIRX_FIFO_SIZE)
             {
-                Rx->FifoOvf = Rx->FifoOvfLatched = true;
-                Result = Skip(Rx, DT_TRP_SIZE);
+                Asi->FifoOvf = Asi->FifoOvfLatched = true;
+                Result = SkipBytes(Asi, DT_TRP_SIZE);
             }
             else
             {
-                Rx->Load += (size_t)n;
-                Rx->Scanned += DT_TRP_SIZE;
+                Asi->DeliverableBytes += (size_t)OutputBytes;
+                Asi->ScannedBytes += DT_TRP_SIZE;
             }
         }
         else
@@ -227,21 +229,21 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
                 break;
             size_t Size =
                 Available < DT_ASIRX_SEARCH_SIZE ? Available : DT_ASIRX_SEARCH_SIZE;
-            DtRing_PeekAt(&Rx->Ring, Rx->Scanned, Rx->Search, Size);
+            DtRing_PeekAt(&Asi->Ring, Asi->ScannedBytes, Asi->SearchBuffer, Size);
             size_t Offset = 0;
-            if (DtTsTrp_FindSync(&Rx->Scan, Rx->Search, Size, &Offset))
-                Rx->OutOfSync = false;
+            if (DtTsTrp_FindSync(&Asi->Scan, Asi->SearchBuffer, Size, &Offset))
+                Asi->OutOfSync = false;
             else
                 Offset = Size - (size_t)DT_TRP_SIZE * DT_TRP_NUM_SYNC + 1;
             if (Offset > 0)
-                Result = Skip(Rx, Offset);
+                Result = SkipBytes(Asi, Offset);
         }
     }
 
-    if (Result == DTAPI_OK && Rx->Load == 0)
+    if (Result == DTAPI_OK && Asi->DeliverableBytes == 0)
     {
-        Rx->SkipHead = DtVec_Count(&Rx->Skips);
-        Result = Advance(Rx, Rx->Scanned);
+        Asi->NextSkipIndex = DtVec_Count(&Asi->Skips);
+        Result = AdvanceReadOffset(Asi, Asi->ScannedBytes);
     }
     return Result;
 }
@@ -252,19 +254,19 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
 //
 // DTAPI_RX_FIFO_OVF takes the burst FIFO's count as it is now.
 //
-static DtapiResult ClearFlags(DtRx* Base, int Flags)
+static DtapiResult ClearFlags(DtRx* Rx, int Flags)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
     if ((Flags & DTAPI_RX_FIFO_OVF) != 0)
     {
-        DtapiResult Result =
-            DtPcieCmd_BurstFifoGetOvfUflCount(Rx->Drv, Rx->Burst, &Rx->OvfCount);
+        DtapiResult Result = DtPcieCmd_BurstFifoGetOvfUflCount(
+            Asi->Drv, Asi->BurstFifo, &Asi->LastBurstFifoOvfCount);
         if (Result != DTAPI_OK)
             return Result;
-        Rx->BurstOvf = Rx->BurstOvfLatched = false;
-        Rx->FifoOvf = Rx->FifoOvfLatched = false;
+        Asi->BurstFifoOvf = Asi->BurstFifoOvfLatched = false;
+        Asi->FifoOvf = Asi->FifoOvfLatched = false;
     }
-    DtTsTrp_ClearFlags(&Rx->Scan, Flags);
+    DtTsTrp_ClearFlags(&Asi->Scan, Flags);
     return DTAPI_OK;
 }
 
@@ -273,36 +275,36 @@ static DtapiResult ClearFlags(DtRx* Base, int Flags)
 // To RCV: the buffer empty, DTAPI_RX_FIFO_OVF cleared, and CDMAC, the burst FIFO and
 // ASIRX running. A start that fails leaves everything idle.
 //
-static DtapiResult Start(DtAsiRx* Rx)
+static DtapiResult Start(DtAsiRx* Asi)
 {
-    OsDrv* Drv = Rx->Drv;
+    OsDrv* Drv = Asi->Drv;
 
-    Empty(Rx);
-    DtapiResult Result = ClearFlags(&Rx->Base, DTAPI_RX_FIFO_OVF);
+    ResetScan(Asi);
+    DtapiResult Result = ClearFlags(&Asi->Rx, DTAPI_RX_FIFO_OVF);
     if (Result != DTAPI_OK)
         return Result;
-    DtTsTrp_Start(&Rx->Scan, Rx->Base.RxMode);
-    DtTsTrp_Start(&Rx->DeliverConverter, Rx->Base.RxMode);
+    DtTsTrp_Start(&Asi->Scan, Asi->Rx.RxMode);
+    DtTsTrp_Start(&Asi->DeliverConverter, Asi->Rx.RxMode);
 
-    Result = DtPcieCmd_CdmacSetRxReadOffset(Drv, Rx->Cdmac, 0);
+    Result = DtPcieCmd_CdmacSetRxReadOffset(Drv, Asi->Cdmac, 0);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Rx->Cdmac);
+        Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoClearMax(Drv, Rx->Burst, true, true);
+        Result = DtPcieCmd_BurstFifoClearMax(Drv, Asi->BurstFifo, true, true);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_RUN);
+        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Asi->AsiRx, DT_FUNC_OPMODE_RUN);
     if (Result != DTAPI_OK)
     {
-        DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
-        DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_AsiRxSetOpMode(Drv, Asi->AsiRx, DT_FUNC_OPMODE_IDLE);
+        DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
         return Result;
     }
-    Rx->Receiving = true;
+    Asi->Receiving = true;
     return DTAPI_OK;
 }
 
@@ -312,18 +314,18 @@ static DtapiResult Start(DtAsiRx* Rx)
 // buffer empty and DTAPI_RX_FIFO_OVF cleared. Every step is taken whatever the one before
 // gave; the first failure is returned.
 //
-static DtapiResult Stop(DtAsiRx* Rx)
+static DtapiResult Stop(DtAsiRx* Asi)
 {
-    OsDrv* Drv = Rx->Drv;
+    OsDrv* Drv = Asi->Drv;
     DtapiResult Results[5];
 
-    Results[0] = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
-    Results[1] = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
-    Results[2] = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
-    Results[3] = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac);
-    Rx->Receiving = false;
-    Empty(Rx);
-    Results[4] = ClearFlags(&Rx->Base, DTAPI_RX_FIFO_OVF);
+    Results[0] = DtPcieCmd_AsiRxSetOpMode(Drv, Asi->AsiRx, DT_FUNC_OPMODE_IDLE);
+    Results[1] = DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
+    Results[2] = DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
+    Results[3] = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+    Asi->Receiving = false;
+    ResetScan(Asi);
+    Results[4] = ClearFlags(&Asi->Rx, DTAPI_RX_FIFO_OVF);
     for (size_t i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
     {
         if (Results[i] != DTAPI_OK)
@@ -336,22 +338,22 @@ static DtapiResult Stop(DtAsiRx* Rx)
 //
 // Takes IDLE and RCV, and is idle after a stop that failed.
 //
-static DtapiResult SetRxControl(DtRx* Base, int RxControl)
+static DtapiResult SetRxControl(DtRx* Rx, int RxControl)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
-    if (Base->RxControl == RxControl)
+    if (Rx->RxControl == RxControl)
         return DTAPI_OK;
     if (RxControl == DTAPI_RXCTRL_IDLE)
     {
-        Base->RxControl = RxControl;
-        return Stop(Rx);
+        Rx->RxControl = RxControl;
+        return Stop(Asi);
     }
     if (RxControl != DTAPI_RXCTRL_RCV)
         return DTAPI_E_INVALID_ARG;
-    DtapiResult Result = Start(Rx);
+    DtapiResult Result = Start(Asi);
     if (Result == DTAPI_OK)
-        Base->RxControl = RxControl;
+        Rx->RxControl = RxControl;
     return Result;
 }
 
@@ -360,22 +362,22 @@ static DtapiResult SetRxControl(DtRx* Base, int RxControl)
 // One of the ASI modes while idle, and ASIRX's packet mode for it, raw for
 // DTAPI_RXMODE_STRAW.
 //
-static DtapiResult SetRxMode(DtRx* Base, int RxMode)
+static DtapiResult SetRxMode(DtRx* Rx, int RxMode)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
     DtapiResult Result = DtTsTrp_CheckMode(RxMode);
     if (Result != DTAPI_OK)
         return Result;
-    if (Base->RxControl != DTAPI_RXCTRL_IDLE)
+    if (Rx->RxControl != DTAPI_RXCTRL_IDLE)
         return DTAPI_E_NOT_IDLE;
 
     const int PacketMode = (RxMode & DTAPI_RXMODE_TS_MASK) == DTAPI_RXMODE_STRAW
                                ? DT_ASIRX_PCKMODE_RAW
                                : DT_ASIRX_PCKMODE_AUTO;
-    Result = DtPcieCmd_AsiRxSetPacketMode(Rx->Drv, Rx->AsiRx, PacketMode);
+    Result = DtPcieCmd_AsiRxSetPacketMode(Asi->Drv, Asi->AsiRx, PacketMode);
     if (Result == DTAPI_OK)
-        Base->RxMode = RxMode;
+        Rx->RxMode = RxMode;
     return Result;
 }
 
@@ -383,49 +385,49 @@ static DtapiResult SetRxMode(DtRx* Base, int RxMode)
 //
 // Stops, and clears DTAPI_RX_FIFO_OVF.
 //
-static DtapiResult ClearFifo(DtRx* Base)
+static DtapiResult ClearFifo(DtRx* Rx)
 {
-    DtapiResult Result = SetRxControl(Base, DTAPI_RXCTRL_IDLE);
+    DtapiResult Result = SetRxControl(Rx, DTAPI_RXCTRL_IDLE);
     if (Result != DTAPI_OK)
         return Result;
-    return ClearFlags(Base, DTAPI_RX_FIFO_OVF);
+    return ClearFlags(Rx, DTAPI_RX_FIFO_OVF);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The scan, the burst FIFO's flag, and the converter's.
 //
-static DtapiResult GetFlags(DtRx* Base, int* Flags, int* Latched)
+static DtapiResult GetFlags(DtRx* Rx, int* Flags, int* Latched)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
     *Flags = *Latched = 0;
-    DtapiResult Result = ScanBuffer(Rx);
+    DtapiResult Result = ScanBuffer(Asi);
     if (Result == DTAPI_OK)
-        Result = UpdateBurst(Rx);
+        Result = UpdateOvf(Asi);
     if (Result != DTAPI_OK)
         return Result;
 
-    DtTsTrp_GetFlags(&Rx->Scan, Flags, Latched);
-    if (Rx->BurstOvf || Rx->FifoOvf)
+    DtTsTrp_GetFlags(&Asi->Scan, Flags, Latched);
+    if (Asi->BurstFifoOvf || Asi->FifoOvf)
         *Flags |= DTAPI_RX_FIFO_OVF;
-    if (Rx->BurstOvfLatched || Rx->FifoOvfLatched)
+    if (Asi->BurstFifoOvfLatched || Asi->FifoOvfLatched)
         *Latched |= DTAPI_RX_FIFO_OVF;
     return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetDeliverableBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult GetDeliverableBytes(DtRx* Base, size_t* Load)
+static DtapiResult GetDeliverableBytes(DtRx* Rx, size_t* Load)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
     *Load = 0;
-    if (!Rx->Receiving)
+    if (!Asi->Receiving)
         return DTAPI_OK;
-    DtapiResult Result = ScanBuffer(Rx);
+    DtapiResult Result = ScanBuffer(Asi);
     if (Result == DTAPI_OK)
-        *Load = Rx->Load;
+        *Load = Asi->DeliverableBytes;
     return Result;
 }
 
@@ -433,22 +435,22 @@ static DtapiResult GetDeliverableBytes(DtRx* Base, size_t* Load)
 //
 // What a read would deliver, while receiving.
 //
-static DtapiResult GetFifoLoad(DtRx* Base, int* FifoLoad)
+static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 {
     size_t Load = 0;
     DtapiResult Result = DTAPI_OK;
 
-    if (Base->RxControl == DTAPI_RXCTRL_RCV)
-        Result = GetDeliverableBytes(Base, &Load);
+    if (Rx->RxControl == DTAPI_RXCTRL_RCV)
+        Result = GetDeliverableBytes(Rx, &Load);
     *FifoLoad = (int)Load;
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetMaxFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult GetMaxFifoSize(DtRx* Base, int* MaxFifoSize)
+static DtapiResult GetMaxFifoSize(DtRx* Rx, int* MaxFifoSize)
 {
-    (void)Base;
+    (void)Rx;
     *MaxFifoSize = DT_ASIRX_FIFO_SIZE;
     return DTAPI_OK;
 }
@@ -457,10 +459,10 @@ static DtapiResult GetMaxFifoSize(DtRx* Base, int* MaxFifoSize)
 //
 // Applies the receive mode again, which sets ASIRX's packet mode.
 //
-static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
+static DtapiResult ApplyIoConfig(DtRx* Rx, const DtIoConfig* Config)
 {
     (void)Config;
-    return SetRxMode(Base, Base->RxMode);
+    return SetRxMode(Rx, Rx->RxMode);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -468,84 +470,85 @@ static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
 // Decodes the packets the scan counted, passing over what it passed over, into Out, or
 // into Pending when Out has less room than the largest packet's output.
 //
-static DtapiResult DeliverBytes(DtRx* Base, uint8_t* Out, size_t Size)
+static DtapiResult DeliverBytes(DtRx* Rx, uint8_t* Out, size_t Size)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
-    if (Size > Rx->Load)
+    if (Size > Asi->DeliverableBytes)
         return DTAPI_E_INTERNAL;
 
-    size_t Done = 0, Passed = 0;
-    while (Done < Size)
+    size_t Delivered = 0, Consumed = 0;
+    while (Delivered < Size)
     {
-        if (Rx->PendingPos < Rx->PendingLen)
+        if (Asi->PendingPos < Asi->PendingLen)
         {
-            size_t n = (size_t)(Rx->PendingLen - Rx->PendingPos);
-            if (n > Size - Done)
-                n = Size - Done;
-            memcpy(Out + Done, Rx->Pending + Rx->PendingPos, n);
-            Rx->PendingPos += (int)n;
-            Done += n;
+            size_t OutputBytes = (size_t)(Asi->PendingLen - Asi->PendingPos);
+            if (OutputBytes > Size - Delivered)
+                OutputBytes = Size - Delivered;
+            memcpy(Out + Delivered, Asi->Pending + Asi->PendingPos, OutputBytes);
+            Asi->PendingPos += (int)OutputBytes;
+            Delivered += OutputBytes;
             continue;
         }
 
-        if (Rx->SkipHead < DtVec_Count(&Rx->Skips))
+        if (Asi->NextSkipIndex < DtVec_Count(&Asi->Skips))
         {
             const DtAsiRxSkip* Next =
-                (const DtAsiRxSkip*)DtVec_At(&Rx->Skips, Rx->SkipHead);
-            if (Next->At == Rx->ReadAt + Passed)
+                (const DtAsiRxSkip*)DtVec_At(&Asi->Skips, Asi->NextSkipIndex);
+            if (Next->Position == Asi->ReadPosition + Consumed)
             {
-                Passed += Next->Bytes;
-                Rx->SkipHead++;
+                Consumed += Next->Bytes;
+                Asi->NextSkipIndex++;
                 continue;
             }
         }
-        if (Passed + DT_TRP_SIZE > Rx->Scanned)
+        if (Consumed + DT_TRP_SIZE > Asi->ScannedBytes)
             return DTAPI_E_INTERNAL;
 
         uint8_t Copy[DT_TRP_SIZE];
-        const bool Direct = Size - Done >= DT_TRP_MAX_OUTPUT;
-        const int n = DtTsTrp_Decode(&Rx->DeliverConverter, PacketAt(Rx, Passed, Copy),
-                                     Direct ? Out + Done : Rx->Pending);
-        Passed += DT_TRP_SIZE;
-        if (n > 0 && Direct)
-            Done += (size_t)n;
-        else if (n > 0)
+        const bool ToCaller = Size - Delivered >= DT_TRP_MAX_OUTPUT;
+        const int OutputBytes =
+            DtTsTrp_Decode(&Asi->DeliverConverter, PacketAt(Asi, Consumed, Copy),
+                           ToCaller ? Out + Delivered : Asi->Pending);
+        Consumed += DT_TRP_SIZE;
+        if (OutputBytes > 0 && ToCaller)
+            Delivered += (size_t)OutputBytes;
+        else if (OutputBytes > 0)
         {
-            Rx->PendingPos = 0;
-            Rx->PendingLen = n;
+            Asi->PendingPos = 0;
+            Asi->PendingLen = OutputBytes;
         }
     }
-    Rx->Load -= Size;
-    return Advance(Rx, Passed);
+    Asi->DeliverableBytes -= Size;
+    return AdvanceReadOffset(Asi, Consumed);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrepareWait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // With no event to wait on, a read looks again every 5 ms.
 //
-static void PrepareWait(DtRx* Base, DtRxWait* Wait)
+static void PrepareWait(DtRx* Rx, DtRxWaitState* State)
 {
-    memset(Wait, 0, sizeof(*Wait));
-    Wait->Backend = Base->Backend;
-    Wait->MaxMs = DT_ASIRX_POLL_MS;
+    memset(State, 0, sizeof(*State));
+    State->Backend = Rx->Backend;
+    State->MaxMs = DT_ASIRX_READ_POLL_MS;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult Wait(DtRxWait* Wait, int Ms)
+static DtapiResult Wait(DtRxWaitState* State, int Ms)
 {
-    (void)Wait;
+    (void)State;
     OsTime_SleepMs(Ms);
     return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AfterWait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult AfterWait(DtRx* Base, const DtRxWait* Wait)
+static DtapiResult AfterWait(DtRx* Rx, const DtRxWaitState* State)
 {
-    (void)Base;
-    (void)Wait;
+    (void)Rx;
+    (void)State;
     return DTAPI_OK;
 }
 
@@ -556,19 +559,19 @@ static DtapiResult AfterWait(DtRx* Base, const DtRxWait* Wait)
 // The rate on the wire, given as the rate of 188-byte packets when the receiver found
 // 204-byte ones, except in DTAPI_RXMODE_STRAW.
 //
-static DtapiResult GetTsRateBps(DtRx* Base, int* TsRate)
+static DtapiResult GetTsRateBps(DtRx* Rx, int* TsRate)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
     *TsRate = 0;
     int Rate = 0;
-    DtapiResult Result = DtPcieCmd_AsiRxGetTsBitrate(Rx->Drv, Rx->AsiRx, &Rate);
+    DtapiResult Result = DtPcieCmd_AsiRxGetTsBitrate(Asi->Drv, Asi->AsiRx, &Rate);
     if (Result != DTAPI_OK)
         return Result;
-    if ((Base->RxMode & DTAPI_RXMODE_TS_MASK) != DTAPI_RXMODE_STRAW)
+    if ((Rx->RxMode & DTAPI_RXMODE_TS_MASK) != DTAPI_RXMODE_STRAW)
     {
         DtAsiRxStatus Status;
-        Result = DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, &Status);
+        Result = DtPcieCmd_AsiRxGetStatus(Asi->Drv, Asi->AsiRx, &Status);
         if (Result != DTAPI_OK)
             return Result;
         if (Status.PacketSize == DT_ASIRX_PCKSIZE_204)
@@ -582,10 +585,10 @@ static DtapiResult GetTsRateBps(DtRx* Base, int* TsRate)
 //
 // The receiver's values as the public ones, and the rate as good above 900 bit/s.
 //
-static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkDet,
+static DtapiResult GetStatus(DtRx* Rx, int* PacketSize, int* NumInv, int* ClkDet,
                              int* AsiLock, int* RateOk, int* AsiInv)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
     DtAsiRxStatus Status;
 
     *NumInv = DTAPI_NOT_SUPPORTED;
@@ -594,7 +597,7 @@ static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkD
     *AsiLock = 0;
     *RateOk = DTAPI_INPRATE_LOW;
     *AsiInv = DTAPI_NOT_SUPPORTED;
-    DtapiResult Result = DtPcieCmd_AsiRxGetStatus(Rx->Drv, Rx->AsiRx, &Status);
+    DtapiResult Result = DtPcieCmd_AsiRxGetStatus(Asi->Drv, Asi->AsiRx, &Status);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -609,92 +612,93 @@ static DtapiResult GetStatus(DtRx* Base, int* PacketSize, int* NumInv, int* ClkD
 
     int TsRate = 0;
     if (Status.AsiLock)
-        Result = GetTsRateBps(Base, &TsRate);
+        Result = GetTsRateBps(Rx, &TsRate);
     *RateOk = TsRate > 900 ? DTAPI_INPRATE_OK : DTAPI_INPRATE_LOW;
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetViolCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult GetViolCount(DtRx* Base, int* ViolCount)
+static DtapiResult GetViolCount(DtRx* Rx, int* ViolCount)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
-    return DtPcieCmd_AsiRxGetViolCount(Rx->Drv, Rx->AsiRx, ViolCount);
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
+    return DtPcieCmd_AsiRxGetViolCount(Asi->Drv, Asi->AsiRx, ViolCount);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PolarityControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The public polarity values are the driver's.
 //
-static DtapiResult PolarityControl(DtRx* Base, int Polarity)
+static DtapiResult PolarityControl(DtRx* Rx, int Polarity)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
-    return DtPcieCmd_AsiRxSetPolarityCtrl(Rx->Drv, Rx->AsiRx, Polarity);
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
+    return DtPcieCmd_AsiRxSetPolarityCtrl(Asi->Drv, Asi->AsiRx, Polarity);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void Release(DtRx* Base)
+static void Release(DtRx* Rx)
 {
-    DtAsiRx* Rx = (DtAsiRx*)Base;
+    DtAsiRx* Asi = (DtAsiRx*)Rx;
 
-    if (Rx->Receiving)
-        Stop(Rx);
-    if (Rx->Registered)
+    if (Asi->Receiving)
+        Stop(Asi);
+    if (Asi->BufferRegistered)
     {
-        DtPcieCmd_CdmacSetOpMode(Rx->Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
-        DtPcieCmd_CdmacFreeBuffer(Rx->Drv, Rx->Cdmac);
+        DtPcieCmd_CdmacSetOpMode(Asi->Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
+        DtPcieCmd_CdmacFreeBuffer(Asi->Drv, Asi->Cdmac);
     }
-    OsDmaBuffer_Free(&Rx->Buf);
-    if (Rx->Held)
+    OsDmaBuffer_Free(&Asi->DmaBuffer);
+    if (Asi->HasExclusiveAccess)
     {
-        DtFunc_ExclAccess(Rx->Drv, &Rx->AfRx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
-        DtFunc_ExclAccess(Rx->Drv, &Rx->AfDma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+        DtFunc_ExclAccess(Asi->Drv, &Asi->RxFunction, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+        DtFunc_ExclAccess(Asi->Drv, &Asi->DmaFunction, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
     }
-    DtFunc_Release(&Rx->AfRx);
-    DtFunc_Release(&Rx->AfDma);
-    DtVec_Free(&Rx->Skips);
-    DtAlloc_Free(Rx->Search);
-    DtAlloc_Free(Rx);
+    DtFunc_Release(&Asi->RxFunction);
+    DtFunc_Release(&Asi->DmaFunction);
+    DtVec_Free(&Asi->Skips);
+    DtAlloc_Free(Asi->SearchBuffer);
+    DtAlloc_Free(Asi);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjects -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindDriverBlocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // ASIRX of AF_ASISDIRX, CDMAC and BURSTFIFO of AF_DMA, and whether the driver is new
 // enough for each.
 //
-static DtapiResult FindObjects(DtAsiRx* Rx, const DtDriverVersion* Version)
+static DtapiResult FindDriverBlocks(DtAsiRx* Asi, const DtDriverVersion* Version)
 {
     typedef struct
     {
         DtFuncInstance* Instance;
-        bool IsDf;
+        bool IsDriverFunction;
         int Type;
         DtDrvObject* Ref;
-    } Wanted;
-    const Wanted Objects[] = {
-        {&Rx->AfRx, true, DT_FUNC_TYPE_ASIRX, &Rx->AsiRx},
-        {&Rx->AfDma, false, DT_BLOCK_TYPE_CDMAC, &Rx->Cdmac},
-        {&Rx->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, &Rx->Burst},
+    } DriverBlockSpec;
+    const DriverBlockSpec Objects[] = {
+        {&Asi->RxFunction, true, DT_FUNC_TYPE_ASIRX, &Asi->AsiRx},
+        {&Asi->DmaFunction, false, DT_BLOCK_TYPE_CDMAC, &Asi->Cdmac},
+        {&Asi->DmaFunction, false, DT_BLOCK_TYPE_BURSTFIFO, &Asi->BurstFifo},
     };
 
     DtapiResult Result =
-        DtFunc_Find(Rx->Drv, Rx->PortIndex, "AF_ASISDIRX", "", &Rx->AfRx);
+        DtFunc_Find(Asi->Drv, Asi->PortIndex, "AF_ASISDIRX", "", &Asi->RxFunction);
     if (Result == DTAPI_OK)
-        Result = DtFunc_Find(Rx->Drv, Rx->PortIndex, "AF_DMA", "", &Rx->AfDma);
+        Result = DtFunc_Find(Asi->Drv, Asi->PortIndex, "AF_DMA", "", &Asi->DmaFunction);
     for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
          i++)
     {
-        const DtFuncObject* Object =
-            DtFunc_Get(Objects[i].Instance, Objects[i].IsDf, Objects[i].Type, "");
+        const DtFuncObject* Object = DtFunc_Get(
+            Objects[i].Instance, Objects[i].IsDriverFunction, Objects[i].Type, "");
         if (Object == NULL)
             Result = DTAPI_E_NOT_FOUND;
         else
         {
             *Objects[i].Ref = Object->Ref;
-            Result = DtFunc_CheckDriverVersion(Version, Objects[i].IsDf, Objects[i].Type);
+            Result = DtFunc_CheckDriverVersion(Version, Objects[i].IsDriverFunction,
+                                               Objects[i].Type);
         }
     }
     return Result;
@@ -705,15 +709,15 @@ static DtapiResult FindObjects(DtAsiRx* Rx, const DtDriverVersion* Version)
 // CDMAC idle, a receive buffer of whole pages times the prefetch size, registered, and
 // the test mode off. One data word stays free.
 //
-static DtapiResult RegisterBuffer(DtAsiRx* Rx)
+static DtapiResult RegisterBuffer(DtAsiRx* Asi)
 {
-    OsDrv* Drv = Rx->Drv;
+    OsDrv* Drv = Asi->Drv;
     DtCdmacProps Props;
 
     memset(&Props, 0, sizeof(Props));
-    DtapiResult Result = DtPcieCmd_CdmacSetOpMode(Drv, Rx->Cdmac, DT_BLOCK_OPMODE_IDLE);
+    DtapiResult Result = DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacGetProps(Drv, Rx->Cdmac, &Props);
+        Result = DtPcieCmd_CdmacGetProps(Drv, Asi->Cdmac, &Props);
     if (Result == DTAPI_OK && (Props.Caps & DT_CDMAC_CAP_RX) == 0)
         Result = DTAPI_E_NOT_SUPPORTED;
     if (Result == DTAPI_OK && (Props.PrefetchSize <= 0 || Props.PcieDataWidth <= 0 ||
@@ -722,16 +726,17 @@ static DtapiResult RegisterBuffer(DtAsiRx* Rx)
     if (Result != DTAPI_OK)
         return Result;
 
-    const size_t Unit = (size_t)DT_ASIRX_PAGE * (size_t)Props.PrefetchSize;
+    const size_t Unit = (size_t)DT_ASIRX_PAGE_SIZE * (size_t)Props.PrefetchSize;
     const size_t Size = (DT_ASIRX_RING_SIZE + Unit - 1) / Unit * Unit;
-    if (OsDmaBuffer_Alloc(Size, &Rx->Buf) != 0)
+    if (OsDmaBuffer_Alloc(Size, &Asi->DmaBuffer) != 0)
         return DTAPI_E_OUT_OF_MEM;
-    Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Rx->Cdmac, DT_CDMAC_DIR_RX, &Rx->Buf);
-    Rx->Registered = Result == DTAPI_OK;
+    Result =
+        DtPcieCmd_CdmacAllocateBuffer(Drv, Asi->Cdmac, DT_CDMAC_DIR_RX, &Asi->DmaBuffer);
+    Asi->BufferRegistered = Result == DTAPI_OK;
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacSetTestMode(Drv, Rx->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
-    if (Result == DTAPI_OK &&
-        DtRing_Init(&Rx->Ring, Rx->Buf.Data, Size, (size_t)Props.PcieDataWidth / 8) != 0)
+        Result = DtPcieCmd_CdmacSetTestMode(Drv, Asi->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
+    if (Result == DTAPI_OK && DtRing_Init(&Asi->Ring, Asi->DmaBuffer.Data, Size,
+                                          (size_t)Props.PcieDataWidth / 8) != 0)
         Result = DTAPI_E_INTERNAL;
     return Result;
 }
@@ -759,65 +764,68 @@ static const DtRxBackend g_AsiRxBackend = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiRx_Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
+DtapiResult DtAsiRx_Attach(const DtRxAttachedPort* Port, DtRx** Rx)
 {
-    *Out = NULL;
-    DtAsiRx* Rx = (DtAsiRx*)DtAlloc_Malloc(sizeof(DtAsiRx));
-    if (Rx == NULL)
+    *Rx = NULL;
+    DtAsiRx* Asi = (DtAsiRx*)DtAlloc_Malloc(sizeof(DtAsiRx));
+    if (Asi == NULL)
         return DTAPI_E_OUT_OF_MEM;
-    memset(Rx, 0, sizeof(*Rx));
-    Rx->Base.Backend = &g_AsiRxBackend;
-    Rx->Base.Port = *Port;
-    Rx->Base.RxMode = DTAPI_RXMODE_ST188;
-    Rx->Base.RxControl = DTAPI_RXCTRL_IDLE;
-    OsDrv* Drv = Rx->Drv = Port->Device->Drv;
-    Rx->PortIndex = Port->PortIndex;
-    DtVec_Init(&Rx->AfRx.Objects, sizeof(DtFuncObject));
-    DtVec_Init(&Rx->AfDma.Objects, sizeof(DtFuncObject));
-    DtVec_Init(&Rx->Skips, sizeof(DtAsiRxSkip));
+    memset(Asi, 0, sizeof(*Asi));
+    Asi->Rx.Backend = &g_AsiRxBackend;
+    Asi->Rx.IsAsi = true;
+    Asi->Rx.Port = *Port;
+    Asi->Rx.RxMode = DTAPI_RXMODE_ST188;
+    Asi->Rx.RxControl = DTAPI_RXCTRL_IDLE;
+    OsDrv* Drv = Asi->Drv = Port->Device->Drv;
+    Asi->PortIndex = Port->Port - 1;
+    DtVec_Init(&Asi->RxFunction.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Asi->DmaFunction.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Asi->Skips, sizeof(DtAsiRxSkip));
 
-    DtapiResult Result = FindObjects(Rx, &Port->Device->DriverVersion);
+    DtapiResult Result = FindDriverBlocks(Asi, &Port->Device->DriverVersion);
     if (Result == DTAPI_OK)
-        Result = DtFunc_ExclAccess(Drv, &Rx->AfRx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
+        Result =
+            DtFunc_ExclAccess(Drv, &Asi->RxFunction, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)
     {
-        Result = DtFunc_ExclAccess(Drv, &Rx->AfDma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
+        Result =
+            DtFunc_ExclAccess(Drv, &Asi->DmaFunction, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
         if (Result != DTAPI_OK)
-            DtFunc_ExclAccess(Drv, &Rx->AfRx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+            DtFunc_ExclAccess(Drv, &Asi->RxFunction, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
     }
-    Rx->Held = Result == DTAPI_OK;
+    Asi->HasExclusiveAccess = Result == DTAPI_OK;
 
     // Everything idle and CDMAC flushed, before the buffer is registered.
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Rx->AsiRx, DT_FUNC_OPMODE_IDLE);
+        Result = DtPcieCmd_AsiRxSetOpMode(Drv, Asi->AsiRx, DT_FUNC_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Rx->Burst, DT_BLOCK_OPMODE_IDLE);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Rx->Cdmac);
+        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
-        Result = RegisterBuffer(Rx);
+        Result = RegisterBuffer(Asi);
     if (Result == DTAPI_OK)
     {
-        Rx->Search = (uint8_t*)DtAlloc_Malloc(DT_ASIRX_SEARCH_SIZE);
-        if (Rx->Search == NULL)
+        Asi->SearchBuffer = (uint8_t*)DtAlloc_Malloc(DT_ASIRX_SEARCH_SIZE);
+        if (Asi->SearchBuffer == NULL)
             Result = DTAPI_E_OUT_OF_MEM;
     }
 
     // The receiver's defaults and cleared flags.
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetPolarityCtrl(Drv, Rx->AsiRx, DT_ASIRX_POLARITY_AUTO);
+        Result = DtPcieCmd_AsiRxSetPolarityCtrl(Drv, Asi->AsiRx, DT_ASIRX_POLARITY_AUTO);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetSyncMode(Drv, Rx->AsiRx, DT_ASIRX_SYNCMODE_AUTO);
+        Result = DtPcieCmd_AsiRxSetSyncMode(Drv, Asi->AsiRx, DT_ASIRX_SYNCMODE_AUTO);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_AsiRxSetPacketMode(Drv, Rx->AsiRx, DT_ASIRX_PCKMODE_AUTO);
+        Result = DtPcieCmd_AsiRxSetPacketMode(Drv, Asi->AsiRx, DT_ASIRX_PCKMODE_AUTO);
     if (Result == DTAPI_OK)
-        Result = ClearFlags(&Rx->Base, -1);
+        Result = ClearFlags(&Asi->Rx, -1);
 
     if (Result != DTAPI_OK)
     {
-        Release(&Rx->Base);
+        Release(&Asi->Rx);
         return Result;
     }
-    *Out = &Rx->Base;
+    *Rx = &Asi->Rx;
     return DTAPI_OK;
 }

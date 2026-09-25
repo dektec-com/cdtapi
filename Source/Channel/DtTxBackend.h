@@ -41,24 +41,24 @@ typedef struct DtTxBackend DtTxBackend;
 
 // The port the channel attached to, and what a side needs of the channel to wait. Device
 // is the channel's own, and lives as long as the side does.
-typedef struct DtTxPort
+typedef struct DtTxAttachedPort
 {
     DtDevice* Device;
-    int Port; // From 1
-    int PortIndex;
+    int Port;                   // From 1
     uint64_t Caps;              // DT_CAP_ flags of the port
     OsMutex* Lock;              // The channel's
     const int* WaitingDetaches; // Detaches waiting for a write to return
-} DtTxPort;
+} DtTxAttachedPort;
 
 // What every side has: its backend, its port, and the transmit mode and control, which
 // the checks in DtOutpChannel.c read.
 typedef struct DtTx
 {
     const DtTxBackend* Backend;
-    DtTxPort Port;
+    DtTxAttachedPort Port;
     int TxMode;
     int TxControl;
+    bool IsAsi; // The side is DtAsiTx.c, and Write takes a transport stream
 } DtTx;
 
 struct DtTxBackend
@@ -113,7 +113,7 @@ struct DtTxBackend
                               uint64_t Deadline);
 
     // Wakes a write that waits for room, for a detach.
-    void (*Wake)(DtTx* Tx);
+    void (*WakeWaitingWrite)(DtTx* Tx);
 
     // A detach with DTAPI_WAIT_UNTIL_SENT while sending: returns when what was written
     // has gone out, or when it stalls.
