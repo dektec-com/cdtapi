@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* TestWorkerPool.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Tests for the work pool: pieces, sharing, reference counts and the split
+// CDTAPI - Tests for the worker pool: pieces, sharing, reference counts and the split
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -63,7 +63,7 @@ static int EachPieceOnce(Tally* T)
 // the jobs whose pieces did not each run once.
 typedef struct Caller
 {
-    DtJobRunner* Work;
+    DtJobRunner* Runner;
     int NumBad;
 } Caller;
 
@@ -74,14 +74,15 @@ static void RunJobs(void* Context)
     for (int j = 0; j < NUM_JOBS; j++)
     {
         Tally T;
-        TallyInit(&T, DtJobRunner_NumPieces(C->Work));
-        DtJobRunner_Run(C->Work, CountPiece, &T);
+        TallyInit(&T, DtJobRunner_NumPieces(C->Runner));
+        DtJobRunner_Run(C->Runner, CountPiece, &T);
         if (!EachPieceOnce(&T))
             C->NumBad++;
     }
 }
 
-// Runs NUM_JOBS jobs on each of two DtWorks at once, from two threads, and returns the
+// Runs NUM_JOBS jobs on each of two DtJobRunners at once, from two threads, and returns
+// the
 // jobs of both whose pieces did not each run once.
 static int RunTwoCallers(DtJobRunner* First, DtJobRunner* Second)
 {
@@ -105,7 +106,7 @@ typedef struct Program
     DtAtomicInt MaxInside;
 } Program;
 
-static void SerialDispatch(void* User, DtJobFunc Work, void* Context, int Count)
+static void SerialDispatch(void* User, DtJobFunc Job, void* Context, int Count)
 {
     Program* P = (Program*)User;
     const int Inside = DtAtomic_Increment(&P->NumInside);
@@ -114,7 +115,7 @@ static void SerialDispatch(void* User, DtJobFunc Work, void* Context, int Count)
     if (Inside > DtAtomic_Load(&P->MaxInside))
         DtAtomic_Store(&P->MaxInside, Inside);
     for (int i = 0; i < Count; i++)
-        Work(Context, i, Count);
+        Job(Context, i, Count);
     DtAtomic_Decrement(&P->NumInside);
 }
 
@@ -122,36 +123,36 @@ static void SerialDispatch(void* User, DtJobFunc Work, void* Context, int Count)
 
 DT_TEST(WithoutPoolOnePieceInCallingThread)
 {
-    DtJobRunner Work;
+    DtJobRunner Runner;
     Tally T;
 
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 1);
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 1);
     TallyInit(&T, 1);
-    DtJobRunner_Run(&Work, CountPiece, &T);
+    DtJobRunner_Run(&Runner, CountPiece, &T);
     DT_ASSERT(EachPieceOnce(&T));
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
 }
 
 DT_TEST(PoolOfFourRunsEveryPieceOnce)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 4));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 4);
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 4);
 
     for (int j = 0; j < NUM_JOBS; j++)
     {
         Tally T;
         TallyInit(&T, 4);
-        DtJobRunner_Run(&Work, CountPiece, &T);
+        DtJobRunner_Run(&Runner, CountPiece, &T);
         DT_ASSERT(EachPieceOnce(&T));
     }
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_Freep(&Pool);
     DT_ASSERT(Pool == NULL);
 }
@@ -160,28 +161,28 @@ DT_TEST(PiecesAreCappedByThePool)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     DtWorkerPool* Bare = DtWorkerPool_Alloc();
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL && Bare != NULL);
     DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 2));
-    DtJobRunner_Init(&Work);
+    DtJobRunner_Init(&Runner);
 
     // 0 is as many as the pool runs at once; more than that is cut to it; fewer stays.
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 2);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 8));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 2);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 1));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 1);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 2);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 8));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 2);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 1));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 1);
 
     // A pool with neither threads nor a dispatch function runs one piece.
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Bare, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 1);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, NULL, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 1);
-    DT_ASSERT_EQ(DtJobRunner_SetPool(&Work, Pool, -1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Bare, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 1);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, NULL, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 1);
+    DT_ASSERT_EQ(DtJobRunner_SetPool(&Runner, Pool, -1), DTAPI_E_INVALID_ARG);
 
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_Free(Pool);
     DtWorkerPool_Free(Bare);
 }
@@ -266,47 +267,47 @@ DT_TEST(ProgramDispatchIsCalledFromTwoCallers)
 DT_TEST(PoolFreedByProgramLivesWhileHeld)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
-    DtJobRunner Work;
+    DtJobRunner Runner;
     Tally T;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 2));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
     DtWorkerPool_Freep(&Pool);
 
     // The DtJobRunner's hold keeps the threads; ASan reports it if it did not.
     TallyInit(&T, 2);
-    DtJobRunner_Run(&Work, CountPiece, &T);
+    DtJobRunner_Run(&Runner, CountPiece, &T);
     DT_ASSERT(EachPieceOnce(&T));
 
     // Setting the same pool again keeps it rather than dropping it on the way.
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Work.Pool, 0));
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Runner.Pool, 0));
     TallyInit(&T, 2);
-    DtJobRunner_Run(&Work, CountPiece, &T);
+    DtJobRunner_Run(&Runner, CountPiece, &T);
     DT_ASSERT(EachPieceOnce(&T));
 
-    DtJobRunner_Free(&Work);
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
+    DtJobRunner_Free(&Runner);
 }
 
 DT_TEST(HeldPoolRefusesToChange)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     Program P;
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 2));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
 
     DT_ASSERT_EQ(DtWorkerPool_StartThreads(Pool, 4), DTAPI_E_IN_USE);
     DT_ASSERT_EQ(DtWorkerPool_SetDispatch(Pool, SerialDispatch, &P, 4), DTAPI_E_IN_USE);
     DT_ASSERT_EQ(DtWorkerPool_NumThreads(Pool), 2);
 
     // Once no DtJobRunner holds it, it changes again.
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 4));
     DT_ASSERT_EQ(DtWorkerPool_NumThreads(Pool), 4);
     DT_ASSERT_OK(DtWorkerPool_SetDispatch(Pool, NULL, NULL, 0));
@@ -387,25 +388,25 @@ DT_TEST(JoinedThreadsRunEveryPiece)
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     Joiner A;
     Joiner B;
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_ExpectThreads(Pool, 2));
     DT_ASSERT_EQ(DtWorkerPool_NumThreads(Pool), 2);
     DT_ASSERT(StartJoiner(&A, Pool, 1));
     DT_ASSERT(StartJoiner(&B, Pool, 2));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 2);
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 2);
 
     for (int j = 0; j < NUM_JOBS; j++)
     {
         Tally T;
         TallyInit(&T, 2);
-        DtJobRunner_Run(&Work, CountPiece, &T);
+        DtJobRunner_Run(&Runner, CountPiece, &T);
         DT_ASSERT(EachPieceOnce(&T));
     }
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_DismissAll(Pool);
     DT_ASSERT_OK(StopJoiner(&A));
     DT_ASSERT_OK(StopJoiner(&B));
@@ -419,26 +420,26 @@ DT_TEST(JobWithNoThreadJoinedRunsInTheCaller)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     Joiner A;
-    DtJobRunner Work;
+    DtJobRunner Runner;
     Tally T;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_ExpectThreads(Pool, 3));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
-    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Work), 3);
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 3);
     TallyInit(&T, 3);
-    DtJobRunner_Run(&Work, CountPiece, &T);
+    DtJobRunner_Run(&Runner, CountPiece, &T);
     DT_ASSERT(EachPieceOnce(&T));
 
     DT_ASSERT(StartJoiner(&A, Pool, 1));
     DtWorkerPool_Dismiss(Pool, A.Worker);
     DT_ASSERT_OK(StopJoiner(&A));
     TallyInit(&T, 3);
-    DtJobRunner_Run(&Work, CountPiece, &T);
+    DtJobRunner_Run(&Runner, CountPiece, &T);
     DT_ASSERT(EachPieceOnce(&T));
 
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_Free(Pool);
 }
 
@@ -449,14 +450,14 @@ DT_TEST(OneThreadSentBackWhileTheOtherStays)
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     Joiner A;
     Joiner B;
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_ExpectThreads(Pool, 2));
     DT_ASSERT(StartJoiner(&A, Pool, 1));
     DT_ASSERT(StartJoiner(&B, Pool, 2));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
 
     DtWorkerPool_Dismiss(Pool, A.Worker);
     DT_ASSERT_OK(StopJoiner(&A));
@@ -465,13 +466,13 @@ DT_TEST(OneThreadSentBackWhileTheOtherStays)
     {
         Tally T;
         TallyInit(&T, 2);
-        DtJobRunner_Run(&Work, CountPiece, &T);
+        DtJobRunner_Run(&Runner, CountPiece, &T);
         DT_ASSERT(EachPieceOnce(&T));
     }
 
     DtWorkerPool_Dismiss(Pool, B.Worker);
     DT_ASSERT_OK(StopJoiner(&B));
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_Free(Pool);
 }
 
@@ -560,14 +561,14 @@ DT_TEST(JoinRefusesWhatIsInvalid)
 DT_TEST(ThreadsComeAndGoWhileJobsRun)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
-    DtJobRunner Work;
+    DtJobRunner Runner;
 
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_ExpectThreads(Pool, 2));
-    DtJobRunner_Init(&Work);
-    DT_ASSERT_OK(DtJobRunner_SetPool(&Work, Pool, 0));
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 0));
 
-    Caller C = {&Work, 0};
+    Caller C = {&Runner, 0};
     OsThread* Thread = OsThread_Start(RunJobs, &C);
     DT_ASSERT(Thread != NULL);
     for (int i = 0; i < 50; i++)
@@ -580,7 +581,7 @@ DT_TEST(ThreadsComeAndGoWhileJobsRun)
     OsThread_Join(Thread);
     DT_ASSERT_EQ(C.NumBad, 0);
 
-    DtJobRunner_Free(&Work);
+    DtJobRunner_Free(&Runner);
     DtWorkerPool_Free(Pool);
 }
 
@@ -589,7 +590,7 @@ DT_TEST(ThreadsComeAndGoWhileJobsRun)
 DT_TEST(SplitCoversEveryItemOnce)
 {
     // Every total up to 40 in 1 to 9 pieces with units of 1 to 8: the ranges follow one
-    // another from 0 to Total, and every boundary but Total is a multiple of the unit.
+    // another from 0 to Total, and every boundary except Total is a multiple of the unit.
     for (int Total = 0; Total <= 40; Total++)
         for (int Count = 1; Count <= 9; Count++)
             for (int Unit = 1; Unit <= 8; Unit++)
@@ -628,7 +629,7 @@ DT_TEST(SplitIsEvenToAUnit)
     DT_ASSERT_EQ(Last, 2);
 }
 
-DT_TEST_MAIN("Work", DT_RUN(WithoutPoolOnePieceInCallingThread),
+DT_TEST_MAIN("WorkerPool", DT_RUN(WithoutPoolOnePieceInCallingThread),
              DT_RUN(PoolOfFourRunsEveryPieceOnce), DT_RUN(PiecesAreCappedByThePool),
              DT_RUN(TwoCallersShareAPoolOfEight),
              DT_RUN(TwoCallersShareAPoolSmallerThanTheirPieces),

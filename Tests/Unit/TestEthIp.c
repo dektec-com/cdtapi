@@ -45,7 +45,7 @@ static DtEthIpHeaderFields V1Header(void)
 }
 
 // A version 2 header of a frame of 8,000 bytes aligned to 16 bytes, in 1,004 words with
-// 14 bytes of padding, every flag but the valid time stamp set, fingerprint 2Ah.
+// 14 bytes of padding, every flag except the valid time stamp set, fingerprint 2Ah.
 static const uint8_t g_V2[8] = {0xEF, 0xEF, 0xEC, 0x73, 0x58, 0x0D, 0xE4, 0xA9};
 
 static DtEthIpHeaderFields V2Header(void)

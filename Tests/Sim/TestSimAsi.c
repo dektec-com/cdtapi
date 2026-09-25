@@ -472,7 +472,7 @@ static void Stop(Fixture* Fix, DtDrvObject Cdmac, OsDmaBuffer* Buf)
     OsDmaBuffer_Free(Buf);
 }
 
-// Codes Count numbered packets of Size bytes from First as the card sends them, padded
+// Encodes Count numbered packets of Size bytes from First as the card sends them, padded
 // to whole data words, into Buf at *Offset, and hands them to TX.
 static bool Send(Fixture* Fix, OsDmaBuffer* Buf, DtAsiEnc* Enc, uint32_t First, int Count,
                  int Size, uint32_t* Offset)
@@ -653,7 +653,7 @@ DT_TEST(SinkDecodesTheSymbols)
     DT_ASSERT_EQ(Stats.CodeErrors, 0);
     DT_ASSERT_EQ(Stats.DisparityErrors, 0);
 
-    // A symbol that is no code, then K28.5 of one disparity only.
+    // A symbol that is not a code, then K28.5 of one disparity only.
     Buf.Data[Write] = 0xFF;
     Buf.Data[Write + 1] = 0x03;
     for (uint32_t i = 2; i < 32; i += 2)

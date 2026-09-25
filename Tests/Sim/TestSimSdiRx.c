@@ -193,7 +193,7 @@ DT_TEST(MissingStringIsNotFound)
                                           sizeof(Str)),
                  DTAPI_E_NOT_FOUND);
 
-    // A value property is no string, and a string no value.
+    // A value property is not a string, and a string is not a value.
     DT_ASSERT_EQ(
         DtPcieCmd_GetPropertyStr(Drv, "PORT_COUNT", DT_PROPERTY_DEVICE, Str, sizeof(Str)),
         DTAPI_E_NOT_FOUND);
@@ -922,7 +922,7 @@ DT_TEST(SignalsAreResetAndPerSdiPort)
     DT_ASSERT(!S.CarrierDetect);
     DT_ASSERT_EQ(S.SdiRate, -1);
 
-    // Nothing lands on a port of the card.
+    // A port index outside the SDI ports lands on no port.
     SimDtPcie_SetSdiSignal(-1, &Signal);
     SimDtPcie_SetSdiSignal(SIM_SDI_PORT_COUNT, &Signal);
     DT_ASSERT_OK(DtPcieCmd_SdiRxGetStatus(

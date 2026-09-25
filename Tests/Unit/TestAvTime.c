@@ -34,11 +34,11 @@ DT_TEST(MulAddDivMatchesBignums)
     }
 }
 
-DT_TEST(AlignMatchesBignums)
+DT_TEST(ToGridMatchesBignums)
 {
-    for (size_t i = 0; i < COUNT(AlignCases); i++)
+    for (size_t i = 0; i < COUNT(ToGridCases); i++)
     {
-        const uint64_t* Case = AlignCases[i];
+        const uint64_t* Case = ToGridCases[i];
         uint64_t Got = DtAvTime_ToGrid(Case[0], (int)Case[1], (int)Case[2]);
         if (Got != Case[3])
             DT_FAIL("case %zu: got %" PRIu64 ", expected %" PRIu64, i, Got, Case[3]);
@@ -149,7 +149,7 @@ DT_TEST(InvalidRatesAndNulls)
     DT_ASSERT_EQ(DtAvTime_ToNs(&Null), 0);
 }
 
-DT_TEST_MAIN("AvTime", DT_RUN(MulAddDivMatchesBignums), DT_RUN(AlignMatchesBignums),
+DT_TEST_MAIN("AvTime", DT_RUN(MulAddDivMatchesBignums), DT_RUN(ToGridMatchesBignums),
              DT_RUN(Tod2RtpMatchesBignums), DT_RUN(Rtp2TodMatchesBignums),
              DT_RUN(FractionalGridRoundTrips), DT_RUN(AudioGridRoundTrips),
              DT_RUN(NearestWrap), DT_RUN(InvalidRatesAndNulls))

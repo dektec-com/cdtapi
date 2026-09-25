@@ -4,8 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
-// state with a DTA-2110 added and its time of day set by the test, and ends with no
+// CTest runs this with CDTAPI_SIM=1. The cases start from the emulator's power-on state
+// with a DTA-2110 added and, except RealTimeClock, its time of day set by the test, and
+// end with no
 // handle to it and no allocation left open.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

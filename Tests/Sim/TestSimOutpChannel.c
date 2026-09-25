@@ -474,8 +474,8 @@ DT_TEST(AttachChecks)
     FINISH(Fix);
 }
 
-// An ASI standard, a failing command, and a 4K standard, which attaches but does not
-// leave idle.
+// An ASI standard, a failing command, and the two 4K standards: 2160p over one link
+// holds, level-B links attach without leaving idle.
 DT_TEST(AttachRefusals)
 {
     Fixture Fix;
@@ -833,7 +833,7 @@ DT_TEST(WriteChecks)
     DT_ASSERT_OK(SetStandard(&Fix, DTAPI_VIDSTD_525I59_94));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
 
-    // A misaligned buffer or size overrides idle.
+    // A misaligned buffer or size is refused before the idle state is looked at.
     uint8_t Data[16];
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, (char*)Data + 1, 8),
                  DTAPI_E_INVALID_BUF);
@@ -1032,7 +1032,7 @@ DT_TEST(WriteFrameChecks)
     DT_ASSERT_OK(DtOutpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT_EQ(Load, 0);
 
-    // Object of a frame from Write, until Write completes it.
+    // Part of a frame from Write refuses WriteFrame until Write completes it.
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Frame, 4000));
     DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 10),
                  DTAPI_E_INCOMP_FRAME);
@@ -1261,8 +1261,8 @@ static int FramesSent(void)
 }
 
 // Frames written one at a time, each after the card sent two more frames, so that black
-// frames from the thread come between them, go out whole: every frame the card sent is
-// black or one of them, in the order written.
+// frames from the thread come between them, go out whole: every frame the card kept is
+// black or one of them, in the order written, and at least two are found.
 DT_TEST(WholeFramesAmongBlackFrames)
 {
     Fixture Fix;
@@ -1373,16 +1373,16 @@ DT_TEST(BlackFrameBeforeAPartlyWrittenFrame)
     DT_ASSERT(Frame != NULL);
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)(Size / 2 / 4 * 4)));
 
-    DT_ASSERT_OK(SendUpTo(Fix.Channel, SIM_TX_KEPT_FRAMES - 2));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, SIM_TX_KEPT_FRAMES));
     DT_ASSERT(WaitForFrames(2));
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame + Size / 2 / 4 * 4,
                                      (int)(Size - Size / 2 / 4 * 4)));
     free(Frame);
 
-    DT_ASSERT(SentAndHeld(Fix.Channel, SIM_TX_KEPT_FRAMES - 2));
+    DT_ASSERT(SentAndHeld(Fix.Channel, SIM_TX_KEPT_FRAMES));
     DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 0));
     DT_ASSERT(SentFrameIsBlack(1, DTAPI_VIDSTD_525I59_94));
-    for (int Id = 2; Id < SIM_TX_KEPT_FRAMES - 2 && FirstNotBlack < 0; Id++)
+    for (int Id = 2; Id < SIM_TX_KEPT_FRAMES && FirstNotBlack < 0; Id++)
     {
         if (!SentFrameIsBlack(Id, DTAPI_VIDSTD_525I59_94))
             FirstNotBlack = Id;
@@ -1510,7 +1510,8 @@ DT_TEST(DetachCancelsAWrite)
 }
 
 // Detaching when everything is sent, and the flags that cannot go together. A black frame
-// follows the last frame written, as the card sends a frame only when data follows it.
+// may follow the last frame written, as the card sends a frame only when data follows it;
+// when it was sent it is black.
 DT_TEST(DetachWaitsUntilSent)
 {
     Fixture Fix;

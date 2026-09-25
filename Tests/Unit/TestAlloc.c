@@ -172,8 +172,8 @@ DT_TEST(DoublingStopsInsteadOfWrapping)
 }
 
 // The byte count is what reaches the allocator, so that is what has to fit. Asking for
-// half the address space worth of eight-byte elements cannot be represented and has to
-// be refused rather than truncated.
+// more eight-byte elements than the address space holds in bytes cannot be represented
+// and has to be refused rather than truncated.
 DT_TEST(ByteCountOverflowIsRefused)
 {
     size_t TooMany = ((size_t)-1 / 8) + 1;

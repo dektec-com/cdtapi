@@ -59,9 +59,9 @@ DT_TEST(EveryNameFitsTheDriverField)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Known values +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Spot checks against cdtapi.h, chosen where the numbering is least obvious: the
-// pseudo-values, the first value after the groups, and SDIRX before SDI, which only file
-// order explains.
+// Spot checks against cdtapi_constants.h, chosen where the numbering is least obvious:
+// the pseudo-values, the first value after the groups, and SDIRX before SDI, which only
+// file order explains.
 //
 
 static int CodeOf(const char* Name)
@@ -181,7 +181,8 @@ static bool IsListedValid(int Group, int Value, int SubValue)
     return false;
 }
 
-// Every combination of codes, including -1 and one past the last code in each position,
+// Every combination of codes, including -1, -2 as a sub-value, and one past the last code
+// in each position,
 // against the list worked out on the children of each code. This is the check on the
 // parent encoding: any wrong kind or parent makes some combination disagree.
 DT_TEST(EveryCombinationMatchesDtapi)

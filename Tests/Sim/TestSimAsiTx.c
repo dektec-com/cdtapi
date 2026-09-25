@@ -113,8 +113,8 @@ static size_t TakeSent(uint8_t* Out, size_t Size)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// An ASI output attaches with its defaults: the gate in standby, where it sends K28.5
-// only, and the PHY running.
+// An ASI output attaches with its defaults: the gate in standby, where a card sends
+// K28.5, and the PHY running.
 DT_TEST(AttachesInStandby)
 {
     Fixture Fix;

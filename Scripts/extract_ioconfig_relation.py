@@ -144,7 +144,7 @@ def Kinds(Code):
     for Key, Flag in (("Group", "GROUP"), ("BoolIo", "BOOLIO"), ("Value", "VALUE"),
                       ("SubValue", "SUBVALUE")):
         if Code[Key]:
-            Flags.append("DT_IOCFG_" + Flag)
+            Flags.append("DT_IOCONFIG_" + Flag)
     return " | ".join(Flags) if Flags else "0"
 
 
@@ -211,12 +211,12 @@ def Main():
     for C in Codes:
         P = Parents[C["Name"]]
         if P and sorted(P) == sorted(BoolIoCaps):
-            P = ["DT_IOCFG_ANY_BOOLIO"]
+            P = ["DT_IOCONFIG_ANY_BOOLIO"]
         else:
             P = ["DTAPI_IOCONFIG_" + Name for Name in P]
         if len(P) > 2:
             sys.exit(f"{C['Name']} has {len(P)} parents; the list holds two")
-        P = P + ["DT_IOCFG_NONE"] * (2 - len(P))
+        P = P + ["DT_IOCONFIG_NONE"] * (2 - len(P))
         Line = f"X({C['Name']}, {Kinds(C)}, {P[0]}, {P[1]})"
         if len(Line) > 90:
             Line = f"X({C['Name']},\n  {Kinds(C)},\n  {P[0]}, {P[1]})"

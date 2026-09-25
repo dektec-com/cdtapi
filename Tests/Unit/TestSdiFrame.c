@@ -111,10 +111,10 @@ static void ExpectLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol, int Li
     }
 }
 
-// Converts lines Lines of Layout with BitsPerSymbol and compares the raw frame with the
+// Decodes lines Lines of Layout with BitsPerSymbol and compares the raw frame with the
 // expected one. Returns false, having reported it, when they differ.
-static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                              const int* Lines, int NumLines, int* DtFailures)
+static bool DecodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                             const int* Lines, int NumLines, int* DtFailures)
 {
     size_t Size = DtSdiFrame_RawSize(Layout, BitsPerSymbol);
     uint8_t* Coded = (uint8_t*)malloc((size_t)Layout->RxStride);
@@ -187,7 +187,7 @@ DT_TEST(LayoutOtherAlignments)
 // The pieces the library divides a frame into follow the standard: 4 for the 2160p
 // standards a 12G link carries, 2 for those a 6G link carries, and 1 for everything up
 // to 3G, SD included, whatever port it goes over.
-DT_TEST(NumWorkPiecesFollowTheStandard)
+DT_TEST(NumJobPiecesFollowTheStandard)
 {
     static const struct
     {
@@ -354,7 +354,7 @@ DT_TEST(RawSizes)
 
 // The first, a middle and the last line of every standard, in each format, with the
 // card's alignment and with 32 bits.
-DT_TEST(ConvertsEveryStandard)
+DT_TEST(DecodesEveryStandard)
 {
     static const int Alignments[] = {128, 32};
     static const int Bits[] = {8, 10, 16};
@@ -373,7 +373,7 @@ DT_TEST(ConvertsEveryStandard)
             size_t b;
             for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
             {
-                if (!ConvertAndCompare(&Layout, Bits[b], Lines, 3, DtFailures))
+                if (!DecodeAndCompare(&Layout, Bits[b], Lines, 3, DtFailures))
                     return;
             }
         }
@@ -382,7 +382,7 @@ DT_TEST(ConvertsEveryStandard)
 
 // Sections and lines whose bits do not end on a byte, which no standard has, go bit by
 // bit, and 8- and 16-bit sections not a multiple of four symbols take the slow path.
-DT_TEST(ConvertsOddSections)
+DT_TEST(DecodesOddSections)
 {
     static const int Sizes[][2] = {{3, 5}, {1, 2}, {7, 9}, {4, 6}};
     static const int Bits[] = {8, 10, 16};
@@ -406,14 +406,14 @@ DT_TEST(ConvertsOddSections)
 
         for (b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
         {
-            if (!ConvertAndCompare(&Layout, Bits[b], Lines, 4, DtFailures))
+            if (!DecodeAndCompare(&Layout, Bits[b], Lines, 4, DtFailures))
                 return;
         }
     }
 }
 
 // An unknown symbol size writes nothing.
-DT_TEST(ConvertsNothingForOtherSizes)
+DT_TEST(DecodesNothingForOtherSizes)
 {
     DtSdiFrameLayout Layout;
     uint8_t Raw[64] = {0};
@@ -618,7 +618,7 @@ DT_TEST(TxHeaderFieldWidths)
     DT_ASSERT_MEM(Bytes, Expected, sizeof(Expected));
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coding lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Encoding lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST(RawLineBits)
 {
@@ -632,7 +632,7 @@ DT_TEST(RawLineBits)
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P24, 128));
     DT_ASSERT_EQ(DtSdiFrame_RawLineNumBits(&Layout, 10), 82500);
 
-    // Only 720p23.98 and 720p24 have 10-bit lines that end half-way a byte.
+    // Only 720p23.98 and 720p24 have 10-bit lines that end part-way through a byte.
     for (int i = 0; i < STANDARD_COUNT; i++)
     {
         const bool HalfByte = g_Standards[i] == DTAPI_VIDSTD_720P23_98 ||
@@ -664,8 +664,8 @@ static void PutBits(uint8_t* Bytes, size_t Bit, uint32_t Value, int Count)
 // with 16 bits the six unused bits of every symbol set too. The coded line must equal
 // the reference packer's, and decoded back into a raw frame it must give the line's raw
 // frame. Returns false, having reported it, when anything differs.
-static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, int Line,
-                           int LineStartBit, int* DtFailures)
+static bool EncodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, int Line,
+                             int LineStartBit, int* DtFailures)
 {
     const int Syms[2] = {Layout->LineNumSymsHanc, Layout->LineNumSymsActive};
     const size_t LineBits = DtSdiFrame_RawLineNumBits(Layout, BitsPerSymbol);
@@ -716,13 +716,13 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, in
             DtSdiFrame_DecodeLine(Layout, BitsPerSymbol, Coded, Line, Raw);
             Failure = memcmp(Raw + From, Expected + From, Compared) == 0
                           ? NULL
-                          : "converted back, the raw line differs";
+                          : "decoded back, the raw line differs";
         }
     }
     if (Failure != NULL)
     {
-        printf("    FAIL: standard %d, %d bits, line %d, phase %d: %s\n", Layout->VidStd,
-               BitsPerSymbol, Line, LineStartBit, Failure);
+        printf("    FAIL: standard %d, %d bits, line %d, start bit %d: %s\n",
+               Layout->VidStd, BitsPerSymbol, Line, LineStartBit, Failure);
         (*DtFailures)++;
     }
     free(RawLine);
@@ -735,7 +735,7 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, in
 
 // The first two, a middle and the last line of every standard, in 10 and 16 bits, with
 // the card's alignment and with 32 bits, each at the bit it starts at in a frame.
-DT_TEST(CodesEveryStandard)
+DT_TEST(EncodesEveryStandard)
 {
     static const int Alignments[] = {128, 32};
     static const int Bits[] = {10, 16};
@@ -764,8 +764,8 @@ DT_TEST(CodesEveryStandard)
                     const int LineStartBit = (int)((size_t)Lines[l] * LineBits % 8);
 
                     HalfByteStarts += LineStartBit == 4 ? 1 : 0;
-                    if (!CodeAndCompare(&Layout, Bits[b], Lines[l], LineStartBit,
-                                        DtFailures))
+                    if (!EncodeAndCompare(&Layout, Bits[b], Lines[l], LineStartBit,
+                                          DtFailures))
                         return;
                 }
             }
@@ -774,9 +774,9 @@ DT_TEST(CodesEveryStandard)
     DT_ASSERT(HalfByteStarts > 0);
 }
 
-// 10-bit lines at every phase, with sections whose bits end anywhere in a byte, and
+// 10-bit lines at every start bit, with sections whose bits end anywhere in a byte, and
 // 16-bit sections that are no multiple of four symbols.
-DT_TEST(CodesAnyPhase)
+DT_TEST(EncodesAnyStartBit)
 {
     static const int Sizes[][2] = {{3, 5}, {1, 2}, {7, 9}, {4, 6}, {8, 8}};
     DtSdiFrameLayout Layout;
@@ -797,23 +797,23 @@ DT_TEST(CodesAnyPhase)
 
         for (LineStartBit = 0; LineStartBit < 8; LineStartBit++)
         {
-            if (!CodeAndCompare(&Layout, 10, 2, LineStartBit, DtFailures))
+            if (!EncodeAndCompare(&Layout, 10, 2, LineStartBit, DtFailures))
                 return;
         }
-        if (!CodeAndCompare(&Layout, 16, 5, 0, DtFailures))
+        if (!EncodeAndCompare(&Layout, 16, 5, 0, DtFailures))
             return;
     }
 
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P24, 128));
     for (LineStartBit = 0; LineStartBit < 8; LineStartBit++)
     {
-        if (!CodeAndCompare(&Layout, 10, 1, LineStartBit, DtFailures))
+        if (!EncodeAndCompare(&Layout, 10, 1, LineStartBit, DtFailures))
             return;
     }
 }
 
-// Other symbol sizes and phases write nothing.
-DT_TEST(CodeLineRefuses)
+// Other symbol sizes and start bits write nothing.
+DT_TEST(EncodeLineRefuses)
 {
     static const uint8_t Untouched[16] = {
         0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE,
@@ -847,8 +847,8 @@ DT_TEST(CodeLineRefuses)
     DT_ASSERT_MEM(Coded + 10, Untouched, 6);
 }
 
-// An 8-bit symbol is coded as the 10-bit symbol with the same upper eight bits.
-DT_TEST(CodeLine8Bits)
+// An 8-bit symbol is encoded as the 10-bit symbol with the same upper eight bits.
+DT_TEST(EncodeLine8Bits)
 {
     DtSdiFrameLayout Layout;
 
@@ -1069,7 +1069,7 @@ DT_TEST(BlackFramesEveryStandard)
     }
 }
 
-// A black frame converted into a raw frame and coded back gives the same lines, in 10
+// A black frame decoded into a raw frame and encoded back gives the same lines, in 10
 // and 16 bits.
 DT_TEST(BlackFrameRoundTrip)
 {
@@ -1263,7 +1263,8 @@ static void Line4kFree(Line4k* L)
     free(L->Video);
 }
 
-// Makes the link lines of line Line and codes them into two coded lines, of links 1 and 2
+// Makes the link lines of line Line and encodes them into two coded lines, of links 1
+// and 2
 // and of links 3 and 4: on a picture line the two links take its pixel pairs in turn, on
 // a blanking line each its own half.
 static void Line4kMake(const DtSdiFrameLayout* Layout, int Line, Line4k* L)
@@ -1342,7 +1343,8 @@ static bool Raw4kMatches(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     return true;
 }
 
-// The layouts of 12G 2160p50 and 6G 2160p30, as the card's ring showed them.
+// The layouts of 12G 2160p50 and 6G 2160p30, as the card's ring showed them; 2160p24's
+// HANC, and that 1080p50 has one section of each kind.
 DT_TEST(Layout4k)
 {
     DtSdiFrameLayout L;
@@ -1393,7 +1395,7 @@ DT_TEST(Layout4k)
 
 // Each raw 4K line holds the four links' words in the two-sample interleave order, in
 // every symbol size, on blanking and picture lines alike.
-DT_TEST(Converts4k)
+DT_TEST(Decodes4k)
 {
     static const int Bits[] = {10, 16, 8};
 
@@ -1426,9 +1428,9 @@ DT_TEST(Converts4k)
     }
 }
 
-// Coding a raw 4K line gives back the coded lines it was converted from, byte for byte,
-// in 10 and 16 bits; in 8 bits, the raw line again once converted.
-DT_TEST(Codes4k)
+// Encoding a raw 4K line gives back the coded lines it was decoded from, byte for byte,
+// in 10 and 16 bits; in 8 bits, the raw line again once decoded.
+DT_TEST(Encodes4k)
 {
     static const int Bits[] = {10, 16, 8};
 
@@ -1705,14 +1707,15 @@ DT_TEST(Conv4kSetsAgree)
 }
 
 DT_TEST_MAIN("SdiFrame", DT_RUN(Layout1080I50), DT_RUN(LayoutOtherAlignments),
-             DT_RUN(LayoutRefuses), DT_RUN(NumWorkPiecesFollowTheStandard),
+             DT_RUN(LayoutRefuses), DT_RUN(NumJobPiecesFollowTheStandard),
              DT_RUN(LayoutEveryStandard), DT_RUN(EncodedHeader),
              DT_RUN(HeaderFieldWidths), DT_RUN(HeaderCheck), DT_RUN(RawSizes),
-             DT_RUN(ConvertsEveryStandard), DT_RUN(ConvertsOddSections),
-             DT_RUN(ConvertsNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
+             DT_RUN(DecodesEveryStandard), DT_RUN(DecodesOddSections),
+             DT_RUN(DecodesNothingForOtherSizes), DT_RUN(ChecksFirstAndLastLine),
              DT_RUN(LayoutTransmit), DT_RUN(EncodedTxHeader), DT_RUN(TxHeaderFieldWidths),
-             DT_RUN(RawLineBits), DT_RUN(CodesEveryStandard), DT_RUN(CodesAnyPhase),
-             DT_RUN(CodeLineRefuses), DT_RUN(CodeLine8Bits),
-             DT_RUN(BlackFramesEveryStandard), DT_RUN(BlackFrameRoundTrip),
-             DT_RUN(Layout4k), DT_RUN(Converts4k), DT_RUN(Codes4k), DT_RUN(ChecksLines4k),
-             DT_RUN(TxLines4k), DT_RUN(BlackFrame4k), DT_RUN(Conv4kSetsAgree))
+             DT_RUN(RawLineBits), DT_RUN(EncodesEveryStandard),
+             DT_RUN(EncodesAnyStartBit), DT_RUN(EncodeLineRefuses),
+             DT_RUN(EncodeLine8Bits), DT_RUN(BlackFramesEveryStandard),
+             DT_RUN(BlackFrameRoundTrip), DT_RUN(Layout4k), DT_RUN(Decodes4k),
+             DT_RUN(Encodes4k), DT_RUN(ChecksLines4k), DT_RUN(TxLines4k),
+             DT_RUN(BlackFrame4k), DT_RUN(Conv4kSetsAgree))

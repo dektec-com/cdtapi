@@ -27,7 +27,7 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The ports of the emulated card: odd ports start as inputs and even ones as outputs;
-// port 9 is the genlock input, which is no input for signals.
+// port 9 is the genlock input, which is not an input for signals.
 #define PORT_INPUT 1
 #define PORT_OUTPUT 2
 #define PORT_GENLOCK 9
@@ -190,7 +190,7 @@ DT_TEST(NullArgumentsAreRefused)
 
 // A device object that is not attached is no device to detect on: DTAPI_E_DEVICE, and
 // not an error saying that it is not attached.
-DT_TEST(DetachedDeviceIsNoDevice)
+DT_TEST(DetachedDeviceIsNotADevice)
 {
     int VidStd = 12345;
     int Live;
@@ -325,8 +325,8 @@ DT_TEST(PortNeedsAnInputWithTheMatrixApi)
     CheckRefusedByCaps(DtFailures, "CAP_SDIRX", true, "CAP_HDMI", true, DTAPI_OK);
 }
 
-// An internal input is no input: the scan does not describe it as one.
-DT_TEST(InternalInputIsNoInputToTheScan)
+// An internal input is not an input: the scan does not describe it as one.
+DT_TEST(InternalInputIsNotAnInputToTheScan)
 {
     int Found = 0;
     int Live;
@@ -501,9 +501,8 @@ DT_TEST(ReceiverIsAnSdiRxDriverFunction)
     FINISH(Device, Live);
 }
 
-// Of two SDI receivers the last is used, because the last object found for a type and
-// role wins. The extra receiver is that of port 3, which has no signal: listed after
-// the input port's own, it is used; listed before, it is not.
+// Lists a second SDI receiver, DF_SDIRX#9 of port 3, which has no signal, at Position
+// relative to the input port's own, and detects.
 static DtapiResult DetectWithSecondReceiver(int* DtFailures, const char* Position,
                                             DtDevice** Device, int* VidStd)
 {
@@ -539,7 +538,7 @@ DT_TEST(LastReceiverIsUsed)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Detect +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Feeds the input port Format's signal and waits for it, without a limit on time.
+// Feeds the input port Format's signal and waits up to 1000 ms for it.
 static DtDetVidStd WaitFor(int* DtFailures, DtDevice* Device, const SdiFormat* Format,
                            bool WithVpid)
 {
@@ -718,7 +717,8 @@ DT_TEST(NoStandardIsUnknown)
     FINISH(Device, Live);
 }
 
-// The receiver of a port configured as an output is not enabled, and says so.
+// The receiver of a port configured as an output is not enabled: detecting gives
+// DTAPI_E_INVALID_MODE until the port is set to input.
 DT_TEST(OutputPortIsInTheWrongMode)
 {
     SimSdiSignal Signal = SignalOf(FormatOf(DTAPI_VIDSTD_720P50), true);
@@ -895,9 +895,9 @@ DT_TEST(WaitReturnsAtOnceForAPortItCannotAttach)
 }
 
 DT_TEST_MAIN("SimDetect", DT_RUN(NullArgumentsAreRefused),
-             DT_RUN(DetachedDeviceIsNoDevice), DT_RUN(FirmwareStatusComesFirst),
+             DT_RUN(DetachedDeviceIsNotADevice), DT_RUN(FirmwareStatusComesFirst),
              DT_RUN(PortsAreAllPortsOfTheCard), DT_RUN(PortNeedsAnInputWithTheMatrixApi),
-             DT_RUN(InternalInputIsNoInputToTheScan),
+             DT_RUN(InternalInputIsNotAnInputToTheScan),
              DT_RUN(FirstInstanceWithTheEmptyRole), DT_RUN(ReadFailureIsReturned),
              DT_RUN(ObjectsEndAtTheFirstMissingOne),
              DT_RUN(ReceiverIsAnSdiRxDriverFunction), DT_RUN(LastReceiverIsUsed),

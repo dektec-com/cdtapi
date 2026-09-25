@@ -376,7 +376,7 @@ static void DeduceFormat(DtVidStdProps* Props, const SdiFormat* Format, double F
                          uint32_t Vpid)
 {
     DtVidStdProps_Deduce(Props, Format->LinesF1, SdiFormat_LinesF2(Format),
-                         SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format),
+                         SdiFormat_HancSymbols(Format), SdiFormat_ActiveSymbols(Format),
                          Fps, SdiFormat_IsLevelB(Format), Vpid, Format->SdiRate);
 }
 

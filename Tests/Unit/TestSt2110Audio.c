@@ -139,7 +139,7 @@ DT_TEST(ConfigurationChecks)
     DT_ASSERT_EQ(Tx.BytesPerSamplePeriod, 6);
     DT_ASSERT_EQ(Tx.PayloadSize, 750);
 
-    Config.NumSamplesPerIpPacket = 240; // 1,440 bytes: the most
+    Config.NumSamplesPerIpPacket = 240; // DT_ST2110_AUDIO_MAX_PAYLOAD bytes, the most
     DT_ASSERT_OK(DtSt2110AudioTx_Configure(&Tx, &Config));
     Config.NumSamplesPerIpPacket = 241;
     DT_ASSERT_EQ(DtSt2110AudioTx_Configure(&Tx, &Config), DTAPI_E_INVALID_ARG);

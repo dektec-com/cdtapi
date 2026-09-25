@@ -39,7 +39,7 @@ DT_TEST(InitGivesTheLineTimingOfEveryStandard)
                       Format->LinesF1);
         SDI_ASSERT_EQ(Format, DtFrameProps_LineNumSymHancInclTiming(&Props),
                       SdiFormat_HancSymbols(Format));
-        SDI_ASSERT_EQ(Format, Props.LineNumSymActive, SdiFormat_VancSymbols(Format));
+        SDI_ASSERT_EQ(Format, Props.LineNumSymActive, SdiFormat_ActiveSymbols(Format));
 
         // The fields are numbered from line 1 without a gap, and hold the active lines.
         const DtFieldProps* Last = &Props.Fields[Props.NumFields - 1];
@@ -102,7 +102,7 @@ DT_TEST(InitRefusesWhatIsNoStandard)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// SD is up to 625 lines; 3G is 1080 lines at 50 frames and up, but not 2160p; level B is
+// SD is up to 625 lines; 3G is 1080 lines at 50 frames and up, except 2160p; level B is
 // what its payload says; PsF counts as interlaced.
 DT_TEST(ClassificationFollowsTheLineTiming)
 {
@@ -150,8 +150,8 @@ static int DeduceFormat(const SdiFormat* Format, double Fps, uint32_t Vpid)
     DtFrameProps Props;
 
     DtFrameProps_Deduce(&Props, Format->LinesF1, SdiFormat_LinesF2(Format),
-                        SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format), Fps,
-                        SdiFormat_IsLevelB(Format), Vpid, Format->SdiRate);
+                        SdiFormat_HancSymbols(Format), SdiFormat_ActiveSymbols(Format),
+                        Fps, SdiFormat_IsLevelB(Format), Vpid, Format->SdiRate);
     return Props.VidStd;
 }
 
@@ -188,7 +188,7 @@ DT_TEST(DeducedPropertiesAreComplete)
     const SdiFormat* Format = FormatNamed(DTAPI_VIDSTD_1080I59_94);
 
     DtFrameProps_Deduce(&Deduced, Format->LinesF1, SdiFormat_LinesF2(Format),
-                        SdiFormat_HancSymbols(Format), SdiFormat_VancSymbols(Format),
+                        SdiFormat_HancSymbols(Format), SdiFormat_ActiveSymbols(Format),
                         SdiFormat_Fps(Format), false, 0, DT_SDIRATE_HD);
     DtFrameProps Expected;
     DtFrameProps_Init(&Expected, DTAPI_VIDSTD_1080I59_94);
@@ -204,9 +204,9 @@ DT_TEST(VpidSeparatesStandardsWithTheSameCounters)
         const SdiFormat* Format = &g_SdiFormats[i];
         int Expected = Format->VidStd;
 
-        // Four level-B links are, per link, not 3G level B to this search, whose level-B
-        // test looks for the single-link payload: the first 2160p standard with the rate
-        // matches.
+        // A link of four level-B links carries payload 0x98, which this search's level-B
+        // test, looking for the single-link 0x8A, does not take: the level-A 2160p
+        // standard of the same rate is found instead.
         if (Format->VidStd == DTAPI_VIDSTD_2160P50B)
             Expected = DTAPI_VIDSTD_2160P50;
         else if (Format->VidStd == DTAPI_VIDSTD_2160P59_94B)

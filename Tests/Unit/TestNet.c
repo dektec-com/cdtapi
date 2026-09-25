@@ -156,7 +156,7 @@ DT_TEST(RoutesAndNeighbours)
         return;
     }
 
-    // Another address in the own subnet is reached directly.
+    // Another address in the interface's own subnet is reached directly.
     if (Addr.PrefixLength <= 24)
     {
         uint8_t Neighbour[16];

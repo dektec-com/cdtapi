@@ -331,10 +331,10 @@ DT_TEST(OutOfMemory)
     FINISH(Drv, Live);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Get +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Find object +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// An object is got by kind, type and role; of objects alike the last.
-DT_TEST(ObjectsAreGotByKindTypeAndRole)
+// An object is found by kind, type and role, of objects alike the last; none gives NULL.
+DT_TEST(ObjectsAreFoundByKindTypeAndRole)
 {
     int Live;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
@@ -422,4 +422,4 @@ DT_TEST_MAIN("SimFunc", DT_RUN(ObjectsOfTheReceiverFunction),
              DT_RUN(ObjectsOfTheTransmitFunctions), DT_RUN(UuidsAreUnique),
              DT_RUN(MissingFunctionIsNotFound), DT_RUN(InstanceIsChosenByRole),
              DT_RUN(ReadFailures), DT_RUN(OutOfMemory),
-             DT_RUN(ObjectsAreGotByKindTypeAndRole), DT_RUN(DriverVersionPerObjectType))
+             DT_RUN(ObjectsAreFoundByKindTypeAndRole), DT_RUN(DriverVersionPerObjectType))

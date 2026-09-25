@@ -274,7 +274,7 @@ DT_TEST(ZeroedStructIsTreatedAsEmpty)
 }
 
 // The hardware keeps a whole data word free, not one byte. With an eight-byte word the
-// ring holds eight bytes less than its size, and reports free space accordingly. A
+// ring holds eight bytes less than its size, and reports its room accordingly. A
 // one-byte reserve here would let the transmit side write seven bytes too many and leave
 // a full ring looking empty.
 DT_TEST(ReserveOfOneDataWord)

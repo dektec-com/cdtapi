@@ -154,7 +154,7 @@ DT_TEST(CapabilitiesArePerPort)
     DT_ASSERT_OK(
         DtPcieCmd_GetPropertyBool(Drv, "CAP_OUTPUT", SIM_SDI_PORT_COUNT - 1, &Value));
     DT_ASSERT(Value);
-    // Ports 1 and 5 carry 2160p over one link and the others do not.
+    // Ports 1 and 5 carry 2160p over one link; port 2 does not.
     DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_12GSDI", 0, &Value));
     DT_ASSERT(Value);
     DT_ASSERT_OK(DtPcieCmd_GetPropertyBool(Drv, "CAP_2160P50", 4, &Value));
@@ -201,7 +201,7 @@ DT_TEST(UnknownPropertyIsNotFound)
     OsDrv_Close(Drv);
 }
 
-// The driver's name field holds 50 bytes, terminator included.
+// The driver's name field holds PROPERTY_NAME_MAX_SIZE bytes, terminator included.
 DT_TEST(PropertyNameMustFit)
 {
     OsDrv* Drv = OpenSim(DtFailures);
@@ -509,8 +509,8 @@ DT_TEST(DirectionsThatNamePortsAreConverted)
     OsDrv_Close(Drv);
 }
 
-// The driver's exclusive-access check is skipped for the port a request addresses,
-// which for a device-level request is port index -1.
+// The driver's exclusive-access check is skipped only for a device-level request, port
+// 0, which goes out with port index -1; a port's request keeps it.
 DT_TEST(ExclusiveAccessCheckIsSkippedOnlyForTheDevice)
 {
     DtIoConfig Cfg =
@@ -541,13 +541,13 @@ DT_TEST(UnsupportedConfigurationIsConfigError)
     if (Drv == NULL)
         return;
 
-    // The genlock reference port has no direction, and an SDI port is no reference.
+    // The genlock reference port has no direction, and an SDI port is not a reference.
     DtIoConfig Cfg = Config(SIM_SDI_PORT_COUNT + 1, DTAPI_IOCONFIG_IODIR,
                             DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_OUTPUT);
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg = Config(1, DTAPI_IOCONFIG_GENREF, DTAPI_IOCONFIG_TRUE, -1);
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
-    // Port 2 is no 12G port, where ports 1 and 5 are.
+    // Port 2 is not a 12G port; ports 1 and 5 are.
     Cfg = Config(2, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);
     DT_ASSERT_EQ(DtPcieCmd_SetIoConfig(Drv, &Cfg), DTAPI_E_CONFIG);
     Cfg = Config(1, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_12GSDI, DTAPI_IOCONFIG_2160P50);

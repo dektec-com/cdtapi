@@ -64,8 +64,8 @@ static const uint64_t MulAddDivCases[][5] = {
      UINT64_C(0x062F32B47150CF0D),
      UINT64_C(0x0F16ADCAB2BEC131), UINT64_C(0x00000486A3B451F8)},
 };
-// Align: Ns, Numerator, Denominator, expected
-static const uint64_t AlignCases[][4] = {
+// ToGrid: Ns, Numerator, Denominator, expected
+static const uint64_t ToGridCases[][4] = {
     {UINT64_C(0), 50, 1,
      UINT64_C(0)},
     {UINT64_C(0), 60000, 1001,

@@ -21,7 +21,7 @@ def muladddiv(a, b, add, div):
     return ((a * b + add) // div) & M64
 
 
-def align(ns, num, den):
+def to_grid(ns, num, den):
     n = (ns * num + den * NS // 2) // (den * NS)
     return ((n * NS * den + num // 2) // num) & M64
 
@@ -65,12 +65,12 @@ for _ in range(6):
 rates = [(50, 1), (60000, 1001), (30000, 1001), (24000, 1001), (25, 1), (48000, 1),
          (96000, 1), (44100, 1), (120000, 1001)]
 
-out.append('// Align: Ns, Numerator, Denominator, expected')
-out.append('static const uint64_t AlignCases[][4] = {')
+out.append('// ToGrid: Ns, Numerator, Denominator, expected')
+out.append('static const uint64_t ToGridCases[][4] = {')
 for t in tods:
     for num, den in rates:
         out.append('    {UINT64_C(%d), %d, %d,' % (t, num, den))
-        out.append('     UINT64_C(%d)},' % align(t, num, den))
+        out.append('     UINT64_C(%d)},' % to_grid(t, num, den))
 out.append('};')
 
 out.append('// Tod2Rtp: Rate, Ns, expected')

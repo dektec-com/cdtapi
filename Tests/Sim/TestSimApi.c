@@ -371,7 +371,7 @@ DT_TEST(FirmwareStatusIsAWarning)
     DtDevice_Free(Device);
 }
 
-// A device whose identity or port count cannot be read is no device.
+// A device whose identity or port count cannot be read is not a device.
 DT_TEST(UnreadableDeviceIsNoSuchDevice)
 {
     if (!StartSim(DtFailures))

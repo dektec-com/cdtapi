@@ -597,7 +597,7 @@ DT_TEST(HdOverThreads)
 
 // A file of one 2160p50 frame plays on the input port, and what the output port sends
 // goes to a file of its own: the frame read is the one in the file, and the frame written
-// is the one sent. The emulated card codes the ring and the line headers by its own
+// is the one sent. The emulated card encodes the ring and the line headers by its own
 // reading of the layout, so the two files must hold the same bytes.
 DT_TEST(FourKThroughFiles)
 {

@@ -29,7 +29,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The port the tests use: port 2, an output by default.
+// The index of the port the tests use: port 2, an output by default.
 #define PORT 1
 
 typedef struct Fixture
@@ -78,15 +78,15 @@ static bool Open(Fixture* Fix, int* DtFailures)
     } while (0)
 
 // The object of Instance at Index.
-static DtDrvObject RefAt(const DtFuncInstance* Instance, size_t Index)
+static DtDrvObject ObjectAt(const DtFuncInstance* Instance, size_t Index)
 {
     return DT_VEC_AT(&Instance->Objects, DtFuncObject, Index).Object;
 }
 
 // The object of Instance with IsDriverFunction, Type and Role; with UUID 0 when there is
 // none.
-static DtDrvObject RefOf(const DtFuncInstance* Instance, bool IsDriverFunction, int Type,
-                         const char* Role)
+static DtDrvObject ObjectOf(const DtFuncInstance* Instance, bool IsDriverFunction,
+                            int Type, const char* Role)
 {
     const DtFuncObject* Object =
         DtFunc_FindObject(Instance, IsDriverFunction, Type, Role);
@@ -104,14 +104,14 @@ static Objects ObjectsOf(const Fixture* Fix)
 {
     Objects P;
 
-    P.Cdmac = RefOf(&Fix->Dma, false, DT_BLOCK_TYPE_CDMAC, "");
-    P.Burst = RefOf(&Fix->Dma, false, DT_BLOCK_TYPE_BURSTFIFO, "");
-    P.Txf = RefOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDITXF, "");
-    P.SwitchIn = RefOf(&Fix->Tx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN");
-    P.SwitchOut = RefOf(&Fix->Tx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT");
-    P.Dmx = RefOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDIDMX12G, "");
-    P.Txp = RefOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDITXP, "");
-    P.Phy = RefOf(&Fix->Tx, true, DT_FUNC_TYPE_SDITXPHY, "");
+    P.Cdmac = ObjectOf(&Fix->Dma, false, DT_BLOCK_TYPE_CDMAC, "");
+    P.Burst = ObjectOf(&Fix->Dma, false, DT_BLOCK_TYPE_BURSTFIFO, "");
+    P.Txf = ObjectOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDITXF, "");
+    P.SwitchIn = ObjectOf(&Fix->Tx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN");
+    P.SwitchOut = ObjectOf(&Fix->Tx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT");
+    P.Dmx = ObjectOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDIDMX12G, "");
+    P.Txp = ObjectOf(&Fix->Tx, false, DT_BLOCK_TYPE_SDITXP, "");
+    P.Phy = ObjectOf(&Fix->Tx, true, DT_FUNC_TYPE_SDITXPHY, "");
     return P;
 }
 
@@ -265,7 +265,7 @@ static bool Received(int Index, uint32_t FrameNumber, int FrameId)
     return true;
 }
 
-// Waits for an event without a time-out.
+// Asks for the next event without waiting: a time-out of 0.
 static DtapiResult Wait(const Fixture* Fix, const Objects* P, DtSdiTxFEvent* Event)
 {
     return DtPcieCmd_SdiTxFWaitForFmtEvent(Fix->Drv, P->Txf, 0, Event);
@@ -282,7 +282,7 @@ DT_TEST(OneHandleHoldsAnObject)
     if (!Open(&Fix, DtFailures))
         return;
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
-    DtDrvObject Uuid = RefOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
+    DtDrvObject Uuid = ObjectOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
     DT_ASSERT(Other != NULL && Uuid.Uuid != 0);
 
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
@@ -315,8 +315,8 @@ DT_TEST(OneHandleHoldsAnObject)
 }
 
 // Every object of both functions, driver function included, has exclusive access of its
-// own; a UUID the card does not have has no I/O stub, and a command the access has not
-// is not supported.
+// own; a UUID the card does not have takes no command, and an unknown exclusive-access
+// command is not supported.
 DT_TEST(EveryObjectHasExclusiveAccess)
 {
     Fixture Fix;
@@ -329,25 +329,25 @@ DT_TEST(EveryObjectHasExclusiveAccess)
     size_t i;
     for (i = 0; i < DtVec_Count(&Fix.Tx.Objects); i++)
     {
-        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, i),
+        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, i),
                                           DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     }
     for (i = 0; i < DtVec_Count(&Fix.Dma.Objects); i++)
     {
-        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Dma, i),
+        DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Dma, i),
                                           DT_EXCLUSIVE_ACCESS_CMD_CHECK));
     }
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
-    DT_ASSERT_EQ(
-        DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 0), DT_EXCLUSIVE_ACCESS_CMD_CHECK),
-        DTAPI_E_EXCL_ACCESS_REQD);
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, 0),
+                                      DT_EXCLUSIVE_ACCESS_CMD_CHECK),
+                 DTAPI_E_EXCL_ACCESS_REQD);
 
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv,
                                       (DtDrvObject){DT_UUID_BC_FLAG | 0xFFFF, PORT},
                                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_NOT_IMPLEMENTED);
-    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 0), 99),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, 0), 99),
                  DTAPI_E_NOT_SUPPORTED);
 
     FINISH(Fix);
@@ -364,13 +364,13 @@ DT_TEST(AcquiringAllRollsBack)
     OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
     DT_ASSERT(Other != NULL && DtVec_Count(&Fix.Tx.Objects) == 7);
 
-    DT_ASSERT_OK(
-        DtPcieCmd_ExclAccess(Other, RefAt(&Fix.Tx, 3), DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, ObjectAt(&Fix.Tx, 3),
+                                      DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
     for (size_t i = 0; i < DtVec_Count(&Fix.Tx.Objects); i++)
     {
-        DtapiResult Probe = DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, i),
+        DtapiResult Probe = DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, i),
                                                  DT_EXCLUSIVE_ACCESS_CMD_PROBE);
 
         if (Probe != (i == 3 ? (DtapiResult)DTAPI_E_IN_USE : (DtapiResult)DTAPI_OK))
@@ -378,12 +378,12 @@ DT_TEST(AcquiringAllRollsBack)
     }
 
     // Releasing all goes on past the object another handle holds, and reports it.
-    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 6),
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, 6),
                                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_OK(
-        DtPcieCmd_ExclAccess(Fix.Drv, RefAt(&Fix.Tx, 6), DT_EXCLUSIVE_ACCESS_CMD_PROBE));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, 6),
+                                      DT_EXCLUSIVE_ACCESS_CMD_PROBE));
     OsDrv_Close(Other);
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_EXCL_ACCESS_CMD, DT_STATUS_NOT_SUPPORTED);
@@ -743,7 +743,7 @@ DT_TEST(ModesOfTheDmaController)
 }
 
 // The blocks refuse what changes them without exclusive access, the encoder excepted.
-// On a port that is no output the transmitter's blocks refuse their commands, the
+// On a port that is not an output the transmitter's blocks refuse their commands, the
 // stream alignment included, while the DMA controller's go on and its buffer stays.
 DT_TEST(BlocksCheckAccessAndPort)
 {
@@ -854,7 +854,7 @@ DT_TEST(StandbyFillsThePipeline)
 }
 
 // In RUN each wait sends a part of a frame, the lines of one event; the sink receives the
-// frames whole. The last 16 bytes of a frame whose size is no whole number of 32-byte
+// frames whole. The last 16 bytes of a frame whose size is not a whole number of 32-byte
 // words leave the buffer only with the next data, so that frame completes after more is
 // written.
 DT_TEST(FramesReachTheSink)

@@ -280,7 +280,7 @@ DT_TEST(InputChannelCalls)
 
     // The work over a pool of two threads of the library's own, freed by the program at
     // once and held by the channel, then back to the reading thread alone. A pool set to
-    // no dispatch function is one with neither, which threads may follow.
+    // no dispatch function has none; its own threads may still be started.
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     DT_ASSERT(Pool != NULL);
     DT_ASSERT_OK(DtWorkerPool_SetDispatch(Pool, NULL, NULL, 0));
@@ -405,9 +405,9 @@ DT_TEST(OutputChannelCalls)
     DT_ASSERT_EQ(DtOutpChannel_GetTsRateBps(Channel, &Rate), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtOutpChannel_SetTsRateBps(Channel, 10000000), DTAPI_E_NOT_SUPPORTED);
 
-    // A channel that is idle refuses what is written to it, and a frame of the wrong
-    // size is refused whatever the channel does: answer enough that both writes are
-    // there, where the transmit suites hold what a whole frame does.
+    // An idle channel may refuse a write; a frame of the wrong size is refused whatever
+    // the channel does. That both calls answer is all this checks; the transmit suites
+    // check what a whole frame does.
     static uint8_t Frame[4096];
     memset(Frame, 0, sizeof(Frame));
     DT_ASSERT(IsOneOf(DtOutpChannel_Write(Channel, Frame, (int)sizeof(Frame)), DTAPI_OK,

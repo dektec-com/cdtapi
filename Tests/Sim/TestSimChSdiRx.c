@@ -166,7 +166,8 @@ DT_TEST(ReportsTheCardsProperties)
     FINISH(Fix);
 }
 
-// Exclusive access excludes every other user, and a handle that is no user is not found.
+// Exclusive access excludes every other user, and a handle that is not a user is not
+// found.
 DT_TEST(AttachesUsers)
 {
     Fixture Fix;

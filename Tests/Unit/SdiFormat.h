@@ -86,8 +86,8 @@ static inline int SdiFormat_HancSymbols(const SdiFormat* Format)
     return 2 * (Format->Samples - Format->Active);
 }
 
-// Symbols of picture per line, luma and chroma.
-static inline int SdiFormat_VancSymbols(const SdiFormat* Format)
+// Symbols of the active part per line, luma and chroma.
+static inline int SdiFormat_ActiveSymbols(const SdiFormat* Format)
 {
     return 2 * Format->Active;
 }

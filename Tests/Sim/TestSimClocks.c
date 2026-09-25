@@ -48,18 +48,18 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
 // The object of the device's API function Name that is a driver function when
 // IsDriverFunction, of Type and with Role; false when there is none.
 static bool FindObject(OsDrv* Drv, const char* Name, bool IsDriverFunction, int Type,
-                       const char* Role, DtDrvObject* Ref)
+                       const char* Role, DtDrvObject* Object)
 {
     DtFuncInstance Instance;
 
     if (DtFunc_Find(Drv, DT_PROPERTY_DEVICE, Name, "", &Instance) != DTAPI_OK)
         return false;
-    const DtFuncObject* Object =
+    const DtFuncObject* Found =
         DtFunc_FindObject(&Instance, IsDriverFunction, Type, Role);
-    if (Object != NULL)
-        *Ref = Object->Object;
+    if (Found != NULL)
+        *Object = Found->Object;
     DtFunc_Release(&Instance);
-    return Object != NULL;
+    return Found != NULL;
 }
 
 // Closes the device and checks that nothing is left open or allocated.
@@ -80,21 +80,21 @@ DT_TEST(ObjectsAreThoseOfTheDevice)
     int Live = 0;
     OsDrv* Drv = OpenSim(DtFailures, &Live);
     DT_ASSERT(Drv != NULL);
-    DtDrvObject Ref;
+    DtDrvObject Object;
     DtDriverVersion Version;
     DT_ASSERT_OK(DtPcieCmd_GetDriverVersion(Drv, &Version));
 
-    DT_ASSERT(
-        FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "", &Ref));
-    DT_ASSERT_EQ(Ref.PortIndex, DT_PROPERTY_DEVICE);
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Object));
+    DT_ASSERT_EQ(Object.PortIndex, DT_PROPERTY_DEVICE);
     DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, true, DT_FUNC_TYPE_GENLOCKCTRL));
     DT_ASSERT(
-        FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Ref));
+        FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Object));
     DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, true, DT_FUNC_TYPE_TODCLKCTRL));
     DT_ASSERT(FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT,
-                         "NON_FRAC_CLK", &Ref));
-    DT_ASSERT(
-        FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK", &Ref));
+                         "NON_FRAC_CLK", &Object));
+    DT_ASSERT(FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK",
+                         &Object));
     DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, false, DT_BLOCK_TYPE_CLKCNT));
 
     // A port has none of them.
@@ -435,7 +435,8 @@ DT_TEST(DeviceGivesTheStates)
     FINISH_DEVICE(Device, Live);
 }
 
-// The two clocks in Hz and ppm, each with the eight ports that can be an output; too
+// The two clocks in Hz and ppm, each with the SIM_SDI_PORT_COUNT ports that can be an
+// output; too
 // little room gives their number and leaves the array alone.
 DT_TEST(DeviceListsTheClocks)
 {

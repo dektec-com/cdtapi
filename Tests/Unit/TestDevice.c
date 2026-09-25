@@ -147,7 +147,7 @@ DT_TEST(DetachedDeviceIsNotAttached)
     DT_ASSERT_EQ(Tod.Nanoseconds, 0);
     DT_ASSERT_EQ(DtDevice_GetTimeOfDay(Device, NULL), DTAPI_E_INVALID_ARG);
 
-    // The clocks: the outputs are cleared, but for a null output, which is refused
+    // The clocks: the outputs are cleared, except for a null output, which is refused
     // before the device is looked at.
     DtGenlockState Genlock;
     memset(&Genlock, 7, sizeof(Genlock));

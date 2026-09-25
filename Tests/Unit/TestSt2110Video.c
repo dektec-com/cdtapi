@@ -14,7 +14,7 @@
 // CDTAPI includes
 #include "AvFifo/DtAvTime.h"      // Nanoseconds.
 #include "AvFifo/DtSt2110Video.h" // Functions under test.
-#include "Core/DtAlloc.h"         // Live allocations and failures.
+#include "Core/DtAlloc.h"         // Live allocations.
 #include "DtPcie/DtEthIp.h"       // Packet headers of the made stream.
 #include "DtTest.h"               // Test framework.
 
@@ -394,7 +394,7 @@ DT_TEST(Transmit720p8BitGappedBlocks)
     CheckTransmit(&Config, true, DtFailures);
 }
 
-DT_TEST(TransmitSmallRowsThreePerPacket)
+DT_TEST(TransmitSmallRows)
 {
     const St2110_TxConfigVideo Config = {
         St2110_TxFrameFormat_Uyvy422_8b,
@@ -405,8 +405,8 @@ DT_TEST(TransmitSmallRowsThreePerPacket)
 }
 
 // Rows of 480 bytes in payloads of 1400: a packet with little left of its row reaches
-// only two rows further with its three row headers, and goes out short of full. Twenty
-// rows take eight packets, where their bytes over the payload would say seven.
+// only two rows further with its three row headers, and goes out short of full, so the
+// frame takes more packets than its bytes over the payload would say.
 DT_TEST(TransmitShortPacketsCounted)
 {
     const St2110_TxConfigVideo Config = {
@@ -913,9 +913,9 @@ DT_TEST(LoopbackRawInterlaced)
 }
 
 DT_TEST_MAIN("St2110Video", DT_RUN(ConfigurationChecks), DT_RUN(Transmit1080p10Bit),
-             DT_RUN(Transmit720p8BitGappedBlocks),
-             DT_RUN(TransmitSmallRowsThreePerPacket), DT_RUN(TransmitShortPacketsCounted),
-             DT_RUN(TransmitOneLinePerPacket), DT_RUN(FieldsAndPsf), DT_RUN(Raw420Rows),
+             DT_RUN(Transmit720p8BitGappedBlocks), DT_RUN(TransmitSmallRows),
+             DT_RUN(TransmitShortPacketsCounted), DT_RUN(TransmitOneLinePerPacket),
+             DT_RUN(FieldsAndPsf), DT_RUN(Raw420Rows),
              DT_RUN(ReceiveLearnsAndCountsFaults), DT_RUN(Loopback10Bit),
              DT_RUN(Loopback10BitTo8BitInterlaced), DT_RUN(Loopback8Bit),
              DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackRawInterlaced))

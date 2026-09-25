@@ -112,7 +112,7 @@ DT_TEST(OutputPerMode)
 }
 
 // A packet without its packet-sync bit sets the synchronisation error and is dropped,
-// but in the raw and transparent modes; the raw mode does not set the error.
+// except in the raw and transparent modes, which pass it on; raw sets no error.
 DT_TEST(PacketsWithoutSync)
 {
     uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT_BYTES];
@@ -147,7 +147,8 @@ DT_TEST(PacketsWithoutSync)
     DT_ASSERT_EQ(Latched, 0);
 }
 
-// A wrong sync nibble, or a valid count the mode does not accept, is no packet in sync.
+// A wrong sync nibble, or a valid count the mode does not accept, is not a packet in
+// sync.
 DT_TEST(BytesThatAreNoPacket)
 {
     uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT_BYTES];
@@ -195,7 +196,7 @@ DT_TEST(FindingTheStream)
         Build(Buf + (size_t)n * DT_TRP_SIZE, 0, 0, n, 188, true, 2 * n);
     DT_ASSERT(!DtTsTrp_FindSync(&Trp, Buf, sizeof(Buf), &Offset));
 
-    // A valid count only the raw modes take counts there.
+    // A valid count that only the raw modes accept is found only in those modes.
     for (int n = 0; n < 6; n++)
         Build(Buf + (size_t)n * DT_TRP_SIZE, 0, 0, n, 150, true, n);
     DT_ASSERT(!DtTsTrp_FindSync(&Trp, Buf, sizeof(Buf), &Offset));

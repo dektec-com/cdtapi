@@ -324,7 +324,8 @@ DT_TEST(AttachChecks)
 
 // The firmware status; a port with SDI and without ASI, which attaches, and one with
 // neither, without CAP_MATRIX2 for SDI, or with the old Matrix API, which does not;
-// and a driver too old for the receive channel.
+// and a driver too old for the receive channel; 2160p over one link, which receives, and
+// level-B links and ASI, which attach without receiving.
 DT_TEST(AttachRefusals)
 {
     Fixture Fix;

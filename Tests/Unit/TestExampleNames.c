@@ -66,7 +66,7 @@ DT_TEST(EveryHeaderStandardHasItsName)
     }
 }
 
-// Numbers and names that are no standard.
+// Numbers and names that are not a standard.
 DT_TEST(NoStandardHasNoName)
 {
     int VidStd = 7;

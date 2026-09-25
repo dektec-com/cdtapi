@@ -90,7 +90,8 @@ cdtapi_add_test(Vec Unit/TestVec.c)
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
 cdtapi_add_test(WorkerPool Unit/TestWorkerPool.c)
 
-# The throughput of the pixel conversions. A program to run by hand, not a test: timing
+# The throughput of the pixel conversions and of the 4K SDI frame conversion. A program
+# to run by hand, not a test: timing
 # depends on the machine, so nothing about it can pass or fail.
 add_executable(BenchAvPixConv Bench/BenchAvPixConv.c)
 set_target_properties(BenchAvPixConv PROPERTIES

@@ -1,12 +1,13 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# TestAvPixConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Unit tests for the pixel conversions, in portable C and in SSSE3
+// CDTAPI - Unit tests for the pixel conversions, in portable C, SSSE3 and AVX2
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // The reference here reads and writes the samples a bit at a time, most significant bit
 // first for pixel groups and least significant bit first for 10-bit UYVY, as the formats
-// are defined. The portable conversions are held to it, and the SSSE3 ones to both. A
+// are defined. The portable conversions are held to it, and the SSSE3 and AVX2 ones to
+// both. A
 // source is allocated at exactly its size, so that AddressSanitizer sees a read beyond
 // it; a destination has guard bytes behind it, which must stay as they were.
 

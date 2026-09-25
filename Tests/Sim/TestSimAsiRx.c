@@ -364,8 +364,8 @@ DT_TEST(OverflowsAsDtapi)
     FINISH(Fix);
 }
 
-// The status in the public header's values, the rate of 188-byte packets but in raw
-// mode, the violations, and the polarity control.
+// The status in the public header's values, the rate of the 188-byte packets, except in
+// raw mode, where it is the line rate; the violations, and the polarity control.
 DT_TEST(StatusAndRate)
 {
     Fixture Fix;

@@ -177,15 +177,15 @@ DT_TEST(NullEventIsAccepted)
 // a kill event is set.
 //
 
-typedef struct Worker
+typedef struct Poller
 {
     OsEvent* Kill;
     int Rounds;
-} Worker;
+} Poller;
 
 static void PollUntilKilled(void* Context)
 {
-    Worker* Self = (Worker*)Context;
+    Poller* Self = (Poller*)Context;
 
     while (OsEvent_Wait(Self->Kill, 10) == OS_WAIT_TIMEOUT)
         Self->Rounds++;
@@ -193,7 +193,7 @@ static void PollUntilKilled(void* Context)
 
 DT_TEST(KillEventStopsAPollingThread)
 {
-    Worker Self;
+    Poller Self;
 
     Self.Kill = OsEvent_Create();
     Self.Rounds = 0;
