@@ -528,6 +528,57 @@ DT_TEST(AttachRefusals)
     FINISH(Fix);
 }
 
+// A port with SDI and without ASI attaches; one with neither, without CAP_MATRIX2 for
+// SDI, or with the old Matrix API, does not.
+DT_TEST(AttachCapabilities)
+{
+    Fixture Fix;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+
+    SimDtPcie_OverrideProperty("CAP_ASI", PORT - 1, true, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
+
+    SimDtPcie_OverrideProperty("CAP_SDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_HDSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_3GSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_6GSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_SUPPORTED);
+
+    // Without CAP_MATRIX2 a port does not carry SDI: configured for SDI it is refused;
+    // configured for ASI it attaches, and refuses a switch to SDI but stays attached.
+    SimDtPcie_Reset();
+    SimDtPcie_OverrideProperty("CAP_MATRIX2", PORT - 1, true, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(
+        SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtOutpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                           DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                           -1, -1),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
+
+    SimDtPcie_Reset();
+    SimDtPcie_OverrideProperty("CAP_MATRIX", PORT - 1, true, 1);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_SUPPORTED);
+    FINISH(Fix);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 DT_TEST(TransmitModes)
@@ -1571,9 +1622,9 @@ DT_TEST(FreeWhileSending)
 }
 
 DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
-             DT_RUN(AttachRefusals), DT_RUN(TransmitModes), DT_RUN(IoConfiguration),
-             DT_RUN(States), DT_RUN(SingleLinkPort), DT_RUN(RefusedCommands),
-             DT_RUN(WriteChecks), DT_RUN(FramesInPieces525i),
+             DT_RUN(AttachCapabilities), DT_RUN(AttachRefusals), DT_RUN(TransmitModes),
+             DT_RUN(IoConfiguration), DT_RUN(States), DT_RUN(SingleLinkPort),
+             DT_RUN(RefusedCommands), DT_RUN(WriteChecks), DT_RUN(FramesInPieces525i),
              DT_RUN(FramesInPieces720p24), DT_RUN(FramesInPieces1080p50),
              DT_RUN(SdStartsAtField1), DT_RUN(AcrossTheEndOfTheBuffer),
              DT_RUN(BlackFramesWhenWritingStops),

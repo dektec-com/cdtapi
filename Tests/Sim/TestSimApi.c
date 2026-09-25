@@ -138,7 +138,7 @@ DT_TEST(ScanDescribesEveryPort)
         DT_ASSERT_STR(Func->Description, Expected);
         DT_ASSERT_EQ(Func->SerialNumber, (int64_t)SIM_SERIAL);
         DT_ASSERT_EQ(Func->Port, i + 1);
-        DT_ASSERT_EQ(Func->IsSdi, 1);
+        DT_ASSERT_EQ(Func->IsSdi, Sdi ? 1 : 0);
         DT_ASSERT_EQ(Func->IsAvFifo, 0);
         DT_ASSERT_EQ(Func->IsInput, Sdi ? 1 : 0);
         DT_ASSERT_EQ(Func->IsOutput, Sdi ? 1 : 0);
@@ -470,7 +470,8 @@ DT_TEST(UnreadableCapabilityIsAbsent)
     DT_ASSERT_EQ(Funcs[4].IsAsi, 1);
 }
 
-// Each of the SDI rates alone makes a port an SDI port.
+// Each of the SDI rates alone makes an input an SDI port, with CAP_MATRIX2 and not
+// without it.
 DT_TEST(EachSdiRateMakesAnSdiPort)
 {
     static const char* const Rates[] = {"CAP_12GSDI", "CAP_6GSDI", "CAP_3GSDI",
@@ -483,6 +484,8 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
     size_t i;
     for (i = 0; i < sizeof(Rates) / sizeof(Rates[0]); i++)
         SimDtPcie_OverrideProperty(Rates[i], 9, true, 0);
+    SimDtPcie_OverrideProperty("CAP_MATRIX2", 9, true, 1);
+    SimDtPcie_OverrideProperty("CAP_INPUT", 9, true, 1);
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
     DT_ASSERT_EQ(Funcs[9].IsSdi, 0);
@@ -495,6 +498,30 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
             DT_FAIL("%s alone does not make an SDI port", Rates[i]);
         SimDtPcie_OverrideProperty(Rates[i], 9, true, 0);
     }
+
+    SimDtPcie_OverrideProperty("CAP_12GSDI", 9, true, 1);
+    SimDtPcie_OverrideProperty("CAP_MATRIX2", 9, true, 0);
+    DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
+    DT_ASSERT_EQ(Funcs[9].IsSdi, 0);
+}
+
+// A port that can be neither an input nor an output is neither an ASI nor an SDI port,
+// whatever else it has.
+DT_TEST(AsiAndSdiNeedADirection)
+{
+    int Count = -1;
+
+    if (!StartSim(DtFailures))
+        return;
+
+    SimDtPcie_OverrideProperty("CAP_INPUT", 2, false, 0);
+    SimDtPcie_OverrideProperty("CAP_OUTPUT", 2, false, 0);
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT];
+    DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
+    DT_ASSERT_EQ(Funcs[2].IsAsi, 0);
+    DT_ASSERT_EQ(Funcs[2].IsSdi, 0);
+    DT_ASSERT_EQ(Funcs[3].IsAsi, 1);
+    DT_ASSERT_EQ(Funcs[3].IsSdi, 1);
 }
 
 DT_TEST(AttachSurvivesAllocationFailure)
@@ -767,7 +794,7 @@ DT_TEST_MAIN("SimApi", DT_RUN(ScanCountsThePorts), DT_RUN(ScanDescribesEveryPort
              DT_RUN(UnreadableDeviceIsNoSuchDevice),
              DT_RUN(PublicPortsComeFromMainPortCount),
              DT_RUN(UnreadableCapabilityIsAbsent), DT_RUN(EachSdiRateMakesAnSdiPort),
-             DT_RUN(AttachSurvivesAllocationFailure), DT_RUN(DirectionsReachTheCard),
-             DT_RUN(ConfigurationIsCheckedFirst), DT_RUN(ListsAreSetAndReadInOneRequest),
-             DT_RUN(ABadEntryRefusesTheWholeList), DT_RUN(ReadingIsCheckedFirst),
-             DT_RUN(TimeOfDayComesFromTheCard))
+             DT_RUN(AsiAndSdiNeedADirection), DT_RUN(AttachSurvivesAllocationFailure),
+             DT_RUN(DirectionsReachTheCard), DT_RUN(ConfigurationIsCheckedFirst),
+             DT_RUN(ListsAreSetAndReadInOneRequest), DT_RUN(ABadEntryRefusesTheWholeList),
+             DT_RUN(ReadingIsCheckedFirst), DT_RUN(TimeOfDayComesFromTheCard))

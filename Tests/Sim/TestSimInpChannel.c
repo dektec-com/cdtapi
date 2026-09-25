@@ -322,8 +322,9 @@ DT_TEST(AttachChecks)
     FINISH(Fix);
 }
 
-// The firmware status, a port without an ASI/SDI receiver or with the old Matrix API, and
-// a driver too old for the receive channel.
+// The firmware status; a port with SDI and without ASI, which attaches, and one with
+// neither, without CAP_MATRIX2 for SDI, or with the old Matrix API, which does not;
+// and a driver too old for the receive channel.
 DT_TEST(AttachRefusals)
 {
     Fixture Fix;
@@ -339,11 +340,39 @@ DT_TEST(AttachRefusals)
                  DTAPI_E_TAINTED_FW);
     Fix.Device->Info.FirmwareStatus = DT_FWSTATUS_UPTODATE;
 
+    // A port with SDI and without ASI attaches; one with neither is refused.
     SimDtPcie_OverrideProperty("CAP_ASI", PORT - 1, true, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
+
+    SimDtPcie_OverrideProperty("CAP_SDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_HDSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_3GSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_6GSDI", PORT - 1, true, 0);
+    SimDtPcie_OverrideProperty("CAP_12GSDI", PORT - 1, true, 0);
     DtDevice_Detach(Fix.Device);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_NOT_SUPPORTED);
+
+    // Without CAP_MATRIX2 a port does not carry SDI: configured for SDI it is refused;
+    // configured for ASI it attaches, and refuses a switch to SDI but stays attached.
+    SimDtPcie_Reset();
+    SimDtPcie_OverrideProperty("CAP_MATRIX2", PORT - 1, true, 0);
+    DtDevice_Detach(Fix.Device);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(
+        SetIoConfig(Fix.Device, PORT, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtInpChannel_SetIoConfig(Fix.Channel, DTAPI_IOCONFIG_IOSTD,
+                                          DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50,
+                                          -1, -1),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
 
     SimDtPcie_Reset();
     SimDtPcie_OverrideProperty("CAP_MATRIX", PORT - 1, true, 1);

@@ -293,6 +293,9 @@ static DtapiResult AttachPort(DtInpChannel* Chan, int Port, uint64_t Caps)
 
     Config.Group = DTAPI_IOCONFIG_IOSTD;
     Result = DtPcieCmd_GetIoConfig(Chan->Device.Drv, &Config);
+    if (Result == DTAPI_OK &&
+        !DtDevice_PortHasIoStdCaps(&Chan->Device, Port, Config.Value))
+        Result = DTAPI_E_NOT_SUPPORTED;
     if (Result != DTAPI_OK)
         return Result;
 
@@ -322,9 +325,11 @@ static DtapiResult Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
         return DTAPI_E_NO_SUCH_PORT;
 
     uint64_t Caps = Device->PortCaps[Port - 1];
-    if ((Caps & DT_CAP_INPUT) == 0 && (Caps & DT_CAP_IP) == 0)
+    if (!DtDevice_PortHasAnyCap(Device, Port, DT_CAP_INPUT | DT_CAP_IP))
         return DTAPI_E_NO_DT_INPUT;
-    if ((Caps & DT_CAP_MATRIX) != 0 || (Caps & DT_CAP_ASI) == 0)
+    if (DtDevice_PortHasAllCaps(Device, Port, DT_CAP_MATRIX) ||
+        (!DtDevice_PortHasAsiCaps(Device, Port) &&
+         !DtDevice_PortHasSdiCaps(Device, Port)))
         return DTAPI_E_NOT_SUPPORTED;
 
     DtapiResult Result =
@@ -553,6 +558,10 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Result = DTAPI_E_INVALID_ARG;
     }
     else if (Group == DTAPI_IOCONFIG_IODIR)
+        Result = DTAPI_E_NOT_SUPPORTED;
+    else if (Group == DTAPI_IOCONFIG_IOSTD &&
+             !DtDevice_PortHasIoStdCaps(&InpChannel->Device, InpChannel->Port.Port,
+                                        Value))
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (InpChannel->Rx->RxControl != DTAPI_RXCTRL_IDLE)
         Result = DTAPI_E_NOT_IDLE;

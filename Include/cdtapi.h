@@ -106,11 +106,11 @@ typedef struct DtHwFuncDesc
     char Description[MAX_DEVICE_DESC_SIZE]; // Type and port, as "DTA-2178 port 1"
     int64_t SerialNumber;
     int Port;     // Port number, from 1
-    int IsSdi;    // 1 when the port can carry SD-, HD-, 3G-, 6G- or 12G-SDI
+    int IsSdi;    // The port supports SD-, HD-, 3G-, 6G- and/or 12G-SDI input or output
     int IsAvFifo; // 1 when the port has an AV FIFO
     int IsInput;  // 1 when the port can be an input
     int IsOutput; // 1 when the port can be an output
-    int IsAsi;    // 1 when the port can carry DVB-ASI
+    int IsAsi;    // The port supports ASI input or output
 } DtHwFuncDesc;
 
 // Describes the public ports of every device, in the order the driver numbers the
@@ -525,9 +525,11 @@ CDTAPI_API DtInpChannel* DtInpChannel_Alloc(void);
 // Returns, in the order checked: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_INPUT
 // for a port that cannot be an input and is not an IP port; DTAPI_E_NOT_SUPPORTED for a
-// port without an ASI/SDI receiver, or with the capability CAP_MATRIX; what opening the
-// channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE, DTAPI_E_DRIVER_INCOMP or
-// DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_INPUT for a port not configured as an input;
+// port with the capability CAP_MATRIX, or whose DtHwFuncDesc has neither IsAsi nor
+// IsSdi; what opening the channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE,
+// DTAPI_E_DRIVER_INCOMP or DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_INPUT for a port not
+// configured as an input; DTAPI_E_NOT_SUPPORTED for a port configured for an I/O
+// standard it does not support;
 // DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a receiver the driver does not describe
 // or is too old for; DTAPI_E_IN_USE when another user has the port; and the driver's
 // result of any command. Succeeds with DTAPI_OK_FAILSAFE on a fail-safe port in
@@ -654,8 +656,9 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
 // default receive mode, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B or
 // DTAPI_RXMODE_ST188; when the switch fails the channel is left detached. Returns
 // DTAPI_E_INVALID_ARG for a combination that is not a configuration, for an output
-// direction and for an input that shares the antenna of a port ParXtra0 does not name,
-// and DTAPI_E_NOT_SUPPORTED for any other direction, which DTAPI would apply.
+// direction and for an input that shares the antenna of a port ParXtra0 does not name;
+// DTAPI_E_NOT_SUPPORTED for any other direction, which DTAPI would apply, and for an
+// I/O standard the port does not support, which leaves the channel as it was.
 CDTAPI_API DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group,
                                                 int Value, int SubValue, int64_t ParXtra0,
                                                 int64_t ParXtra1);
@@ -746,10 +749,12 @@ CDTAPI_API DtOutpChannel* DtOutpChannel_Alloc(void);
 //
 // Returns, in the order checked: DTAPI_E_ATTACHED; DTAPI_E_DEVICE for a detached Device;
 // DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW; DTAPI_E_NO_SUCH_PORT; DTAPI_E_NO_DT_OUTPUT
-// for a port that cannot be an output and is not an IP port; DTAPI_E_NOT_SUPPORTED for a
-// port without an ASI/SDI transmitter, or with the capability CAP_MATRIX; what opening
-// the channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE, DTAPI_E_DRIVER_INCOMP or
-// DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_OUTPUT for a port not configured as an output;
+// for a port that cannot be an output and is not an IP port; DTAPI_E_NOT_SUPPORTED for
+// a port with the capability CAP_MATRIX, or whose DtHwFuncDesc has neither IsAsi nor
+// IsSdi; what opening the channel's own handle gives, DTAPI_E_NO_SUCH_DEVICE,
+// DTAPI_E_DRIVER_INCOMP or DTAPI_E_OUT_OF_MEM; DTAPI_E_NO_DT_OUTPUT for a port not
+// configured as an output; DTAPI_E_NOT_SUPPORTED for a port configured for an I/O
+// standard it does not support;
 // DTAPI_E_NOT_FOUND and DTAPI_E_DRIVER_INCOMP for a transmitter the driver does not
 // describe or is too old for; DTAPI_E_IN_USE when another user has the port, or on ASI
 // one of its slaves; and the driver's result of any command. Succeeds with
@@ -831,7 +836,9 @@ CDTAPI_API DtapiResult DtOutpChannel_GetTsRateBps(DtOutpChannel* OutpChannel,
 // default transmit mode; when the switch fails the channel is left detached. Returns
 // DTAPI_E_INVALID_ARG for a combination that is not a configuration, for an input
 // direction, and for an output that names another port, DTAPI_IOCONFIG_DBLBUF,
-// LOOPS2L3, LOOPS2TS or LOOPTHR, when ParXtra0 is not a port.
+// LOOPS2L3, LOOPS2TS or LOOPTHR, when ParXtra0 is not a port; and
+// DTAPI_E_NOT_SUPPORTED for an I/O standard the port does not support, which leaves
+// the channel as it was.
 CDTAPI_API DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group,
                                                  int Value, int SubValue,
                                                  int64_t ParXtra0, int64_t ParXtra1);

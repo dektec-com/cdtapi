@@ -9,6 +9,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -96,6 +97,35 @@ DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
 
 // Releases what an attached Device holds and leaves it detached.
 void DtDevice_Release(DtDevice* Device);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// What a port can do is what its capabilities say. Code that needs a port to be able to
+// do something asks these functions, and the flags of DtHwFuncDesc are filled from
+// them for the application's convenience; the library does not read those flags.
+//
+
+// Whether port Port, numbered from 1, of an attached Device has every capability in
+// Caps, a set of DT_CAP_ flags. False for a port the device does not have.
+bool DtDevice_PortHasAllCaps(const DtDevice* Device, int Port, uint64_t Caps);
+
+// Whether the port has at least one capability in Caps. False for a port the device
+// does not have, and for an empty Caps.
+bool DtDevice_PortHasAnyCap(const DtDevice* Device, int Port, uint64_t Caps);
+
+// Whether the port has the capabilities ASI needs in CDTAPI: DT_CAP_ASI, and
+// DT_CAP_INPUT or DT_CAP_OUTPUT, so that it can receive or send it.
+bool DtDevice_PortHasAsiCaps(const DtDevice* Device, int Port);
+
+// Whether the port has the capabilities of I/O standard IoStd, a value of
+// DTAPI_IOCONFIG_IOSTD: those of ASI for DTAPI_IOCONFIG_ASI, and for DTAPI_IOCONFIG_SDI,
+// HDSDI, 3GSDI, 6GSDI and 12GSDI the capability of that rate with the others SDI needs.
+// False for any other standard, which the input and output channels do not carry.
+bool DtDevice_PortHasIoStdCaps(const DtDevice* Device, int Port, int IoStd);
+
+// Whether the port has the capabilities SDI needs in CDTAPI: one of the SDI rates,
+// DT_CAP_MATRIX2, and DT_CAP_INPUT or DT_CAP_OUTPUT, so that it can receive or send it.
+bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

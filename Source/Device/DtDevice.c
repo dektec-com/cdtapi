@@ -218,12 +218,93 @@ DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
     return DTAPI_OK;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CapsOfPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The capabilities of a port, numbered from 1; none for a port the device does not have
+// or a device that is not attached. PortCaps holds the larger of the two port counts.
+//
+static uint64_t CapsOfPort(const DtDevice* Device, int Port)
+{
+    int Count = Device->NumPorts > Device->NumPublicPorts ? Device->NumPorts
+                                                          : Device->NumPublicPorts;
+    if (Device->PortCaps == NULL || Port < 1 || Port > Count)
+        return 0;
+    return Device->PortCaps[Port - 1];
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasSdiRateCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Whether the port has one of the SDI rates in Rates, DT_CAP_MATRIX2, and DT_CAP_INPUT
+// or DT_CAP_OUTPUT: what SDI at those rates needs in CDTAPI.
+//
+static bool HasSdiRateCaps(const DtDevice* Device, int Port, uint64_t Rates)
+{
+    return DtDevice_PortHasAnyCap(Device, Port, Rates) &&
+           DtDevice_PortHasAllCaps(Device, Port, DT_CAP_MATRIX2) &&
+           DtDevice_PortHasAnyCap(Device, Port, DT_CAP_INPUT | DT_CAP_OUTPUT);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_PortHasAllCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDevice_PortHasAllCaps(const DtDevice* Device, int Port, uint64_t Caps)
+{
+    uint64_t Have = CapsOfPort(Device, Port);
+    return Have != 0 && (Have & Caps) == Caps;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_PortHasAnyCap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool DtDevice_PortHasAnyCap(const DtDevice* Device, int Port, uint64_t Caps)
+{
+    return (CapsOfPort(Device, Port) & Caps) != 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_PortHasAsiCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDevice_PortHasAsiCaps(const DtDevice* Device, int Port)
+{
+    return DtDevice_PortHasAllCaps(Device, Port, DT_CAP_ASI) &&
+           DtDevice_PortHasAnyCap(Device, Port, DT_CAP_INPUT | DT_CAP_OUTPUT);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_PortHasIoStdCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDevice_PortHasIoStdCaps(const DtDevice* Device, int Port, int IoStd)
+{
+    switch (IoStd)
+    {
+    case DTAPI_IOCONFIG_ASI:
+        return DtDevice_PortHasAsiCaps(Device, Port);
+    case DTAPI_IOCONFIG_SDI:
+        return HasSdiRateCaps(Device, Port, DT_CAP_SDI);
+    case DTAPI_IOCONFIG_HDSDI:
+        return HasSdiRateCaps(Device, Port, DT_CAP_HDSDI);
+    case DTAPI_IOCONFIG_3GSDI:
+        return HasSdiRateCaps(Device, Port, DT_CAP_3GSDI);
+    case DTAPI_IOCONFIG_6GSDI:
+        return HasSdiRateCaps(Device, Port, DT_CAP_6GSDI);
+    case DTAPI_IOCONFIG_12GSDI:
+        return HasSdiRateCaps(Device, Port, DT_CAP_12GSDI);
+    default:
+        return false;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_PortHasSdiCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port)
+{
+    return HasSdiRateCaps(Device, Port, DT_CAP_ANY_SDI);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_HwFunc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
 {
-    uint64_t Caps = Device->PortCaps[Port - 1];
-
     memset(Desc, 0, sizeof(*Desc));
     snprintf(Desc->DeviceName, sizeof(Desc->DeviceName), "%lld:%d",
              (long long)Device->Info.Serial, Port);
@@ -231,11 +312,11 @@ void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
                       Desc->Description, sizeof(Desc->Description));
     Desc->SerialNumber = Device->Info.Serial;
     Desc->Port = Port;
-    Desc->IsSdi = (Caps & DT_CAP_ANY_SDI) != 0;
-    Desc->IsAvFifo = (Caps & DT_CAP_AVFIFO) != 0;
-    Desc->IsInput = (Caps & DT_CAP_INPUT) != 0;
-    Desc->IsOutput = (Caps & DT_CAP_OUTPUT) != 0;
-    Desc->IsAsi = (Caps & DT_CAP_ASI) != 0;
+    Desc->IsSdi = DtDevice_PortHasSdiCaps(Device, Port);
+    Desc->IsAvFifo = DtDevice_PortHasAllCaps(Device, Port, DT_CAP_AVFIFO);
+    Desc->IsInput = DtDevice_PortHasAllCaps(Device, Port, DT_CAP_INPUT);
+    Desc->IsOutput = DtDevice_PortHasAllCaps(Device, Port, DT_CAP_OUTPUT);
+    Desc->IsAsi = DtDevice_PortHasAsiCaps(Device, Port);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHwFuncScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
