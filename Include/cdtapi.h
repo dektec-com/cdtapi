@@ -804,8 +804,9 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 //                        spare.
 //   2160p24 to 2160p30   2. The same frame, half as often.
 //   up to 3G-SDI         1. The decoding is a small part of a frame period even on a
-//                        slow core, so dividing it costs more than it saves; a pool
-//                        given to such a channel with 0 goes unused.
+//                        slow core, so dividing it costs more than it saves. A channel
+//                        set to such a standard leaves a pool it was given with 0
+//                        unused.
 //
 // A number is a ceiling, not a reservation: when other channels hold the pool's threads,
 // this channel's pieces wait for one. A channel that must not wait gets a pool of its
