@@ -9,6 +9,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <stdint.h>
 
 // CDTAPI includes
@@ -105,12 +106,12 @@ typedef struct DtHwFuncDesc
     char DeviceName[MAX_DEVICE_NAME_SIZE];  // Serial and port, as "<serial>:<port>"
     char Description[MAX_DEVICE_DESC_SIZE]; // Type and port, as "DTA-2178 port 1"
     int64_t SerialNumber;
-    int Port;     // Port number, from 1
-    int IsSdi;    // The port supports SD-, HD-, 3G-, 6G- and/or 12G-SDI input or output
-    int IsAvFifo; // 1 when the port has an AV FIFO
-    int IsInput;  // 1 when the port can be an input
-    int IsOutput; // 1 when the port can be an output
-    int IsAsi;    // The port supports ASI input or output
+    int Port;      // Port number, from 1
+    bool IsSdi;    // The port supports SD-, HD-, 3G-, 6G- and/or 12G-SDI
+    bool IsAvFifo; // The port supports ST 2110 through an AV FIFO
+    bool IsInput;  // The port can be used as input
+    bool IsOutput; // The port can be used as output
+    bool IsAsi;    // The port supports ASI
 } DtHwFuncDesc;
 
 // Describes the public ports of every device, in the order the driver numbers the

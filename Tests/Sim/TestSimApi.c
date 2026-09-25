@@ -138,11 +138,11 @@ DT_TEST(ScanDescribesEveryPort)
         DT_ASSERT_STR(Func->Description, Expected);
         DT_ASSERT_EQ(Func->SerialNumber, (int64_t)SIM_SERIAL);
         DT_ASSERT_EQ(Func->Port, i + 1);
-        DT_ASSERT_EQ(Func->IsSdi, Sdi ? 1 : 0);
-        DT_ASSERT_EQ(Func->IsAvFifo, 0);
-        DT_ASSERT_EQ(Func->IsInput, Sdi ? 1 : 0);
-        DT_ASSERT_EQ(Func->IsOutput, Sdi ? 1 : 0);
-        DT_ASSERT_EQ(Func->IsAsi, Sdi ? 1 : 0);
+        DT_ASSERT_EQ(Func->IsSdi, Sdi);
+        DT_ASSERT_EQ(Func->IsAvFifo, false);
+        DT_ASSERT_EQ(Func->IsInput, Sdi);
+        DT_ASSERT_EQ(Func->IsOutput, Sdi);
+        DT_ASSERT_EQ(Func->IsAsi, Sdi);
     }
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
 }
@@ -455,19 +455,19 @@ DT_TEST(UnreadableCapabilityIsAbsent)
     SimDtPcie_OverrideProperty("CAP_OUTPUT", 1, false, 0);
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[0].IsOutput, 1);
-    DT_ASSERT_EQ(Funcs[1].IsOutput, 0);
-    DT_ASSERT_EQ(Funcs[1].IsInput, 1);
+    DT_ASSERT_EQ(Funcs[0].IsOutput, true);
+    DT_ASSERT_EQ(Funcs[1].IsOutput, false);
+    DT_ASSERT_EQ(Funcs[1].IsInput, true);
 
     SimDtPcie_OverrideProperty("CAP_AVFIFO", 2, true, 1);
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[2].IsAvFifo, 1);
-    DT_ASSERT_EQ(Funcs[1].IsAvFifo, 0);
+    DT_ASSERT_EQ(Funcs[2].IsAvFifo, true);
+    DT_ASSERT_EQ(Funcs[1].IsAvFifo, false);
 
     SimDtPcie_OverrideProperty("CAP_ASI", 3, false, 0);
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[3].IsAsi, 0);
-    DT_ASSERT_EQ(Funcs[4].IsAsi, 1);
+    DT_ASSERT_EQ(Funcs[3].IsAsi, false);
+    DT_ASSERT_EQ(Funcs[4].IsAsi, true);
 }
 
 // Each of the SDI rates alone makes an input an SDI port, with CAP_MATRIX2 and not
@@ -488,13 +488,13 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
     SimDtPcie_OverrideProperty("CAP_INPUT", 9, true, 1);
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[9].IsSdi, 0);
+    DT_ASSERT_EQ(Funcs[9].IsSdi, false);
 
     for (i = 0; i < sizeof(Rates) / sizeof(Rates[0]); i++)
     {
         SimDtPcie_OverrideProperty(Rates[i], 9, true, 1);
         DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-        if (Funcs[9].IsSdi != 1)
+        if (!Funcs[9].IsSdi)
             DT_FAIL("%s alone does not make an SDI port", Rates[i]);
         SimDtPcie_OverrideProperty(Rates[i], 9, true, 0);
     }
@@ -502,7 +502,7 @@ DT_TEST(EachSdiRateMakesAnSdiPort)
     SimDtPcie_OverrideProperty("CAP_12GSDI", 9, true, 1);
     SimDtPcie_OverrideProperty("CAP_MATRIX2", 9, true, 0);
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[9].IsSdi, 0);
+    DT_ASSERT_EQ(Funcs[9].IsSdi, false);
 }
 
 // A port that can be neither an input nor an output is neither an ASI nor an SDI port,
@@ -518,10 +518,10 @@ DT_TEST(AsiAndSdiNeedADirection)
     SimDtPcie_OverrideProperty("CAP_OUTPUT", 2, false, 0);
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    DT_ASSERT_EQ(Funcs[2].IsAsi, 0);
-    DT_ASSERT_EQ(Funcs[2].IsSdi, 0);
-    DT_ASSERT_EQ(Funcs[3].IsAsi, 1);
-    DT_ASSERT_EQ(Funcs[3].IsSdi, 1);
+    DT_ASSERT_EQ(Funcs[2].IsAsi, false);
+    DT_ASSERT_EQ(Funcs[2].IsSdi, false);
+    DT_ASSERT_EQ(Funcs[3].IsAsi, true);
+    DT_ASSERT_EQ(Funcs[3].IsSdi, true);
 }
 
 DT_TEST(AttachSurvivesAllocationFailure)
