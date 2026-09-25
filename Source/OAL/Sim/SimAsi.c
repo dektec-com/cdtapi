@@ -584,7 +584,7 @@ static void EnsureTables(void)
         for (int b = 0; b < 256; b++)
         {
             int Next;
-            uint16_t Code = DtAsiEnc_Code((uint8_t)b, Rd, &Next);
+            uint16_t Code = DtAsiEnc_EncodeByte((uint8_t)b, Rd, &Next);
             g_Asi.Decode[Rd][Code] = (int16_t)b;
             g_Asi.NextRd[Rd][Code] = (uint8_t)Next;
         }

@@ -115,9 +115,9 @@ static const Code8b10b g_Codes[256][2] = {
 
 static const Code8b10b g_K28_5[2] = {{DT_ASI_K28_5_RDNEG, 1}, {DT_ASI_K28_5_RDPOS, 0}};
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Code -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_EncodeByte -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint16_t DtAsiEnc_Code(uint8_t Byte, int Rd, int* NextRd)
+uint16_t DtAsiEnc_EncodeByte(uint8_t Byte, int Rd, int* NextRd)
 {
     const Code8b10b* C = &g_Codes[Byte][Rd != 0 ? 1 : 0];
     if (NextRd != NULL)
@@ -344,12 +344,12 @@ static void EndPacket(DtAsiEnc* Enc)
     Enc->ToSkip = Enc->InSize - Enc->InUsed;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertNormal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeNormal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // In normal mode the rate decides symbol by symbol whether a byte or a K28.5 goes out,
 // so the fill is spread between the bytes.
 //
-static void ConvertNormal(DtAsiEnc* Enc, Cursor* C)
+static void EncodeNormal(DtAsiEnc* Enc, Cursor* C)
 {
     while (C->InLeft > 0 && C->OutLeft > 0)
     {
@@ -390,12 +390,12 @@ static void ConvertNormal(DtAsiEnc* Enc, Cursor* C)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeBurst -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // In burst mode the K28.5 the rate needs go before the packet's bytes, which then go out
 // back to back, and the accumulator is settled per packet.
 //
-static void ConvertBurst(DtAsiEnc* Enc, Cursor* C)
+static void EncodeBurst(DtAsiEnc* Enc, Cursor* C)
 {
     while (C->InLeft > 0 && C->OutLeft > 0)
     {
@@ -445,12 +445,12 @@ static void ConvertBurst(DtAsiEnc* Enc, Cursor* C)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertOnTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeOnTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A symbol is two ticks of 54 MHz; K28.5 go out until a packet's time has come, then the
 // packet. No byte past the end of the input is read while a sync byte is searched for.
 //
-static void ConvertOnTime(DtAsiEnc* Enc, Cursor* C)
+static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
 {
     while (C->InLeft > 0 && C->OutLeft > 0)
     {
@@ -551,18 +551,18 @@ static void ConvertOnTime(DtAsiEnc* Enc, Cursor* C)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Encode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtAsiEnc_Convert(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
-                      size_t OutSyms, size_t* Taken, size_t* Written)
+void DtAsiEnc_Encode(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
+                     size_t OutSyms, size_t* Taken, size_t* Written)
 {
     Cursor C = {In, InSize, Out, OutSyms};
     if (Enc->TxOnTime)
-        ConvertOnTime(Enc, &C);
+        EncodeOnTime(Enc, &C);
     else if (Enc->Burst)
-        ConvertBurst(Enc, &C);
+        EncodeBurst(Enc, &C);
     else
-        ConvertNormal(Enc, &C);
+        EncodeNormal(Enc, &C);
     *Taken = InSize - C.InLeft;
     *Written = OutSyms - C.OutLeft;
 }

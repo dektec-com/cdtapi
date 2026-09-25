@@ -186,7 +186,7 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
 //
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working buffers by them. Buffers that
-// cannot be had for those pieces are taken for one, so that the side converts in the
+// cannot be had for those pieces are taken for one, so that the side decodes in the
 // reading thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; LineBuf is NULL
 // when not even those can be had.
 //
@@ -640,9 +640,9 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DecodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Converts the band of lines this piece takes, from the coded lines of the frame at the
+// Decodes the band of lines this piece takes, from the coded lines of the frame at the
 // head of the ring into the raw frame. The bands are independent: a line's coded lines
 // are its own, the working buffers are per band, and the only thing every band reads is
 // the ring. What a band writes is its own as well, for which the bands start on a
@@ -650,17 +650,17 @@ static DtapiResult CheckFrame(DtRx* Rx, int FrameSize, size_t* RawSize)
 // that is not 4K can share a byte of the raw frame with the line after it, and two
 // threads must not have the same byte.
 //
-typedef struct ConvertBand
+typedef struct DecodeBand
 {
     DtSdiRx* Sdi;
     uint8_t* Buffer;
     size_t CodedBytesPerLine;
     size_t RawLineNumBytes;
-} ConvertBand;
+} DecodeBand;
 
-static void ConvertLines(void* Context, int Index, int Count)
+static void DecodeLines(void* Context, int Index, int Count)
 {
-    const ConvertBand* Band = (const ConvertBand*)Context;
+    const DecodeBand* Band = (const DecodeBand*)Context;
     DtSdiRx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
     uint8_t* LineBuf = Sdi->LineBuf + (size_t)Index * Sdi->LineBufNumBytes;
@@ -683,11 +683,11 @@ static void ConvertLines(void* Context, int Index, int Count)
             Coded = LineBuf;
         }
         if (Layout->Is4k)
-            DtSdiFrame_ConvertLine4k(
+            DtSdiFrame_DecodeLine4k(
                 Layout, Sdi->BitsPerSymbol, Coded, Coded + Layout->Stride, Line,
                 Band->Buffer + (size_t)Line * Band->RawLineNumBytes, Scratch);
         else
-            DtSdiFrame_ConvertLine(Layout, Sdi->BitsPerSymbol, Coded, Line, Band->Buffer);
+            DtSdiFrame_DecodeLine(Layout, Sdi->BitsPerSymbol, Coded, Line, Band->Buffer);
     }
 }
 
@@ -766,13 +766,13 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     size_t RawLineNumBytes = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->BitsPerSymbol));
-    ConvertBand Band;
+    DecodeBand Band;
     Band.Sdi = Sdi;
     Band.Buffer = Buffer;
     Band.CodedBytesPerLine = CodedBytesPerLine;
     Band.RawLineNumBytes = RawLineNumBytes;
 
-    DtWork_Run(&Sdi->Work, ConvertLines, &Band);
+    DtWork_Run(&Sdi->Work, DecodeLines, &Band);
 
     Result = Advance(Sdi, Frame);
     if (Result != DTAPI_OK)

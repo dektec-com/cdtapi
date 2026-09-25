@@ -462,13 +462,13 @@ static void StartFrame(SimRxChannel* Channel)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLines4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLines4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Packs raw line Line, from 1, of a 4K frame into the two coded lines the ring holds,
 // through Sections, which takes both coded lines in symbols.
 //
-static void CodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, int Line,
-                        uint16_t* Sections, uint8_t* Coded)
+static void EncodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, int Line,
+                          uint16_t* Sections, uint8_t* Coded)
 {
     const int Hanc = Layout->SectionNumSymsHanc;
     const int Video = Layout->SectionNumSymsVideo;
@@ -529,7 +529,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         else
             SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
         if (Layout->Is4k)
-            CodeLines4k(Layout, Symbols, Line, Sections, Coded);
+            EncodeLines4k(Layout, Symbols, Line, Sections, Coded);
         else
         {
             PackSection(Symbols, Layout->LineNumSymsHanc, Coded,

@@ -16,7 +16,7 @@
 // CDTAPI includes
 #include "DtSdiFrame.h" // The layout the conversion follows.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tiles +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tiles +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A raw 4K line is built from, and split into, its four links four symbols at a time: two
 // pixels of one link, which pack into exactly five bytes and which the raw line carries
@@ -53,27 +53,27 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// DtSdiFrame_ConvertLine4k and DtSdiFrame_CodeLine4k are these, with the fastest set the
+// DtSdiFrame_DecodeLine4k and DtSdiFrame_EncodeLine4k are these, with the fastest set the
 // processor runs. A test compares the sets with one another, and the benchmark measures
 // them. Besides them only the SSSE3 set calls the portable one, for 8-bit symbols.
 //
 
 // Fills the raw line with the two coded lines 2n-1 and 2n at CodedA and CodedB, as
-// DtSdiFrame_ConvertLine4k does.
+// DtSdiFrame_DecodeLine4k does.
 typedef void (*DtSdi4kGather)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
                               uint8_t* RawLine, uint16_t* Scratch);
 
-// Fills the two coded lines with the raw line, as DtSdiFrame_CodeLine4k does, but leaves
-// the sections' padding as it was.
+// Fills the two coded lines with the raw line, as DtSdiFrame_EncodeLine4k does, but
+// leaves the sections' padding as it was.
 typedef void (*DtSdi4kScatter)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                                const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
                                uint8_t* CodedB, uint16_t* Scratch);
 
 typedef struct DtSdi4kConv
 {
-    DtSdi4kGather ConvertLine;
-    DtSdi4kScatter CodeLine;
+    DtSdi4kGather DecodeLine;
+    DtSdi4kScatter EncodeLine;
 } DtSdi4kConv;
 
 // The conversion in portable C.

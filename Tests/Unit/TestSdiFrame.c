@@ -57,8 +57,8 @@ static void SetBit(uint8_t* Bytes, size_t Bit)
 
 // Writes a coded line of Layout for line Line: each section packed bit by bit, and its
 // padding filled with ones, which must not reach a raw frame, or with zeros.
-static void CodeLine(const DtSdiFrameLayout* Layout, int Line, bool PadOnes,
-                     uint8_t* Coded)
+static void EncodeLine(const DtSdiFrameLayout* Layout, int Line, bool PadOnes,
+                       uint8_t* Coded)
 {
     const int Syms[2] = {Layout->LineNumSymsHanc, Layout->LineNumSymsVideo};
     const int Bytes[2] = {Layout->SectionBytesHanc, Layout->SectionBytesVideo};
@@ -126,8 +126,8 @@ static bool ConvertAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     {
         for (int i = 0; i < NumLines; i++)
         {
-            CodeLine(Layout, Lines[i], true, Coded);
-            DtSdiFrame_ConvertLine(Layout, BitsPerSymbol, Coded, Lines[i], Raw);
+            EncodeLine(Layout, Lines[i], true, Coded);
+            DtSdiFrame_DecodeLine(Layout, BitsPerSymbol, Coded, Lines[i], Raw);
             ExpectLine(Layout, BitsPerSymbol, Lines[i], Expected);
         }
         Same = memcmp(Raw, Expected, Size) == 0;
@@ -422,7 +422,7 @@ DT_TEST(ConvertsNothingForOtherSizes)
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 32));
     uint8_t Coded[8000];
     memset(Coded, 0xFF, sizeof(Coded));
-    DtSdiFrame_ConvertLine(&Layout, 12, Coded, 0, Raw);
+    DtSdiFrame_DecodeLine(&Layout, 12, Coded, 0, Raw);
     DT_ASSERT_MEM(Raw, Zero, sizeof(Raw));
 }
 
@@ -704,17 +704,17 @@ static bool CodeAndCompare(const DtSdiFrameLayout* Layout, int BitsPerSymbol, in
                         BitsPerSymbol);
             }
         }
-        CodeLine(Layout, Line, false, Reference);
+        EncodeLine(Layout, Line, false, Reference);
         ExpectLine(Layout, BitsPerSymbol, Line, Expected);
         memset(Coded, 0xEE, Stride);
 
-        if (!DtSdiFrame_CodeLine(Layout, BitsPerSymbol, RawLine, Phase, Coded))
+        if (!DtSdiFrame_EncodeLine(Layout, BitsPerSymbol, RawLine, Phase, Coded))
             Failure = "refused";
         else if (memcmp(Coded, Reference, Stride) != 0)
             Failure = "the coded line differs from the reference";
         else
         {
-            DtSdiFrame_ConvertLine(Layout, BitsPerSymbol, Coded, Line, Raw);
+            DtSdiFrame_DecodeLine(Layout, BitsPerSymbol, Coded, Line, Raw);
             Failure = memcmp(Raw + From, Expected + From, Compared) == 0
                           ? NULL
                           : "converted back, the raw line differs";
@@ -835,15 +835,15 @@ DT_TEST(CodeLineRefuses)
     uint8_t Coded[16];
     memset(Coded, 0xEE, sizeof(Coded));
 
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 8, Raw, 1, Coded));
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 12, Raw, 0, Coded));
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 10, Raw, -1, Coded));
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 10, Raw, 8, Coded));
-    DT_ASSERT(!DtSdiFrame_CodeLine(&Layout, 16, Raw, 4, Coded));
+    DT_ASSERT(!DtSdiFrame_EncodeLine(&Layout, 8, Raw, 1, Coded));
+    DT_ASSERT(!DtSdiFrame_EncodeLine(&Layout, 12, Raw, 0, Coded));
+    DT_ASSERT(!DtSdiFrame_EncodeLine(&Layout, 10, Raw, -1, Coded));
+    DT_ASSERT(!DtSdiFrame_EncodeLine(&Layout, 10, Raw, 8, Coded));
+    DT_ASSERT(!DtSdiFrame_EncodeLine(&Layout, 16, Raw, 4, Coded));
     DT_ASSERT_MEM(Coded, Untouched, sizeof(Coded));
 
-    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 10, Raw, 7, Coded));
-    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 16, Raw, 0, Coded));
+    DT_ASSERT(DtSdiFrame_EncodeLine(&Layout, 10, Raw, 7, Coded));
+    DT_ASSERT(DtSdiFrame_EncodeLine(&Layout, 16, Raw, 0, Coded));
     DT_ASSERT_MEM(Coded + 10, Untouched, 6);
 }
 
@@ -876,8 +876,8 @@ DT_TEST(CodeLine8Bits)
     memset(Coded8, 0xEE, sizeof(Coded8));
     memset(Coded10, 0x11, sizeof(Coded10));
 
-    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 8, Raw8, 0, Coded8));
-    DT_ASSERT(DtSdiFrame_CodeLine(&Layout, 10, Raw10, 0, Coded10));
+    DT_ASSERT(DtSdiFrame_EncodeLine(&Layout, 8, Raw8, 0, Coded8));
+    DT_ASSERT(DtSdiFrame_EncodeLine(&Layout, 10, Raw10, 0, Coded10));
     DT_ASSERT_MEM(Coded8, Coded10, sizeof(Coded8));
 }
 
@@ -1096,14 +1096,14 @@ DT_TEST(BlackFrameRoundTrip)
             DT_ASSERT(Raw != NULL);
             int Line;
             for (Line = 0; Line < Layout.NumLines; Line++)
-                DtSdiFrame_ConvertLine(&Layout, Bits[b], Lines + (size_t)Line * Stride,
-                                       Line, Raw);
+                DtSdiFrame_DecodeLine(&Layout, Bits[b], Lines + (size_t)Line * Stride,
+                                      Line, Raw);
             for (Line = 0; Line < Layout.NumLines && Differ < 0; Line++)
             {
                 const size_t Bit = (size_t)Line * LineBits;
 
-                DT_ASSERT(DtSdiFrame_CodeLine(&Layout, Bits[b], Raw + Bit / 8,
-                                              (int)(Bit % 8), Coded));
+                DT_ASSERT(DtSdiFrame_EncodeLine(&Layout, Bits[b], Raw + Bit / 8,
+                                                (int)(Bit % 8), Coded));
                 if (memcmp(Coded, Lines + (size_t)Line * Stride, Stride) != 0)
                     Differ = Line;
             }
@@ -1412,8 +1412,8 @@ DT_TEST(Converts4k)
             for (size_t b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
             {
                 memset(Raw, 0xA5, LineBytes);
-                DtSdiFrame_ConvertLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1],
-                                         g_Lines4k[i] - 1, Raw, Scratch);
+                DtSdiFrame_DecodeLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1],
+                                        g_Lines4k[i] - 1, Raw, Scratch);
                 if (!Raw4kMatches(&Layout, Bits[b], Raw, &L, DtFailures))
                     break;
             }
@@ -1452,24 +1452,24 @@ DT_TEST(Codes4k)
             Line4kMake(&Layout, g_Lines4k[i], &L);
             for (size_t b = 0; b < sizeof(Bits) / sizeof(Bits[0]); b++)
             {
-                DtSdiFrame_ConvertLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1], Index,
-                                         Raw, Scratch);
+                DtSdiFrame_DecodeLine4k(&Layout, Bits[b], L.Coded[0], L.Coded[1], Index,
+                                        Raw, Scratch);
                 memset(A, 0xA5, Stride);
                 memset(B, 0xA5, Stride);
                 DT_ASSERT(
-                    DtSdiFrame_CodeLine4k(&Layout, Bits[b], Raw, Index, A, B, Scratch));
+                    DtSdiFrame_EncodeLine4k(&Layout, Bits[b], Raw, Index, A, B, Scratch));
                 if (Bits[b] != 8)
                 {
                     DT_ASSERT(memcmp(A, L.Coded[0], Stride) == 0);
                     DT_ASSERT(memcmp(B, L.Coded[1], Stride) == 0);
                     continue;
                 }
-                DtSdiFrame_ConvertLine4k(&Layout, 8, A, B, Index, Again, Scratch);
+                DtSdiFrame_DecodeLine4k(&Layout, 8, A, B, Index, Again, Scratch);
                 DT_ASSERT(memcmp(Again, Raw, DtSdiFrame_RawLineNumBits(&Layout, 8) / 8) ==
                           0);
             }
         }
-        DT_ASSERT(!DtSdiFrame_CodeLine4k(&Layout, 12, Raw, 0, A, B, Scratch));
+        DT_ASSERT(!DtSdiFrame_EncodeLine4k(&Layout, 12, Raw, 0, A, B, Scratch));
         Line4kFree(&L);
         free(Scratch);
         free(Raw);
@@ -1482,7 +1482,7 @@ DT_TEST(Codes4k)
     uint8_t Line[16];
     uint16_t Scratch[4];
     DT_ASSERT(DtSdiFrame_LayoutInit(&Hd, DTAPI_VIDSTD_1080I50, 128));
-    DT_ASSERT(!DtSdiFrame_CodeLine4k(&Hd, 10, Line, 0, Line, Line, Scratch));
+    DT_ASSERT(!DtSdiFrame_EncodeLine4k(&Hd, 10, Line, 0, Line, Line, Scratch));
 }
 
 // A 4K frame starts at coded line 1, line 1 of links 1 and 2, and ends at coded line
@@ -1579,8 +1579,8 @@ DT_TEST(BlackFrame4k)
         DT_ASSERT(memcmp(A + Header, A + Header + HancNumBytes, HancNumBytes) == 0);
         DT_ASSERT(memcmp(A + Header, B + Header, HancNumBytes) == 0);
 
-        DtSdiFrame_ConvertLine4k(&Layout, 10, A + Header, B + Header, Line - 1, Raw,
-                                 Scratch);
+        DtSdiFrame_DecodeLine4k(&Layout, 10, A + Header, B + Header, Line - 1, Raw,
+                                Scratch);
         for (size_t s = 0; s < 8; s++)
         {
             uint32_t Channel = s < 4 ? 0 : 1;
@@ -1606,7 +1606,7 @@ DT_TEST(BlackFrame4k)
 }
 
 // The padding of the six sections of two coded lines, which a conversion may write into
-// and DtSdiFrame_CodeLine4k clears afterwards.
+// and DtSdiFrame_EncodeLine4k clears afterwards.
 static void ClearPadding4k(uint8_t* Coded, const DtSdiFrameLayout* Layout)
 {
     const size_t Hanc = (size_t)Layout->SectionBytesHanc;
@@ -1672,19 +1672,19 @@ DT_TEST(Conv4kSetsAgree)
                     // The same padding in both, which neither conversion touches.
                     memset(RawC, 0x5A, RawBytes);
                     memset(RawSet, 0x5A, RawBytes);
-                    DtSdi4kConv_C()->ConvertLine(&Layout, Bits[b], CodedA, CodedB, Line,
-                                                 RawC, Scratch);
-                    Sets[k]->ConvertLine(&Layout, Bits[b], CodedA, CodedB, Line, RawSet,
-                                         Scratch);
+                    DtSdi4kConv_C()->DecodeLine(&Layout, Bits[b], CodedA, CodedB, Line,
+                                                RawC, Scratch);
+                    Sets[k]->DecodeLine(&Layout, Bits[b], CodedA, CodedB, Line, RawSet,
+                                        Scratch);
                     DT_ASSERT_MEM(RawSet, RawC,
                                   DtSdiFrame_RawLineNumBits(&Layout, Bits[b]) / 8);
 
                     memset(BackC, 0x11, 2 * Coded);
                     memset(BackSet, 0x11, 2 * Coded);
-                    DtSdi4kConv_C()->CodeLine(&Layout, Bits[b], RawC, Line, BackC,
-                                              BackC + Coded, Scratch);
-                    Sets[k]->CodeLine(&Layout, Bits[b], RawC, Line, BackSet,
-                                      BackSet + Coded, Scratch);
+                    DtSdi4kConv_C()->EncodeLine(&Layout, Bits[b], RawC, Line, BackC,
+                                                BackC + Coded, Scratch);
+                    Sets[k]->EncodeLine(&Layout, Bits[b], RawC, Line, BackSet,
+                                        BackSet + Coded, Scratch);
                     ClearPadding4k(BackC, &Layout);
                     ClearPadding4k(BackSet, &Layout);
                     DT_ASSERT_MEM(BackSet, BackC, 2 * Coded);

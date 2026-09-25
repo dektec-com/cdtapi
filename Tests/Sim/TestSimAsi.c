@@ -483,8 +483,8 @@ static bool Send(Fixture* Fix, OsDmaBuffer* Buf, DtAsiEnc* Enc, uint32_t First, 
     {
         SimAsi_MakePacket(First + (uint32_t)i, Size, Packet);
         size_t Taken, Written;
-        DtAsiEnc_Convert(Enc, Packet, (size_t)Size, Syms + n,
-                         sizeof(Syms) / sizeof(Syms[0]) - n, &Taken, &Written);
+        DtAsiEnc_Encode(Enc, Packet, (size_t)Size, Syms + n,
+                        sizeof(Syms) / sizeof(Syms[0]) - n, &Taken, &Written);
         if (Taken != (size_t)Size)
             return false;
         n += Written;

@@ -414,12 +414,12 @@ static void CopySection16(const uint8_t* Section, size_t Symbols, uint8_t* Raw)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_DecodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The line starts at LineIndex times the bits of a line.
 //
-void DtSdiFrame_ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                            const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
+void DtSdiFrame_DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                           const uint8_t* CodedLine, int LineIndex, uint8_t* Raw)
 {
     size_t Hanc = (size_t)Layout->LineNumSymsHanc;
     size_t Video = (size_t)Layout->LineNumSymsVideo;
@@ -562,13 +562,13 @@ static void Pack16(const uint8_t* In, size_t Count, uint8_t* Out, size_t Bytes)
         Out[Byte] = (uint8_t)Accu;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_EncodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The video section starts where the HANC section ends, which in a line of 10-bit symbols
 // need not be a byte boundary either.
 //
-bool DtSdiFrame_CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                         const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
+bool DtSdiFrame_EncodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                           const uint8_t* RawLine, int Phase, uint8_t* CodedLine)
 {
     size_t Hanc = (size_t)Layout->LineNumSymsHanc;
     size_t Video = (size_t)Layout->LineNumSymsVideo;
@@ -781,14 +781,14 @@ size_t DtSdiFrame_NumScratchSymbols(const DtSdiFrameLayout* Layout)
     return (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DecodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The portable conversion of DtSdi4kConv_C: gathers the line into Scratch, then writes it
 // in the raw frame's symbol size.
 //
-static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                         const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
-                         uint8_t* RawLine, uint16_t* Scratch)
+static void DecodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                        const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
+                        uint8_t* RawLine, uint16_t* Scratch)
 {
     const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
@@ -796,28 +796,28 @@ static void ConvertLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     WriteRaw(Scratch, BitsPerSymbol, LineSyms, RawLine);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_ConvertLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_DecodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtSdiFrame_ConvertLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                              const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
-                              uint8_t* RawLine, uint16_t* Scratch)
+void DtSdiFrame_DecodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                             const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
+                             uint8_t* RawLine, uint16_t* Scratch)
 {
     if (!Layout->Is4k ||
         (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16))
         return;
 
-    DtSdi4kConv_Best()->ConvertLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
-                                    RawLine, Scratch);
+    DtSdi4kConv_Best()->DecodeLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
+                                   RawLine, Scratch);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The portable coding of DtSdi4kConv_C: reads the raw line into Scratch, then scatters
 // it over the two coded lines. The sections' padding is left as it was.
 //
-static void CodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                      const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
-                      uint8_t* CodedB, uint16_t* Scratch)
+static void EncodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                        const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
+                        uint8_t* CodedB, uint16_t* Scratch)
 {
     const size_t LineSyms = (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo);
 
@@ -829,15 +829,15 @@ static void CodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 //
 const DtSdi4kConv* DtSdi4kConv_C(void)
 {
-    static const DtSdi4kConv Table = {ConvertLineC, CodeLineC};
+    static const DtSdi4kConv Table = {DecodeLineC, EncodeLineC};
     return &Table;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_CodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_EncodeLine4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                           const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
-                           uint8_t* CodedB, uint16_t* Scratch)
+bool DtSdiFrame_EncodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                             const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
+                             uint8_t* CodedB, uint16_t* Scratch)
 {
     const size_t SectionHanc = (size_t)Layout->SectionNumSymsHanc;
     const size_t SectionVideo = (size_t)Layout->SectionNumSymsVideo;
@@ -848,8 +848,8 @@ bool DtSdiFrame_CodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
         (BitsPerSymbol != 8 && BitsPerSymbol != 10 && BitsPerSymbol != 16))
         return false;
 
-    DtSdi4kConv_Best()->CodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
-                                 CodedB, Scratch);
+    DtSdi4kConv_Best()->EncodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
+                                   CodedB, Scratch);
 
     // The padding of every section, which its symbols do not reach.
     ClearPadding(CodedA, SectionHanc, HancNumBytes);

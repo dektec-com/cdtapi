@@ -28,7 +28,7 @@
 // last word has room for.
 #define DT_ASITX_MAX_WORD 128
 
-// Convert codes into the buffer only when it has at least this much room, and then as
+// EncodeFifo codes into the buffer only when it has at least this much room, and then as
 // much as fits.
 #define DT_ASITX_MIN_OUTPUT_FREE (1024 * 1024)
 
@@ -185,8 +185,8 @@ static DtapiResult InsertNulls(DtAsiTx* Tx, int64_t Count, size_t Free)
         {
             size_t Syms, Taken, Written;
             uint16_t* Out = OutAt(Tx, Free, &Syms);
-            DtAsiEnc_Convert(&Tx->Enc, Null + Done, Size - Done, Out, Syms, &Taken,
-                             &Written);
+            DtAsiEnc_Encode(&Tx->Enc, Null + Done, Size - Done, Out, Syms, &Taken,
+                            &Written);
             DtapiResult Result = Commit(Tx, 2 * Written);
             if (Result != DTAPI_OK)
                 return Result;
@@ -199,13 +199,13 @@ static DtapiResult InsertNulls(DtAsiTx* Tx, int64_t Count, size_t Free)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // When the buffer has 1 MB of room, as much of what the FIFO holds as fits is coded into
 // it. With the FIFO empty and less than a data word left in the buffer, K28.5 fill that
 // word, so that the last symbols go out.
 //
-static DtapiResult Convert(DtAsiTx* Tx)
+static DtapiResult EncodeFifo(DtAsiTx* Tx)
 {
     if (Tx->Base.TxControl == DTAPI_TXCTRL_IDLE)
         return DTAPI_OK;
@@ -235,8 +235,8 @@ static DtapiResult Convert(DtAsiTx* Tx)
         size_t Syms, Taken, Written;
         uint16_t* Out = OutAt(Tx, Free, &Syms);
 
-        DtAsiEnc_Convert(&Tx->Enc, Tx->Fifo + Tx->FifoRead, InSize, Out, Syms, &Taken,
-                         &Written);
+        DtAsiEnc_Encode(&Tx->Enc, Tx->Fifo + Tx->FifoRead, InSize, Out, Syms, &Taken,
+                        &Written);
         Tx->FifoRead = (Tx->FifoRead + Taken) % DT_ASITX_FIFO_SIZE;
         Tx->FifoLoad -= Taken;
         Result = Commit(Tx, 2 * Written);
@@ -277,7 +277,7 @@ static DtapiResult Stuff(DtAsiTx* Tx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Converter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Every 10 ms, or when woken, converts, and stuffs while sending with stuffing. Wakes a
+// Every 10 ms, or when woken, encodes, and stuffs while sending with stuffing. Wakes a
 // write that waits for room after each pass.
 //
 static void Converter(void* Context)
@@ -296,7 +296,7 @@ static void Converter(void* Context)
         if (Tx->StopThread)
             break;
 
-        Convert(Tx);
+        EncodeFifo(Tx);
         if (Tx->StuffMode != 0 && Tx->Base.TxControl == DTAPI_TXCTRL_SEND)
             Stuff(Tx);
         OsEvent_Set(Tx->Room);
@@ -962,13 +962,13 @@ static DtapiResult Write(DtTx* Base, const uint8_t* Data, size_t Size)
         else if (Base->TxControl == DTAPI_TXCTRL_IDLE)
             Result = DTAPI_E_IDLE;
         else if (Base->TxControl == DTAPI_TXCTRL_HOLD)
-            Result = Convert(Tx);
+            Result = EncodeFifo(Tx);
     }
     if (Result != DTAPI_OK)
         return Result;
 
     if (Base->TxControl == DTAPI_TXCTRL_HOLD)
-        return Convert(Tx);
+        return EncodeFifo(Tx);
     const double LoadMs =
         Tx->Rate > 0 ? (double)Tx->FifoLoad * 8000.0 / (double)Tx->Rate : 0;
     if (Tx->FifoLoad > DT_ASITX_WAKE_BYTES || LoadMs > DT_ASITX_WAKE_DATA_MS)

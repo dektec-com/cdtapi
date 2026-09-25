@@ -665,9 +665,9 @@ static uint16_t* AllocScratch(DtSdiTx* Sdi)
 //
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working symbols by them. Symbols that
-// cannot be had for those pieces are taken for one, so that the side codes in the writing
-// thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; Scratch is NULL for a
-// standard that needs it when not even those can be had.
+// cannot be had for those pieces are taken for one, so that the side encodes in the
+// writing thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; Scratch is NULL
+// for a standard that needs it when not even those can be had.
 //
 static DtapiResult SizeWork(DtSdiTx* Sdi)
 {
@@ -1038,15 +1038,15 @@ static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeOneLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Codes the next line into its place in the buffer once all of its bytes are there. The
+// Encodes the next line into its place in the buffer once all of its bytes are there. The
 // frame's header is written first, when there is room for the whole frame, which is
 // waited for until Deadline. A line whose last byte is shared with the next line leaves
 // that byte for the next.
 //
-static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
-                            uint64_t Deadline)
+static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
+                                 uint64_t Deadline)
 {
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
     size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
@@ -1099,13 +1099,13 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone + 1,
                                       Dst + Layout->TxStride);
-        DtSdiFrame_CodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesDone,
-                              Dst + Layout->TxLineHeaderNumBytes,
-                              Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
-                              Sdi->Scratch);
+        DtSdiFrame_EncodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesDone,
+                                Dst + Layout->TxLineHeaderNumBytes,
+                                Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
+                                Sdi->Scratch);
     }
     else
-        DtSdiFrame_CodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->Phase, Dst);
+        DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->Phase, Dst);
     if (Dst == Sdi->LineBuf)
         PutAt(Sdi, Offset, Sdi->LineBuf, Coded);
 
@@ -1127,13 +1127,13 @@ static DtapiResult TakeLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Codes the band of raw lines this piece takes straight into the buffer. The bands are
+// Encodes the band of raw lines this piece takes straight into the buffer. The bands are
 // independent: a raw line's coded lines, one or the two of 4K with their headers, are
 // its own, no coding writes past them, and the working symbols are per band.
 //
-typedef struct CodeBand
+typedef struct EncodeBand
 {
     DtSdiTx* Sdi;
     const uint8_t* Data; // Where the first of Lines raw lines begins
@@ -1143,11 +1143,11 @@ typedef struct CodeBand
     size_t Offset;       // Where the first of them goes
     int FirstLine;       // Its index in the frame, from 0
     int Lines;
-} CodeBand;
+} EncodeBand;
 
-static void CodeLines(void* Context, int Index, int Count)
+static void EncodeLines(void* Context, int Index, int Count)
 {
-    const CodeBand* Band = (const CodeBand*)Context;
+    const EncodeBand* Band = (const EncodeBand*)Context;
     DtSdiTx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
     uint16_t* Scratch =
@@ -1167,22 +1167,22 @@ static void CodeLines(void* Context, int Index, int Count)
 
         if (!Layout->Is4k)
         {
-            DtSdiFrame_CodeLine(Layout, Sdi->BitsPerSymbol, Src, (int)(At % 8), Dst);
+            DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, (int)(At % 8), Dst);
             continue;
         }
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
-        DtSdiFrame_CodeLine4k(
+        DtSdiFrame_EncodeLine4k(
             Layout, Sdi->BitsPerSymbol, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
             Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Scratch);
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLineBatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Codes as many whole lines as this call brings, over the threads the channel has, and
+// Encodes as many whole lines as this call brings, over the threads the channel has, and
 // returns how many it did. Zero where there is nothing to divide, and the caller then
-// takes one line with TakeLine: a channel of one thread; a frame whose room is not
+// takes one line with EncodeOneLine: a channel of one thread; a frame whose room is not
 // reserved yet, which is its first line; bytes of a line left over from the call before;
 // and a batch that would be a single line.
 //
@@ -1200,7 +1200,7 @@ static void CodeLines(void* Context, int Index, int Count)
 // frame: long enough that the threads earn their dispatch, short enough that a detach or
 // a stop does not wait a whole frame's coding for the lock.
 //
-static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
+static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
 {
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
 
@@ -1230,7 +1230,7 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
     if (Lines < 2)
         return 0;
 
-    CodeBand Band;
+    EncodeBand Band;
     Band.Sdi = Sdi;
     Band.Data = *Data;
     Band.Bits = Bits;
@@ -1239,7 +1239,7 @@ static int TakeLines(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
     Band.Offset = Offset;
     Band.FirstLine = Sdi->LinesDone;
     Band.Lines = (int)Lines;
-    DtWork_Run(&Sdi->Work, CodeLines, &Band);
+    DtWork_Run(&Sdi->Work, EncodeLines, &Band);
 
     // The bytes the batch used up are those it has no more bits left in; a byte the next
     // line begins in is left where it is, as it is for a single line.
@@ -1301,8 +1301,8 @@ static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
             FindFrameBoundary(Sdi, &Data, &Left);
         else
         {
-            if (TakeLines(Sdi, &Data, &Left) == 0)
-                Result = TakeLine(Sdi, &Data, &Left, DT_TX_NO_DEADLINE);
+            if (EncodeLineBatch(Sdi, &Data, &Left) == 0)
+                Result = EncodeOneLine(Sdi, &Data, &Left, DT_TX_NO_DEADLINE);
             OsMutex_Unlock(Sdi->Base.Port.Lock);
             OsMutex_Lock(Sdi->Base.Port.Lock);
         }
@@ -1328,11 +1328,12 @@ static DtapiResult CheckFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteWhole -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Codes a frame into the buffer as WriteSdi does, and commits it, waiting for room until
-// Deadline. The lock is released after every line or batch of lines. When the thread
-// writes a black frame in the place of the lines written, or the channel was set idle
-// and holding again meanwhile, the frame is checked again and written from its start.
-// On a failure nothing of the frame is committed. Write then looks for a frame again.
+// Encodes a frame into the buffer as WriteSdi does, and commits it, waiting for room
+// until Deadline. The lock is released after every line or batch of lines. When the
+// thread writes a black frame in the place of the lines written, or the channel was set
+// idle and holding again meanwhile, the frame is checked again and written from its
+// start. On a failure nothing of the frame is committed. Write then looks for a frame
+// again.
 //
 static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
                               uint64_t Deadline)
@@ -1357,8 +1358,8 @@ static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
         }
         else
         {
-            if (TakeLines(Sdi, &Data, &Left) == 0)
-                Result = TakeLine(Sdi, &Data, &Left, Deadline);
+            if (EncodeLineBatch(Sdi, &Data, &Left) == 0)
+                Result = EncodeOneLine(Sdi, &Data, &Left, Deadline);
             OsMutex_Unlock(Sdi->Base.Port.Lock);
             OsMutex_Lock(Sdi->Base.Port.Lock);
         }

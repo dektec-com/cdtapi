@@ -202,7 +202,7 @@ static DtapiResult ScanBuffer(DtAsiRx* Rx)
                 break;
             uint8_t Copy[DT_TRP_SIZE];
             const int n =
-                DtTsTrp_Convert(&Rx->Scan, PacketAt(Rx, Rx->Scanned, Copy), NULL);
+                DtTsTrp_Decode(&Rx->Scan, PacketAt(Rx, Rx->Scanned, Copy), NULL);
             if (n < 0)
             {
                 // The search accepts a first packet the conversion refuses, so it starts
@@ -465,7 +465,7 @@ static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Converts the packets the scan counted, passing over what it passed over, into Out, or
+// Decodes the packets the scan counted, passing over what it passed over, into Out, or
 // into Pending when Out has less room than the largest packet's output.
 //
 static DtapiResult DeliverBytes(DtRx* Base, uint8_t* Out, size_t Size)
@@ -505,8 +505,8 @@ static DtapiResult DeliverBytes(DtRx* Base, uint8_t* Out, size_t Size)
 
         uint8_t Copy[DT_TRP_SIZE];
         const bool Direct = Size - Done >= DT_TRP_MAX_OUTPUT;
-        const int n = DtTsTrp_Convert(&Rx->DeliverConverter, PacketAt(Rx, Passed, Copy),
-                                      Direct ? Out + Done : Rx->Pending);
+        const int n = DtTsTrp_Decode(&Rx->DeliverConverter, PacketAt(Rx, Passed, Copy),
+                                     Direct ? Out + Done : Rx->Pending);
         Passed += DT_TRP_SIZE;
         if (n > 0 && Direct)
             Done += (size_t)n;

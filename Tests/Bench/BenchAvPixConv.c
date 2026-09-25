@@ -320,11 +320,11 @@ static void ConvertBand4k(void* Context, int Index, int Count)
         uint8_t* Raw = Job->Buf->Raw + (size_t)Line * RawLine;
 
         if (Job->ToRaw)
-            Job->Conv->ConvertLine(Layout, Job->Bits, A, A + Layout->Stride, Line, Raw,
-                                   Scratch);
+            Job->Conv->DecodeLine(Layout, Job->Bits, A, A + Layout->Stride, Line, Raw,
+                                  Scratch);
         else
-            Job->Conv->CodeLine(Layout, Job->Bits, Raw, Line, A, A + Layout->Stride,
-                                Scratch);
+            Job->Conv->EncodeLine(Layout, Job->Bits, Raw, Line, A, A + Layout->Stride,
+                                  Scratch);
     }
 }
 

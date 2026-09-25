@@ -59,11 +59,11 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode)
     Trp->RxMode = RxMode;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_Convert -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_Decode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // One packet converted on its own; the FIFO it goes into is the channel's.
 //
-int DtTsTrp_Convert(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
+int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
 {
     if ((P[AT_SYNC] & 0xF0) != 0x50)
         return -1;

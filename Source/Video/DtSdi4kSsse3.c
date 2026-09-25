@@ -329,11 +329,11 @@ static void LinkSources(const DtSdiFrameLayout* Layout, bool Blanking, size_t Ti
         Src[L] = (L < 2 ? CodedA : CodedB) + Offset[L];
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConvertLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DecodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                        const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
-                        uint8_t* RawLine, uint16_t* Scratch)
+static void DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                       const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
+                       uint8_t* RawLine, uint16_t* Scratch)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
@@ -345,8 +345,8 @@ static void ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 
     if (BitsPerSymbol == 8)
     {
-        DtSdi4kConv_C()->ConvertLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
-                                     RawLine, Scratch);
+        DtSdi4kConv_C()->DecodeLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
+                                    RawLine, Scratch);
         return;
     }
 
@@ -388,11 +388,11 @@ static void ConvertLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
-                     const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
-                     uint8_t* CodedB, uint16_t* Scratch)
+static void EncodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
+                       const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
+                       uint8_t* CodedB, uint16_t* Scratch)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
@@ -403,8 +403,8 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 
     if (BitsPerSymbol == 8)
     {
-        DtSdi4kConv_C()->CodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
-                                  CodedB, Scratch);
+        DtSdi4kConv_C()->EncodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
+                                    CodedB, Scratch);
         return;
     }
 
@@ -454,6 +454,6 @@ static void CodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 //
 const DtSdi4kConv* DtSdi4kConv_Ssse3Table(void)
 {
-    static const DtSdi4kConv Table = {ConvertLine, CodeLine};
+    static const DtSdi4kConv Table = {DecodeLine, EncodeLine};
     return &Table;
 }

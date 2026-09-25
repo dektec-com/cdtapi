@@ -46,7 +46,7 @@
 
 // The code of Byte for running disparity Rd, 0 for negative and 1 for positive; *NextRd
 // receives the running disparity after it.
-uint16_t DtAsiEnc_Code(uint8_t Byte, int Rd, int* NextRd);
+uint16_t DtAsiEnc_EncodeByte(uint8_t Byte, int Rd, int* NextRd);
 
 typedef struct DtAsiEnc
 {
@@ -100,11 +100,11 @@ DtapiResult DtAsiEnc_SetRate(DtAsiEnc* Enc, int64_t Rate);
 // packets go out at their times whatever the rate.
 DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc);
 
-// Converts from In, InSize bytes, into Out, room for OutSyms symbols, until either is
+// Encodes from In, InSize bytes, into Out, room for OutSyms symbols, until either is
 // used up. *Taken receives the bytes taken and *Written the symbols written. A packet or
 // a time stamp that is cut off continues in the next call.
-void DtAsiEnc_Convert(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
-                      size_t OutSyms, size_t* Taken, size_t* Written);
+void DtAsiEnc_Encode(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
+                     size_t OutSyms, size_t* Taken, size_t* Written);
 
 // Writes Syms K28.5 symbols into Out, keeping the running disparity, to fill the card's
 // last data word.

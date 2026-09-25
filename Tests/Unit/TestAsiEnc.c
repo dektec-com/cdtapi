@@ -215,7 +215,7 @@ static uint16_t* EncodeAll(DtAsiEnc* Enc, const uint8_t* Ts, size_t Size, size_t
         size_t InNow = Size - In < InStep ? Size - In : InStep;
         size_t OutNow = Room - Out < OutStep ? Room - Out : OutStep;
         size_t Taken = 0, Written = 0;
-        DtAsiEnc_Convert(Enc, Ts + In, InNow, Syms + Out, OutNow, &Taken, &Written);
+        DtAsiEnc_Encode(Enc, Ts + In, InNow, Syms + Out, OutNow, &Taken, &Written);
         In += Taken;
         Out += Written;
         if (Taken == 0 && Written == 0)
@@ -238,7 +238,7 @@ DT_TEST(TableIsThe8b10bCode)
         {
             int WantRd = -1, GotRd = -1;
             uint16_t Want = Encode8b10b((uint8_t)Byte, Rd, &WantRd);
-            uint16_t Got = DtAsiEnc_Code((uint8_t)Byte, Rd, &GotRd);
+            uint16_t Got = DtAsiEnc_EncodeByte((uint8_t)Byte, Rd, &GotRd);
             if (Want != Got || WantRd != GotRd)
             {
                 if (Differences++ < 5)
@@ -522,7 +522,7 @@ DT_TEST(SyncErrorsSkipToTheNextPacket)
     uint8_t Garbage[5] = {1, 2, 3, 4, 5};
     uint16_t Out[64];
     size_t Taken, Written;
-    DtAsiEnc_Convert(&Enc, Garbage, sizeof(Garbage), Out, 64, &Taken, &Written);
+    DtAsiEnc_Encode(&Enc, Garbage, sizeof(Garbage), Out, 64, &Taken, &Written);
     DT_ASSERT_EQ(Taken, sizeof(Garbage));
     DtAsiEnc_GetFlags(&Enc, &Flags, &Latched);
     DT_ASSERT_EQ(Flags, DTAPI_TX_SYNC_ERR);

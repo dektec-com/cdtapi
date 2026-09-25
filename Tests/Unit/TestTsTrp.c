@@ -68,30 +68,30 @@ DT_TEST(OutputPerMode)
     memset(&Trp, 0, sizeof(Trp));
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 188);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 188);
     DT_ASSERT_MEM(Out, P188 + 8, 188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P204, Out), 188);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P204, Out), 188);
     DT_ASSERT_MEM(Out, P204 + 8, 188);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST204);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 204);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 204);
     DT_ASSERT_MEM(Out, P188 + 8, 188);
     for (int i = 188; i < 204; i++)
         DT_ASSERT_EQ(Out[i], 0);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P204, Out), 204);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P204, Out), 204);
     DT_ASSERT_MEM(Out, P204 + 8, 204);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STMP2);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P204, Out), 204);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 188);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P204, Out), 204);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STTRP);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 208);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 208);
     DT_ASSERT_MEM(Out, P188 + 8, 208);
 
     // Time stamps: 32-bit ticks of 54 MHz, or the card's time of day itself.
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST188 | DTAPI_RXMODE_TIMESTAMP32);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 192);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 192);
     uint32_t Ticks = (uint32_t)Out[0] | (uint32_t)Out[1] << 8 | (uint32_t)Out[2] << 16 |
                      (uint32_t)Out[3] << 24;
     const uint64_t Want = 100ull * 54000000u + 500u * 54u / 1000u;
@@ -99,11 +99,11 @@ DT_TEST(OutputPerMode)
     DT_ASSERT_MEM(Out + 4, P188 + 8, 188);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST204 | DTAPI_RXMODE_TIMESTAMP_TOD);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), 8 + 188 + 16);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), 8 + 188 + 16);
     DT_ASSERT_MEM(Out, P188, 8 + 188);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STTRP | DTAPI_RXMODE_TIMESTAMP_TOD);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P188, Out), DT_TRP_MAX_OUTPUT);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), DT_TRP_MAX_OUTPUT);
     DT_ASSERT_MEM(Out, P188, DT_TRP_MAX_OUTPUT);
 
     int Flags, Latched;
@@ -122,18 +122,18 @@ DT_TEST(PacketsWithoutSync)
     int Flags, Latched;
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), 0);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), 0);
     DtTsTrp_GetFlags(&Trp, &Flags, &Latched);
     DT_ASSERT_EQ(Flags, DTAPI_RX_SYNC_ERR);
     DT_ASSERT_EQ(Latched, DTAPI_RX_SYNC_ERR);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STTRP);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), 208);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), 208);
 
     uint8_t Good[DT_TRP_SIZE];
     Build(Good, 1, 2, 0x10, 188, true, 8);
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, Good, Out), 188);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, Good, Out), 188);
     DtTsTrp_GetFlags(&Trp, &Flags, &Latched);
     DT_ASSERT_EQ(Flags, 0);
     DT_ASSERT_EQ(Latched, DTAPI_RX_SYNC_ERR);
@@ -142,7 +142,7 @@ DT_TEST(PacketsWithoutSync)
     DT_ASSERT_EQ(Latched, 0);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STRAW);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), 204);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), 204);
     DtTsTrp_GetFlags(&Trp, &Flags, &Latched);
     DT_ASSERT_EQ(Latched, 0);
 }
@@ -157,14 +157,14 @@ DT_TEST(BytesThatAreNoPacket)
     Build(P, 1, 2, 0, 188, true, 0);
     P[212] = 0x48;
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_ST188);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), -1);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), -1);
 
     Build(P, 1, 2, 0, 100, true, 0);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), -1);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), -1);
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STRAW);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), 100);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), 100);
     Build(P, 1, 2, 0, 205, true, 0);
-    DT_ASSERT_EQ(DtTsTrp_Convert(&Trp, P, Out), -1);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P, Out), -1);
 }
 
 // The search finds three packets in a row at any offset, the first of them at the start
