@@ -53,7 +53,7 @@ typedef struct DtAsiRx
     bool Receiving;
 
     // What is scanned: bytes past the read offset, and whether the stream is found.
-    DtTsTrp Scan, Take;
+    DtTsTrp Scan, DeliverConverter;
     bool OutOfSync;
     size_t Scanned;
     size_t Load;     // Bytes to deliver, Pending's included
@@ -282,7 +282,7 @@ static DtapiResult Start(DtAsiRx* Rx)
     if (Result != DTAPI_OK)
         return Result;
     DtTsTrp_Start(&Rx->Scan, Rx->Base.RxMode);
-    DtTsTrp_Start(&Rx->Take, Rx->Base.RxMode);
+    DtTsTrp_Start(&Rx->DeliverConverter, Rx->Base.RxMode);
 
     Result = DtPcieCmd_CdmacSetRxReadOffset(Drv, Rx->Cdmac, 0);
     if (Result == DTAPI_OK)
@@ -414,9 +414,9 @@ static DtapiResult GetFlags(DtRx* Base, int* Flags, int* Latched)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetDeliverableBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult GetLoad(DtRx* Base, size_t* Load)
+static DtapiResult GetDeliverableBytes(DtRx* Base, size_t* Load)
 {
     DtAsiRx* Rx = (DtAsiRx*)Base;
 
@@ -439,7 +439,7 @@ static DtapiResult GetFifoLoad(DtRx* Base, int* FifoLoad)
     DtapiResult Result = DTAPI_OK;
 
     if (Base->RxControl == DTAPI_RXCTRL_RCV)
-        Result = GetLoad(Base, &Load);
+        Result = GetDeliverableBytes(Base, &Load);
     *FifoLoad = (int)Load;
     return Result;
 }
@@ -463,12 +463,12 @@ static DtapiResult ApplyIoConfig(DtRx* Base, const DtIoConfig* Config)
     return SetRxMode(Base, Base->RxMode);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Take -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Converts the packets the scan counted, passing over what it passed over, into Out, or
 // into Pending when Out has less room than the largest packet's output.
 //
-static DtapiResult Take(DtRx* Base, uint8_t* Out, size_t Size)
+static DtapiResult DeliverBytes(DtRx* Base, uint8_t* Out, size_t Size)
 {
     DtAsiRx* Rx = (DtAsiRx*)Base;
 
@@ -505,7 +505,7 @@ static DtapiResult Take(DtRx* Base, uint8_t* Out, size_t Size)
 
         uint8_t Copy[DT_TRP_SIZE];
         const bool Direct = Size - Done >= DT_TRP_MAX_OUTPUT;
-        const int n = DtTsTrp_Convert(&Rx->Take, PacketAt(Rx, Passed, Copy),
+        const int n = DtTsTrp_Convert(&Rx->DeliverConverter, PacketAt(Rx, Passed, Copy),
                                       Direct ? Out + Done : Rx->Pending);
         Passed += DT_TRP_SIZE;
         if (n > 0 && Direct)
@@ -749,8 +749,8 @@ static const DtRxBackend g_AsiRxBackend = {
     .PrepareWait = PrepareWait,
     .Wait = Wait,
     .AfterWait = AfterWait,
-    .GetLoad = GetLoad,
-    .Take = Take,
+    .GetDeliverableBytes = GetDeliverableBytes,
+    .DeliverBytes = DeliverBytes,
     .GetStatus = GetStatus,
     .GetTsRateBps = GetTsRateBps,
     .GetViolCount = GetViolCount,

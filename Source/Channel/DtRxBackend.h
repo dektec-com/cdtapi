@@ -95,10 +95,11 @@ struct DtRxBackend
     DtapiResult (*SetWorkPool)(DtRx* Rx, DtWorkPool* Pool, int NumThreads);
 
     // ReadFrame: CheckFrame checks a buffer of FrameSize bytes and gives the size of a
-    // frame, TakeFrame delivers one when there is one. NULL gives DTAPI_E_NOT_SDI_MODE.
+    // frame, DeliverFrame delivers one when there is one. NULL gives
+    // DTAPI_E_NOT_SDI_MODE.
     DtapiResult (*CheckFrame)(DtRx* Rx, int FrameSize, size_t* RawSize);
-    DtapiResult (*TakeFrame)(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
-                             bool* Taken);
+    DtapiResult (*DeliverFrame)(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                                bool* Delivered);
 
     // A read's wait while receiving: PrepareWait fills Wait, Wait waits up to Ms without
     // the lock, and AfterWait, with the lock and while no detach waits, deals with what
@@ -107,10 +108,11 @@ struct DtRxBackend
     DtapiResult (*Wait)(DtRxWait* Wait, int Ms);
     DtapiResult (*AfterWait)(DtRx* Rx, const DtRxWait* Wait);
 
-    // Read: GetLoad gives the bytes a read would deliver now, Take delivers Size of them,
-    // which the load holds. NULL gives DTAPI_E_NOT_SUPPORTED.
-    DtapiResult (*GetLoad)(DtRx* Rx, size_t* Load);
-    DtapiResult (*Take)(DtRx* Rx, uint8_t* Out, size_t Size);
+    // Read: GetDeliverableBytes gives the bytes a read would deliver now, and
+    // DeliverBytes delivers Size of them, which that count holds. NULL gives
+    // DTAPI_E_NOT_SUPPORTED.
+    DtapiResult (*GetDeliverableBytes)(DtRx* Rx, size_t* Load);
+    DtapiResult (*DeliverBytes)(DtRx* Rx, uint8_t* Out, size_t Size);
 
     // GetStatus, GetTsRateBps, GetViolCount and PolarityControl. NULL gives
     // DTAPI_E_NOT_SUPPORTED.

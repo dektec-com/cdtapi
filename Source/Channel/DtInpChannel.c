@@ -576,7 +576,7 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Config.SubValue = SubValue;
         Config.ParXtra[0] = ParXtra0;
         Config.ParXtra[1] = ParXtra1;
-        const bool IsAsi = InpChannel->Rx->Backend->Take != NULL;
+        const bool IsAsi = InpChannel->Rx->Backend->DeliverBytes != NULL;
         const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
 
         if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
@@ -775,13 +775,13 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         }
         if (Rx->RxControl != DTAPI_RXCTRL_IDLE)
         {
-            bool Taken = false;
+            bool Delivered = false;
 
             Result = Rx->Backend->CheckFrame(Rx, *FrameSize, &RawSize);
             if (Result == DTAPI_OK)
-                Result =
-                    Rx->Backend->TakeFrame(Rx, (uint8_t*)FrameBuffer, &Arrival, &Taken);
-            if (Result != DTAPI_OK || Taken)
+                Result = Rx->Backend->DeliverFrame(Rx, (uint8_t*)FrameBuffer, &Arrival,
+                                                   &Delivered);
+            if (Result != DTAPI_OK || Delivered)
                 break;
         }
 
@@ -841,7 +841,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         Result = DTAPI_E_NOT_ATTACHED;
     else if (InpChannel->Reading)
         Result = DTAPI_E_IN_USE;
-    else if (Rx->Backend->Take == NULL)
+    else if (Rx->Backend->DeliverBytes == NULL)
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (NumBytesToRead < 0 || NumBytesToRead % 4 != 0)
         Result = DTAPI_E_INVALID_SIZE;
@@ -867,7 +867,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         // While this read waited without the lock, another thread may have stopped the
         // channel, or switched it to SDI.
         Rx = InpChannel->Rx;
-        if (Rx->Backend->Take == NULL)
+        if (Rx->Backend->DeliverBytes == NULL)
         {
             Result = DTAPI_E_NOT_SUPPORTED;
             break;
@@ -875,10 +875,10 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         const size_t Block = TimeOut == 0 && Left > DT_READ_BLOCK ? DT_READ_BLOCK : Left;
         size_t Load = 0;
         if (Rx->RxControl == DTAPI_RXCTRL_RCV)
-            Result = Rx->Backend->GetLoad(Rx, &Load);
+            Result = Rx->Backend->GetDeliverableBytes(Rx, &Load);
         if (Result == DTAPI_OK && Load >= Block)
         {
-            Result = Rx->Backend->Take(Rx, Out, Block);
+            Result = Rx->Backend->DeliverBytes(Rx, Out, Block);
             Out += Block;
             Left -= Block;
             continue;

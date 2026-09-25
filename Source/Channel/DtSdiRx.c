@@ -691,20 +691,20 @@ static void ConvertLines(void* Context, int Index, int Count)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Delivers the next frame into Buffer when the ring holds all of it, and the time of
-// arrival its header gives into *ArrivalTime. Returns DTAPI_OK with *Taken true for a
-// frame, DTAPI_OK with *Taken false when there is none yet, or a driver failure.
+// arrival its header gives into *ArrivalTime. Returns DTAPI_OK with *Delivered true for a
+// frame, DTAPI_OK with *Delivered false when there is none yet, or a driver failure.
 //
-static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
-                             bool* Taken)
+static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                                bool* Delivered)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
     const DtSdiFrameLayout* Layout = &Sdi->Layout;
     size_t Frame = DtSdiFrame_CodedSize(Layout);
 
-    *Taken = false;
+    *Delivered = false;
     DtapiResult Result = ReadWriteOffset(Sdi);
     if (Result != DTAPI_OK)
         return Result;
@@ -783,7 +783,7 @@ static DtapiResult TakeFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime
     Sdi->ExpectedId = (Header.FrameId + 1) & 0xFFFF;
     ArrivalTime->Seconds = Header.PtpSeconds;
     ArrivalTime->Nanoseconds = Header.PtpNanoseconds;
-    *Taken = true;
+    *Delivered = true;
     return DTAPI_OK;
 }
 
@@ -856,7 +856,7 @@ static const DtRxBackend g_SdiRxBackend = {
     .DetectIoStd = DetectIoStd,
     .SetWorkPool = SetWorkPool,
     .CheckFrame = CheckFrame,
-    .TakeFrame = TakeFrame,
+    .DeliverFrame = DeliverFrame,
     .PrepareWait = PrepareWait,
     .Wait = Wait,
     .AfterWait = AfterWait,
