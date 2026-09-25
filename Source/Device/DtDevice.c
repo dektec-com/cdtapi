@@ -625,8 +625,8 @@ DtapiResult DtDevice_SetIoConfig(DtDevice* Device, const DtIoConfig* Configs, in
         if (Configs[i].Port < 1 || Configs[i].Port > Device->NumPublicPorts)
             Result = DTAPI_E_NO_SUCH_PORT;
         else
-            Result = DtIoConfig_IsValid(Configs[i].Group, Configs[i].Value,
-                                        Configs[i].SubValue);
+            Result = DtIoConfig_CheckConfig(Configs[i].Group, Configs[i].Value,
+                                            Configs[i].SubValue);
     }
     if (Result != DTAPI_OK || Count == 0)
         return Result;

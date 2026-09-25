@@ -24,7 +24,8 @@ int DtPcieVidStd_FromDriver(int DrvVidStd)
 {
     switch (DrvVidStd)
     {
-#define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, OneLink)               \
+#define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd,         \
+          OneLinkVidStd)                                                                 \
     case DT_VIDSTD_##Name:                                                               \
         return DTAPI_VIDSTD_##Name;
 #include "Tables/DtVidStdList.inc"

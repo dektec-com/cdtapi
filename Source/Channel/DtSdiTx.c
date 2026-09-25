@@ -300,7 +300,7 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
     if (Sdi->FrameRoomReserved)
     {
         Partial = (size_t)Layout->TxHeaderNumBytes +
-                  (size_t)Sdi->LinesEncoded * DtSdiFrame_TxBytesPerLine(Layout);
+                  (size_t)Sdi->LinesEncoded * DtSdiFrame_TxCodedBytesPerLine(Layout);
         if (Free < 2 * Coded)
         {
             ForgetPartialFrame(Sdi);
@@ -477,7 +477,7 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
     if (!Sdi->BufferRegistered)
         return DTAPI_E_CONFIG_RAW_SDI;
 
-    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Sdi->Cdmac);
+    DtapiResult Result = DtPcieCmd_CdmacFlushChannel(Drv, Sdi->Cdmac);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacSetTxWriteOffset(Drv, Sdi->Cdmac, 0);
     if (Result == DTAPI_OK)
@@ -669,7 +669,7 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
 {
     const int Pieces = Sdi->WorkerThreads > 0
                            ? Sdi->WorkerThreads
-                           : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
+                           : DtSdiFrame_NumJobPieces(&Sdi->FrameLayout);
 
     DtapiResult Result = DtJobRunner_SetPool(&Sdi->JobRunner, Sdi->WorkerPool, Pieces);
     DtAlloc_Free(Sdi->BandSymbols);
@@ -726,7 +726,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     DtSdiFrameLayout Layout = {0};
     int Alignment = 0;
 
-    const DtVidStdInfo* Info = DtVidStd_Find(Sdi->IoStdSubValue);
+    const DtVidStdEntry* Info = DtVidStd_Find(Sdi->IoStdSubValue);
     const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
                          Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
     if ((OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
@@ -792,13 +792,14 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     Sdi->BandSymbols = NULL;
     Sdi->BlackLines =
         (uint8_t*)DtAlloc_Malloc((size_t)Layout.NumCodedLines * (size_t)Layout.TxStride);
-    Sdi->WrapLineBuffer = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
+    Sdi->WrapLineBuffer =
+        (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxCodedBytesPerLine(&Layout));
     Sdi->PartialLine = (uint8_t*)DtAlloc_Malloc(Line);
-    Sdi->SymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Layout);
+    Sdi->SymbolsPerBand = DtSdiFrame_NumBandSymbols(&Layout);
     ConfigureJobRunner(Sdi);
     if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
         Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->BandSymbols == NULL) ||
-        !DtSdiFrame_BlackLines(&Layout, Sdi->BlackLines))
+        !DtSdiFrame_WriteBlackLines(&Layout, Sdi->BlackLines))
     {
         FreeStandardBuffers(Sdi);
         return DTAPI_E_OUT_OF_MEM;
@@ -843,7 +844,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 
     int Num;
     int Den;
-    DtVidStd_Fps(Sdi->IoStdSubValue, &Num, &Den);
+    DtVidStd_FrameRate(Sdi->IoStdSubValue, &Num, &Den);
     Sdi->QuarterFrameMs = Den * 1000 / Num / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
     if (Sdi->QuarterFrameMs < 1)
         Sdi->QuarterFrameMs = 1;
@@ -1089,7 +1090,7 @@ static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Byt
 
     // A raw line becomes one coded line, or the two coded lines of 4K, each of them
     // preceded by its line header.
-    size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
+    size_t Coded = DtSdiFrame_TxCodedBytesPerLine(Layout);
     size_t Offset = WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
                                         (size_t)Sdi->LinesEncoded * Coded);
     uint8_t* Dst = Offset + Coded <= Sdi->DmaBuffer.Size ? Sdi->DmaBuffer.Data + Offset
@@ -1213,7 +1214,7 @@ static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft
 
     const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
     const size_t LineStartBit = (size_t)Sdi->LineStartBit;
-    const size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
+    const size_t Coded = DtSdiFrame_TxCodedBytesPerLine(Layout);
     const size_t Offset =
         WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
                             (size_t)Sdi->LinesEncoded * Coded);

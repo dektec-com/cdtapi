@@ -69,8 +69,8 @@ DT_TEST(VpdProperties)
     OsDrv* Drv = OpenDta2110(DtFailures, &Live);
     DT_ASSERT(Drv != NULL);
 
-    DtVpdProperties Props;
-    DT_ASSERT_OK(DtPcieCmd_VpdGetProperties(Drv, &Props));
+    DtVpdProps Props;
+    DT_ASSERT_OK(DtPcieCmd_VpdGetProps(Drv, &Props));
     DT_ASSERT_EQ(Props.RoOffset, SIM_VPD_RO_OFFSET);
     DT_ASSERT_EQ(Props.RoSize, SIM_VPD_RO_SIZE);
     DT_ASSERT_EQ(Props.RwOffset, SIM_VPD_RW_OFFSET);
@@ -78,8 +78,8 @@ DT_TEST(VpdProperties)
     DT_ASSERT_EQ(Props.EepromSize, SIM_VPD_EEPROM_SIZE);
     DT_ASSERT(Props.RoSize + Props.RwSize + SIM_VPD_TAIL_BYTES <= Props.EepromSize);
 
-    DT_ASSERT_EQ(DtPcieCmd_VpdGetProperties(NULL, &Props), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtPcieCmd_VpdGetProperties(Drv, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_VpdGetProps(NULL, &Props), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_VpdGetProps(Drv, NULL), DTAPI_E_INVALID_ARG);
     FINISH(Drv, Live);
 }
 

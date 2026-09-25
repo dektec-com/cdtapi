@@ -514,7 +514,7 @@ static uint8_t* BuildPacket(const uint8_t* Frame, size_t Size, const SimFrameInf
 
     memset(&Header, 0, sizeof(Header));
     Header.FrameSize = (int)Size;
-    Header.HeaderV2 = Size > DT_ETHIP_MAX_FRAME_V1;
+    Header.IsVersion2 = Size > DT_ETHIP_MAX_FRAME_V1;
     Header.NumWords = DtEthIp_NumWords((int)Size, SIM_DTA2110_PACKET_ALIGNMENT);
     Header.PacketType = Info->PacketType;
     Header.IsUdp = Info->Udp ? DT_ETHIP_PROTO_UDP : 0;

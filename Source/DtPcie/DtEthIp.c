@@ -18,11 +18,11 @@
 // starts.
 #define DT_ETHIP_TIMESTAMP_HEADER_SIZE 16
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Get64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadLe64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The little-endian word at Bytes.
 //
-static uint64_t Get64(const uint8_t* Bytes)
+static uint64_t ReadLe64(const uint8_t* Bytes)
 {
     uint64_t Word = 0;
 
@@ -31,28 +31,28 @@ static uint64_t Get64(const uint8_t* Bytes)
     return Word;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Put64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteLe64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void Put64(uint64_t Word, uint8_t* Bytes)
+static void WriteLe64(uint64_t Word, uint8_t* Bytes)
 {
     for (int i = 0; i < 8; i++)
         Bytes[i] = (uint8_t)(Word >> (8 * i));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Field -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExtractBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Bits First to First + Width - 1 of Word.
 //
-static uint64_t Field(uint64_t Word, int First, int Width)
+static uint64_t ExtractBits(uint64_t Word, int First, int Width)
 {
     return Word >> First & ((1ull << Width) - 1);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Place -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InsertBits -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Value, cut to Width bits, at bit First.
 //
-static uint64_t Place(uint64_t Value, int First, int Width)
+static uint64_t InsertBits(uint64_t Value, int First, int Width)
 {
     return (Value & ((1ull << Width) - 1)) << First;
 }
@@ -83,36 +83,37 @@ void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
 {
     uint64_t Word = 0;
 
-    if (Header->HeaderV2)
+    if (Header->IsVersion2)
     {
         int Padding = Header->NumWords * DT_ETHIP_WORD_SIZE -
                       DtEthIp_HeaderSize(Header->PacketType) - Header->FrameSize;
 
-        Word |= Place(DT_ETHIP_SYNC_V2, 0, 16);
-        Word |= Place((uint64_t)Header->NumWords, 16, 11);
-        Word |= Place((uint64_t)Padding, 27, 8);
+        Word |= InsertBits(DT_ETHIP_SYNC_V2, 0, 16);
+        Word |= InsertBits((uint64_t)Header->NumWords, 16, 11);
+        Word |= InsertBits((uint64_t)Padding, 27, 8);
     }
     else
     {
-        Word |= Place(DT_ETHIP_SYNC_V1, 0, 16);
-        Word |= Place((uint64_t)Header->NumWords, 16, 8);
-        Word |= Place((uint64_t)Header->FrameSize, 24, 11);
+        Word |= InsertBits(DT_ETHIP_SYNC_V1, 0, 16);
+        Word |= InsertBits((uint64_t)Header->NumWords, 16, 8);
+        Word |= InsertBits((uint64_t)Header->FrameSize, 24, 11);
     }
-    Word |= Place((uint64_t)(Header->IpAddressOffset / 4), 35, 5);
-    Word |= Place((uint64_t)(Header->PortOffset / 4), 40, 8);
-    Word |= Place((uint64_t)Header->IsUdp, 48, 1);
-    Word |= Place((uint64_t)Header->PacketType, 49, 2);
-    Word |= Place((uint64_t)Header->SubStream, 51, 2);
-    Word |= Place(Header->IpV4ChecksumError ? 1 : 0, 53, 1);
-    Word |= Place(Header->UdpChecksumError ? 1 : 0, 54, 1);
-    Word |= Place(Header->TcpChecksumError ? 1 : 0, 55, 1);
-    Word |= Place(Header->TimestampRequest ? 1 : 0, 56, 1);
-    Word |= Place(Header->TimestampValid ? 1 : 0, 57, 1);
-    Word |= Place((uint64_t)Header->Fingerprint, 58, 6);
-    Put64(Word, Bytes);
+    Word |= InsertBits((uint64_t)(Header->IpAddressOffset / 4), 35, 5);
+    Word |= InsertBits((uint64_t)(Header->PortOffset / 4), 40, 8);
+    Word |= InsertBits((uint64_t)Header->IsUdp, 48, 1);
+    Word |= InsertBits((uint64_t)Header->PacketType, 49, 2);
+    Word |= InsertBits((uint64_t)Header->SubStream, 51, 2);
+    Word |= InsertBits(Header->IpV4ChecksumError ? 1 : 0, 53, 1);
+    Word |= InsertBits(Header->UdpChecksumError ? 1 : 0, 54, 1);
+    Word |= InsertBits(Header->TcpChecksumError ? 1 : 0, 55, 1);
+    Word |= InsertBits(Header->TimestampRequest ? 1 : 0, 56, 1);
+    Word |= InsertBits(Header->TimestampValid ? 1 : 0, 57, 1);
+    Word |= InsertBits((uint64_t)Header->Fingerprint, 58, 6);
+    WriteLe64(Word, Bytes);
 
-    uint64_t Tod = Place(Header->Nanoseconds, 0, 30) | Place(Header->Seconds, 32, 32);
-    Put64(Tod, Bytes + 8);
+    uint64_t Tod =
+        InsertBits(Header->Nanoseconds, 0, 30) | InsertBits(Header->Seconds, 32, 32);
+    WriteLe64(Tod, Bytes + 8);
     Bytes[16] = 0;
     Bytes[17] = 0;
 }
@@ -121,37 +122,37 @@ void DtEthIp_Write(const DtEthIpFields* Header, uint8_t* Bytes)
 //
 bool DtEthIp_Read(const uint8_t* Bytes, DtEthIpFields* Header)
 {
-    uint64_t Word = Get64(Bytes);
-    uint64_t Tod = Get64(Bytes + 8);
-    uint64_t Sync = Field(Word, 0, 16);
+    uint64_t Word = ReadLe64(Bytes);
+    uint64_t Tod = ReadLe64(Bytes + 8);
+    uint64_t Sync = ExtractBits(Word, 0, 16);
 
     memset(Header, 0, sizeof(*Header));
-    Header->IpAddressOffset = (int)Field(Word, 35, 5) * 4;
-    Header->PortOffset = (int)Field(Word, 40, 8) * 4;
-    Header->IsUdp = (int)Field(Word, 48, 1);
-    Header->PacketType = (int)Field(Word, 49, 2);
-    Header->SubStream = (int)Field(Word, 51, 2);
-    Header->IpV4ChecksumError = Field(Word, 53, 1) != 0;
-    Header->UdpChecksumError = Field(Word, 54, 1) != 0;
-    Header->TcpChecksumError = Field(Word, 55, 1) != 0;
-    Header->TimestampRequest = Field(Word, 56, 1) != 0;
-    Header->TimestampValid = Field(Word, 57, 1) != 0;
-    Header->Fingerprint = (int)Field(Word, 58, 6);
-    Header->Nanoseconds = (uint32_t)Field(Tod, 0, 30);
-    Header->Seconds = (uint32_t)Field(Tod, 32, 32);
+    Header->IpAddressOffset = (int)ExtractBits(Word, 35, 5) * 4;
+    Header->PortOffset = (int)ExtractBits(Word, 40, 8) * 4;
+    Header->IsUdp = (int)ExtractBits(Word, 48, 1);
+    Header->PacketType = (int)ExtractBits(Word, 49, 2);
+    Header->SubStream = (int)ExtractBits(Word, 51, 2);
+    Header->IpV4ChecksumError = ExtractBits(Word, 53, 1) != 0;
+    Header->UdpChecksumError = ExtractBits(Word, 54, 1) != 0;
+    Header->TcpChecksumError = ExtractBits(Word, 55, 1) != 0;
+    Header->TimestampRequest = ExtractBits(Word, 56, 1) != 0;
+    Header->TimestampValid = ExtractBits(Word, 57, 1) != 0;
+    Header->Fingerprint = (int)ExtractBits(Word, 58, 6);
+    Header->Nanoseconds = (uint32_t)ExtractBits(Tod, 0, 30);
+    Header->Seconds = (uint32_t)ExtractBits(Tod, 32, 32);
 
     int HeaderSize = DtEthIp_HeaderSize(Header->PacketType);
     if (Sync == DT_ETHIP_SYNC_V1)
     {
-        Header->NumWords = (int)Field(Word, 16, 8);
-        Header->FrameSize = (int)Field(Word, 24, 11);
+        Header->NumWords = (int)ExtractBits(Word, 16, 8);
+        Header->FrameSize = (int)ExtractBits(Word, 24, 11);
     }
     else if (Sync == DT_ETHIP_SYNC_V2)
     {
-        Header->HeaderV2 = true;
-        Header->NumWords = (int)Field(Word, 16, 11);
-        Header->FrameSize =
-            Header->NumWords * DT_ETHIP_WORD_SIZE - HeaderSize - (int)Field(Word, 27, 8);
+        Header->IsVersion2 = true;
+        Header->NumWords = (int)ExtractBits(Word, 16, 11);
+        Header->FrameSize = Header->NumWords * DT_ETHIP_WORD_SIZE - HeaderSize -
+                            (int)ExtractBits(Word, 27, 8);
     }
     else
         return false;

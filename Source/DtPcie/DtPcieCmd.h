@@ -164,7 +164,7 @@ DtapiResult DtPcieCmd_SetIoConfig(OsDrv* Drv, const DtIoConfig* Config);
 // Reads the device's time-of-day clock.
 DtapiResult DtPcieCmd_GetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds);
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Clocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Clocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The device's genlock controller, its time-of-day clock control and its transmit-clock
 // counters, each a driver function or building block of an API function of the device
@@ -334,15 +334,15 @@ DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
 // Maps the configured ring into the process. On Windows the driver maps it during the
 // command and returns its address; on Linux the driver returns address 0, and the ring
 // is then mapped from the device at offset DT_MMAP_PORT_MEM_SEGMENT_SIZE times the port
-// index plus one. *MappedHere is true in the second case, in which
+// index plus one. *MappedByCdtapi is true in the second case, in which
 // DtPcieCmd_ChSdiRxUnmapDmaBuf must release the mapping.
 DtapiResult DtPcieCmd_ChSdiRxMapDmaBuf(OsDrv* Drv, DtDrvObject Object, uint8_t** Buffer,
-                                       int* BufSize, int* MaxLoad, bool* MappedHere);
+                                       int* BufSize, int* MaxLoad, bool* MappedByCdtapi);
 
 // Releases a mapping DtPcieCmd_ChSdiRxMapDmaBuf made itself; one the driver made goes
 // with the detach.
 void DtPcieCmd_ChSdiRxUnmapDmaBuf(OsDrv* Drv, uint8_t* Buffer, int BufSize,
-                                  bool MappedHere);
+                                  bool MappedByCdtapi);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Exclusive access -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -400,7 +400,7 @@ DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtDrvObject Object, int 
 DtapiResult DtPcieCmd_CdmacFreeBuffer(OsDrv* Drv, DtDrvObject Object);
 
 // Empties the controller's pipeline. The controller must be idle.
-DtapiResult DtPcieCmd_CdmacIssueChannelFlush(OsDrv* Drv, DtDrvObject Object);
+DtapiResult DtPcieCmd_CdmacFlushChannel(OsDrv* Drv, DtDrvObject Object);
 
 DtapiResult DtPcieCmd_CdmacSetOpMode(OsDrv* Drv, DtDrvObject Object, int OpMode);
 
@@ -686,7 +686,7 @@ DtapiResult DtPcieCmd_PipeSetIpFilter(OsDrv* Drv, DtDrvObject Pipe,
 //
 
 // Where the sections lie in the EEPROM, and how large it is, as GET_PROPERTIES gives it.
-typedef struct DtVpdProperties
+typedef struct DtVpdProps
 {
     int RoOffset;
     int RoSize;
@@ -694,10 +694,10 @@ typedef struct DtVpdProperties
     int RwSize;
     int EepromSize;
     int MaxItemLength;
-} DtVpdProperties;
+} DtVpdProps;
 
 // Reads where the sections lie.
-DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props);
+DtapiResult DtPcieCmd_VpdGetProps(OsDrv* Drv, DtVpdProps* Props);
 
 // Reads Count bytes of the EEPROM from Offset, whatever section they belong to. Fails
 // with DTAPI_E_INVALID_ARG for a count that is not positive, and gives in *NumRead, when

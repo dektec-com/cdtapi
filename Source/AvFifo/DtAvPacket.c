@@ -122,7 +122,7 @@ int DtAvNet_Finish(DtAvNet* Net, uint8_t* Packet, int PayloadSize, int DstPortOf
     // The packet header, and the padding.
     DtEthIpFields Header;
     memset(&Header, 0, sizeof(Header));
-    Header.HeaderV2 = Net->HeaderV2;
+    Header.IsVersion2 = Net->IsVersion2;
     Header.NumWords = DtEthIp_NumWords(FrameSize, Net->Alignment);
     Header.FrameSize = FrameSize;
     Header.IpAddressOffset = (int)(Ip - Packet) + IpAddressOffset;

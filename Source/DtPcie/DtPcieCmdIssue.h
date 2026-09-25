@@ -33,6 +33,10 @@
 // Object.
 void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtDrvObject Object);
 
+// The same for a device-level command, which addresses no function: UUID 0 and port
+// index DT_PROPERTY_DEVICE, which the driver reads as the device itself.
+void DtPcieCmd_InitDeviceHeader(DtIoctlInputDataHdr* Hdr, int Cmd);
+
 // Issues a command whose answer has a fixed size, and turns the outcome into a result:
 // a refused command into the result its DtStatus stands for, and a failure to reach the
 // driver into DTAPI_E_COMMUNICATION or DTAPI_E_OUT_OF_RESOURCES. A command without an
@@ -50,5 +54,5 @@ DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t In
 // Issues a command that is only its header, for Object, answered with Out of OutSize
 // bytes, which are cleared first, or with nothing when Out is NULL. Gives
 // DTAPI_E_INVALID_ARG for a Drv of NULL.
-DtapiResult DtPcieCmd_IssuePlain(OsDrv* Drv, uint32_t Code, int Cmd, DtDrvObject Object,
-                                 void* Out, size_t OutSize);
+DtapiResult DtPcieCmd_IssueHeaderOnly(OsDrv* Drv, uint32_t Code, int Cmd,
+                                      DtDrvObject Object, void* Out, size_t OutSize);

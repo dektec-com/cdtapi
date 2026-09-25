@@ -88,8 +88,8 @@ static DtChSdiRxConfig ConfigFor(int VidStd, int RingSize)
     Config.FmtIntInterval = 10000;
     Config.FmtIntDelay = 200;
     Config.FmtNumIntsPerFrame = 4;
-    Config.NumSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
-    Config.NumSymsVidVanc = Props.LineNumSymVanc;
+    Config.NumSymsHanc = DtFrameProps_LineNumSymHancInclTiming(&Props);
+    Config.NumSymsVidVanc = Props.LineNumSymActive;
     Config.NumLines = DtFrameProps_NumLines(&Props);
     Config.SdiRate = DtFrameProps_IsSd(&Props) ? DT_DRV_SDIRATE_SD : DT_DRV_SDIRATE_HD;
     Config.AssumeInterlaced = DtFrameProps_IsInterlaced(&Props);
@@ -127,7 +127,7 @@ static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* L
     int Count = SimChSdiRx_Line(Layout->VidStd, Frame, Line, Symbols);
     int i;
 
-    if (Count != Layout->LineNumSymsHanc + Layout->LineNumSymsVideo)
+    if (Count != Layout->LineNumSymsHanc + Layout->LineNumSymsActive)
         return false;
     for (i = 0; i < Count; i++)
     {
@@ -399,22 +399,22 @@ DT_TEST(WritesFramesInQuarters)
         DT_ASSERT_EQ(Event.SeqNumber, Quarter);
         DT_ASSERT(Event.InSync);
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
-        DT_ASSERT_EQ(Offset, 16 + Lines * Layout.Stride);
+        DT_ASSERT_EQ(Offset, 16 + Lines * Layout.RxStride);
     }
 
-    DtSdiFrameHeader Header;
-    DtSdiFrame_DecodeHeader(Ring, &Header);
-    DT_ASSERT_OK(DtSdiFrame_CheckHeader(&Layout, &Header, 0));
+    DtSdiFrameRxHeader Header;
+    DtSdiFrame_DecodeRxHeader(Ring, &Header);
+    DT_ASSERT_OK(DtSdiFrame_CheckRxHeader(&Layout, &Header, 0));
     DT_ASSERT_EQ(Header.PtpSeconds, 0);
     DT_ASSERT(LineAt(Ring, 16, &Layout, 0, 1));
-    DT_ASSERT(LineAt(Ring, 16 + 312 * (size_t)Layout.Stride, &Layout, 0, 313));
-    DT_ASSERT(LineAt(Ring, 16 + 624 * (size_t)Layout.Stride, &Layout, 0, 625));
+    DT_ASSERT(LineAt(Ring, 16 + 312 * (size_t)Layout.RxStride, &Layout, 0, 313));
+    DT_ASSERT(LineAt(Ring, 16 + 624 * (size_t)Layout.RxStride, &Layout, 0, 625));
 
     // The next frame follows directly.
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 1);
-    DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
-    DT_ASSERT_OK(DtSdiFrame_CheckHeader(&Layout, &Header, 1));
+    DtSdiFrame_DecodeRxHeader(Ring + Offset, &Header);
+    DT_ASSERT_OK(DtSdiFrame_CheckRxHeader(&Layout, &Header, 1));
     DT_ASSERT(LineAt(Ring, Offset + 16, &Layout, 1, 1));
     FINISH(Fix);
 }
@@ -468,17 +468,17 @@ DT_TEST(InjectsFaults)
     for (i = 0; i < 4; i++)
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 1);
-    DtSdiFrameHeader Header;
-    DtSdiFrame_DecodeHeader(Ring, &Header);
-    DT_ASSERT_EQ(DtSdiFrame_CheckHeader(&Layout, &Header, 1), DTAPI_E_OUT_OF_SYNC);
+    DtSdiFrameRxHeader Header;
+    DtSdiFrame_DecodeRxHeader(Ring, &Header);
+    DT_ASSERT_EQ(DtSdiFrame_CheckRxHeader(&Layout, &Header, 1), DTAPI_E_OUT_OF_SYNC);
 
     SimDtPcie_InjectRxFault(PORT, SIM_RX_FAULT_FORMAT);
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
     for (i = 0; i < 4; i++)
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT_EQ(Event.FrameId, 2);
-    DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
-    DT_ASSERT_EQ(DtSdiFrame_CheckHeader(&Layout, &Header, 2), DTAPI_E_INVALID_FORMAT);
+    DtSdiFrame_DecodeRxHeader(Ring + Offset, &Header);
+    DT_ASSERT_EQ(DtSdiFrame_CheckRxHeader(&Layout, &Header, 2), DTAPI_E_INVALID_FORMAT);
 
     SimDtPcie_InjectRxFault(PORT, SIM_RX_FAULT_OUT_OF_SYNC);
     uint32_t Before;
@@ -495,8 +495,8 @@ DT_TEST(InjectsFaults)
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(Event.InSync);
     DT_ASSERT_EQ(Event.FrameId, 4);
-    DtSdiFrame_DecodeHeader(Ring + Offset, &Header);
-    DT_ASSERT_OK(DtSdiFrame_CheckHeader(&Layout, &Header, 4));
+    DtSdiFrame_DecodeRxHeader(Ring + Offset, &Header);
+    DT_ASSERT_OK(DtSdiFrame_CheckRxHeader(&Layout, &Header, 4));
     FINISH(Fix);
 }
 
@@ -511,7 +511,7 @@ DT_TEST(FullRingDropsAndWraps)
         return;
     DtSdiFrameLayout Layout;
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
-    size_t Frame = DtSdiFrame_CodedSize(&Layout);
+    size_t Frame = DtSdiFrame_RxCodedSize(&Layout);
     SimDtPcie_SetRxSource(PORT, DTAPI_VIDSTD_625I50);
     SimDtPcie_LimitRxRing(Frame + Frame / 2);
     int Size;

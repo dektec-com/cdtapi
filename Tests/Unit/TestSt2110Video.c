@@ -281,7 +281,7 @@ DT_TEST(ConfigurationChecks)
     DT_ASSERT_EQ(Tx.PayloadSize, 1260);
     Tx.Packing.PayloadSize = 8000;
     DT_ASSERT_EQ(DtSt2110VideoTx_Start(&Tx, &S), DTAPI_E_INVALID_ARG);
-    S.Net.HeaderV2 = true;
+    S.Net.IsVersion2 = true;
     DT_ASSERT_EQ(DtSt2110VideoTx_Start(&Tx, &S), DTAPI_E_INVALID_ARG);
     Tx.Packing.PayloadSize = 7920;
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Tx, &S));

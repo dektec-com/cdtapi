@@ -602,7 +602,7 @@ static int SetIoConfig(SimDevice* Dev, const void* In, size_t InSize, uint32_t* 
         // A boolean I/O capability must itself be supported; any other group needs its
         // value and sub-value to be.
         bool Supported;
-        if (DtIoConfig_IsValid(Group, Value, SubValue) != DTAPI_OK)
+        if (DtIoConfig_CheckConfig(Group, Value, SubValue) != DTAPI_OK)
             Supported = false;
         else if (Value == DTAPI_IOCONFIG_TRUE || Value == DTAPI_IOCONFIG_FALSE)
             Supported = IsSupported(Port, Group);
@@ -1174,7 +1174,7 @@ static int VidStdNamed(const char* Name, size_t Length)
 static bool SignalOf(int VidStd, SimSdiSignal* Signal)
 {
     DtFrameProps Props;
-    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
+    const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
 
     if (Info == NULL || !DtFrameProps_Init(&Props, VidStd))
         return false;
@@ -1183,8 +1183,8 @@ static bool SignalOf(int VidStd, SimSdiSignal* Signal)
     Signal->SdiLock = 1;
     Signal->LineLock = 1;
     Signal->Valid = 1;
-    Signal->NumSymsHanc = DtFrameProps_LineSymbolsHanc(&Props);
-    Signal->NumSymsVidVanc = Props.LineNumSymVanc;
+    Signal->NumSymsHanc = DtFrameProps_LineNumSymHancInclTiming(&Props);
+    Signal->NumSymsVidVanc = Props.LineNumSymActive;
     Signal->NumLinesF1 = Props.Fields[0].EndLine - Props.Fields[0].StartLine + 1;
     if (Props.NumFields == 2)
         Signal->NumLinesF2 = Props.Fields[1].EndLine - Props.Fields[1].StartLine + 1;

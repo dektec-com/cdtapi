@@ -41,8 +41,8 @@
 // Where a stream goes and how it gets there.
 typedef struct DtAvNet
 {
-    bool HeaderV2; // Version 2 packet headers, for a pipe with jumbo frames
-    int Alignment; // Bytes a packet pads to: the pipe's data width in bytes
+    bool IsVersion2; // Version 2 packet headers, for a pipe with jumbo frames
+    int Alignment;   // Bytes a packet pads to: the pipe's data width in bytes
     uint8_t SrcMac[6];
     uint8_t DstMac[6];
     int VlanId;       // 0, with VlanPriority 0: no VLAN tag

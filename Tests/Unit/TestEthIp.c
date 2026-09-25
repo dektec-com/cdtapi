@@ -53,7 +53,7 @@ static DtEthIpFields V2Header(void)
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.HeaderV2 = true;
+    Header.IsVersion2 = true;
     Header.NumWords = DtEthIp_NumWords(8000, 16);
     Header.FrameSize = 8000;
     Header.IpAddressOffset = 44;
@@ -165,7 +165,7 @@ DT_TEST(TimestampPacketHasNoAlignment)
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.HeaderV2 = true;
+    Header.IsVersion2 = true;
     Header.NumWords = 2;
     Header.FrameSize = 0;
     Header.PacketType = DT_ETHIP_TYPE_TIMESTAMP;

@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Each entry is X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, OneLink):
+// Each entry is X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, OneLinkVidStd):
 //
 //   Name     the DTAPI_VIDSTD_ macro name without its prefix
 //   FpsNum   the frame rate as a reduced fraction; an interlaced standard is named after
@@ -21,7 +21,7 @@
 //
 // Including this file with X defined expands the list:
 //
-//     #define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, One) {Name},
+//     #define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, One) {Name},
 //     #include "Tables/DtVidStdList.inc"
 //     #undef X
 //

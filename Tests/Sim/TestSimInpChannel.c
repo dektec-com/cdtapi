@@ -485,7 +485,7 @@ DT_TEST(RingHoldsTwoFramesAtLeast)
     DtSdiFrameLayout Layout;
     DT_ASSERT(
         DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
-    size_t Coded = DtSdiFrame_CodedSize(&Layout);
+    size_t Coded = DtSdiFrame_RxCodedSize(&Layout);
 
     // Two frames of ring, but not of load.
     SimDtPcie_LimitRxRing(2 * Coded);
@@ -752,7 +752,7 @@ DT_TEST(FullRingSetsOverflow)
         return;
     DtSdiFrameLayout Layout;
     DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, 128));
-    SimDtPcie_LimitRxRing(5 * DtSdiFrame_CodedSize(&Layout) / 2);
+    SimDtPcie_LimitRxRing(5 * DtSdiFrame_RxCodedSize(&Layout) / 2);
     if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
                  DtFailures))
         return;
@@ -801,7 +801,7 @@ DT_TEST(SkipsAFrameThatLostLines)
     DtSdiFrameLayout Layout;
     DT_ASSERT(
         DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
-    SimDtPcie_LimitRxRing(5 * DtSdiFrame_CodedSize(&Layout) / 2);
+    SimDtPcie_LimitRxRing(5 * DtSdiFrame_RxCodedSize(&Layout) / 2);
     if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
                  DtFailures))
         return;
@@ -1270,9 +1270,9 @@ DT_TEST(IoConfiguration)
     DT_ASSERT(
         DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_720P50, SIM_RX_STREAM_ALIGNMENT));
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Value));
-    DT_ASSERT_EQ(Value,
-                 (int)((State.RingSize - SIM_RX_PCIE_DATA_WIDTH / 8) /
-                       DtSdiFrame_CodedSize(&Layout) * DtSdiFrame_RawSize(&Layout, 16)));
+    DT_ASSERT_EQ(Value, (int)((State.RingSize - SIM_RX_PCIE_DATA_WIDTH / 8) /
+                              DtSdiFrame_RxCodedSize(&Layout) *
+                              DtSdiFrame_RawSize(&Layout, 16)));
     (void)SubValue;
     FINISH(Fix);
 }

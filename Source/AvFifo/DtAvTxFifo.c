@@ -244,7 +244,7 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
         return DtAvError_Set(Result, Where,
                              "Failed to resolve the destination MAC address");
 
-    Stream->Net.HeaderV2 = DtAvPipe_IsJumbo(&Fifo->Pipe);
+    Stream->Net.IsVersion2 = DtAvPipe_IsJumbo(&Fifo->Pipe);
     Stream->Net.Alignment = DtAvPipe_Alignment(&Fifo->Pipe);
     memcpy(Stream->Net.SrcMac, Fifo->Port.Mac, 6);
     Stream->Net.VlanId = Pars->Vlan.Id;

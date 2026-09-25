@@ -16,11 +16,18 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standards +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-static const DtVidStdInfo g_VidStds[] = {
-#define X(Name, FpsNum, FpsDen, Lines, Scan, Hanc, LevelB, IoStd, OneLink)               \
-    {DTAPI_VIDSTD_##Name,   FpsNum, FpsDen, Lines,                                       \
-     DT_SCAN_##Scan,        Hanc,   LevelB, DTAPI_IOCONFIG_##IoStd,                      \
-     DTAPI_VIDSTD_##OneLink},
+static const DtVidStdEntry g_VidStds[] = {
+#define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd,         \
+          OneLinkVidStd)                                                                 \
+    {DTAPI_VIDSTD_##Name,                                                                \
+     FpsNum,                                                                             \
+     FpsDen,                                                                             \
+     NumLines,                                                                           \
+     DT_SCAN_##Scan,                                                                     \
+     LineNumSymHanc,                                                                     \
+     IsLevelB,                                                                           \
+     DTAPI_IOCONFIG_##IoStd,                                                             \
+     DTAPI_VIDSTD_##OneLinkVidStd},
 #include "Tables/DtVidStdList.inc"
 #undef X
 };
@@ -31,7 +38,7 @@ static const DtVidStdInfo g_VidStds[] = {
 //
 // A linear search over the table, which is short.
 //
-const DtVidStdInfo* DtVidStd_Find(int VidStd)
+const DtVidStdEntry* DtVidStd_Find(int VidStd)
 {
     for (int i = 0; i < VIDSTD_COUNT; i++)
     {
@@ -39,6 +46,18 @@ const DtVidStdInfo* DtVidStd_Find(int VidStd)
             return &g_VidStds[i];
     }
     return NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_FrameRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
+//
+void DtVidStd_FrameRate(int VidStd, int* Num, int* Den)
+{
+    const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
+
+    *Num = Info != NULL ? Info->FpsNum : 0;
+    *Den = Info != NULL ? Info->FpsDen : 1;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_Count -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -50,16 +69,16 @@ int DtVidStd_Count(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_At -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtVidStdInfo* DtVidStd_At(int Index)
+const DtVidStdEntry* DtVidStd_At(int Index)
 {
     return Index >= 0 && Index < VIDSTD_COUNT ? &g_VidStds[Index] : NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsInfo4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Is4kEntry -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The 2160p standards are the ones carried by 6G or 12G.
 //
-static bool IsInfo4k(const DtVidStdInfo* Info)
+static bool Is4kEntry(const DtVidStdEntry* Info)
 {
     return Info != NULL &&
            (Info->IoStd == DTAPI_IOCONFIG_6GSDI || Info->IoStd == DTAPI_IOCONFIG_12GSDI);
@@ -71,7 +90,7 @@ static bool IsInfo4k(const DtVidStdInfo* Info)
 //
 bool DtVidStd_Is4k(int VidStd)
 {
-    return IsInfo4k(DtVidStd_Find(VidStd));
+    return Is4kEntry(DtVidStd_Find(VidStd));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standard properties +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -82,7 +101,7 @@ bool DtVidStd_Is4k(int VidStd)
 //
 bool DtVidStdProps_Init(DtVidStdProps* Props, int VidStd, int LinkStd)
 {
-    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
+    const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
 
     Props->VidStd = DTAPI_VIDSTD_UNKNOWN;
     Props->LinkStd = DT_VIDLNK_NONE;
@@ -90,10 +109,10 @@ bool DtVidStdProps_Init(DtVidStdProps* Props, int VidStd, int LinkStd)
 
     if (LinkStd < DT_VIDLNK_NONE || LinkStd > DT_VIDLNK_4K_SMPTE2082)
         return false;
-    if (IsInfo4k(Info) && LinkStd == DT_VIDLNK_NONE)
+    if (Is4kEntry(Info) && LinkStd == DT_VIDLNK_NONE)
         return false;
 
-    if (!DtFrameProps_Init(&Props->Frame, IsInfo4k(Info) ? Info->OneLinkVidStd : VidStd))
+    if (!DtFrameProps_Init(&Props->Frame, Is4kEntry(Info) ? Info->OneLinkVidStd : VidStd))
         return false;
 
     Props->VidStd = VidStd;
@@ -101,16 +120,16 @@ bool DtVidStdProps_Init(DtVidStdProps* Props, int VidStd, int LinkStd)
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindVidStd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The standard carried by IoStd, with NumLines lines (any number for 0), scanned as Scan,
 // at Num/Den frames per second, of 3G level B or not; DTAPI_VIDSTD_UNKNOWN for none.
 //
-static int FindStd(int IoStd, int NumLines, int Scan, int Num, int Den, bool LevelB)
+static int FindVidStd(int IoStd, int NumLines, int Scan, int Num, int Den, bool LevelB)
 {
     for (int i = 0; i < VIDSTD_COUNT; i++)
     {
-        const DtVidStdInfo* Info = &g_VidStds[i];
+        const DtVidStdEntry* Info = &g_VidStds[i];
 
         if (Info->IoStd == IoStd && (NumLines == 0 || Info->NumLines == NumLines) &&
             Info->Scan == Scan && Info->FpsNum == Num && Info->FpsDen == Den &&
@@ -133,8 +152,8 @@ void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid)
 {
     int Num;
     int Den;
-    bool Progressive = !DtSmpte352_IsInterlacedStructure(Vpid);
-    bool ITransport = DtSmpte352_IsInterlacedTransport(Vpid);
+    bool IsProgressive = !DtSmpte352_IsInterlacedStructure(Vpid);
+    bool IsInterlacedTransport = DtSmpte352_IsInterlacedTransport(Vpid);
     int VidStd = DTAPI_VIDSTD_UNKNOWN;
     int LinkStd = DT_VIDLNK_NONE;
 
@@ -143,61 +162,63 @@ void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid)
     switch (DtSmpte352_PayloadId(Vpid))
     {
     case DT_S352_ID_S259:
-        VidStd = FindStd(DTAPI_IOCONFIG_SDI, 0, DT_SCAN_I, Num, Den, false);
+        VidStd = FindVidStd(DTAPI_IOCONFIG_SDI, 0, DT_SCAN_I, Num, Den, false);
         break;
 
     case DT_S352_ID_S292_720:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_HDSDI, 750, DT_SCAN_P, Num, Den, false);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_HDSDI, 750, DT_SCAN_P, Num, Den, false);
         break;
 
-    // Progressive in a progressive transport, PsF in an interlaced one, interlaced if
+    // IsProgressive in a progressive transport, PsF in an interlaced one, interlaced if
     // both are.
     case DT_S352_ID_S292_1080:
-        if (Progressive || ITransport)
+        if (IsProgressive || IsInterlacedTransport)
         {
-            int Scan = !Progressive ? DT_SCAN_I : (ITransport ? DT_SCAN_PSF : DT_SCAN_P);
+            int Scan = !IsProgressive ? DT_SCAN_I
+                                      : (IsInterlacedTransport ? DT_SCAN_PSF : DT_SCAN_P);
 
-            VidStd = FindStd(DTAPI_IOCONFIG_HDSDI, 1125, Scan, Num, Den, false);
+            VidStd = FindVidStd(DTAPI_IOCONFIG_HDSDI, 1125, Scan, Num, Den, false);
         }
         break;
 
     case DT_S352_ID_S425_1080_A:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_3GSDI, 1125, DT_SCAN_P, Num, Den, false);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_3GSDI, 1125, DT_SCAN_P, Num, Den, false);
         break;
 
     case DT_S352_ID_S425_1080_B:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_3GSDI, 1125, DT_SCAN_P, Num, Den, true);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_3GSDI, 1125, DT_SCAN_P, Num, Den, true);
         break;
 
     // Four 3G links carry the rates of 6G as well as those of 12G.
     case DT_S352_ID_S425_5_2160_A:
-        if (Progressive)
+        if (IsProgressive)
         {
-            VidStd = FindStd(DTAPI_IOCONFIG_6GSDI, 1125, DT_SCAN_P, Num, Den, false);
+            VidStd = FindVidStd(DTAPI_IOCONFIG_6GSDI, 1125, DT_SCAN_P, Num, Den, false);
             if (VidStd == DTAPI_VIDSTD_UNKNOWN)
-                VidStd = FindStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, false);
+                VidStd =
+                    FindVidStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, false);
         }
         LinkStd = DT_VIDLNK_4K_SMPTE425;
         break;
 
     case DT_S352_ID_S425_5_2160_B:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, true);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, true);
         LinkStd = DT_VIDLNK_4K_SMPTE425;
         break;
 
     case DT_S352_ID_S2081_2160:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_6GSDI, 1125, DT_SCAN_P, Num, Den, false);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_6GSDI, 1125, DT_SCAN_P, Num, Den, false);
         LinkStd = DT_VIDLNK_4K_SMPTE2081;
         break;
 
     case DT_S352_ID_S2082_2160:
-        if (Progressive)
-            VidStd = FindStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, false);
+        if (IsProgressive)
+            VidStd = FindVidStd(DTAPI_IOCONFIG_12GSDI, 1125, DT_SCAN_P, Num, Den, false);
         LinkStd = DT_VIDLNK_4K_SMPTE2082;
         break;
 
@@ -215,8 +236,8 @@ void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid)
 // other rate it gets none, which leaves the properties invalid.
 //
 void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
-                          int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                          bool Is3gLevelB, uint32_t Vpid, int SdiRate)
+                          int LineNumSymHancInclTiming, int LineNumSymActive,
+                          double FrameRate, bool Is3gLevelB, uint32_t Vpid, int SdiRate)
 {
     int LinkStd = DT_VIDLNK_NONE;
 
@@ -225,15 +246,15 @@ void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
         DtVidStdProps_FromSmpte352(Props, Vpid);
         if (Props->VidStd != DTAPI_VIDSTD_UNKNOWN &&
             DtFrameProps_MatchesGeometry(&Props->Frame, NumLinesF1, NumLinesF2,
-                                         LineNumSymHanc, LineNumSymVanc))
+                                         LineNumSymHancInclTiming, LineNumSymActive))
         {
             return;
         }
     }
 
     DtFrameProps Frame;
-    DtFrameProps_Deduce(&Frame, NumLinesF1, NumLinesF2, LineNumSymHanc, LineNumSymVanc,
-                        Fps, Is3gLevelB, Vpid, SdiRate);
+    DtFrameProps_Deduce(&Frame, NumLinesF1, NumLinesF2, LineNumSymHancInclTiming,
+                        LineNumSymActive, FrameRate, Is3gLevelB, Vpid, SdiRate);
     if (DtVidStd_Is4k(Frame.VidStd))
     {
         if (SdiRate == DT_SDIRATE_6G)
@@ -287,8 +308,8 @@ DtapiResult DtapiVidStd2IoStd(int VideoStandard, int LinkStandard, int* Value,
     *SubValue = -1;
 
     // A 4K standard needs one of the four ways of carrying it; anything else takes none.
-    const DtVidStdInfo* Info = DtVidStd_Find(VideoStandard);
-    bool Is4k = IsInfo4k(Info);
+    const DtVidStdEntry* Info = DtVidStd_Find(VideoStandard);
+    bool Is4k = Is4kEntry(Info);
     if (Is4k)
     {
         if (LinkStandard != DT_VIDLNK_4K_SMPTE425 &&

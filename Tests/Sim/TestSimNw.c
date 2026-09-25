@@ -812,7 +812,7 @@ static size_t CheckPacket(const OsDmaBuffer* Buf, size_t Offset, const uint8_t* 
 {
     DtEthIpFields Header;
 
-    if (!DtEthIp_Read(Buf->Data + Offset, &Header) || Header.HeaderV2 ||
+    if (!DtEthIp_Read(Buf->Data + Offset, &Header) || Header.IsVersion2 ||
         Header.FrameSize != (int)Size ||
         Header.NumWords != DtEthIp_NumWords((int)Size, 8) ||
         Header.PacketType != DT_ETHIP_TYPE_IPV4 || Header.IsUdp != DT_ETHIP_PROTO_UDP ||

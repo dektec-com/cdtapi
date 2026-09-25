@@ -205,8 +205,9 @@ static uint16_t* EncodeAll(DtAsiEnc* Enc, const uint8_t* Ts, size_t Size, size_t
                            size_t OutStep, size_t* NumSyms)
 {
     size_t Room = Size * 2 + 65536;
-    while ((double)Room <
-           (double)Size * 1.1 * (double)Enc->Available / (double)Enc->Needed + 64)
+    while ((double)Room < (double)Size * 1.1 * (double)Enc->SymbolsAvailablePerInterval /
+                                  (double)Enc->SymbolsNeededPerInterval +
+                              64)
         Room *= 2;
     uint16_t* Syms = (uint16_t*)malloc(Room * sizeof(uint16_t));
     size_t In = 0, Out = 0;
@@ -273,24 +274,24 @@ DT_TEST(ModesAndRates)
     DtAsiEnc_Init(&Enc);
     DT_ASSERT_EQ(Enc.Rate, 10000000);
     DT_ASSERT_EQ(Enc.OutSize, 188);
-    DT_ASSERT(Enc.Burst);
-    DT_ASSERT_EQ(Enc.K28BeforePacket, 2);
+    DT_ASSERT(Enc.IsBurst);
+    DT_ASSERT_EQ(Enc.NumK28BeforePacket, 2);
 
     DT_ASSERT_EQ(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_RAWASI), DTAPI_E_NOT_IMPLEMENTED);
     DT_ASSERT_EQ(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_192), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_SDI_FULL), DTAPI_E_INVALID_ARG);
-    DT_ASSERT(Enc.Burst);
+    DT_ASSERT(Enc.IsBurst);
 
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_ADD16));
     DT_ASSERT_EQ(Enc.InSize, 188);
     DT_ASSERT_EQ(Enc.OutSize, 204);
-    DT_ASSERT(!Enc.Burst);
+    DT_ASSERT(!Enc.IsBurst);
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_MIN16 | DTAPI_TXMODE_BURST));
     DT_ASSERT_EQ(Enc.InSize, 204);
     DT_ASSERT_EQ(Enc.InUsed, 188);
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_RAW));
-    DT_ASSERT(Enc.Raw);
-    DT_ASSERT_EQ(Enc.K28BeforePacket, 0);
+    DT_ASSERT(Enc.IsRaw);
+    DT_ASSERT_EQ(Enc.NumK28BeforePacket, 0);
 
     DT_ASSERT_OK(DtAsiEnc_SetTxMode(&Enc, DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST));
     DT_ASSERT_EQ(DtAsiEnc_SetRate(&Enc, 0), DTAPI_E_INVALID_RATE);
@@ -301,11 +302,11 @@ DT_TEST(ModesAndRates)
     // The line holds 216 Mbit/s of 188-byte packets and nothing else; two K28.5 before
     // each packet fit up to 213.7 Mbit/s, one up to 214.9.
     DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 216000000));
-    DT_ASSERT_EQ(Enc.K28BeforePacket, 0);
+    DT_ASSERT_EQ(Enc.NumK28BeforePacket, 0);
     DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 214000000));
-    DT_ASSERT_EQ(Enc.K28BeforePacket, 1);
+    DT_ASSERT_EQ(Enc.NumK28BeforePacket, 1);
     DT_ASSERT_OK(DtAsiEnc_SetRate(&Enc, 213000000));
-    DT_ASSERT_EQ(Enc.K28BeforePacket, 2);
+    DT_ASSERT_EQ(Enc.NumK28BeforePacket, 2);
 
     // 204-byte packets at a rate counted in 188-byte packets: the mode is taken, and a
     // rate that does not fit it is refused when the stream starts.
@@ -581,7 +582,7 @@ DT_TEST(PaddingAndLoad)
     // A second of symbols at 10 Mbit/s carries 1.25 MB. The estimate is a little more,
     // about 1,250,616 bytes, since it divides by the symbols left after the K28.5
     // before each packet.
-    int64_t Bytes = DtAsiEnc_BytesOf(&Enc, DT_ASI_SYMBOL_RATE);
+    int64_t Bytes = DtAsiEnc_BytesInSymbols(&Enc, DT_ASI_SYMBOL_RATE);
     DT_ASSERT(Bytes >= 1250614 && Bytes <= 1250617);
 }
 

@@ -63,71 +63,71 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode)
 //
 // One packet converted on its own; the FIFO it goes into is the channel's.
 //
-int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out)
+int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* Packet, uint8_t* Out)
 {
-    if ((P[AT_SYNC] & 0xF0) != 0x50)
+    if ((Packet[AT_SYNC] & 0xF0) != 0x50)
         return -1;
 
     const int TsMode = Trp->RxMode & DTAPI_RXMODE_TS_MASK;
-    const bool NoSync = (P[AT_SYNC] & 0x08) == 0;
+    const bool LacksPacketSync = (Packet[AT_SYNC] & 0x08) == 0;
     if (TsMode != DTAPI_RXMODE_STRAW)
     {
-        Trp->SyncErr = NoSync;
-        if (NoSync)
+        Trp->SyncErr = LacksPacketSync;
+        if (LacksPacketSync)
             Trp->SyncErrLatched = true;
     }
 
-    const int Valid = P[AT_VALID];
+    const int Valid = Packet[AT_VALID];
     if (!ValidCountFits(TsMode, Valid))
         return -1;
-    if (NoSync && TsMode != DTAPI_RXMODE_STRAW && TsMode != DTAPI_RXMODE_STTRP)
+    if (LacksPacketSync && TsMode != DTAPI_RXMODE_STRAW && TsMode != DTAPI_RXMODE_STTRP)
         return 0;
 
-    int Payload, Zeros = 0;
+    int PayloadBytes, ZeroBytes = 0;
     switch (TsMode)
     {
     case DTAPI_RXMODE_ST188:
-        Payload = 188;
+        PayloadBytes = 188;
         break;
     case DTAPI_RXMODE_ST204:
-        Payload = Valid;
-        Zeros = Valid == 188 ? 16 : 0;
+        PayloadBytes = Valid;
+        ZeroBytes = Valid == 188 ? 16 : 0;
         break;
     case DTAPI_RXMODE_STTRP:
-        Payload = TRP_DATA_SIZE;
+        PayloadBytes = TRP_DATA_SIZE;
         break;
     default: // DTAPI_RXMODE_STMP2, DTAPI_RXMODE_STRAW
-        Payload = Valid;
+        PayloadBytes = Valid;
         break;
     }
 
-    int n = 0, From = AT_PAYLOAD;
+    int OutBytes = 0, PayloadStart = AT_PAYLOAD;
     if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0 && Out == NULL)
-        n = 4;
+        OutBytes = 4;
     else if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP32) != 0)
     {
         // Ticks of a 54 MHz clock, counted from the time of day.
-        uint32_t Seconds = (uint32_t)P[0] | (uint32_t)P[1] << 8 | (uint32_t)P[2] << 16 |
-                           (uint32_t)P[3] << 24;
-        uint32_t Nanoseconds = (uint32_t)P[4] | (uint32_t)P[5] << 8 |
-                               (uint32_t)P[6] << 16 | (uint32_t)P[7] << 24;
+        uint32_t Seconds = (uint32_t)Packet[0] | (uint32_t)Packet[1] << 8 |
+                           (uint32_t)Packet[2] << 16 | (uint32_t)Packet[3] << 24;
+        uint32_t Nanoseconds = (uint32_t)Packet[4] | (uint32_t)Packet[5] << 8 |
+                               (uint32_t)Packet[6] << 16 | (uint32_t)Packet[7] << 24;
         uint32_t Ticks = (uint32_t)((uint64_t)Seconds * 54000000u +
                                     (uint64_t)Nanoseconds * 54u / 1000u);
         for (int i = 0; i < 4; i++)
-            Out[n++] = (uint8_t)(Ticks >> (8 * i));
+            Out[OutBytes++] = (uint8_t)(Ticks >> (8 * i));
     }
     else if ((Trp->RxMode & DTAPI_RXMODE_TIMESTAMP_TOD) != 0)
     {
         // The time of day as the card wrote it, before the payload.
-        From = AT_SECONDS;
-        Payload += AT_PAYLOAD;
+        PayloadStart = AT_SECONDS;
+        PayloadBytes += AT_PAYLOAD;
     }
     if (Out != NULL)
     {
-        memcpy(Out + n, P + From, (size_t)Payload);
-        memset(Out + n + Payload, 0, (size_t)Zeros);
+        memcpy(Out + OutBytes, Packet + PayloadStart, (size_t)PayloadBytes);
+        memset(Out + OutBytes + PayloadBytes, 0, (size_t)ZeroBytes);
     }
-    return n + Payload + Zeros;
+    return OutBytes + PayloadBytes + ZeroBytes;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_FindSync -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -146,14 +146,14 @@ bool DtTsTrp_FindSync(const DtTsTrp* Trp, const uint8_t* Buf, size_t Size, size_
         if ((Buf[Pos] & 0xF0) != 0x50 || Buf[Pos + 1] > 204)
             continue;
 
-        unsigned Expected = (unsigned)(Buf[Pos + 2] | Buf[Pos + 3] << 8);
+        unsigned ExpectedSeq = (unsigned)(Buf[Pos + 2] | Buf[Pos + 3] << 8);
         bool Found = true;
         for (int i = 1; i < DT_TRP_NUM_SYNC && Found; i++)
         {
-            const uint8_t* T = Buf + Pos + (size_t)i * DT_TRP_SIZE;
-            Expected = (Expected + 1) & 0xFFFF;
-            Found = (T[0] & 0xF0) == 0x50 && ValidCountFits(TsMode, T[1]) &&
-                    (unsigned)(T[2] | T[3] << 8) == Expected;
+            const uint8_t* Trailer = Buf + Pos + (size_t)i * DT_TRP_SIZE;
+            ExpectedSeq = (ExpectedSeq + 1) & 0xFFFF;
+            Found = (Trailer[0] & 0xF0) == 0x50 && ValidCountFits(TsMode, Trailer[1]) &&
+                    (unsigned)(Trailer[2] | Trailer[3] << 8) == ExpectedSeq;
         }
         if (Found)
         {

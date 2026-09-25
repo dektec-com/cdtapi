@@ -60,7 +60,7 @@
 
 typedef struct DtEthIpFields
 {
-    bool HeaderV2;       // Version 2
+    bool IsVersion2;     // Version 2
     int NumWords;        // The packet's size in 64-bit words
     int FrameSize;       // Bytes of the Ethernet frame
     int IpAddressOffset; // Bytes from the start of the header to the source IP address

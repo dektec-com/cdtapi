@@ -24,9 +24,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GenlockStateOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GenlockStateFromDriver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int GenlockStateOf(int DrvState)
+static int GenlockStateFromDriver(int DrvState)
 {
     switch (DrvState)
     {
@@ -42,11 +42,11 @@ static int GenlockStateOf(int DrvState)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TimeOfNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TimeOfDayFromNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A time of day the driver gives in nanoseconds.
 //
-static DtTimeOfDay TimeOfNs(int64_t Ns)
+static DtTimeOfDay TimeOfDayFromNs(int64_t Ns)
 {
     DtTimeOfDay Time;
     uint64_t Value = (uint64_t)Ns;
@@ -56,17 +56,17 @@ static DtTimeOfDay TimeOfNs(int64_t Ns)
     return Time;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodReferenceOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodReferenceFromDriver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int TodReferenceOf(int DrvReference)
+static int TodReferenceFromDriver(int DrvReference)
 {
     return DrvReference == DT_TODCLOCKCTRL_REF_STEADYCLOCK ? DTAPI_TODREF_STEADYCLOCK
                                                            : DTAPI_TODREF_INTERNAL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodStateOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TodStateFromDriver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int TodStateOf(int DrvState)
+static int TodStateFromDriver(int DrvState)
 {
     switch (DrvState)
     {
@@ -96,9 +96,9 @@ DtapiResult DtPcieCmd_ClkCntGetTickCount(OsDrv* Drv, DtDrvObject Object, uint32_
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlClkCntCmdGetTickCountOutput Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CLKCNT_CMD),
-                             DT_CLKCNT_CMD_GET_TICK_COUNT, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CLKCNT_CMD),
+                                                   DT_CLKCNT_CMD_GET_TICK_COUNT, Object,
+                                                   &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -156,18 +156,18 @@ DtapiResult DtPcieCmd_GenlockGetClockProps(OsDrv* Drv, DtDrvObject Object,
     for (int i = 0; DT_SUCCEEDED(Result) && i < Out->m_NumEntries; i++)
     {
         const DtIoctlGenLockCtrlClockProps* Entry = &Out->m_Properties[i];
-        DtClockProps* Clock = &Props[i];
+        DtClockProps* ClockProps = &Props[i];
 
         if (Entry->m_ClockType == DT_GENLOCKCTR_CLKTYPE_FRACTIONAL)
-            Clock->ClockType = DTAPI_TXCLK_FRACTIONAL;
+            ClockProps->ClockType = DTAPI_TXCLK_FRACTIONAL;
         else if (Entry->m_ClockType == DT_GENLOCKCTR_CLKTYPE_NON_FRACTIONAL)
-            Clock->ClockType = DTAPI_TXCLK_NON_FRACTIONAL;
+            ClockProps->ClockType = DTAPI_TXCLK_NON_FRACTIONAL;
         else
             Result = DTAPI_E_DEV_DRIVER;
-        Clock->ClockIndex = Entry->m_ClockIdx;
-        Clock->StepSizePpt = Entry->m_StepSizePpt;
-        Clock->RangePpt = Entry->m_RangePpt;
-        Clock->FrequencyMicroHz = Entry->m_FrequencyuHz;
+        ClockProps->ClockIndex = Entry->m_ClockIdx;
+        ClockProps->StepSizePpt = Entry->m_StepSizePpt;
+        ClockProps->RangePpt = Entry->m_RangePpt;
+        ClockProps->FrequencyMicroHz = Entry->m_FrequencyuHz;
     }
     if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
         *NumProps = 0;
@@ -215,13 +215,13 @@ DtapiResult DtPcieCmd_GenlockGetState(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlGenLockCtrlCmdGetState2Output Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_GENLOCKCTRL_CMD),
-                             DT_GENLOCKCTRL_CMD_GET_STATE2, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(
+        Drv, DT_IOCTL(DT_IOCTL_GENLOCKCTRL_CMD), DT_GENLOCKCTRL_CMD_GET_STATE2, Object,
+        &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    State->State = GenlockStateOf(Out.m_GenLockState);
+    State->State = GenlockStateFromDriver(Out.m_GenLockState);
     State->RefVidStd = DtPcieVidStd_FromDriver(Out.m_RefVidStd);
     State->DetVidStd = DtPcieVidStd_FromDriver(Out.m_DetVidStd);
     State->TofTimeValid = Out.m_IsSofValid != 0;
@@ -261,16 +261,16 @@ DtapiResult DtPcieCmd_TodClkCtrlGetState(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlTodClockCtrlCmdGetStateOutput Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_TODCLOCKCTRL_CMD),
-                             DT_TODCLOCKCTRL_CMD_GET_STATE, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(
+        Drv, DT_IOCTL(DT_IOCTL_TODCLOCKCTRL_CMD), DT_TODCLOCKCTRL_CMD_GET_STATE, Object,
+        &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
-    State->State = TodStateOf(Out.m_TodClockCtrlState);
-    State->TodReference = TodReferenceOf(Out.m_TodReference);
+    State->State = TodStateFromDriver(Out.m_TodClockCtrlState);
+    State->TodReference = TodReferenceFromDriver(Out.m_TodReference);
     State->RefDeviation = Out.m_DeviationPpm;
-    State->TodTimestamp = TimeOfNs(Out.m_TodTimestamp);
-    State->RefTimestamp = TimeOfNs(Out.m_RefTimestamp);
+    State->TodTimestamp = TimeOfDayFromNs(Out.m_TodTimestamp);
+    State->RefTimestamp = TimeOfDayFromNs(Out.m_RefTimestamp);
     return DTAPI_OK;
 }

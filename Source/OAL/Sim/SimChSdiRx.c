@@ -184,7 +184,7 @@ static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
 {
     uint32_t F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
     const DtFieldProps* Field = &Props->Fields[F];
-    uint32_t V = Line < Field->VidStartLine || Line > Field->VidEndLine ? 1 : 0;
+    uint32_t V = Line < Field->ActiveStartLine || Line > Field->ActiveEndLine ? 1 : 0;
     uint32_t H = Eav ? 1 : 0;
 
     return 0x200 | F << 8 | V << 7 | H << 6 | (V ^ H) << 5 | (F ^ H) << 4 | (F ^ V) << 3 |
@@ -210,7 +210,7 @@ static uint32_t WithParity(uint32_t Nine)
 //
 static int Line4k(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbols)
 {
-    const DtVidStdInfo* Info = DtVidStd_Find(VidStd);
+    const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
     uint16_t Link[SIM_RX_MAX_LINE_SYMBOLS / 4];
     int Count = 0;
 
@@ -240,8 +240,8 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
         return 0;
 
     int NumLines = DtFrameProps_NumLines(&Props);
-    int Blank = DtFrameProps_LineSymbolsHanc(&Props);
-    int Total = Blank + Props.LineNumSymVanc;
+    int Blank = DtFrameProps_LineNumSymHancInclTiming(&Props);
+    int Total = Blank + Props.LineNumSymActive;
     if (Line < 1 || Line > NumLines || Total > SIM_RX_MAX_LINE_SYMBOLS)
         return 0;
 
@@ -281,7 +281,7 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
             uint32_t Crc = 0;
             int j;
 
-            for (j = Channel; j < Props.LineNumSymVanc; j += 2)
+            for (j = Channel; j < Props.LineNumSymActive; j += 2)
                 Crc = Crc18(Crc, DataSymbol(PrevFrame, PrevLine, Blank + j));
             for (j = 0; j < 6; j++)
                 Crc = Crc18(Crc, Words[j]);
@@ -426,8 +426,8 @@ static void StartFrame(SimRxChannel* Channel)
         DtSdiFrame_LayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
         Layout->LineNumSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
-        Layout->LineNumSymsVideo == Config->m_FrameProps.m_NumSymsVidVanc &&
-        Layout->HeaderNumBytes <= (int)sizeof(Header);
+        Layout->LineNumSymsActive == Config->m_FrameProps.m_NumSymsVidVanc &&
+        Layout->RxHeaderNumBytes <= (int)sizeof(Header);
     if (Channel->Faults[SIM_RX_FAULT_OUT_OF_SYNC])
     {
         Channel->FrameInSync = false;
@@ -437,7 +437,7 @@ static void StartFrame(SimRxChannel* Channel)
         return;
 
     {
-        DtSdiFrameHeader Fields;
+        DtSdiFrameRxHeader Fields;
 
         Fields.SyncWord = DT_SDIFRAME_SYNC_WORD;
         Fields.ProtocolVersion = 0;
@@ -456,8 +456,8 @@ static void StartFrame(SimRxChannel* Channel)
         Channel->Faults[SIM_RX_FAULT_FORMAT] = false;
 
         memset(Header, 0, sizeof(Header));
-        DtSdiFrame_EncodeHeader(&Fields, Header);
-        if (!RingWrite(Channel, Header, (size_t)Layout->HeaderNumBytes))
+        DtSdiFrame_EncodeRxHeader(&Fields, Header);
+        if (!RingWrite(Channel, Header, (size_t)Layout->RxHeaderNumBytes))
             Channel->Dropped = true;
     }
 }
@@ -471,7 +471,7 @@ static void EncodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, i
                           uint16_t* Sections, uint8_t* Coded)
 {
     const int Hanc = Layout->SectionNumSymsHanc;
-    const int Video = Layout->SectionNumSymsVideo;
+    const int Video = Layout->SectionNumSymsActive;
     uint16_t* A = Sections;
     uint16_t* B = Sections + 2 * Hanc + Video;
 
@@ -479,13 +479,13 @@ static void EncodeLines4k(const DtSdiFrameLayout* Layout, const uint16_t* Raw, i
     for (int i = 0; i < 2; i++)
     {
         const uint16_t* Line2 = i == 0 ? A : B;
-        uint8_t* Out = Coded + (size_t)i * (size_t)Layout->Stride;
+        uint8_t* Out = Coded + (size_t)i * (size_t)Layout->RxStride;
 
         PackSection(Line2, Hanc, Out, Layout->SectionBytesHanc);
         PackSection(Line2 + Hanc, Hanc, Out + Layout->SectionBytesHanc,
                     Layout->SectionBytesHanc);
         PackSection(Line2 + 2 * Hanc, Video, Out + 2 * (size_t)Layout->SectionBytesHanc,
-                    Layout->SectionBytesVideo);
+                    Layout->SectionBytesActive);
     }
 }
 
@@ -502,13 +502,13 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         return;
 
     const int PerLine = Layout->NumCodedLines / Layout->NumLines;
-    uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)PerLine * (size_t)Layout->Stride);
+    uint8_t* Coded = (uint8_t*)DtAlloc_Malloc((size_t)PerLine * (size_t)Layout->RxStride);
     uint16_t* Symbols =
         (uint16_t*)DtAlloc_Malloc(SIM_RX_MAX_LINE_SYMBOLS * sizeof(uint16_t));
     uint16_t* Sections =
         Layout->Is4k ? (uint16_t*)DtAlloc_Malloc((size_t)PerLine *
                                                  (size_t)(2 * Layout->SectionNumSymsHanc +
-                                                          Layout->SectionNumSymsVideo) *
+                                                          Layout->SectionNumSymsActive) *
                                                  sizeof(uint16_t))
                      : NULL;
     if (Coded == NULL || Symbols == NULL || (Layout->Is4k && Sections == NULL))
@@ -534,10 +534,10 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         {
             PackSection(Symbols, Layout->LineNumSymsHanc, Coded,
                         Layout->SectionBytesHanc);
-            PackSection(Symbols + Layout->LineNumSymsHanc, Layout->LineNumSymsVideo,
-                        Coded + Layout->SectionBytesHanc, Layout->SectionBytesVideo);
+            PackSection(Symbols + Layout->LineNumSymsHanc, Layout->LineNumSymsActive,
+                        Coded + Layout->SectionBytesHanc, Layout->SectionBytesActive);
         }
-        if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->Stride))
+        if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->RxStride))
         {
             Channel->Dropped = true;
             break;
@@ -1056,7 +1056,7 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     {
         return false;
     }
-    const int LineSyms = Layout.LineNumSymsHanc + Layout.LineNumSymsVideo;
+    const int LineSyms = Layout.LineNumSymsHanc + Layout.LineNumSymsActive;
     const size_t Bits = (size_t)Layout.NumLines * (size_t)LineSyms * 10;
     const size_t FrameNumBytes = ((Bits + 7) / 8 + 7) / 8 * 8;
     if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)

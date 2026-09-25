@@ -285,9 +285,9 @@ static const int g_Sdi4kBits[] = {10, 16};
 // The memory one case converts.
 typedef struct Sdi4kBuffers
 {
-    uint8_t* Coded;                       // A frame's coded lines, as the ring holds them
-    uint8_t* Raw;                         // The raw frame the channels carry
-    uint16_t* Scratch[BENCH_MAX_THREADS]; // The working symbols, one set a band
+    uint8_t* Coded; // A frame's coded lines, as the ring holds them
+    uint8_t* Raw;   // The raw frame the channels carry
+    uint16_t* BandSymbols[BENCH_MAX_THREADS]; // The working symbols, one set a band
 } Sdi4kBuffers;
 
 // What every band of a frame needs. A band takes its own range of lines and its own
@@ -307,8 +307,8 @@ static void ConvertBand4k(void* Context, int Index, int Count)
     const Sdi4kJob* Job = (const Sdi4kJob*)Context;
     const DtSdiFrameLayout* Layout = Job->Layout;
     size_t RawLine = DtSdiFrame_RawLineNumBits(Layout, Job->Bits) / 8;
-    size_t Coded = 2 * (size_t)Layout->Stride;
-    uint16_t* Scratch = Job->Buf->Scratch[Index];
+    size_t Coded = 2 * (size_t)Layout->RxStride;
+    uint16_t* BandSymbols = Job->Buf->BandSymbols[Index];
     int First;
     int Last;
 
@@ -320,11 +320,11 @@ static void ConvertBand4k(void* Context, int Index, int Count)
         uint8_t* Raw = Job->Buf->Raw + (size_t)Line * RawLine;
 
         if (Job->ToRaw)
-            Job->Conv->DecodeLine(Layout, Job->Bits, A, A + Layout->Stride, Line, Raw,
-                                  Scratch);
+            Job->Conv->DecodeLine(Layout, Job->Bits, A, A + Layout->RxStride, Line, Raw,
+                                  BandSymbols);
         else
-            Job->Conv->EncodeLine(Layout, Job->Bits, Raw, Line, A, A + Layout->Stride,
-                                  Scratch);
+            Job->Conv->EncodeLine(Layout, Job->Bits, Raw, Line, A, A + Layout->RxStride,
+                                  BandSymbols);
     }
 }
 
@@ -433,7 +433,7 @@ static void Sdi4k(int Seconds, int Threads)
         for (int s = 0; s < NUM_SDI4K_SIZES; s++)
         {
             int Bits = g_Sdi4kBits[s];
-            size_t CodedSize = (size_t)Layout.NumCodedLines * (size_t)Layout.Stride;
+            size_t CodedSize = (size_t)Layout.NumCodedLines * (size_t)Layout.RxStride;
             Sdi4kBuffers Buf;
 
             bool Short = false;
@@ -442,9 +442,9 @@ static void Sdi4k(int Seconds, int Threads)
             Buf.Raw = (uint8_t*)malloc(DtSdiFrame_RawSize(&Layout, Bits));
             for (int b = 0; b < Threads; b++)
             {
-                Buf.Scratch[b] = (uint16_t*)malloc(DtSdiFrame_NumScratchSymbols(&Layout) *
-                                                   sizeof(uint16_t));
-                Short = Short || Buf.Scratch[b] == NULL;
+                Buf.BandSymbols[b] = (uint16_t*)malloc(
+                    DtSdiFrame_NumBandSymbols(&Layout) * sizeof(uint16_t));
+                Short = Short || Buf.BandSymbols[b] == NULL;
             }
             if (Buf.Coded == NULL || Buf.Raw == NULL || Short)
             {
@@ -452,7 +452,7 @@ static void Sdi4k(int Seconds, int Threads)
                 free(Buf.Coded);
                 free(Buf.Raw);
                 for (int b = 0; b < Threads; b++)
-                    free(Buf.Scratch[b]);
+                    free(Buf.BandSymbols[b]);
                 DtJobRunner_Free(&Work);
                 DtWorkerPool_Free(Pool);
                 return;
@@ -506,7 +506,7 @@ static void Sdi4k(int Seconds, int Threads)
             free(Buf.Coded);
             free(Buf.Raw);
             for (int b = 0; b < Threads; b++)
-                free(Buf.Scratch[b]);
+                free(Buf.BandSymbols[b]);
         }
     }
     DtJobRunner_Free(&Work);

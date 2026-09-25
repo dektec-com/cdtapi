@@ -37,9 +37,9 @@ DT_TEST(InitGivesTheLineTimingOfEveryStandard)
         SDI_ASSERT_EQ(Format, DtFrameProps_NumLines(&Props), Format->Lines);
         SDI_ASSERT_EQ(Format, Props.Fields[0].EndLine - Props.Fields[0].StartLine + 1,
                       Format->LinesF1);
-        SDI_ASSERT_EQ(Format, DtFrameProps_LineSymbolsHanc(&Props),
+        SDI_ASSERT_EQ(Format, DtFrameProps_LineNumSymHancInclTiming(&Props),
                       SdiFormat_HancSymbols(Format));
-        SDI_ASSERT_EQ(Format, Props.LineNumSymVanc, SdiFormat_VancSymbols(Format));
+        SDI_ASSERT_EQ(Format, Props.LineNumSymActive, SdiFormat_VancSymbols(Format));
 
         // The fields are numbered from line 1 without a gap, and hold the active lines.
         const DtFieldProps* Last = &Props.Fields[Props.NumFields - 1];
@@ -51,11 +51,11 @@ DT_TEST(InitGivesTheLineTimingOfEveryStandard)
         {
             const DtFieldProps* Field = &Props.Fields[f];
 
-            DT_ASSERT(Field->StartLine < Field->VidStartLine);
-            DT_ASSERT(Field->VidEndLine < Field->EndLine);
+            DT_ASSERT(Field->StartLine < Field->ActiveStartLine);
+            DT_ASSERT(Field->ActiveEndLine < Field->EndLine);
             DT_ASSERT(Field->SwitchingLine >= Field->StartLine);
-            DT_ASSERT(Field->SwitchingLine < Field->VidStartLine);
-            NumActive += Field->VidEndLine - Field->VidStartLine + 1;
+            DT_ASSERT(Field->SwitchingLine < Field->ActiveStartLine);
+            NumActive += Field->ActiveEndLine - Field->ActiveStartLine + 1;
         }
         SDI_ASSERT_EQ(Format, NumActive, Format->ActiveLines);
     }
@@ -94,7 +94,7 @@ DT_TEST(InitRefusesWhatIsNoStandard)
         DT_ASSERT_EQ(Props.VidStd, DTAPI_VIDSTD_UNKNOWN);
         DT_ASSERT_EQ(DtFrameProps_NumLines(&Props), 0);
 
-        DtVidStd_Fps(NoStandards[i], &Num, &Den);
+        DtVidStd_FrameRate(NoStandards[i], &Num, &Den);
         DT_ASSERT_EQ(Num, 0);
         DT_ASSERT_EQ(Den, 1);
     }

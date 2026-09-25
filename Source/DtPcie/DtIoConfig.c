@@ -110,9 +110,9 @@ static bool IsCode(int Code)
     return Code >= 0 && Code < IO_CONFIG_COUNT;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static bool IsKind(int Code, int Kinds)
+static bool HasKind(int Code, int Kinds)
 {
     return (g_IoConfigs[Code].Kinds & Kinds) != 0;
 }
@@ -124,7 +124,7 @@ static bool IsKind(int Code, int Kinds)
 //
 static bool IsBoolIoCap(int Code)
 {
-    return IsKind(Code, DT_IOCFG_BOOLIO) && !IsKind(Code, DT_IOCFG_SUBVALUE);
+    return HasKind(Code, DT_IOCONFIG_BOOLIO) && !HasKind(Code, DT_IOCONFIG_SUBVALUE);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsGroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -134,23 +134,23 @@ static bool IsBoolIoCap(int Code)
 //
 static bool IsGroup(int Code)
 {
-    return IsCode(Code) && (IsKind(Code, DT_IOCFG_GROUP) || IsBoolIoCap(Code));
+    return IsCode(Code) && (HasKind(Code, DT_IOCONFIG_GROUP) || IsBoolIoCap(Code));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasParent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True when Code may appear under Parent. DT_IOCFG_ANY_BOOLIO matches every boolean I/O
-// capability.
+// True when Code may appear under Parent. DT_IOCONFIG_ANY_BOOLIO matches every boolean
+// I/O capability.
 //
 static bool HasParent(int Code, int Parent)
 {
     for (int i = 0; i < 2; i++)
     {
-        int Slot = g_IoConfigs[Code].Parents[i];
+        int ParentSlot = g_IoConfigs[Code].Parents[i];
 
-        if (Slot == Parent)
+        if (ParentSlot == Parent)
             return true;
-        if (Slot == DT_IOCFG_ANY_BOOLIO && IsBoolIoCap(Parent))
+        if (ParentSlot == DT_IOCONFIG_ANY_BOOLIO && IsBoolIoCap(Parent))
             return true;
     }
     return false;
@@ -168,24 +168,24 @@ static bool HasChildren(int Code)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_IsValid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_CheckConfig -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue)
+DtapiResult DtIoConfig_CheckConfig(int Group, int Value, int SubValue)
 {
     if (!IsGroup(Group))
         return DTAPI_E_INVALID_ARG;
 
-    if (!IsCode(Value) || !IsKind(Value, DT_IOCFG_VALUE) || !HasParent(Value, Group))
+    if (!IsCode(Value) || !HasKind(Value, DT_IOCONFIG_VALUE) || !HasParent(Value, Group))
         return DTAPI_E_INVALID_ARG;
 
     if (SubValue == -1)
         return HasChildren(Value) ? DTAPI_E_INVALID_ARG : DTAPI_OK;
 
     // A boolean I/O capability takes TRUE or FALSE and nothing below it.
-    if (IsKind(Group, DT_IOCFG_BOOLIO))
+    if (HasKind(Group, DT_IOCONFIG_BOOLIO))
         return DTAPI_E_INVALID_ARG;
 
-    if (!IsCode(SubValue) || !IsKind(SubValue, DT_IOCFG_SUBVALUE) ||
+    if (!IsCode(SubValue) || !HasKind(SubValue, DT_IOCONFIG_SUBVALUE) ||
         !HasParent(SubValue, Value))
     {
         return DTAPI_E_INVALID_ARG;
@@ -209,7 +209,7 @@ bool DtIoConfig_IsCapOfGroup(int Code, int Group)
 {
     if (!IsCode(Code) || DtIoConfig_CheckGroup(Group) != DTAPI_OK)
         return false;
-    if (IsKind(Group, DT_IOCFG_BOOLIO))
+    if (HasKind(Group, DT_IOCONFIG_BOOLIO))
         return Code == Group;
-    return IsKind(Code, DT_IOCFG_VALUE) && HasParent(Code, Group);
+    return HasKind(Code, DT_IOCONFIG_VALUE) && HasParent(Code, Group);
 }

@@ -46,7 +46,7 @@ static bool HasSsse3(void)
 const DtSdi4kConv* DtSdi4kConv_Ssse3(void)
 {
 #if defined(CDTAPI_HAVE_SSSE3)
-    return HasSsse3() ? DtSdi4kConv_Ssse3Table() : NULL;
+    return HasSsse3() ? DtSdi4kConv_Ssse3Unchecked() : NULL;
 #else
     return NULL;
 #endif

@@ -245,9 +245,9 @@ static uint32_t Word32(const SimTxPort* Port, size_t Offset)
            (uint32_t)Peek(Port, Offset + 3) << 24;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HeaderNumBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxHeaderNumBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static size_t HeaderNumBytes(void)
+static size_t RxHeaderNumBytes(void)
 {
     size_t Alignment = (size_t)g_Tx.Alignment / 8;
     return (SIM_TX_HEADER_BYTES + Alignment - 1) / Alignment * Alignment;
@@ -315,7 +315,7 @@ static bool ReadHeader(SimTxPort* Port)
     {
         return false;
     }
-    size_t Frame = HeaderNumBytes() + (size_t)Port->NumCodedLines * LineBytes(Port);
+    size_t Frame = RxHeaderNumBytes() + (size_t)Port->NumCodedLines * LineBytes(Port);
     return Frame <= SIM_TX_MAX_FRAME;
 }
 
@@ -501,14 +501,14 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
     while (!Port->InFrame)
     {
         Advance(Port);
-        if (Port->PipeLoad < HeaderNumBytes())
+        if (Port->PipeLoad < RxHeaderNumBytes())
         {
             Underflow(Port);
             return false;
         }
         if (ReadHeader(Port))
         {
-            Header = HeaderNumBytes();
+            Header = RxHeaderNumBytes();
             break;
         }
         Port->HeaderErrors++;

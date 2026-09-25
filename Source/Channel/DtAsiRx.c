@@ -64,7 +64,7 @@ typedef struct DtAsiRx
 
     // Output of a packet converted when the caller's buffer had less room than the
     // largest packet's output, kept for what the buffer could not take.
-    uint8_t Pending[DT_TRP_MAX_OUTPUT];
+    uint8_t Pending[DT_TRP_MAX_OUTPUT_BYTES];
     int PendingPos, PendingLen;
 
     // DTAPI_RX_FIFO_OVF for packets dropped, and for the burst FIFO's count moving.
@@ -322,7 +322,7 @@ static DtapiResult Stop(DtAsiRx* Asi)
     Results[0] = DtPcieCmd_AsiRxSetOpMode(Drv, Asi->AsiRx, DT_FUNC_OPMODE_IDLE);
     Results[1] = DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
     Results[2] = DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
-    Results[3] = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+    Results[3] = DtPcieCmd_CdmacFlushChannel(Drv, Asi->Cdmac);
     Asi->Receiving = false;
     ResetScan(Asi);
     Results[4] = ClearFlags(&Asi->Rx, DTAPI_RX_FIFO_OVF);
@@ -506,7 +506,7 @@ static DtapiResult DeliverBytes(DtRx* Rx, uint8_t* Out, size_t Size)
             return DTAPI_E_INTERNAL;
 
         uint8_t Copy[DT_TRP_SIZE];
-        const bool ToCaller = Size - Delivered >= DT_TRP_MAX_OUTPUT;
+        const bool ToCaller = Size - Delivered >= DT_TRP_MAX_OUTPUT_BYTES;
         const int OutputBytes =
             DtTsTrp_Decode(&Asi->DeliverConverter, PacketAt(Asi, Consumed, Copy),
                            ToCaller ? Out + Delivered : Asi->Pending);
@@ -801,7 +801,7 @@ DtapiResult DtAsiRx_Attach(const DtRxAttachedPort* Port, DtRx** Rx)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Asi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+        Result = DtPcieCmd_CdmacFlushChannel(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
         Result = RegisterBuffer(Asi);
     if (Result == DTAPI_OK)

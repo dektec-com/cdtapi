@@ -102,8 +102,8 @@ static DtapiResult SetOpMode(OsDrv* Drv, uint32_t Code, int Cmd, DtDrvObject Obj
 //
 DtapiResult DtPcieCmd_ExclAccess(OsDrv* Drv, DtDrvObject Object, int Cmd)
 {
-    return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_EXCL_ACCESS_CMD), Cmd, Object,
-                                NULL, 0);
+    return DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_EXCL_ACCESS_CMD), Cmd, Object,
+                                     NULL, 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= CDMAC +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -119,8 +119,8 @@ DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtDrvObject Object, DtCdmacProps
 
     DtIoctlCDmaCCmdGetPropertiesOutput Out;
     DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                             DT_CDMAC_CMD_GET_PROPERTIES, Object, &Out, sizeof(Out));
+        DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                  DT_CDMAC_CMD_GET_PROPERTIES, Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -154,18 +154,19 @@ DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtDrvObject Object, int 
     DtPcieCmd_InitHeader(&In.m_CmdHdr, DT_CDMAC_CMD_ALLOCATE_BUFFER, Object);
     In.m_Direction = Direction;
     In.m_BufferSize = (Int)Buf->Size;
-    DtIoctlCDmaCCmdAllocateBufferOutput Fixed;
-    memset(&Fixed, 0, sizeof(Fixed));
+    DtIoctlCDmaCCmdAllocateBufferOutput FixedOut;
+    memset(&FixedOut, 0, sizeof(FixedOut));
     OsDmaHandOff HandOff;
-    OsDmaBuffer_DescribeHandOffAs(BufferIsOutput, Buf, &Fixed, sizeof(Fixed), &HandOff);
+    OsDmaBuffer_DescribeHandOffAs(BufferIsOutput, Buf, &FixedOut, sizeof(FixedOut),
+                                  &HandOff);
     In.m_BufferAddr = HandOff.BufferAddr;
 
-    size_t Returned = HandOff.OutSize;
+    size_t BytesReturned = HandOff.OutSize;
     int Outcome = OsDrv_IoCtl(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD), &In, sizeof(In),
-                              HandOff.Out, &Returned, &Status);
+                              HandOff.Out, &BytesReturned, &Status);
     if (Outcome != OS_IOCTL_OK)
         return DtPcieStatus_OutcomeToResult(Outcome, Status);
-    if (Returned < sizeof(Fixed))
+    if (BytesReturned < sizeof(FixedOut))
         return DTAPI_E_DEV_DRIVER;
     return DTAPI_OK;
 }
@@ -186,16 +187,16 @@ DtapiResult DtPcieCmd_CdmacAllocateBuffer(OsDrv* Drv, DtDrvObject Object, int Di
 //
 DtapiResult DtPcieCmd_CdmacFreeBuffer(OsDrv* Drv, DtDrvObject Object)
 {
-    return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                                DT_CDMAC_CMD_FREE_BUFFER, Object, NULL, 0);
+    return DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                     DT_CDMAC_CMD_FREE_BUFFER, Object, NULL, 0);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacIssueChannelFlush -.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacFlushChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_CdmacIssueChannelFlush(OsDrv* Drv, DtDrvObject Object)
+DtapiResult DtPcieCmd_CdmacFlushChannel(OsDrv* Drv, DtDrvObject Object)
 {
-    return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                                DT_CDMAC_CMD_ISSUE_CHANNEL_FLUSH, Object, NULL, 0);
+    return DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                     DT_CDMAC_CMD_ISSUE_CHANNEL_FLUSH, Object, NULL, 0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_CdmacSetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -236,9 +237,9 @@ DtapiResult DtPcieCmd_CdmacGetTxReadOffset(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlCDmaCCmdGetTxRdOffsetOutput Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                             DT_CDMAC_CMD_GET_TX_READ_OFFSET, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                                   DT_CDMAC_CMD_GET_TX_READ_OFFSET,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -270,9 +271,9 @@ DtapiResult DtPcieCmd_CdmacGetReorderBufStatus(OsDrv* Drv, DtDrvObject Object, i
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlCDmaCCmdGetReorderBufStatusOutput Out;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                                              DT_CDMAC_CMD_GET_REORDER_BUF_STATUS, Object,
-                                              &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                                   DT_CDMAC_CMD_GET_REORDER_BUF_STATUS,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -285,8 +286,9 @@ DtapiResult DtPcieCmd_CdmacGetReorderBufStatus(OsDrv* Drv, DtDrvObject Object, i
 //
 DtapiResult DtPcieCmd_CdmacClearReorderBufMinMax(OsDrv* Drv, DtDrvObject Object)
 {
-    return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
-                                DT_CDMAC_CMD_CLEAR_REORDER_BUF_MIN_MAX, Object, NULL, 0);
+    return DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_CDMAC_CMD),
+                                     DT_CDMAC_CMD_CLEAR_REORDER_BUF_MIN_MAX, Object, NULL,
+                                     0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= BURSTFIFO +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -302,9 +304,9 @@ DtapiResult DtPcieCmd_BurstFifoGetProps(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlBurstFifoCmdGetPropertiesOutput Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
-                             DT_BURSTFIFO_CMD_GET_PROPERTIES, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
+                                                   DT_BURSTFIFO_CMD_GET_PROPERTIES,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -325,9 +327,9 @@ DtapiResult DtPcieCmd_BurstFifoGetStatus(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlBurstFifoCmdGetFifoStatusOutput Out;
-    DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
-                             DT_BURSTFIFO_CMD_GET_FIFO_STATUS, Object, &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
+                                                   DT_BURSTFIFO_CMD_GET_FIFO_STATUS,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -364,9 +366,9 @@ DtapiResult DtPcieCmd_BurstFifoGetOvfUflCount(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlBurstFifoCmdGetOvfUflCountOutput Out;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
-                                              DT_BURSTFIFO_CMD_GET_OVFL_UFL_COUNT, Object,
-                                              &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_BURSTFIFO_CMD),
+                                                   DT_BURSTFIFO_CMD_GET_OVFL_UFL_COUNT,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -418,9 +420,9 @@ DtapiResult DtPcieCmd_SdiTxFGetStreamAlignment(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlSdiTxFCmdGetStreamAlignmentOutput Out;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD),
-                                              DT_SDITXF_CMD_GET_STREAM_ALIGNMENT, Object,
-                                              &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_SDITXF_CMD),
+                                                   DT_SDITXF_CMD_GET_STREAM_ALIGNMENT,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -538,9 +540,9 @@ DtapiResult DtPcieCmd_SdiTxPhyGetUnderflowFlag(OsDrv* Drv, DtDrvObject Object,
         return DTAPI_E_INVALID_ARG;
 
     DtIoctlSdiTxPhyCmdGetUnderflowFlagOutput Out;
-    DtapiResult Result = DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
-                                              DT_SDITXPHY_CMD_GET_UNDERFLOW_FLAG, Object,
-                                              &Out, sizeof(Out));
+    DtapiResult Result = DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
+                                                   DT_SDITXPHY_CMD_GET_UNDERFLOW_FLAG,
+                                                   Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -552,8 +554,9 @@ DtapiResult DtPcieCmd_SdiTxPhyGetUnderflowFlag(OsDrv* Drv, DtDrvObject Object,
 //
 DtapiResult DtPcieCmd_SdiTxPhyClearUnderflowFlag(OsDrv* Drv, DtDrvObject Object)
 {
-    return DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
-                                DT_SDITXPHY_CMD_CLEAR_UNDERFLOW_FLAG, Object, NULL, 0);
+    return DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_SDITXPHY_CMD),
+                                     DT_SDITXPHY_CMD_CLEAR_UNDERFLOW_FLAG, Object, NULL,
+                                     0);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_SdiTxPhySetStartOfFrameOffset -.-.-.-.-.-.-.-.-.-.-.-.

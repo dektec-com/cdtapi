@@ -111,7 +111,7 @@ static int BitsPerSymbolOf(int RxMode)
 //
 static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
-    size_t CodedSize = DtSdiFrame_CodedSize(Layout);
+    size_t CodedSize = DtSdiFrame_RxCodedSize(Layout);
     size_t RawSize = DtSdiFrame_RawSize(Layout, 10);
     size_t NeededSize =
         (DT_SDIRX_RING_ROOM_FRAMES + DT_SDIRX_FIFO_SIZE / RawSize) * CodedSize;
@@ -130,7 +130,7 @@ static int RingSizeFor(const DtSdiFrameLayout* Layout)
 //
 static size_t FramesInRing(const DtSdiRx* Sdi)
 {
-    return Sdi->Ring.MaxLoad / DtSdiFrame_CodedSize(&Sdi->FrameLayout);
+    return Sdi->Ring.MaxLoad / DtSdiFrame_RxCodedSize(&Sdi->FrameLayout);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -172,8 +172,8 @@ static DtapiResult AllocBandBuffers(DtSdiRx* Sdi)
     DtAlloc_Free(Sdi->WrapLineBuffer);
     DtAlloc_Free(Sdi->BandSymbols);
     Sdi->BandSymbols = NULL;
-    Sdi->WrapLineBufferBytes = DtSdiFrame_CodedBytesPerLine(&Sdi->FrameLayout);
-    Sdi->SymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Sdi->FrameLayout);
+    Sdi->WrapLineBufferBytes = DtSdiFrame_RxCodedBytesPerLine(&Sdi->FrameLayout);
+    Sdi->SymbolsPerBand = DtSdiFrame_NumBandSymbols(&Sdi->FrameLayout);
     Sdi->WrapLineBuffer = (uint8_t*)DtAlloc_Malloc(Bands * Sdi->WrapLineBufferBytes);
     if (Sdi->FrameLayout.Is4k)
         Sdi->BandSymbols =
@@ -196,7 +196,7 @@ static DtapiResult ConfigureJobRunner(DtSdiRx* Sdi)
 {
     const int Pieces = Sdi->WorkerThreads > 0
                            ? Sdi->WorkerThreads
-                           : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
+                           : DtSdiFrame_NumJobPieces(&Sdi->FrameLayout);
 
     DtapiResult Result = DtJobRunner_SetPool(&Sdi->JobRunner, Sdi->WorkerPool, Pieces);
     if (Result == DTAPI_OK)
@@ -235,7 +235,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     // A read waits a quarter frame at a time, also on a channel without a ring.
     int FpsNum;
     int FpsDen;
-    DtVidStd_Fps(Sdi->IoStdSubValue, &FpsNum, &FpsDen);
+    DtVidStd_FrameRate(Sdi->IoStdSubValue, &FpsNum, &FpsDen);
     Sdi->QuarterFrameMs = FpsDen * 1000 / FpsNum / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
     if (Sdi->QuarterFrameMs < 1)
         Sdi->QuarterFrameMs = 1;
@@ -260,7 +260,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 
     // 2160p over one 6G or 12G link receives as raw frames (plan 0014); a 4K standard
     // over four links, or of level-B links, attaches without a ring; see SetRxControl.
-    const DtVidStdInfo* StdInfo = DtVidStd_Find(Sdi->IoStdSubValue);
+    const DtVidStdEntry* StdInfo = DtVidStd_Find(Sdi->IoStdSubValue);
     const bool OneLink = Sdi->IoStdValue == DTAPI_IOCONFIG_6GSDI ||
                          Sdi->IoStdValue == DTAPI_IOCONFIG_12GSDI;
     if (Result == DTAPI_OK && (OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
@@ -293,7 +293,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Config.FmtIntDelay = DT_SDIRX_FMT_EVENT_DELAY_US;
     Config.FmtNumIntsPerFrame = DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
     Config.NumSymsHanc = Sdi->FrameLayout.LineNumSymsHanc;
-    Config.NumSymsVidVanc = Sdi->FrameLayout.LineNumSymsVideo;
+    Config.NumSymsVidVanc = Sdi->FrameLayout.LineNumSymsActive;
     Config.NumLines = Sdi->FrameLayout.NumLines;
     Config.SdiRate = Sdi->FrameLayout.SdiRate == DT_SDIRATE_12G  ? DT_DRV_SDIRATE_12G
                      : Sdi->FrameLayout.SdiRate == DT_SDIRATE_6G ? DT_DRV_SDIRATE_6G
@@ -356,7 +356,7 @@ static DtapiResult AdvanceReadOffset(DtSdiRx* Sdi, size_t Bytes)
 //
 static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
 {
-    size_t Alignment = (size_t)Sdi->FrameLayout.Alignment;
+    size_t Alignment = (size_t)Sdi->FrameLayout.AlignmentInBytes;
     size_t Aligned = (size_t)WriteOffset / Alignment * Alignment;
 
     Sdi->InSync = false;
@@ -419,14 +419,14 @@ static bool FindHeader(DtSdiRx* Sdi, DtapiResult* Result)
 
     *Result = DTAPI_OK;
     size_t Offset;
-    for (Offset = 0; Offset + (size_t)Layout->HeaderNumBytes <= Available;
-         Offset += (size_t)Layout->Alignment)
+    for (Offset = 0; Offset + (size_t)Layout->RxHeaderNumBytes <= Available;
+         Offset += (size_t)Layout->AlignmentInBytes)
     {
         uint8_t Bytes[DT_SDIFRAME_HEADER_BYTES];
         DtRing_PeekAt(&Sdi->Ring, Offset, Bytes, sizeof(Bytes));
-        DtSdiFrameHeader Header;
-        DtSdiFrame_DecodeHeader(Bytes, &Header);
-        if (DtSdiFrame_CheckHeader(Layout, &Header, -1) == DTAPI_OK)
+        DtSdiFrameRxHeader Header;
+        DtSdiFrame_DecodeRxHeader(Bytes, &Header);
+        if (DtSdiFrame_CheckRxHeader(Layout, &Header, -1) == DTAPI_OK)
         {
             *Result = AdvanceReadOffset(Sdi, Offset);
             Sdi->InSync = *Result == DTAPI_OK;
@@ -570,7 +570,8 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
     DtapiResult Result = SyncWriteOffset(Sdi);
     if (Result == DTAPI_OK)
     {
-        size_t Frames = DtRing_Load(&Sdi->Ring) / DtSdiFrame_CodedSize(&Sdi->FrameLayout);
+        size_t Frames =
+            DtRing_Load(&Sdi->Ring) / DtSdiFrame_RxCodedSize(&Sdi->FrameLayout);
         *FifoLoad =
             (int)(Frames * DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol));
     }
@@ -672,9 +673,9 @@ static void DecodeLines(void* Context, int Index, int Count)
     DtSdiRx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
     uint8_t* LineBuf = Sdi->WrapLineBuffer + (size_t)Index * Sdi->WrapLineBufferBytes;
-    uint16_t* Scratch = Sdi->BandSymbols == NULL
-                            ? NULL
-                            : Sdi->BandSymbols + (size_t)Index * Sdi->SymbolsPerBand;
+    uint16_t* BandSymbols = Sdi->BandSymbols == NULL
+                                ? NULL
+                                : Sdi->BandSymbols + (size_t)Index * Sdi->SymbolsPerBand;
     int First;
     int Last;
 
@@ -683,7 +684,7 @@ static void DecodeLines(void* Context, int Index, int Count)
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset =
-            (size_t)Layout->HeaderNumBytes + (size_t)Line * Band->CodedBytesPerLine;
+            (size_t)Layout->RxHeaderNumBytes + (size_t)Line * Band->CodedBytesPerLine;
         const uint8_t* Coded = DtRing_Span(&Sdi->Ring, Offset, Band->CodedBytesPerLine);
 
         if (Coded == NULL)
@@ -693,8 +694,8 @@ static void DecodeLines(void* Context, int Index, int Count)
         }
         if (Layout->Is4k)
             DtSdiFrame_DecodeLine4k(
-                Layout, Sdi->BitsPerSymbol, Coded, Coded + Layout->Stride, Line,
-                Band->RawFrame + (size_t)Line * Band->RawBytesPerLine, Scratch);
+                Layout, Sdi->BitsPerSymbol, Coded, Coded + Layout->RxStride, Line,
+                Band->RawFrame + (size_t)Line * Band->RawBytesPerLine, BandSymbols);
         else
             DtSdiFrame_DecodeLine(Layout, Sdi->BitsPerSymbol, Coded, Line,
                                   Band->RawFrame);
@@ -712,7 +713,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
-    size_t CodedFrameSize = DtSdiFrame_CodedSize(Layout);
+    size_t CodedFrameSize = DtSdiFrame_RxCodedSize(Layout);
 
     *Delivered = false;
     DtapiResult Result = SyncWriteOffset(Sdi);
@@ -721,7 +722,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     size_t Available = DtRing_Load(&Sdi->Ring);
 
     // A ring that has filled up has lost data.
-    if (Available + (size_t)Layout->Stride >= Sdi->Ring.MaxLoad)
+    if (Available + (size_t)Layout->RxStride >= Sdi->Ring.MaxLoad)
     {
         Sdi->FifoOvf = true;
         Sdi->FifoOvfLatched = true;
@@ -733,7 +734,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     // full, and holds the start of a later frame: it is not delivered, and the search
     // starts again after its header.
     uint8_t HeaderBytes[DT_SDIFRAME_HEADER_BYTES];
-    DtSdiFrameHeader Header;
+    DtSdiFrameRxHeader Header;
     for (;;)
     {
         if (!Sdi->InSync)
@@ -746,23 +747,24 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
             return DTAPI_OK;
 
         DtRing_PeekAt(&Sdi->Ring, 0, HeaderBytes, sizeof(HeaderBytes));
-        DtSdiFrame_DecodeHeader(HeaderBytes, &Header);
-        if (DtSdiFrame_CheckHeader(Layout, &Header, Sdi->ExpectedFrameId) == DTAPI_OK)
+        DtSdiFrame_DecodeRxHeader(HeaderBytes, &Header);
+        if (DtSdiFrame_CheckRxHeader(Layout, &Header, Sdi->ExpectedFrameId) == DTAPI_OK)
         {
             uint8_t FirstLineStart[DT_SDIFRAME_LINE_START_BYTES];
 
-            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->HeaderNumBytes, FirstLineStart,
+            DtRing_PeekAt(&Sdi->Ring, (size_t)Layout->RxHeaderNumBytes, FirstLineStart,
                           sizeof(FirstLineStart));
             uint8_t LastLineStart[DT_SDIFRAME_LINE_START_BYTES];
             DtRing_PeekAt(&Sdi->Ring,
-                          (size_t)Layout->HeaderNumBytes +
+                          (size_t)Layout->RxHeaderNumBytes +
                               (size_t)(Layout->NumCodedLines - 1) *
-                                  (size_t)Layout->Stride,
+                                  (size_t)Layout->RxStride,
                           LastLineStart, sizeof(LastLineStart));
-            if (DtSdiFrame_CheckLines(Layout, FirstLineStart, LastLineStart) == DTAPI_OK)
+            if (DtSdiFrame_CheckLineNumbers(Layout, FirstLineStart, LastLineStart) ==
+                DTAPI_OK)
                 break;
 
-            Result = AdvanceReadOffset(Sdi, (size_t)Layout->Alignment);
+            Result = AdvanceReadOffset(Sdi, (size_t)Layout->AlignmentInBytes);
             if (Result != DTAPI_OK)
                 return Result;
             Available = DtRing_Load(&Sdi->Ring);
@@ -772,7 +774,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
 
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
-    size_t CodedBytesPerLine = DtSdiFrame_CodedBytesPerLine(Layout);
+    size_t CodedBytesPerLine = DtSdiFrame_RxCodedBytesPerLine(Layout);
     size_t RawBytesPerLine = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol) / 8;
     if (!Layout->Is4k)
         memset(Buffer, 0, DtSdiFrame_RawSize(Layout, Sdi->BitsPerSymbol));
@@ -788,7 +790,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     if (Result != DTAPI_OK)
         return Result;
 
-    if (Available - CodedFrameSize + (size_t)Layout->Stride < Sdi->Ring.MaxLoad)
+    if (Available - CodedFrameSize + (size_t)Layout->RxStride < Sdi->Ring.MaxLoad)
         Sdi->FifoOvf = false;
     Sdi->ExpectedFrameId = (Header.FrameId + 1) & 0xFFFF;
     ArrivalTime->Seconds = Header.PtpSeconds;

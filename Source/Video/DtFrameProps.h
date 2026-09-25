@@ -23,11 +23,11 @@
 
 typedef struct DtFieldProps
 {
-    int StartLine;     // First line of the field
-    int EndLine;       // Last line of the field
-    int VidStartLine;  // First line with active video
-    int VidEndLine;    // Last line with active video
-    int SwitchingLine; // The field's switching line
+    int StartLine;       // First line of the field
+    int EndLine;         // Last line of the field
+    int ActiveStartLine; // First line with active video
+    int ActiveEndLine;   // Last line with active video
+    int SwitchingLine;   // The field's switching line
 } DtFieldProps;
 
 typedef struct DtFrameProps
@@ -37,10 +37,10 @@ typedef struct DtFrameProps
     int FpsDen;
     int NumFields; // 1 for progressive, 2 for interlaced and PsF
     DtFieldProps Fields[2];
-    int LineNumSymEav;  // Symbols in EAV, with the line number and CRC in HD
-    int LineNumSymHanc; // Symbols in HANC, not counting EAV and SAV
-    int LineNumSymSav;  // Symbols in SAV
-    int LineNumSymVanc; // Symbols in the active part of a line, video or VANC
+    int LineNumSymEav;    // Symbols in EAV, with the line number and CRC in HD
+    int LineNumSymHanc;   // Symbols in HANC, not counting EAV and SAV
+    int LineNumSymSav;    // Symbols in SAV
+    int LineNumSymActive; // Symbols in the active part of a line, video or VANC
 } DtFrameProps;
 
 // The SDI rates that are distinguished, with the driver's DT_DRV_SDIRATE_ values.
@@ -55,21 +55,19 @@ typedef struct DtFrameProps
 // DTAPI_VIDSTD_UNKNOWN, for DTAPI_VIDSTD_UNKNOWN or a code that is not a standard.
 bool DtFrameProps_Init(DtFrameProps* Props, int VidStd);
 
-// The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
-void DtVidStd_Fps(int VidStd, int* Num, int* Den);
-
 // Lines in the frame, over both fields.
 int DtFrameProps_NumLines(const DtFrameProps* Props);
 
 // Symbols in the horizontal blanking of a line, EAV and SAV included, which is how the
 // SDI receiver counts them.
-int DtFrameProps_LineSymbolsHanc(const DtFrameProps* Props);
+int DtFrameProps_LineNumSymHancInclTiming(const DtFrameProps* Props);
 
 // Whether a frame has the geometry an SDI receiver reports: the lines of the first field
 // and of the frame, the symbols per line in HANC (EAV and SAV included) and in the active
 // part.
 bool DtFrameProps_MatchesGeometry(const DtFrameProps* Props, int NumLinesF1,
-                                  int NumLinesF2, int LineNumSymHanc, int LineNumSymVanc);
+                                  int NumLinesF2, int LineNumSymHancInclTiming,
+                                  int LineNumSymActive);
 
 // The classifications of a frame. All are false for invalid properties.
 bool DtFrameProps_IsSd(const DtFrameProps* Props);
@@ -84,5 +82,5 @@ bool DtFrameProps_IsPsF(const DtFrameProps* Props);
 // the frame rate, whether 3G is level B, the VPID and the SDI rate. Props->VidStd is
 // DTAPI_VIDSTD_UNKNOWN when no standard matches.
 void DtFrameProps_Deduce(DtFrameProps* Props, int NumLinesF1, int NumLinesF2,
-                         int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                         bool Is3gLevelB, uint32_t Vpid, int SdiRate);
+                         int LineNumSymHancInclTiming, int LineNumSymActive,
+                         double FrameRate, bool Is3gLevelB, uint32_t Vpid, int SdiRate);

@@ -71,7 +71,7 @@ DT_TEST(Ipv4PacketBytes)
 
     DtEthIpFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
-    DT_ASSERT(!Header.HeaderV2);
+    DT_ASSERT(!Header.IsVersion2);
     DT_ASSERT_EQ(Header.NumWords, 20);
     DT_ASSERT_EQ(Header.FrameSize, 142);
     DT_ASSERT_EQ(Header.IpAddressOffset, 18 + 14 + 12);
@@ -109,7 +109,7 @@ DT_TEST(Ipv6VlanHeaderV2PacketBytes)
     DtAvNet Net = NetV4();
     uint8_t Packet[1200];
 
-    Net.HeaderV2 = true;
+    Net.IsVersion2 = true;
     Net.Alignment = 16;
     Net.IpV6 = true;
     Net.VlanId = 100;
@@ -129,7 +129,7 @@ DT_TEST(Ipv6VlanHeaderV2PacketBytes)
 
     DtEthIpFields Header;
     DT_ASSERT(DtEthIp_Read(Packet, &Header));
-    DT_ASSERT(Header.HeaderV2);
+    DT_ASSERT(Header.IsVersion2);
     DT_ASSERT_EQ(Header.NumWords * 8, Size);
     DT_ASSERT_EQ(Header.FrameSize, 18 + 40 + 8 + 1000);
     DT_ASSERT_EQ(Header.IpAddressOffset, 18 + 18 + 8);

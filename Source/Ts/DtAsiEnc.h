@@ -51,33 +51,35 @@ uint16_t DtAsiEnc_EncodeByte(uint8_t Byte, int Rd, int* NextRd);
 typedef struct DtAsiEnc
 {
     // What the mode sets.
-    int InSize;    // Bytes of a packet written: 188 or 204
-    int InUsed;    // Of which sent: 188 or 204
-    int OutSize;   // Bytes of a packet sent, zeros after InUsed
-    bool Raw;      // DTAPI_TXMODE_RAW
-    bool Burst;    // DTAPI_TXMODE_BURST
-    bool TxOnTime; // DTAPI_TXMODE_TXONTIME
-    int64_t Rate;  // Bits a second, of 188-byte packets
+    int InSize;      // Bytes of a packet written: 188 or 204
+    int InUsed;      // Of which sent: 188 or 204
+    int OutSize;     // Bytes of a packet sent, zeros after InUsed
+    bool IsRaw;      // DTAPI_TXMODE_RAW
+    bool IsBurst;    // DTAPI_TXMODE_BURST
+    bool IsTxOnTime; // DTAPI_TXMODE_TXONTIME
+    int64_t Rate;    // Bits a second, of 188-byte packets
 
     // What the rate sets.
-    int K28BeforePacket;
-    int64_t Needed;    // The stream's bytes in an interval, a symbol each
-    int64_t Available; // Symbols the interval has, less the K28.5 before packets
+    int NumK28BeforePacket;
+    // The stream's bytes in an interval, a symbol each, and the symbols the interval has,
+    // less the K28.5 before packets.
+    int64_t SymbolsNeededPerInterval;
+    int64_t SymbolsAvailablePerInterval;
 
     // The state of the stream.
     int Rd;
-    int64_t Acc;
-    int ByteIndex; // Of the packet being sent
-    int K28Sent;   // Before the packet being sent
-    int ToSkip;    // Bytes still to drop after the packet, for MIN16
+    int64_t RateAccumulator;
+    int ByteIndex;   // Of the packet being sent
+    int NumK28Sent;  // Before the packet being sent
+    int BytesToSkip; // Bytes still to drop after the packet, for MIN16
     bool SyncErr, SyncErrLatched;
 
     // DTAPI_TXMODE_TXONTIME.
     int OnTimeState;
     uint8_t TimeBytes[4];
-    uint32_t Now;  // In 54 MHz ticks
-    uint32_t Next; // When the packet being sent goes out
-    bool First;
+    uint32_t NowTicks;        // In 54 MHz ticks
+    uint32_t PacketTimeTicks; // When the packet being sent goes out
+    bool IsFirstPacket;
 } DtAsiEnc;
 
 // A stream with the default settings: DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST at 10 Mbit/s.
@@ -100,19 +102,19 @@ DtapiResult DtAsiEnc_SetRate(DtAsiEnc* Enc, int64_t Rate);
 // packets go out at their times whatever the rate.
 DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc);
 
-// Encodes from In, InSize bytes, into Out, room for OutSyms symbols, until either is
-// used up. *Taken receives the bytes taken and *Written the symbols written. A packet or
-// a time stamp that is cut off continues in the next call.
+// Encodes from In, InSize bytes, into Out, room for OutSymbols symbols, until either is
+// used up. *BytesTaken receives the bytes taken and *SymbolsWritten the symbols written.
+// A packet or a time stamp that is cut off continues in the next call.
 void DtAsiEnc_Encode(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
-                     size_t OutSyms, size_t* Taken, size_t* Written);
+                     size_t OutSymbols, size_t* BytesTaken, size_t* SymbolsWritten);
 
-// Writes Syms K28.5 symbols into Out, keeping the running disparity, to fill the card's
-// last data word.
-void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Syms);
+// Writes Symbols K28.5 symbols into Out, keeping the running disparity, to fill the
+// card's last data word.
+void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Symbols);
 
-// The bytes, in packets of OutSize as sent, that Syms symbols carry at the current rate,
-// rounded down.
-int64_t DtAsiEnc_BytesOf(const DtAsiEnc* Enc, int64_t Syms);
+// The bytes, in packets of OutSize as sent, that Symbols symbols carry at the current
+// rate, rounded down.
+int64_t DtAsiEnc_BytesInSymbols(const DtAsiEnc* Enc, int64_t Symbols);
 
 // DTAPI_TX_SYNC_ERR in *Flags and *Latched when set; ClearFlags clears it when Flags has
 // it.

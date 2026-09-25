@@ -61,7 +61,7 @@ DT_TEST(Modes)
 // What each mode gives of a 188- and a 204-byte packet.
 DT_TEST(OutputPerMode)
 {
-    uint8_t P188[DT_TRP_SIZE], P204[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT];
+    uint8_t P188[DT_TRP_SIZE], P204[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT_BYTES];
     Build(P188, 100, 500, 0x40, 188, true, 1);
     Build(P204, 100, 500, 0x40, 204, true, 2);
     DtTsTrp Trp;
@@ -103,8 +103,8 @@ DT_TEST(OutputPerMode)
     DT_ASSERT_MEM(Out, P188, 8 + 188);
 
     DtTsTrp_Start(&Trp, DTAPI_RXMODE_STTRP | DTAPI_RXMODE_TIMESTAMP_TOD);
-    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), DT_TRP_MAX_OUTPUT);
-    DT_ASSERT_MEM(Out, P188, DT_TRP_MAX_OUTPUT);
+    DT_ASSERT_EQ(DtTsTrp_Decode(&Trp, P188, Out), DT_TRP_MAX_OUTPUT_BYTES);
+    DT_ASSERT_MEM(Out, P188, DT_TRP_MAX_OUTPUT_BYTES);
 
     int Flags, Latched;
     DtTsTrp_GetFlags(&Trp, &Flags, &Latched);
@@ -115,7 +115,7 @@ DT_TEST(OutputPerMode)
 // but in the raw and transparent modes; the raw mode does not set the error.
 DT_TEST(PacketsWithoutSync)
 {
-    uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT];
+    uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT_BYTES];
     Build(P, 1, 2, 0x10, 204, false, 7);
     DtTsTrp Trp;
     memset(&Trp, 0, sizeof(Trp));
@@ -150,7 +150,7 @@ DT_TEST(PacketsWithoutSync)
 // A wrong sync nibble, or a valid count the mode does not accept, is no packet in sync.
 DT_TEST(BytesThatAreNoPacket)
 {
-    uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT];
+    uint8_t P[DT_TRP_SIZE], Out[DT_TRP_MAX_OUTPUT_BYTES];
     DtTsTrp Trp;
     memset(&Trp, 0, sizeof(Trp));
 

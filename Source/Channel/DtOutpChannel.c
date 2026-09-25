@@ -524,7 +524,7 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
     if (OutpChannel == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    DtapiResult Result = DtIoConfig_IsValid(Group, Value, SubValue);
+    DtapiResult Result = DtIoConfig_CheckConfig(Group, Value, SubValue);
     if (Result != DTAPI_OK)
         return Result;
     if (LockAttached(OutpChannel) != DTAPI_OK)

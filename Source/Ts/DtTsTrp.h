@@ -33,7 +33,7 @@
 #define DT_TRP_SIZE 216
 
 // The most a packet decodes to: DTAPI_RXMODE_STTRP with DTAPI_RXMODE_TIMESTAMP_TOD.
-#define DT_TRP_MAX_OUTPUT 216
+#define DT_TRP_MAX_OUTPUT_BYTES 216
 
 // The packets in a row that must look right before the stream counts as found.
 #define DT_TRP_NUM_SYNC 3
@@ -53,12 +53,12 @@ DtapiResult DtTsTrp_CheckMode(int RxMode);
 // error is kept; ClearFlags clears it.
 void DtTsTrp_Start(DtTsTrp* Trp, int RxMode);
 
-// What packet P decodes to, into Out, which has room for DT_TRP_MAX_OUTPUT bytes: the
+// What Packet decodes to, into Out, which has room for DT_TRP_MAX_OUTPUT_BYTES bytes: the
 // number of bytes, 0 for a packet that is dropped, or -1 for bytes that are not a packet
 // in sync, with a sync nibble or a valid count that is wrong, after which the stream must
 // be found again. With Out NULL only the number is given, and the flags set. The number
 // depends on P and the mode alone.
-int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* P, uint8_t* Out);
+int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* Packet, uint8_t* Out);
 
 // Searches Size bytes of Buf for DT_TRP_NUM_SYNC packets in a row with the sync nibble,
 // consecutive sequence numbers and a valid count the mode accepts, the first packet's any

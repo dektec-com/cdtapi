@@ -196,7 +196,7 @@ DT_TEST(EveryCombinationMatchesDtapi)
             for (int SubValue = -2; SubValue <= Count; SubValue++)
             {
                 bool Expected = IsListedValid(Group, Value, SubValue);
-                bool Actual = DtIoConfig_IsValid(Group, Value, SubValue) == DTAPI_OK;
+                bool Actual = DtIoConfig_CheckConfig(Group, Value, SubValue) == DTAPI_OK;
 
                 if (Expected != Actual)
                 {
@@ -215,27 +215,28 @@ DT_TEST(EveryCombinationMatchesDtapi)
 // The two configurations CDTAPI itself sends, and the near misses around them.
 DT_TEST(DirectionNeedsItsSubValue)
 {
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
-                                    DTAPI_IOCONFIG_INPUT));
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
-                                    DTAPI_IOCONFIG_OUTPUT));
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT, -1),
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
+                                        DTAPI_IOCONFIG_INPUT));
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
+                                        DTAPI_IOCONFIG_OUTPUT));
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT, -1),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
-                                    DTAPI_IOCONFIG_OUTPUT),
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
+                                        DTAPI_IOCONFIG_OUTPUT),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_DISABLED, -1));
+    DT_ASSERT_OK(
+        DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_DISABLED, -1));
 }
 
 // The sub-values with two parents are valid under both.
 DT_TEST(SharedSubValuesBelongToBothOutputs)
 {
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
-                                    DTAPI_IOCONFIG_DBLBUF));
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INTOUTPUT,
-                                    DTAPI_IOCONFIG_LOOPTHR));
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
-                                    DTAPI_IOCONFIG_DBLBUF),
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT,
+                                        DTAPI_IOCONFIG_DBLBUF));
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INTOUTPUT,
+                                        DTAPI_IOCONFIG_LOOPTHR));
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
+                                        DTAPI_IOCONFIG_DBLBUF),
                  DTAPI_E_INVALID_ARG);
 }
 
@@ -243,14 +244,15 @@ DT_TEST(SharedSubValuesBelongToBothOutputs)
 // a group.
 DT_TEST(BooleanCapabilitiesTakeTrueOrFalse)
 {
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE, -1));
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_GENREF, DTAPI_IOCONFIG_FALSE, -1));
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE,
-                                    DTAPI_IOCONFIG_TRUE),
+    DT_ASSERT_OK(
+        DtIoConfig_CheckConfig(DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE, -1));
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_GENREF, DTAPI_IOCONFIG_FALSE, -1));
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_GENLOCKED, DTAPI_IOCONFIG_TRUE,
+                                        DTAPI_IOCONFIG_TRUE),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_TRUE, DTAPI_IOCONFIG_TRUE, -1),
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_TRUE, DTAPI_IOCONFIG_TRUE, -1),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_TRUE, -1),
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_TRUE, -1),
                  DTAPI_E_INVALID_ARG);
 
     // What a configuration can be read of: a capability, not the values it is set to.
@@ -263,13 +265,13 @@ DT_TEST(BooleanCapabilitiesTakeTrueOrFalse)
 
 DT_TEST(VideoStandardsBelongToTheirRate)
 {
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_HDSDI,
-                                    DTAPI_IOCONFIG_1080I50));
-    DT_ASSERT_OK(DtIoConfig_IsValid(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_3GSDI,
-                                    DTAPI_IOCONFIG_1080I50),
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_HDSDI,
+                                        DTAPI_IOCONFIG_1080I50));
+    DT_ASSERT_OK(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI, -1));
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_3GSDI,
+                                        DTAPI_IOCONFIG_1080I50),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(DtIoConfig_IsValid(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_HDSDI, -1),
+    DT_ASSERT_EQ(DtIoConfig_CheckConfig(DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_HDSDI, -1),
                  DTAPI_E_INVALID_ARG);
 }
 

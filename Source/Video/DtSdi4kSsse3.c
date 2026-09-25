@@ -32,11 +32,7 @@
 //
 
 // A shuffle index that gives zero.
-#define Z -128
-
-// The links, from 0, whose C words and then Y words take the four places of a group of
-// eight words of a raw 4K line: links 4, 2, 3 and 1.
-static const size_t g_LinkOrder[4] = {3, 1, 2, 0};
+#define SHUFFLE_ZERO -128
 
 // The bytes the eight symbols a step takes from each link pack into.
 #define STEP_BYTES 10
@@ -76,9 +72,13 @@ static __m128i Pack8(__m128i Symbols)
 {
     __m128i Moved = _mm_mullo_epi16(Symbols, _mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1));
     __m128i Even = _mm_shuffle_epi8(
-        Moved, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, 13, 12, 9, 8, Z, 5, 4, 1, 0));
+        Moved,
+        _mm_set_epi8(SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO,
+                     SHUFFLE_ZERO, SHUFFLE_ZERO, 13, 12, 9, 8, SHUFFLE_ZERO, 5, 4, 1, 0));
     __m128i Odd = _mm_shuffle_epi8(
-        Moved, _mm_set_epi8(Z, Z, Z, Z, Z, Z, 15, 14, 11, 10, Z, 7, 6, 3, 2, Z));
+        Moved, _mm_set_epi8(SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO,
+                            SHUFFLE_ZERO, SHUFFLE_ZERO, 15, 14, 11, 10, SHUFFLE_ZERO, 7,
+                            6, 3, 2, SHUFFLE_ZERO));
 
     return _mm_or_si128(Even, Odd);
 }
@@ -121,9 +121,11 @@ static void FromGroups(const __m128i Group[4], __m128i Link[4])
     const __m128i Weave =
         _mm_set_epi8(15, 14, 7, 6, 13, 12, 5, 4, 11, 10, 3, 2, 9, 8, 1, 0);
     const __m128i EvenLow =
-        _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, 13, 12, 9, 8, 5, 4, 1, 0);
-    const __m128i OddLow =
-        _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, 15, 14, 11, 10, 7, 6, 3, 2);
+        _mm_set_epi8(SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO,
+                     SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, 13, 12, 9, 8, 5, 4, 1, 0);
+    const __m128i OddLow = _mm_set_epi8(
+        SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO,
+        SHUFFLE_ZERO, SHUFFLE_ZERO, SHUFFLE_ZERO, 15, 14, 11, 10, 7, 6, 3, 2);
     __m128i C0 = _mm_unpacklo_epi64(Group[0], Group[1]);
     __m128i Y0 = _mm_unpackhi_epi64(Group[0], Group[1]);
     __m128i C2 = _mm_unpacklo_epi64(Group[2], Group[3]);
@@ -259,7 +261,7 @@ static void TileC(const DtSdiFrameLayout* Layout, bool Blanking, size_t Tile,
         }
     }
 
-    DtSdi4k_TileBlocks(Layout, Blanking, Tile, Offset);
+    DtSdi4k_TileOffsets(Layout, Blanking, Tile, Offset);
     for (size_t p = 0; p < 4; p++)
     {
         const size_t L = g_LinkOrder[p];
@@ -323,7 +325,7 @@ static void LinkSources(const DtSdiFrameLayout* Layout, bool Blanking, size_t Ti
 {
     size_t Offset[4];
 
-    DtSdi4k_TileBlocks(Layout, Blanking, Tile, Offset);
+    DtSdi4k_TileOffsets(Layout, Blanking, Tile, Offset);
     *Split = !Blanking && Tile >= (size_t)Layout->SectionNumSymsHanc / 4;
     for (size_t L = 0; L < 4; L++)
         Src[L] = (L < 2 ? CodedA : CodedB) + Offset[L];
@@ -333,12 +335,12 @@ static void LinkSources(const DtSdiFrameLayout* Layout, bool Blanking, size_t Ti
 //
 static void DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                        const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
-                       uint8_t* RawLine, uint16_t* Scratch)
+                       uint8_t* RawLine, uint16_t* BandSymbols)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
     const size_t Tiles =
-        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsActive) / 16;
     const size_t RawBytes = BitsPerSymbol == 16 ? 32 : 20;
     uint8_t* A = (uint8_t*)(uintptr_t)CodedA;
     uint8_t* B = (uint8_t*)(uintptr_t)CodedB;
@@ -346,7 +348,7 @@ static void DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     if (BitsPerSymbol == 8)
     {
         DtSdi4kConv_C()->DecodeLine(Layout, BitsPerSymbol, CodedA, CodedB, LineIndex,
-                                    RawLine, Scratch);
+                                    RawLine, BandSymbols);
         return;
     }
 
@@ -392,19 +394,19 @@ static void DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 //
 static void EncodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                        const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
-                       uint8_t* CodedB, uint16_t* Scratch)
+                       uint8_t* CodedB, uint16_t* BandSymbols)
 {
     const bool Blanking = DtSdiFrame_IsBlankingLine(Layout, LineIndex);
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
     const size_t Tiles =
-        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsVideo) / 16;
+        (size_t)(Layout->LineNumSymsHanc + Layout->LineNumSymsActive) / 16;
     const size_t RawBytes = BitsPerSymbol == 16 ? 32 : 20;
     uint8_t* Raw = (uint8_t*)(uintptr_t)RawLine;
 
     if (BitsPerSymbol == 8)
     {
         DtSdi4kConv_C()->EncodeLine(Layout, BitsPerSymbol, RawLine, LineIndex, CodedA,
-                                    CodedB, Scratch);
+                                    CodedB, BandSymbols);
         return;
     }
 
@@ -450,9 +452,9 @@ static void EncodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_Ssse3Table -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdi4kConv_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtSdi4kConv* DtSdi4kConv_Ssse3Table(void)
+const DtSdi4kConv* DtSdi4kConv_Ssse3Unchecked(void)
 {
     static const DtSdi4kConv Table = {DecodeLine, EncodeLine};
     return &Table;

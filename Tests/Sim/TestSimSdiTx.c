@@ -156,7 +156,7 @@ static bool Hold(Fixture* Fix, Objects* P, OsDmaBuffer* Buf, int* DtFailures)
             DTAPI_OK ||
         DtPcieCmd_SdiTxFSetFmtEventSetting(
             Fix->Drv, P->Txf, (Layout.NumLines + 3) / 4 + 1, 1) != DTAPI_OK ||
-        DtPcieCmd_CdmacIssueChannelFlush(Fix->Drv, P->Cdmac) != DTAPI_OK ||
+        DtPcieCmd_CdmacFlushChannel(Fix->Drv, P->Cdmac) != DTAPI_OK ||
         DtPcieCmd_CdmacSetTxWriteOffset(Fix->Drv, P->Cdmac, 0) != DTAPI_OK ||
         DtPcieCmd_CdmacSetOpMode(Fix->Drv, P->Cdmac, DT_BLOCK_OPMODE_RUN) != DTAPI_OK ||
         DtPcieCmd_BurstFifoSetOpMode(Fix->Drv, P->Burst, DT_BLOCK_OPMODE_RUN) !=
@@ -221,10 +221,10 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
     Words[0] = 0xFFEFFBFEu;
     Words[1] = 1u << 8 | (uint32_t)DT_DRV_SDIRATE_SD << 9;
     Words[2] = (uint32_t)FrameId | (uint32_t)L.NumLines << 16;
-    Words[3] = (uint32_t)(L.SectionBytesHanc / L.Alignment) | (uint32_t)L.LineNumSymsHanc
-                                                                  << 16;
-    Words[4] = (uint32_t)(L.SectionBytesVideo / L.Alignment) |
-               (uint32_t)L.LineNumSymsVideo << 16;
+    Words[3] = (uint32_t)(L.SectionBytesHanc / L.AlignmentInBytes) |
+               (uint32_t)L.LineNumSymsHanc << 16;
+    Words[4] = (uint32_t)(L.SectionBytesActive / L.AlignmentInBytes) |
+               (uint32_t)L.LineNumSymsActive << 16;
     uint8_t Header[32];
     memset(Header, 0, sizeof(Header));
     for (int i = 0; i < 5; i++)
@@ -237,9 +237,9 @@ static void PutFrame(OsDmaBuffer* Buf, uint32_t* Offset, uint32_t FrameNumber,
     {
         SimChSdiRx_Line(VIDSTD, FrameNumber, n, Symbols);
         Pack(Symbols, L.LineNumSymsHanc, Line, L.SectionBytesHanc);
-        Pack(Symbols + L.LineNumSymsHanc, L.LineNumSymsVideo, Line + L.SectionBytesHanc,
-             L.SectionBytesVideo);
-        Put(Buf, Offset, Line, (size_t)L.Stride);
+        Pack(Symbols + L.LineNumSymsHanc, L.LineNumSymsActive, Line + L.SectionBytesHanc,
+             L.SectionBytesActive);
+        Put(Buf, Offset, Line, (size_t)L.RxStride);
     }
 }
 
@@ -417,7 +417,7 @@ DT_TEST(RequestsCarryTheirFields)
     DT_ASSERT_EQ(CdmacProps.PcieDataWidth, SIM_TX_PCIE_DATA_WIDTH);
     DT_ASSERT_EQ(CdmacProps.ReorderBufSize, SIM_TX_REORDER_BUF_SIZE);
 
-    DT_ASSERT_OK(DtPcieCmd_CdmacIssueChannelFlush(Fix.Drv, P.Cdmac));
+    DT_ASSERT_OK(DtPcieCmd_CdmacFlushChannel(Fix.Drv, P.Cdmac));
     DT_ASSERT(LastWas(DT_FUNC_CODE_CDMAC_CMD, P.Cdmac, DT_CDMAC_CMD_ISSUE_CHANNEL_FLUSH,
                       sizeof(DtIoctlInputDataHdr), NULL));
     DT_ASSERT_OK(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac));
@@ -720,8 +720,7 @@ DT_TEST(ModesOfTheDmaController)
     DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, DT_BLOCK_OPMODE_RUN));
     DT_ASSERT_EQ(DtPcieCmd_CdmacSetOpMode(Fix.Drv, P.Cdmac, DT_BLOCK_OPMODE_RUN),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_CdmacIssueChannelFlush(Fix.Drv, P.Cdmac),
-                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtPcieCmd_CdmacFlushChannel(Fix.Drv, P.Cdmac), DTAPI_E_INVALID_MODE);
     DT_ASSERT_EQ(DtPcieCmd_CdmacSetTestMode(Fix.Drv, P.Cdmac, DT_CDMAC_TESTMODE_NORMAL),
                  DTAPI_E_INVALID_MODE);
     DT_ASSERT_EQ(DtPcieCmd_CdmacFreeBuffer(Fix.Drv, P.Cdmac), DTAPI_E_INVALID_MODE);

@@ -39,7 +39,7 @@
 #define DT_SCAN_I 1   // Interlaced
 #define DT_SCAN_PSF 2 // Progressive, as segmented frames
 
-typedef struct DtVidStdInfo
+typedef struct DtVidStdEntry
 {
     int VidStd; // DTAPI_VIDSTD_ code
     int FpsNum; // Frames per second as a reduced fraction
@@ -50,15 +50,18 @@ typedef struct DtVidStdInfo
     bool IsLevelB;      // 3G level B, or 2160p made of level-B links
     int IoStd;          // The DTAPI_IOCONFIG_ I/O standard that carries it
     int OneLinkVidStd;  // For 2160p the 1080p standard of one link, else unknown
-} DtVidStdInfo;
+} DtVidStdEntry;
 
 // The information of a video standard; NULL for a code that is not a standard.
-const DtVidStdInfo* DtVidStd_Find(int VidStd);
+const DtVidStdEntry* DtVidStd_Find(int VidStd);
 
 // The standards in the order deduction tries them: DtVidStd_At(Index) for an Index from
 // 0 to DtVidStd_Count() - 1, NULL outside that range.
+// The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
+void DtVidStd_FrameRate(int VidStd, int* Num, int* Den);
+
 int DtVidStd_Count(void);
-const DtVidStdInfo* DtVidStd_At(int Index);
+const DtVidStdEntry* DtVidStd_At(int Index);
 
 // True for the eleven 2160p standards.
 bool DtVidStd_Is4k(int VidStd);
@@ -87,8 +90,8 @@ void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid);
 // Finds the standard of a signal from what an SDI receiver reports; the arguments are
 // those of DtFrameProps_Deduce.
 void DtVidStdProps_Deduce(DtVidStdProps* Props, int NumLinesF1, int NumLinesF2,
-                          int LineNumSymHanc, int LineNumSymVanc, double Fps,
-                          bool Is3gLevelB, uint32_t Vpid, int SdiRate);
+                          int LineNumSymHancInclTiming, int LineNumSymActive,
+                          double FrameRate, bool Is3gLevelB, uint32_t Vpid, int SdiRate);
 
 // The number of cables a link standard uses: four for SMPTE 425 quad links, one for the
 // others, 0 for a value that is not a link standard.

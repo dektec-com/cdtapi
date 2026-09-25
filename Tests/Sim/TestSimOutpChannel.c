@@ -264,7 +264,7 @@ static uint16_t* SentFrame(int FrameId, int VidStd, SimTxFrame* Frame)
     if (!DtSdiFrame_LayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT))
         return NULL;
     size_t Count = (size_t)Layout.NumLines *
-                   (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsVideo);
+                   (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
     uint16_t* Symbols = (uint16_t*)malloc(Count * sizeof(uint16_t));
     if (Symbols != NULL &&
         !SimDtPcie_CopyTxFrame(PORT - 1, FrameId, Symbols, Count, Frame))
@@ -298,7 +298,7 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
 }
 
 // Whether the card sent a black frame of VidStd with FrameId: the coded lines of
-// DtSdiFrame_BlackLines, symbol by symbol.
+// DtSdiFrame_WriteBlackLines, symbol by symbol.
 static bool SentFrameIsBlack(int FrameId, int VidStd)
 {
     DtSdiFrameLayout Layout = {0};
@@ -310,18 +310,19 @@ static bool SentFrameIsBlack(int FrameId, int VidStd)
     int n;
 
     Black =
-        Same ? (uint8_t*)malloc((size_t)Layout.NumLines * (size_t)Layout.Stride) : NULL;
+        Same ? (uint8_t*)malloc((size_t)Layout.NumLines * (size_t)Layout.RxStride) : NULL;
     Same = Same && Black != NULL;
     if (Same)
-        DtSdiFrame_BlackLines(&Layout, Black);
+        DtSdiFrame_WriteBlackLines(&Layout, Black);
 
     for (n = 0; Same && n < Layout.NumLines; n++)
     {
-        const uint8_t* Coded = Black + (size_t)n * (size_t)Layout.Stride;
+        const uint8_t* Coded = Black + (size_t)n * (size_t)Layout.RxStride;
         size_t At =
-            (size_t)n * (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsVideo);
+            (size_t)n * (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
 
-        for (int s = 0; Same && s < Layout.LineNumSymsHanc + Layout.LineNumSymsVideo; s++)
+        for (int s = 0; Same && s < Layout.LineNumSymsHanc + Layout.LineNumSymsActive;
+             s++)
         {
             const uint8_t* Section =
                 s < Layout.LineNumSymsHanc ? Coded : Coded + Layout.SectionBytesHanc;

@@ -221,7 +221,7 @@ static int PacketsPerFrame(const DtSt2110VideoTx* Tx)
 //
 DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Stream)
 {
-    int Udp = Stream->Net.HeaderV2 ? DT_AV_UDP_JUMBO : DT_AV_UDP_STANDARD;
+    int Udp = Stream->Net.IsVersion2 ? DT_AV_UDP_JUMBO : DT_AV_UDP_STANDARD;
     int Max = Udp - DT_ST2110_VIDEO_HEADERS;
     int Payload = Tx->Packing.PayloadSize;
     bool Block = Tx->Packing.PackingMode == St2110_PackingMode_Block;

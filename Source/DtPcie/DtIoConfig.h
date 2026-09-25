@@ -47,20 +47,20 @@ DtapiResult DtIoConfig_GetName(int Code, char* Name, size_t Size);
 
 // What a code can be in a configuration; a code can be more than one. These are the
 // kinds in Tables/DtIoConfigList.inc.
-#define DT_IOCFG_GROUP 0x1    // A group, such as IODIR
-#define DT_IOCFG_BOOLIO 0x2   // A boolean I/O capability, or TRUE/FALSE, its values
-#define DT_IOCFG_VALUE 0x4    // A value within a group, such as OUTPUT
-#define DT_IOCFG_SUBVALUE 0x8 // A sub-value within a value, such as DBLBUF
+#define DT_IOCONFIG_GROUP 0x1    // A group, such as IODIR
+#define DT_IOCONFIG_BOOLIO 0x2   // A boolean I/O capability, or TRUE/FALSE, its values
+#define DT_IOCONFIG_VALUE 0x4    // A value within a group, such as OUTPUT
+#define DT_IOCONFIG_SUBVALUE 0x8 // A sub-value within a value, such as DBLBUF
 
 // The parent slots of Tables/DtIoConfigList.inc: an unused slot, and every boolean I/O
 // capability.
-#define DT_IOCFG_NONE -1
-#define DT_IOCFG_ANY_BOOLIO -2
+#define DT_IOCONFIG_NONE -1
+#define DT_IOCONFIG_ANY_BOOLIO -2
 
 // Returns DTAPI_OK when Value belongs to Group and SubValue to Value, SubValue -1 being
 // required exactly when Value has no sub-values, and DTAPI_E_INVALID_ARG otherwise. The
 // group is checked first, then the value, then the sub-value.
-DtapiResult DtIoConfig_IsValid(int Group, int Value, int SubValue);
+DtapiResult DtIoConfig_CheckConfig(int Group, int Value, int SubValue);
 
 // Returns DTAPI_OK when Group is a group or a boolean I/O capability, which is what
 // configurations can be read of, and DTAPI_E_INVALID_ARG otherwise.

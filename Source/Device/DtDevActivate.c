@@ -78,8 +78,8 @@ static DtapiResult GetObjectStatus(OsDrv* Drv, DtDrvObject Object, bool* Busy,
 
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_IPSECG_CMD), DT_IPSECG_CMD_GET_STATUS,
-                             Object, &Out, sizeof(Out));
+        DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_IPSECG_CMD),
+                                  DT_IPSECG_CMD_GET_STATUS, Object, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -124,11 +124,11 @@ static DtapiResult HandData(OsDrv* Drv, DtDrvObject Object, const uint32_t* Word
 //
 static DtapiResult ReadEepromData(OsDrv* Drv, uint32_t* Words, bool* HasData)
 {
-    DtVpdProperties Props;
+    DtVpdProps Props;
     uint8_t Bytes[ACTIVATE_NUM_WORDS * sizeof(uint32_t)];
 
     *HasData = false;
-    DtapiResult Result = DtPcieCmd_VpdGetProperties(Drv, &Props);
+    DtapiResult Result = DtPcieCmd_VpdGetProps(Drv, &Props);
     if (!DT_SUCCEEDED(Result))
         return Result;
 

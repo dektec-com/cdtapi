@@ -25,13 +25,17 @@
 // boundary on both sides.
 //
 
+// The links, from 0, whose C words and then Y words take the four places of a group of
+// eight words of a raw 4K line: links 4, 2, 3 and 1.
+static const size_t g_LinkOrder[4] = {3, 1, 2, 0};
+
 // Where the four links' five bytes of tile Tile lie in their coded lines, links 1 and 2
 // in the first and links 3 and 4 in the second: the HANC sections first, tile by tile,
 // and then the active part, whose blocks of four symbols a picture line gives to the two
 // links of a coded line in turn and a blanking line in halves. Both directions and every
 // instruction set use this one rule.
-static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blanking,
-                                      size_t Tile, size_t Offset[4])
+static inline void DtSdi4k_TileOffsets(const DtSdiFrameLayout* Layout, bool Blanking,
+                                       size_t Tile, size_t Offset[4])
 {
     const size_t HancTiles = (size_t)Layout->SectionNumSymsHanc / 4;
     const size_t HancNumBytes = (size_t)Layout->SectionBytesHanc;
@@ -43,12 +47,13 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
         return;
     }
 
-    const size_t Video = 2 * HancNumBytes;
-    const size_t Half = (size_t)Layout->SectionNumSymsVideo / 8 * 5;
-    const size_t t = Tile - HancTiles;
+    const size_t VideoStart = 2 * HancNumBytes;
+    const size_t HalfBytes = (size_t)Layout->SectionNumSymsActive / 8 * 5;
+    const size_t VideoTile = Tile - HancTiles;
 
     for (size_t L = 0; L < 4; L++)
-        Offset[L] = Video + (Blanking ? (L & 1) * Half + 5 * t : 5 * (2 * t + (L & 1)));
+        Offset[L] = VideoStart + (Blanking ? (L & 1) * HalfBytes + 5 * VideoTile
+                                           : 5 * (2 * VideoTile + (L & 1)));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -62,13 +67,13 @@ static inline void DtSdi4k_TileBlocks(const DtSdiFrameLayout* Layout, bool Blank
 // DtSdiFrame_DecodeLine4k does.
 typedef void (*DtSdi4kGather)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                               const uint8_t* CodedA, const uint8_t* CodedB, int LineIndex,
-                              uint8_t* RawLine, uint16_t* Scratch);
+                              uint8_t* RawLine, uint16_t* BandSymbols);
 
 // Fills the two coded lines with the raw line, as DtSdiFrame_EncodeLine4k does, but
 // leaves the sections' padding as it was.
 typedef void (*DtSdi4kScatter)(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                                const uint8_t* RawLine, int LineIndex, uint8_t* CodedA,
-                               uint8_t* CodedB, uint16_t* Scratch);
+                               uint8_t* CodedB, uint16_t* BandSymbols);
 
 typedef struct DtSdi4kConv
 {
@@ -88,4 +93,4 @@ const DtSdi4kConv* DtSdi4kConv_Best(void);
 
 // The SSSE3 conversion, without a check of the processor. It exists only in a build with
 // SSSE3 on x86; DtSdi4kConv_Ssse3 returns it once CPUID reports SSSE3.
-const DtSdi4kConv* DtSdi4kConv_Ssse3Table(void);
+const DtSdi4kConv* DtSdi4kConv_Ssse3Unchecked(void);

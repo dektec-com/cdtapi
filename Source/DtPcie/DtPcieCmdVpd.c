@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtPcieCmdVpd.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtPcieCmdVpd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDTAPI - DtPcie driver commands: the card's Vital Product Data
 //
@@ -22,22 +22,11 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// The VPD commands go to the device rather than to an object: UUID 0 and no port.
-//
-static void InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
-{
-    const DtDrvObject Device = {0, DT_PROPERTY_DEVICE};
-
-    DtPcieCmd_InitHeader(Hdr, Cmd, Device);
-}
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_VpdGetProperties -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_VpdGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props)
+DtapiResult DtPcieCmd_VpdGetProps(OsDrv* Drv, DtVpdProps* Props)
 {
     if (Props != NULL)
         memset(Props, 0, sizeof(*Props));
@@ -48,8 +37,8 @@ DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props)
     DtIoctlVpdCmdGetPropertiesOutput Out;
     memset(&Out, 0, sizeof(Out));
     DtapiResult Result =
-        DtPcieCmd_IssuePlain(Drv, DT_IOCTL(DT_IOCTL_VPD_CMD), DT_VPD_CMD_GET_PROPERTIES,
-                             Device, &Out, sizeof(Out));
+        DtPcieCmd_IssueHeaderOnly(Drv, DT_IOCTL(DT_IOCTL_VPD_CMD),
+                                  DT_VPD_CMD_GET_PROPERTIES, Device, &Out, sizeof(Out));
     if (!DT_SUCCEEDED(Result))
         return Result;
 
@@ -62,7 +51,7 @@ DtapiResult DtPcieCmd_VpdGetProperties(OsDrv* Drv, DtVpdProperties* Props)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. DtPcieCmd_VpdRawRead -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_VpdRawRead -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The answer ends in a buffer of the bytes read, so it is allocated to the size asked
 // for. What the driver read is copied out only on success, and a driver that says it
@@ -87,7 +76,7 @@ DtapiResult DtPcieCmd_VpdRawRead(OsDrv* Drv, uint32_t Offset, uint8_t* Buf, int 
 
     DtIoctlVpdCmdRawReadInput In;
     memset(&In, 0, sizeof(In));
-    InitHeader(&In.m_CmdHdr, DT_VPD_CMD_RAW_READ);
+    DtPcieCmd_InitDeviceHeader(&In.m_CmdHdr, DT_VPD_CMD_RAW_READ);
     In.m_StartOffset = Offset;
     In.m_NumToRead = Count;
 

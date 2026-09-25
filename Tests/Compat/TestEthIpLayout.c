@@ -30,15 +30,15 @@ typedef uint32_t UInt;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Fills a header with values that differ per field, as version 2 when HeaderV2.
-static DtEthIpFields Values(bool HeaderV2)
+// Fills a header with values that differ per field, as version 2 when IsVersion2.
+static DtEthIpFields Values(bool IsVersion2)
 {
     DtEthIpFields Header;
 
     memset(&Header, 0, sizeof(Header));
-    Header.HeaderV2 = HeaderV2;
-    Header.NumWords = HeaderV2 ? 1004 : 158;
-    Header.FrameSize = HeaderV2 ? 8000 : 1242;
+    Header.IsVersion2 = IsVersion2;
+    Header.NumWords = IsVersion2 ? 1004 : 158;
+    Header.FrameSize = IsVersion2 ? 8000 : 1242;
     Header.IpAddressOffset = 44;
     Header.PortOffset = 52;
     Header.IsUdp = 1;
@@ -59,7 +59,7 @@ static DtEthIpFields Values(bool HeaderV2)
 static void FillSdk(const DtEthIpFields* Values, DtEthIp* EthIp)
 {
     memset(EthIp, 0, sizeof(*EthIp));
-    if (Values->HeaderV2)
+    if (Values->IsVersion2)
     {
         EthIp->m_Hdr.m_SyncWord = DT_ETHIP_SYNCWORD_V2;
         EthIp->m_Hdr.V2.m_SizeInQWords = (UInt64)Values->NumWords;

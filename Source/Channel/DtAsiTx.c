@@ -272,7 +272,7 @@ static DtapiResult Stuff(DtAsiTx* Asi)
     }
 
     Asi->Stuffing = Asi->StuffingLatched = true;
-    const int64_t Bytes = DtAsiEnc_BytesOf(
+    const int64_t Bytes = DtAsiEnc_BytesInSymbols(
         &Asi->Encoder, (int64_t)(DT_ASITX_STUFF_TARGET_BYTES - Load) / 2);
     const int64_t Packets = (Bytes + Asi->Encoder.OutSize - 1) / Asi->Encoder.OutSize;
     return InsertNulls(Asi, Packets, Asi->MaxLoad - Load);
@@ -567,10 +567,10 @@ static DtapiResult ReportedFifoLoad(DtAsiTx* Asi, size_t* Load)
     if (Result != DTAPI_OK)
         return Result;
     *Load = Asi->FifoLoad;
-    if (!Asi->Encoder.TxOnTime && Dma >= Asi->PcieDataWidthInBytes)
+    if (!Asi->Encoder.IsTxOnTime && Dma >= Asi->PcieDataWidthInBytes)
     {
-        int64_t Bytes = DtAsiEnc_BytesOf(&Asi->Encoder,
-                                         (int64_t)(Dma + (size_t)Asi->BurstFifoSize) / 2);
+        int64_t Bytes = DtAsiEnc_BytesInSymbols(
+            &Asi->Encoder, (int64_t)(Dma + (size_t)Asi->BurstFifoSize) / 2);
         const int TsMode = Asi->Tx.TxMode & DTAPI_TXMODE_TS_MASK;
         if (TsMode == DTAPI_TXMODE_MIN16)
             Bytes = Bytes * 204 / 188;
@@ -615,7 +615,7 @@ static DtapiResult IdleToHold(DtAsiTx* Asi)
 {
     OsDrv* Drv = Asi->Drv;
 
-    DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+    DtapiResult Result = DtPcieCmd_CdmacFlushChannel(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_AsiTxGClearInputState(Drv, Asi->AsiTxG);
     if (Result == DTAPI_OK)
@@ -745,7 +745,7 @@ static DtapiResult HoldToIdle(DtAsiTx* Asi)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacSetOpMode(Drv, Asi->Cdmac, DT_BLOCK_OPMODE_IDLE);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+        Result = DtPcieCmd_CdmacFlushChannel(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_AsiTxGClearInputState(Drv, Asi->AsiTxG);
     Asi->FifoReadOffset = Asi->FifoLoad = 0;
@@ -1251,7 +1251,7 @@ DtapiResult DtAsiTx_Attach(const DtTxAttachedPort* Port, DtTx** Tx)
     // K28.5 from here on: the pipeline idle and flushed, the gate in standby and the
     // PHYs running.
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Asi->Cdmac);
+        Result = DtPcieCmd_CdmacFlushChannel(Drv, Asi->Cdmac);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_AsiTxGClearInputState(Drv, Asi->AsiTxG);
     if (Result == DTAPI_OK)

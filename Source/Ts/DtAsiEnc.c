@@ -125,9 +125,9 @@ uint16_t DtAsiEnc_EncodeByte(uint8_t Byte, int Rd, int* NextRd)
     return C->Code;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Put -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void Put(DtAsiEnc* Enc, uint16_t** Out, const Code8b10b* C)
+static void WriteSymbol(DtAsiEnc* Enc, uint16_t** Out, const Code8b10b* C)
 {
     *(*Out)++ = C->Code;
     Enc->Rd = C->NextRd;
@@ -137,21 +137,21 @@ static void Put(DtAsiEnc* Enc, uint16_t** Out, const Code8b10b* C)
 //
 static void PutK28(DtAsiEnc* Enc, uint16_t** Out)
 {
-    Put(Enc, Out, &g_K28_5[Enc->Rd]);
+    WriteSymbol(Enc, Out, &g_K28_5[Enc->Rd]);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutByte -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static void PutByte(DtAsiEnc* Enc, uint16_t** Out, uint8_t Byte)
 {
-    Put(Enc, Out, &g_Codes[Byte][Enc->Rd]);
+    WriteSymbol(Enc, Out, &g_Codes[Byte][Enc->Rd]);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Settings +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The interval the rate is kept over, in seconds: 188 x 8, so that the bytes a rate in
 // whole bits a second sends in it are a whole number.
-#define INTERVAL (188 * 8)
+#define RATE_INTERVAL_SECONDS (188 * 8)
 
 // The states of a DTAPI_TXMODE_TXONTIME conversion.
 enum
@@ -165,34 +165,35 @@ enum
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplyRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// When the line has no room for even one K28.5 before each packet, none is sent, but the
-// room of one is still reserved.
+// When the line has no room for even one K28.5 before each packet, none is sent, but
+// the room of one is still reserved.
 //
 static DtapiResult ApplyRate(DtAsiEnc* Enc, int64_t Rate, int OutSize, bool Raw)
 {
-    const int64_t Line = (int64_t)DT_ASI_SYMBOL_RATE * INTERVAL;
-    const int64_t Needed = Rate * INTERVAL * OutSize / (188 * 8);
-    if (Rate <= 0 || Needed <= 0 || Needed > Line)
+    const int64_t LineSymbolsPerInterval =
+        (int64_t)DT_ASI_SYMBOL_RATE * RATE_INTERVAL_SECONDS;
+    const int64_t Needed = Rate * RATE_INTERVAL_SECONDS * OutSize / (188 * 8);
+    if (Rate <= 0 || Needed <= 0 || Needed > LineSymbolsPerInterval)
         return DTAPI_E_INVALID_RATE;
 
-    int K28 = 0;
+    int NumK28 = 0;
     int64_t Overhead = 0;
     if (!Raw)
     {
-        K28 = 2;
-        Overhead = Rate * K28 * INTERVAL / (188 * 8);
-        if (Needed > Line - Overhead)
+        NumK28 = 2;
+        Overhead = Rate * NumK28 * RATE_INTERVAL_SECONDS / (188 * 8);
+        if (Needed > LineSymbolsPerInterval - Overhead)
         {
-            K28 = 1;
-            Overhead = Rate * K28 * INTERVAL / (188 * 8);
-            if (Needed > Line - Overhead)
-                K28 = 0;
+            NumK28 = 1;
+            Overhead = Rate * NumK28 * RATE_INTERVAL_SECONDS / (188 * 8);
+            if (Needed > LineSymbolsPerInterval - Overhead)
+                NumK28 = 0;
         }
     }
     Enc->Rate = Rate;
-    Enc->Needed = Needed;
-    Enc->Available = Line - Overhead;
-    Enc->K28BeforePacket = K28;
+    Enc->SymbolsNeededPerInterval = Needed;
+    Enc->SymbolsAvailablePerInterval = LineSymbolsPerInterval - Overhead;
+    Enc->NumK28BeforePacket = NumK28;
     return DTAPI_OK;
 }
 
@@ -202,7 +203,7 @@ void DtAsiEnc_Init(DtAsiEnc* Enc)
 {
     memset(Enc, 0, sizeof(*Enc));
     Enc->InSize = Enc->InUsed = Enc->OutSize = 188;
-    Enc->Burst = true;
+    Enc->IsBurst = true;
     ApplyRate(Enc, 10000000, Enc->OutSize, false);
     DtAsiEnc_Start(Enc);
 }
@@ -242,9 +243,9 @@ DtapiResult DtAsiEnc_SetTxMode(DtAsiEnc* Enc, int TxMode)
     Enc->InSize = In;
     Enc->InUsed = Used;
     Enc->OutSize = Out;
-    Enc->Raw = Raw;
-    Enc->Burst = (TxMode & DTAPI_TXMODE_BURST) != 0;
-    Enc->TxOnTime = (TxMode & DTAPI_TXMODE_TXONTIME) != 0;
+    Enc->IsRaw = Raw;
+    Enc->IsBurst = (TxMode & DTAPI_TXMODE_BURST) != 0;
+    Enc->IsTxOnTime = (TxMode & DTAPI_TXMODE_TXONTIME) != 0;
 
     // The rate counts in the new packet size; one the new size does not fit is refused
     // when the stream starts, not here.
@@ -256,24 +257,24 @@ DtapiResult DtAsiEnc_SetTxMode(DtAsiEnc* Enc, int TxMode)
 //
 DtapiResult DtAsiEnc_SetRate(DtAsiEnc* Enc, int64_t Rate)
 {
-    return ApplyRate(Enc, Rate, Enc->OutSize, Enc->Raw);
+    return ApplyRate(Enc, Rate, Enc->OutSize, Enc->IsRaw);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc)
 {
-    if (!Enc->TxOnTime)
+    if (!Enc->IsTxOnTime)
     {
-        DtapiResult Result = ApplyRate(Enc, Enc->Rate, Enc->OutSize, Enc->Raw);
+        DtapiResult Result = ApplyRate(Enc, Enc->Rate, Enc->OutSize, Enc->IsRaw);
         if (Result != DTAPI_OK)
             return Result;
     }
     Enc->Rd = 1;
-    Enc->Acc = 0;
+    Enc->RateAccumulator = 0;
     Enc->ByteIndex = 0;
-    Enc->K28Sent = 0;
-    Enc->ToSkip = 0;
+    Enc->NumK28Sent = 0;
+    Enc->BytesToSkip = 0;
     Enc->SyncErr = Enc->SyncErrLatched = false;
     Enc->OnTimeState = ONTIME_INIT;
     return DTAPI_OK;
@@ -299,16 +300,17 @@ typedef struct Cursor
 //
 static bool StartPacket(DtAsiEnc* Enc, Cursor* C)
 {
-    if (Enc->Raw || Enc->ByteIndex != 0)
+    if (Enc->IsRaw || Enc->ByteIndex != 0)
         return true;
 
-    if (Enc->ToSkip > 0)
+    if (Enc->BytesToSkip > 0)
     {
-        size_t Skip = (size_t)Enc->ToSkip < C->InLeft ? (size_t)Enc->ToSkip : C->InLeft;
+        size_t Skip =
+            (size_t)Enc->BytesToSkip < C->InLeft ? (size_t)Enc->BytesToSkip : C->InLeft;
         C->In += Skip;
         C->InLeft -= Skip;
-        Enc->ToSkip -= (int)Skip;
-        if (Enc->ToSkip > 0 || C->InLeft == 0)
+        Enc->BytesToSkip -= (int)Skip;
+        if (Enc->BytesToSkip > 0 || C->InLeft == 0)
             return false;
     }
 
@@ -326,11 +328,11 @@ static bool StartPacket(DtAsiEnc* Enc, Cursor* C)
     else
         Enc->SyncErr = false;
 
-    while (Enc->K28Sent < Enc->K28BeforePacket && C->OutLeft > 0)
+    while (Enc->NumK28Sent < Enc->NumK28BeforePacket && C->OutLeft > 0)
     {
         PutK28(Enc, &C->Out);
         C->OutLeft--;
-        Enc->K28Sent++;
+        Enc->NumK28Sent++;
     }
     return C->OutLeft > 0;
 }
@@ -340,8 +342,8 @@ static bool StartPacket(DtAsiEnc* Enc, Cursor* C)
 static void EndPacket(DtAsiEnc* Enc)
 {
     Enc->ByteIndex = 0;
-    Enc->K28Sent = 0;
-    Enc->ToSkip = Enc->InSize - Enc->InUsed;
+    Enc->NumK28Sent = 0;
+    Enc->BytesToSkip = Enc->InSize - Enc->InUsed;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeNormal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -358,27 +360,27 @@ static void EncodeNormal(DtAsiEnc* Enc, Cursor* C)
 
         // The packet's bytes, then the zeros that make it OutSize. Among the zeros of
         // ADD16 no byte of the packet is left.
-        for (int Zeros = 0; Zeros < 2; Zeros++)
+        for (int Pass = 0; Pass < 2; Pass++)
         {
-            int Want = Enc->ByteIndex < Enc->InUsed
-                           ? (Zeros == 0 ? Enc->InUsed - Enc->ByteIndex : 0)
-                           : (Zeros == 0 ? 0 : Enc->OutSize - Enc->ByteIndex);
-            if (Zeros == 0 && (size_t)Want > C->InLeft)
-                Want = (int)C->InLeft;
-            while (C->OutLeft > 0 && Want > 0)
+            int BytesWanted = Enc->ByteIndex < Enc->InUsed
+                                  ? (Pass == 0 ? Enc->InUsed - Enc->ByteIndex : 0)
+                                  : (Pass == 0 ? 0 : Enc->OutSize - Enc->ByteIndex);
+            if (Pass == 0 && (size_t)BytesWanted > C->InLeft)
+                BytesWanted = (int)C->InLeft;
+            while (C->OutLeft > 0 && BytesWanted > 0)
             {
-                Enc->Acc += Enc->Needed;
-                if (Enc->Acc >= 0)
+                Enc->RateAccumulator += Enc->SymbolsNeededPerInterval;
+                if (Enc->RateAccumulator >= 0)
                 {
-                    Enc->Acc -= Enc->Available;
-                    PutByte(Enc, &C->Out, Zeros == 0 ? *C->In : 0);
-                    if (Zeros == 0)
+                    Enc->RateAccumulator -= Enc->SymbolsAvailablePerInterval;
+                    PutByte(Enc, &C->Out, Pass == 0 ? *C->In : 0);
+                    if (Pass == 0)
                     {
                         C->In++;
                         C->InLeft--;
                     }
                     Enc->ByteIndex++;
-                    Want--;
+                    BytesWanted--;
                 }
                 else
                     PutK28(Enc, &C->Out);
@@ -402,12 +404,13 @@ static void EncodeBurst(DtAsiEnc* Enc, Cursor* C)
         if (!StartPacket(Enc, C))
             break;
 
-        if (Enc->Acc < 0)
+        if (Enc->RateAccumulator < 0)
         {
-            int64_t K28 = ((Enc->Needed - 1) - Enc->Acc) / Enc->Needed;
+            int64_t K28 = ((Enc->SymbolsNeededPerInterval - 1) - Enc->RateAccumulator) /
+                          Enc->SymbolsNeededPerInterval;
             if ((size_t)K28 > C->OutLeft)
                 K28 = (int64_t)C->OutLeft;
-            Enc->Acc += Enc->Needed * K28;
+            Enc->RateAccumulator += Enc->SymbolsNeededPerInterval * K28;
             C->OutLeft -= (size_t)K28;
             for (; K28 > 0; K28--)
                 PutK28(Enc, &C->Out);
@@ -421,7 +424,7 @@ static void EncodeBurst(DtAsiEnc* Enc, Cursor* C)
         if (Bytes > C->OutLeft)
             Bytes = C->OutLeft;
         Enc->ByteIndex += (int)Bytes;
-        Enc->Acc += Enc->Needed * (int64_t)Bytes;
+        Enc->RateAccumulator += Enc->SymbolsNeededPerInterval * (int64_t)Bytes;
         C->InLeft -= Bytes;
         C->OutLeft -= Bytes;
         for (; Bytes > 0; Bytes--)
@@ -432,7 +435,7 @@ static void EncodeBurst(DtAsiEnc* Enc, Cursor* C)
         if (Zeros > C->OutLeft)
             Zeros = C->OutLeft;
         Enc->ByteIndex += (int)Zeros;
-        Enc->Acc += Enc->Needed * (int64_t)Zeros;
+        Enc->RateAccumulator += Enc->SymbolsNeededPerInterval * (int64_t)Zeros;
         C->OutLeft -= Zeros;
         for (; Zeros > 0; Zeros--)
             PutByte(Enc, &C->Out, 0);
@@ -440,7 +443,7 @@ static void EncodeBurst(DtAsiEnc* Enc, Cursor* C)
         if (Enc->ByteIndex >= Enc->OutSize)
         {
             EndPacket(Enc);
-            Enc->Acc -= Enc->Available * Enc->OutSize;
+            Enc->RateAccumulator -= Enc->SymbolsAvailablePerInterval * Enc->OutSize;
         }
     }
 }
@@ -457,8 +460,8 @@ static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
         switch (Enc->OnTimeState)
         {
         case ONTIME_INIT:
-            Enc->Now = Enc->Next = 0;
-            Enc->First = true;
+            Enc->NowTicks = Enc->PacketTimeTicks = 0;
+            Enc->IsFirstPacket = true;
             Enc->ByteIndex = 0;
             Enc->OnTimeState = ONTIME_TIME;
             break;
@@ -490,24 +493,24 @@ static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
             if (C->InLeft > 0)
             {
                 Enc->SyncErr = false;
-                Enc->Next =
+                Enc->PacketTimeTicks =
                     (uint32_t)Enc->TimeBytes[0] | (uint32_t)Enc->TimeBytes[1] << 8 |
                     (uint32_t)Enc->TimeBytes[2] << 16 | (uint32_t)Enc->TimeBytes[3] << 24;
-                if (Enc->First)
+                if (Enc->IsFirstPacket)
                 {
-                    Enc->First = false;
-                    Enc->Now = Enc->Next;
+                    Enc->IsFirstPacket = false;
+                    Enc->NowTicks = Enc->PacketTimeTicks;
                 }
                 Enc->OnTimeState = ONTIME_BYTES;
             }
             break;
 
         case ONTIME_BYTES:
-            while (C->OutLeft > 0 && (int32_t)(Enc->Next - Enc->Now) > 0)
+            while (C->OutLeft > 0 && (int32_t)(Enc->PacketTimeTicks - Enc->NowTicks) > 0)
             {
                 PutK28(Enc, &C->Out);
                 C->OutLeft--;
-                Enc->Now += 2;
+                Enc->NowTicks += 2;
             }
             if (C->OutLeft == 0)
                 break;
@@ -517,7 +520,7 @@ static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
                 C->InLeft--;
                 C->OutLeft--;
                 Enc->ByteIndex++;
-                Enc->Now += 2;
+                Enc->NowTicks += 2;
             }
             if (C->OutLeft == 0 || Enc->ByteIndex < Enc->InUsed)
                 break;
@@ -526,24 +529,24 @@ static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
                 PutByte(Enc, &C->Out, 0);
                 C->OutLeft--;
                 Enc->ByteIndex++;
-                Enc->Now += 2;
+                Enc->NowTicks += 2;
             }
             if (Enc->ByteIndex >= Enc->OutSize)
             {
                 Enc->ByteIndex = 0;
-                Enc->ToSkip = Enc->InSize - Enc->InUsed;
-                Enc->OnTimeState = Enc->ToSkip > 0 ? ONTIME_SKIP : ONTIME_TIME;
+                Enc->BytesToSkip = Enc->InSize - Enc->InUsed;
+                Enc->OnTimeState = Enc->BytesToSkip > 0 ? ONTIME_SKIP : ONTIME_TIME;
             }
             break;
 
         default: // ONTIME_SKIP
         {
-            size_t Skip =
-                (size_t)Enc->ToSkip < C->InLeft ? (size_t)Enc->ToSkip : C->InLeft;
+            size_t Skip = (size_t)Enc->BytesToSkip < C->InLeft ? (size_t)Enc->BytesToSkip
+                                                               : C->InLeft;
             C->In += Skip;
             C->InLeft -= Skip;
-            Enc->ToSkip -= (int)Skip;
-            if (Enc->ToSkip == 0)
+            Enc->BytesToSkip -= (int)Skip;
+            if (Enc->BytesToSkip == 0)
                 Enc->OnTimeState = ONTIME_TIME;
             break;
         }
@@ -554,32 +557,33 @@ static void EncodeOnTime(DtAsiEnc* Enc, Cursor* C)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Encode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtAsiEnc_Encode(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
-                     size_t OutSyms, size_t* Taken, size_t* Written)
+                     size_t OutSymbols, size_t* BytesTaken, size_t* SymbolsWritten)
 {
-    Cursor C = {In, InSize, Out, OutSyms};
-    if (Enc->TxOnTime)
+    Cursor C = {In, InSize, Out, OutSymbols};
+    if (Enc->IsTxOnTime)
         EncodeOnTime(Enc, &C);
-    else if (Enc->Burst)
+    else if (Enc->IsBurst)
         EncodeBurst(Enc, &C);
     else
         EncodeNormal(Enc, &C);
-    *Taken = InSize - C.InLeft;
-    *Written = OutSyms - C.OutLeft;
+    *BytesTaken = InSize - C.InLeft;
+    *SymbolsWritten = OutSymbols - C.OutLeft;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_Pad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Syms)
+void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Symbols)
 {
-    for (; Syms > 0; Syms--)
+    for (; Symbols > 0; Symbols--)
         PutK28(Enc, &Out);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_BytesOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_BytesInSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int64_t DtAsiEnc_BytesOf(const DtAsiEnc* Enc, int64_t Syms)
+int64_t DtAsiEnc_BytesInSymbols(const DtAsiEnc* Enc, int64_t Symbols)
 {
-    return (int64_t)((double)Enc->Needed * (double)Syms / (double)Enc->Available);
+    return (int64_t)((double)Enc->SymbolsNeededPerInterval * (double)Symbols /
+                     (double)Enc->SymbolsAvailablePerInterval);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAsiEnc_GetFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
