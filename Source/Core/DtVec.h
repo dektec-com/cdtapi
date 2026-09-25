@@ -36,7 +36,8 @@ typedef struct DtVec
     size_t ElemSize;
 } DtVec;
 
-// Prepares an empty vector. No allocation happens until the first push or reserve.
+// Prepares an empty vector. No allocation happens until the first push, reserve or
+// resize.
 // ElemSize must not be zero.
 void DtVec_Init(DtVec* Vec, size_t ElemSize);
 

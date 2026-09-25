@@ -118,7 +118,8 @@ void DtNet_MulticastMac(bool IpV6, const uint8_t* Group, uint8_t* Mac)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddressIsOfKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Whether an address of the interface is of Kind. An other address is in SubnetOf's
-// subnet, or of no other kind when SubnetOf is empty.
+// subnet, or, when SubnetOf is empty, a unicast address of no other kind and not
+// loopback.
 //
 static bool AddressIsOfKind(const OsNetAddr* Addr, int Kind, const uint8_t* SubnetOf)
 {
@@ -427,7 +428,8 @@ static bool IsRepeated(bool IpV6, const uint8_t* Sources, int Index)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinOrLeaveSources -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Joins or leaves every distinct source; stops at a failed join and returns false.
+// Joins or leaves every distinct source; false on any failure. A failed join stops the
+// loop, a failed leave does not.
 //
 static bool JoinOrLeaveSources(bool Join, OsNetSocket* Socket, uint32_t ItfIndex,
                                bool IpV6, const uint8_t* Group, const uint8_t* Sources,

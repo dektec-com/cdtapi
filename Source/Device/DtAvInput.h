@@ -51,6 +51,7 @@ void DtDetVidStd_SetUnknown(DtDetVidStd* Info);
 // Detects the video standard on an attached input. Sets every field of *Info to unknown
 // first; returns DTAPI_OK with the standard, or with it unknown when the receiver reports
 // no valid, locked signal or one that matches no standard. Fails with the result of
-// reading the port's down-scaling configuration or the receiver's status, and with
-// DTAPI_E_DRIVER_INCOMP for a driver older than 1.4.0.111.
+// reading the port's down-scaling configuration, with DTAPI_E_DRIVER_INCOMP for a driver
+// older than the SDI receiver needs, as DtFunc_CheckDriverVersion decides, and with the
+// result of reading the receiver's status.
 DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info);

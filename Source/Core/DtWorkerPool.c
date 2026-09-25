@@ -20,8 +20,8 @@
 //
 // A pool of its own threads keeps a queue of the jobs whose pieces are not all taken yet,
 // one job from each DtJobRunner that is running one. A thread takes the next piece of the
-// first job in the queue, so the jobs of several channels run at the same time when the
-// pool has threads enough, and a piece that takes longer than the others holds up no one.
+// first job in the queue, so a second job starts as soon as the first has no piece left
+// to take, and a piece that takes longer than the others holds up no one.
 //
 // A job lives on the stack of the thread that asked for it, which waits until the job is
 // finished. So a piece is taken under the pool's lock, which also publishes the job to
@@ -50,7 +50,7 @@ typedef struct PoolThread
     DtWorkerPool* Pool;
     OsEvent* Go; // Set for every job queued, and once more to stop
     OsThread* Thread;
-    char Name[32]; // What a process viewer shows beside the thread, before cutting
+    char Name[32]; // Shown by a process viewer, which may truncate it
 } PoolThread;
 
 struct DtWorker
@@ -63,7 +63,8 @@ struct DtWorker
 
 struct DtWorkerPool
 {
-    DtAtomicInt NumRefs; // The program's hold, if it has not let go, and the holders
+    DtAtomicInt
+        NumRefs; // One for the program, one per DtJobRunner, channel and joined thread
     DtAtomicInt NumRunnersSized; // The DtJobRunners that sized buffers by the pool
 
     // A dispatch function of the program's, threads of the pool's own, the program's

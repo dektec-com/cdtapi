@@ -4,10 +4,8 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// At attach the object is handed the data the card's own EEPROM holds for it, and reports
-// itself ready. Until it does, the firmware does not do its work: the card carries
-// nothing, in either direction, whether over SDI, ASI or IP. Every card that has the
-// object needs this; a card without it needs none of it.
+// The object is handed the data the card's EEPROM holds for it and polled until it
+// reports ready.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

@@ -71,8 +71,8 @@ static const struct
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadPortCaps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Reads the port counts and the capabilities of every port into Device: PORT_COUNT is
-// required, MAIN_PORT_COUNT falls back to it for an old driver, and a capability that
-// cannot be read counts as absent. The hardware functions look at the public ports,
+// required, MAIN_PORT_COUNT falls back to it when it cannot be read, and a capability
+// that cannot be read counts as absent. The hardware functions look at the public ports,
 // detection at all of them, so the capabilities cover whichever count is larger. A
 // negative or implausibly large count, which no driver reports, is refused rather than
 // allocated.
@@ -162,8 +162,7 @@ DtapiResult DtDevice_AttachToIndex(DtDevice* Device, int Index, bool MatchSerial
         return Result;
     }
 
-    // The device is attached whether or not this succeeds; a device that is not
-    // activated is there and answers for itself, it only carries no data.
+    // The result does not decide the attach; see DtDevActivate.h.
     DtDevActivate_OnAttach(Drv);
 
     Device->Drv = Drv;
@@ -417,10 +416,6 @@ static DtFirmwareStatus FirmwareStatusFromDriver(int Status)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_DescribeDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Only the public ports count. A port that is only an input or only an output counts as
-// such, an IP port as both, and any other port by its I/O direction; counting stops at
-// the first port whose direction cannot be read.
 //
 void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc)
 {

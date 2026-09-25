@@ -51,7 +51,8 @@ typedef struct DtFuncInstance
 // function without an instance of the role ends in DTAPI_E_NOT_FOUND. Objects are read
 // until one is not found; any other failure to read an object's name is returned. An
 // object whose name starts neither with DF_ nor BC_, or whose role, type or UUID cannot
-// be read, is left out. Returns DTAPI_E_OUT_OF_MEM when the objects do not fit in memory.
+// be read, is left out. Returns DTAPI_E_OUT_OF_MEM when the objects do not fit in memory,
+// and DTAPI_E_BUF_TOO_SMALL when a property name does not fit.
 //
 // Instance is empty after a failure. Release it with DtFunc_Release after a success.
 DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,

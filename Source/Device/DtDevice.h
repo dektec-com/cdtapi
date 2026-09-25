@@ -28,7 +28,7 @@
 // after every configuration change, is not kept here.
 //
 
-// The capabilities of a port that a hardware function description reports.
+// The SDI rates, the AV FIFO and the direction.
 #define DT_CAP_12GSDI UINT64_C(0x01)
 #define DT_CAP_3GSDI UINT64_C(0x02)
 #define DT_CAP_6GSDI UINT64_C(0x04)
@@ -38,7 +38,7 @@
 #define DT_CAP_INPUT UINT64_C(0x40)
 #define DT_CAP_OUTPUT UINT64_C(0x80)
 
-// The capabilities video standard detection looks at.
+// The receiver: internal inputs, the Matrix API, SDI, HDMI and 12G-to-3G scaling.
 #define DT_CAP_INTINPUT                                                                  \
     UINT64_C(0x100) // Internal input, such as a link of a quad-link input
 #define DT_CAP_MATRIX2 UINT64_C(0x200) // The high-level Matrix API can use the port
@@ -46,11 +46,10 @@
 #define DT_CAP_HDMI UINT64_C(0x800)    // HDMI
 #define DT_CAP_SCALE_12GTO3G UINT64_C(0x1000) // The port can scale 12G-SDI down to 3G-SDI
 
-// The capability the device descriptor looks at besides the direction.
+// Transport stream over IP.
 #define DT_CAP_IP UINT64_C(0x2000) // Transport-stream-over-IP port
 
-// The capabilities the input and output channels look at. A hardware function description
-// reports DT_CAP_ASI as well.
+// ASI, the transport-stream receive modes, and per-port hardware: relay, SPI, quad link.
 #define DT_CAP_ASI UINT64_C(0x4000)      // ASI, which the ASI/SDI receiver implies
 #define DT_CAP_MATRIX UINT64_C(0x8000)   // The frame-buffer Matrix API of older cards
 #define DT_CAP_TS UINT64_C(0x10000)      // Transport-stream receive modes
@@ -125,7 +124,8 @@ DtapiResult DtDevice_CheckFirmware(const DtDevice* Device);
 //
 
 // Whether port Port, numbered from 1, of an attached Device has every capability in
-// Caps, a set of DT_CAP_ flags. False for a port the device does not have.
+// Caps, a set of DT_CAP_ flags. False for a port the device does not have or that has
+// no capability at all.
 bool DtDevice_PortHasAllCaps(const DtDevice* Device, int Port, uint64_t Caps);
 
 // Whether the port has at least one capability in Caps. False for a port the device
@@ -151,8 +151,8 @@ bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port);
 // Writes the description of a port in the type-and-port format of a PCI device: "DTA-"
 // and the type number, the sub-type as a letter, and " port " with the port number, as
 // "DTA-2178 port 1" or "DTA-2172A port 3". A DTA-2178 with sub-type 1 is the
-// DTA-2178-ASI: "DTA-2178-ASI port 1". Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf,
-// when Size cannot hold it.
+// DTA-2178-ASI: "DTA-2178-ASI port 1". Returns DTAPI_E_INVALID_BUF for a Buf of NULL or a
+// Size of 0, and DTAPI_E_BUF_TOO_SMALL, with an empty Buf, when Size cannot hold it.
 DtapiResult DtDevice_FormatPortName(int TypeNumber, int SubType, int Port, char* Buf,
                                     size_t Size);
 

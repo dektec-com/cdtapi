@@ -21,7 +21,7 @@
 // is the only way to know that a failed allocation leaves the object usable and unchanged
 // rather than half-modified.
 //
-// The counter is always compiled in. It costs one predictable branch on a path that was
+// The counters are always compiled in. It costs one predictable branch on a path that was
 // about to call malloc anyway, and having the production build take a different route
 // than the tested one would defeat the point.
 //
@@ -43,7 +43,7 @@ void DtAlloc_ResetCount(void);
 
 // How many blocks allocated through the seam have not been freed. A test compares it
 // before and after an operation to find a leak, which matters on platforms where no leak
-// sanitizer runs. DtAlloc_ResetCount does not change it.
+// sanitiser runs. DtAlloc_ResetCount does not change it.
 int DtAlloc_NumLive(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -51,7 +51,7 @@ int DtAlloc_NumLive(void);
 // Doubling from a minimum, shared by every growable container so that they cannot drift
 // apart. Current is the capacity now, Needed the capacity required.
 //
-// Returns 0 with *Out set, or -1 for an Out of NULL, an ElemSize of 0, and a grown
+// Returns 0 with *Out set, or -1 for an Out of NULL, an ElemSize of 0, or a grown
 // capacity whose bytes cannot be represented in a size_t. Refusing is the point: a
 // capacity that wraps produces a small allocation followed by writes beyond its end.
 // MinCapacity must not be 0: from a Current of 0 the doubling would never leave it.

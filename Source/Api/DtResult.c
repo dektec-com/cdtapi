@@ -28,8 +28,8 @@ static const ResultName g_ResultNames[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiResult2Str -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A linear search over some three hundred entries, as a name is looked up for a message
-// and not in a loop.
+// A linear search over the whole table, as a name is looked up for a message and not in
+// a loop.
 //
 const char* DtapiResult2Str(DtapiResult Result)
 {

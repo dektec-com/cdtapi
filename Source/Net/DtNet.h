@@ -77,20 +77,20 @@ typedef struct DtNetOwnAddress
 // Finds the port's own address of Kind, a DT_NET_ADDR_ value, with its mask, its
 // interface's default gateway and the interface; for DT_NET_ADDR_OTHER_V6 an address in
 // the subnet of SubnetOf, or, when SubnetOf is all zero, one of no other kind. The
-// failures are DTAPI_E_INVALID_ARG for a Mac or Own of NULL and an unknown Kind;
-// DTAPI_E_OUT_OF_MEM when the interfaces cannot be looked through for want of memory;
-// DTAPI_E_NW_DRIVER
-// when the operating system has no interface with the MAC address, or the lookup fails
-// otherwise; DTAPI_E_VLAN_NOT_FOUND when it has no VLAN interface with the ID on it and
-// also when the VLAN interface has no such address; and DTAPI_E_NO_ADAPTER_IP_ADDR when
-// the interface has none.
+// failures, in the order they are checked: DTAPI_E_INVALID_ARG for a Mac or Own of NULL
+// and an unknown Kind; DTAPI_E_VLAN_NOT_FOUND when the operating system has the MAC
+// address's interface but no VLAN interface with the ID on it; DTAPI_E_OUT_OF_MEM when
+// the interfaces cannot be looked through for want of memory; DTAPI_E_NW_DRIVER when it
+// has no interface with the MAC address, or the lookup fails otherwise;
+// DTAPI_E_VLAN_NOT_FOUND again when the VLAN interface has no such address; and
+// DTAPI_E_NO_ADAPTER_IP_ADDR when the interface has none.
 DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
                                 const uint8_t* SubnetOf, DtNetOwnAddress* Own);
 
-// The own address to receive a stream to Stream from: IPv4's address; for IPv6 multicast
-// or the any address link-local, then site-local, then global, then any other; for IPv6
-// unicast the interface's address of Stream's kind, which must exist, taking Stream
-// itself as the own address.
+// The own address to receive a stream to StreamAddress from: IPv4's address; for IPv6
+// multicast or the any address link-local, then site-local, then global, then any other;
+// for IPv6 unicast the interface's address of StreamAddress's kind, which must exist,
+// taking StreamAddress itself as the own address.
 DtapiResult DtNet_ChooseInputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
                                      const uint8_t* StreamAddress, DtNetOwnAddress* Own);
 
@@ -105,8 +105,8 @@ DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
 // for an IPv4 broadcast, the neighbour Dst in Own's subnet or link-local, and otherwise
 // the gateway: Gateway when it is not NULL or all zero, else the one of the operating
 // system's best route, or Dst itself when that route has none, else Own's default
-// gateway.
-// DTAPI_E_DST_MAC_ADDR when there is no gateway or the neighbour does not answer.
+// gateway. DTAPI_E_INVALID_ARG for a NULL Own, Dst or Mac; DTAPI_E_DST_MAC_ADDR when
+// there is no gateway or the neighbour does not answer.
 DtapiResult DtNet_ResolveDstMac(const DtNetOwnAddress* Own, const uint8_t* Dst,
                                 const uint8_t* Gateway, uint8_t* Mac);
 
@@ -114,8 +114,8 @@ DtapiResult DtNet_ResolveDstMac(const DtNetOwnAddress* Own, const uint8_t* Dst,
 
 // Whether the port can be used for IPv4 and for IPv6, checked once the link is up: each
 // asked for needs an own address, a socket bound to it, and an enabled interface.
-// Otherwise DTAPI_E_NO_ADAPTER_IP_ADDR, DTAPI_E_BIND or DTAPI_E_DISABLED, or a failure
-// of DtNet_GetOwnAddress.
+// DTAPI_E_INVALID_ARG for a Mac of NULL; otherwise a failure of DtNet_GetOwnAddress,
+// DTAPI_E_NO_ADAPTER_IP_ADDR, DTAPI_E_BIND or DTAPI_E_DISABLED, in that order.
 DtapiResult DtNet_CheckOperational(const uint8_t* Mac, int VlanId, bool IpV4, bool IpV6);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Groups +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

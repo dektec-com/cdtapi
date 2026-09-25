@@ -52,7 +52,8 @@ static DtapiResult CheckDeviceHasObject(const DtDevice* Device, const DtDevObjec
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LookUpObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The object of Instance that is a driver function when IsDriverFunction, of Type and
-// with Role.
+// with Role, as a DtDevObject: LookupResult is DtFunc_CheckDriverVersion's answer, or
+// DTAPI_E_NOT_SUPPORTED when there is none.
 //
 static DtDevObject LookUpObject(const DtDevice* Device, const DtFuncInstance* Instance,
                                 bool IsDriverFunction, int Type, const char* Role)
@@ -82,9 +83,9 @@ static void FreeClocks(ClockList* List)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadClocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads the device's transmit clocks into List, asking again with room for as many as
-// the driver says there are. A driver whose count keeps growing is not believed. Free
-// List with FreeClocks, whatever the result.
+// Reads the device's transmit clocks into List, asking again, twice at most, with room
+// for as many as the driver says there are; a count that still grows is
+// DTAPI_E_DEV_DRIVER. Free List with FreeClocks, whatever the result.
 //
 static DtapiResult ReadClocks(const DtDevice* Device, ClockList* List)
 {
