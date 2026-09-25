@@ -303,7 +303,7 @@ static DtapiResult AttachSide(DtInpChannel* Chan, int Port, uint64_t Caps)
         return Result;
     GivePoolToSide(Chan);
     Result = ReportFailSafe(Chan, &Config);
-    if (Result != DTAPI_OK)
+    if (!DT_SUCCEEDED(Result))
         ReleaseSide(Chan);
     return Result;
 }

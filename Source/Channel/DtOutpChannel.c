@@ -77,7 +77,7 @@ static DtapiResult LockAttached(DtOutpChannel* Chan)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseSide -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Lets go of the side, ignoring failures.
 //
@@ -310,7 +310,7 @@ static DtapiResult AttachSide(DtOutpChannel* Chan, int Port, uint64_t Caps)
     GivePoolToSide(Chan);
 
     Result = ReportFailSafe(Chan, &Config);
-    if (Result != DTAPI_OK)
+    if (!DT_SUCCEEDED(Result))
         ReleaseSide(Chan);
     return Result;
 }
