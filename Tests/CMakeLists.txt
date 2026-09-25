@@ -229,7 +229,7 @@ endif()
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
                  SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimAsi SimAsiRx SimAsiTx SimNw SimNet
-                 SimAvPipe SimAvFifo SimSdiFiles SimActivate)
+                 SimAvPipe SimAvFifo SimSdiFiles SimActivate SimClocks)
     cdtapi_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPI_SIM=set:1")

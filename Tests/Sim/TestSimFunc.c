@@ -384,8 +384,11 @@ DT_TEST(DriverVersionPerObjectType)
         {true, DT_FUNC_TYPE_ASIRX, {1, 0, 4, 48}, {1, 0, 4, 47}},
         {true, DT_FUNC_TYPE_NW, {2, 0, 0, 1}, {2, 0, 0, 0}},
         {true, DT_FUNC_TYPE_SDITXPHY, {1, 5, 4, 143}, {1, 5, 4, 142}},
+        {true, DT_FUNC_TYPE_GENLOCKCTRL, {1, 1, 0, 60}, {1, 1, 0, 59}},
+        {true, DT_FUNC_TYPE_TODCLKCTRL, {1, 13, 19, 296}, {1, 13, 19, 295}},
         {false, DT_BLOCK_TYPE_BURSTFIFO, {1, 0, 5, 50}, {1, 0, 5, 49}},
         {false, DT_BLOCK_TYPE_CDMAC, {1, 0, 4, 48}, {1, 0, 4, 47}},
+        {false, DT_BLOCK_TYPE_CLKCNT, {3, 2, 0, 357}, {3, 2, 0, 356}},
         {false, DT_BLOCK_TYPE_SDIDMX12G, {1, 2, 1, 68}, {1, 2, 1, 67}},
         {false, DT_BLOCK_TYPE_SDITXF, {1, 0, 4, 48}, {1, 0, 3, 99}},
         {false, DT_BLOCK_TYPE_SDITXP, {1, 0, 4, 48}, {0, 9, 9, 999}},
@@ -409,7 +412,7 @@ DT_TEST(DriverVersionPerObjectType)
 
     DT_ASSERT_EQ(DtFunc_CheckDriverVersion(&Newest, false, DT_FUNC_TYPE_SDIRX),
                  DTAPI_E_INTERNAL);
-    DT_ASSERT_EQ(DtFunc_CheckDriverVersion(&Newest, true, DT_FUNC_TYPE_GENLOCKCTRL),
+    DT_ASSERT_EQ(DtFunc_CheckDriverVersion(&Newest, true, DT_FUNC_TYPE_TEMPFANMGR),
                  DTAPI_E_INTERNAL);
 }
 

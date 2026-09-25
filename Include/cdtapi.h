@@ -252,6 +252,18 @@ typedef struct DtDetVidStd
     int OriginalLinkStd;
 } DtDetVidStd;
 
+// The state of a device's genlock.
+typedef struct DtGenlockState
+{
+    int State;            // DTAPI_GENL_ value
+    int RefVidStd;        // Video standard of the reference, as configured; DTAPI_VIDSTD_
+    int DetVidStd;        // Video standard detected at the reference input
+    bool TofTimeValid;    // TofTime is valid
+    DtTimeOfDay TofTime;  // Time of the last top of frame detected at the reference input
+    int TimeSinceLastTof; // Nanoseconds since that top of frame
+    int64_t RefFrameNum;  // Sequence number of that top of frame
+} DtGenlockState;
+
 // One I/O configuration of a port, as DTAPI's DtIoConfig. Group, Value and SubValue are
 // DTAPI_IOCONFIG_ codes, -1 for none. ParXtra holds what some values take besides: in
 // ParXtra[0] the port, numbered from 1, that a double-buffered, loop-through or monitor
@@ -265,6 +277,28 @@ typedef struct DtIoConfig
     int SubValue;
     int64_t ParXtra[2];
 } DtIoConfig;
+
+// The state of a device's time-of-day clock.
+typedef struct DtTimeOfDayState
+{
+    int State;                // DTAPI_TODCLK_ value
+    int TodReference;         // DTAPI_TODREF_INTERNAL or DTAPI_TODREF_STEADYCLOCK
+    int RefDeviation;         // Deviation of the reference from the clock, in ppm
+    DtTimeOfDay TodTimestamp; // The time-of-day clock's timestamp
+    DtTimeOfDay RefTimestamp; // The reference's timestamp
+} DtTimeOfDayState;
+
+// One of a device's transmit clocks, which its ASI and SDI outputs run on.
+typedef struct DtTxClockProperties
+{
+    int TxClockId;      // What DtDevice_GetTxClockCount and the offset functions take
+    int ClockType;      // DTAPI_TXCLK_FRACTIONAL or DTAPI_TXCLK_NON_FRACTIONAL
+    double Frequency;   // Centre frequency in Hz
+    double RangePpm;    // How far the offset reaches either way, in ppm
+    double StepSizePpm; // The offset's step, approximately, in ppm
+    int NumPorts;       // The number of Ports
+    int Ports[DTAPI_TXCLK_MAX_PORTS]; // The ports that use the clock, numbered from 1
+} DtTxClockProperties;
 
 typedef struct DtDevice DtDevice;
 

@@ -683,6 +683,37 @@
 #define DTAPI_RX_SYNTAX_ERR         0x0200
 // clang-format on
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Clocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// The states of a device's genlock and time-of-day clock, and its transmit clocks, with
+// DTAPI's names and values.
+//
+
+// clang-format off
+// Genlock state
+#define DTAPI_GENL_NO_REF           1       // No reference signal
+#define DTAPI_GENL_LOCKING          2       // Locking to the reference
+#define DTAPI_GENL_LOCKED           3       // Locked, or running free without a reference
+#define DTAPI_GENL_INVALID          4       // The reference is not a valid signal
+
+// Time-of-day clock state
+#define DTAPI_TODCLK_FREE_RUN       1       // Running free
+#define DTAPI_TODCLK_LOCKING        2       // Locking to the reference
+#define DTAPI_TODCLK_LOCKED         3       // Locked to the reference
+#define DTAPI_TODCLK_INVALID_REF    4       // Running free, as the reference is not valid
+
+// Time-of-day clock reference
+#define DTAPI_TODREF_INTERNAL       DTAPI_IOCONFIG_TODREF_INTERNAL
+#define DTAPI_TODREF_STEADYCLOCK    DTAPI_IOCONFIG_TODREF_STEADYCLOCK
+
+// Transmit clock type
+#define DTAPI_TXCLK_FRACTIONAL      0       // Such as 148.5/1.001 MHz
+#define DTAPI_TXCLK_NON_FRACTIONAL  1       // Such as 148.5 MHz
+
+// The most ports DtTxClockProperties lists
+#define DTAPI_TXCLK_MAX_PORTS       32
+// clang-format on
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= String sizes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The sizes of the strings in DtHwFuncDesc, terminator included.

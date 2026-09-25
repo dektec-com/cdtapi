@@ -1,0 +1,385 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSimClocks.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDTAPI - The genlock, time-of-day and transmit-clock commands against the emulator
+//
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// CTest runs this with CDTAPI_SIM=1. Every case starts from the emulator's power-on
+// state, finds the objects as the device layer will, and ends with no handle to the
+// emulator and no allocation left open.
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <string.h>
+
+// CDTAPI includes
+#include "Core/DtAlloc.h"           // Live allocations.
+#include "Device/DtFunc.h"          // Finding the objects.
+#include "DtPcie/DtPcieAbi.h"       // The driver's states and video standards.
+#include "DtPcie/DtPcieCmd.h"       // Commands under test.
+#include "DtTest.h"                 // Test framework.
+#include "OAL/OsAbstractionLayer.h" // Device handles.
+#include "OAL/OsThread.h"           // Waiting for the counters.
+#include "OAL/Sim/SimClocks.h"      // The emulated clocks and their test controls.
+#include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "cdtapi.h"                 // DTAPI's constants.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Opens the emulated DTA-2178 in its power-on state and notes the live allocations.
+static OsDrv* OpenSim(int* DtFailures, int* Live)
+{
+    SimDtPcie_Reset();
+    *Live = DtAlloc_Live();
+    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
+    {
+        printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
+        (*DtFailures)++;
+        OsDrv_Close(Drv);
+        return NULL;
+    }
+    return Drv;
+}
+
+// The object of the device's API function Name that is a driver function when IsDf, of
+// Type and with Role; false when there is none.
+static bool FindObject(OsDrv* Drv, const char* Name, bool IsDf, int Type,
+                       const char* Role, DtDrvObject* Ref)
+{
+    DtFuncInstance Instance;
+
+    if (DtFunc_Find(Drv, DT_PROPERTY_DEVICE, Name, "", &Instance) != DTAPI_OK)
+        return false;
+    const DtFuncObject* Object = DtFunc_Get(&Instance, IsDf, Type, Role);
+    if (Object != NULL)
+        *Ref = Object->Ref;
+    DtFunc_Release(&Instance);
+    return Object != NULL;
+}
+
+// Closes the device and checks that nothing is left open or allocated.
+#define FINISH(Drv, Live)                                                                \
+    do                                                                                   \
+    {                                                                                    \
+        OsDrv_Close(Drv);                                                                \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+    } while (0)
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Objects +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The three API functions belong to the device, with the objects, roles and types a
+// DTA-2178 lists, and the emulated driver is new enough for each object.
+DT_TEST(ObjectsAreThoseOfTheDevice)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Ref;
+    DtDriverVersion Version;
+    DT_ASSERT_OK(DtPcieCmd_GetDriverVersion(Drv, &Version));
+
+    DT_ASSERT(
+        FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "", &Ref));
+    DT_ASSERT_EQ(Ref.PortIndex, DT_PROPERTY_DEVICE);
+    DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, true, DT_FUNC_TYPE_GENLOCKCTRL));
+    DT_ASSERT(
+        FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Ref));
+    DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, true, DT_FUNC_TYPE_TODCLKCTRL));
+    DT_ASSERT(FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT,
+                         "NON_FRAC_CLK", &Ref));
+    DT_ASSERT(
+        FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK", &Ref));
+    DT_ASSERT_OK(DtFunc_CheckDriverVersion(&Version, false, DT_BLOCK_TYPE_CLKCNT));
+
+    // A port has none of them.
+    DtFuncInstance Instance;
+    DT_ASSERT_EQ(DtFunc_Find(Drv, 0, "AF_GENLOCKCTRL_AF", "", &Instance),
+                 DTAPI_E_NOT_FOUND);
+    FINISH(Drv, Live);
+}
+
+// A command for another object than the one that takes it is refused.
+DT_TEST(CommandsGoToTheirOwnObject)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Genlock;
+    DtDrvObject Tod;
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Genlock));
+    DT_ASSERT(
+        FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Tod));
+
+    DtGenlockState GenlockState;
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetState(Drv, Tod, &GenlockState),
+                 DTAPI_E_NOT_SUPPORTED);
+    DtTimeOfDayState TodState;
+    DT_ASSERT_EQ(DtPcieCmd_TodClkCtrlGetState(Drv, Genlock, &TodState),
+                 DTAPI_E_NOT_SUPPORTED);
+    uint32_t Count;
+    int FrequencyHz;
+    DT_ASSERT_EQ(DtPcieCmd_ClkCntGetTickCount(Drv, Genlock, &Count, &FrequencyHz),
+                 DTAPI_E_NOT_SUPPORTED);
+    FINISH(Drv, Live);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Genlock +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Without a reference the genlock runs free, which DTAPI reports as locked; the 625i50
+// reference converts to DTAPI's code, and the top of frame lies within one 40 ms frame.
+DT_TEST(GenlockStateAtPowerOn)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Genlock;
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Genlock));
+
+    DtGenlockState State;
+    DT_ASSERT_OK(DtPcieCmd_GenlockGetState(Drv, Genlock, &State));
+    DT_ASSERT_EQ(State.State, DTAPI_GENL_LOCKED);
+    DT_ASSERT_EQ(State.RefVidStd, DTAPI_VIDSTD_625I50);
+    DT_ASSERT_EQ(State.DetVidStd, DTAPI_VIDSTD_UNKNOWN);
+    DT_ASSERT(State.TofTimeValid);
+    DT_ASSERT(State.RefFrameNum > 0);
+    DT_ASSERT(State.TimeSinceLastTof >= 0 && State.TimeSinceLastTof < 40000000);
+    DT_ASSERT(State.TofTime.Nanoseconds < 1000000000u);
+    FINISH(Drv, Live);
+}
+
+// Each state of the driver, and one it does not define, as DTAPI converts them; the top
+// of frame is valid only with a valid reference.
+DT_TEST(GenlockStatesConvert)
+{
+    static const struct
+    {
+        int Driver;
+        int Dtapi;
+        bool Valid;
+    } Cases[] = {
+        {DT_GENLOCKCTRL_STATE_NO_REF, DTAPI_GENL_NO_REF, false},
+        {DT_GENLOCKCTRL_STATE_INVALID_REF, DTAPI_GENL_INVALID, false},
+        {DT_GENLOCKCTRL_STATE_LOCKING, DTAPI_GENL_LOCKING, true},
+        {DT_GENLOCKCTRL_STATE_LOCKED, DTAPI_GENL_LOCKED, true},
+        {DT_GENLOCKCTRL_STATE_FREE_RUN, DTAPI_GENL_LOCKED, true},
+        {99, DTAPI_GENL_NO_REF, true},
+    };
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Genlock;
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Genlock));
+
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        SimClocks_SetGenlock(Cases[i].Driver, DT_VIDSTD_1080I50, DT_VIDSTD_1080I59_94);
+        DtGenlockState State;
+        DT_ASSERT_OK(DtPcieCmd_GenlockGetState(Drv, Genlock, &State));
+        DT_ASSERT_EQ(State.State, Cases[i].Dtapi);
+        DT_ASSERT_EQ(State.TofTimeValid, Cases[i].Valid);
+        DT_ASSERT_EQ(State.RefVidStd, DTAPI_VIDSTD_1080I50);
+        DT_ASSERT_EQ(State.DetVidStd, DTAPI_VIDSTD_1080I59_94);
+    }
+    FINISH(Drv, Live);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmit clocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The two clocks a DTA-2178 lists; too little room gives their number and nothing else.
+DT_TEST(ClockPropertiesAreListed)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Genlock;
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Genlock));
+
+    DtClockProps Props[4];
+    int Num = -1;
+    DT_ASSERT_OK(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, Props, 4, &Num));
+    DT_ASSERT_EQ(Num, 2);
+    DT_ASSERT_EQ(Props[0].ClockIndex, 0);
+    DT_ASSERT_EQ(Props[0].ClockType, DTAPI_TXCLK_FRACTIONAL);
+    DT_ASSERT_EQ(Props[0].FrequencyMicroHz, 148351648351648);
+    DT_ASSERT_EQ(Props[0].StepSizePpt, 20);
+    DT_ASSERT_EQ(Props[0].RangePpt, 200000000);
+    DT_ASSERT_EQ(Props[1].ClockIndex, 1);
+    DT_ASSERT_EQ(Props[1].ClockType, DTAPI_TXCLK_NON_FRACTIONAL);
+    DT_ASSERT_EQ(Props[1].FrequencyMicroHz, 148500000000000);
+    DT_ASSERT_EQ(Props[1].StepSizePpt, 11);
+
+    Num = -1;
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, Props, 1, &Num),
+                 DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(Num, 2);
+    Num = -1;
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, NULL, 0, &Num),
+                 DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(Num, 2);
+
+    // A type the driver does not define is a driver failure.
+    SimClocks_SetClockType(1, 7);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, Props, 4, &Num),
+                 DTAPI_E_DEV_DRIVER);
+    DT_ASSERT_EQ(Num, 0);
+
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, Props, -1, &Num),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, NULL, 1, &Num),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetClockProps(Drv, Genlock, Props, 4, NULL),
+                 DTAPI_E_INVALID_ARG);
+    FINISH(Drv, Live);
+}
+
+// An offset set while the genlock runs free is read back with the frequency it gives;
+// the driver refuses one beyond the range, one for a clock it does not have, and any
+// while the device is genlocked.
+DT_TEST(OffsetsAreSetAndRead)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Genlock;
+    DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
+                         &Genlock));
+
+    int OffsetPpt = -1;
+    int64_t FrequencyMicroHz = -1;
+    DT_ASSERT_OK(
+        DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 1, &OffsetPpt, &FrequencyMicroHz));
+    DT_ASSERT_EQ(OffsetPpt, 0);
+    DT_ASSERT_EQ(FrequencyMicroHz, 148500000000000);
+
+    // 10 ppm on 148.5 MHz is 1485 Hz.
+    DT_ASSERT_OK(DtPcieCmd_GenlockSetFreqOffset(Drv, Genlock, 1, 10000000));
+    DT_ASSERT_OK(
+        DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 1, &OffsetPpt, &FrequencyMicroHz));
+    DT_ASSERT_EQ(OffsetPpt, 10000000);
+    DT_ASSERT_EQ(FrequencyMicroHz, 148501485000000);
+    DT_ASSERT_OK(DtPcieCmd_GenlockSetFreqOffset(Drv, Genlock, 0, -200000000));
+
+    DT_ASSERT_EQ(DtPcieCmd_GenlockSetFreqOffset(Drv, Genlock, 0, 200000001),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockSetFreqOffset(Drv, Genlock, 2, 0), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(
+        DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 2, &OffsetPpt, &FrequencyMicroHz),
+        DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(OffsetPpt, 0);
+    DT_ASSERT_EQ(FrequencyMicroHz, 0);
+
+    SimClocks_SetGenlock(DT_GENLOCKCTRL_STATE_LOCKED, DT_VIDSTD_625I50, DT_VIDSTD_625I50);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockSetFreqOffset(Drv, Genlock, 1, 0), DTAPI_E_IN_USE);
+    DT_ASSERT_OK(
+        DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 1, &OffsetPpt, &FrequencyMicroHz));
+    DT_ASSERT_EQ(OffsetPpt, 10000000);
+
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 1, NULL, &FrequencyMicroHz),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockGetFreqOffset(Drv, Genlock, 1, &OffsetPpt, NULL),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_GenlockSetFreqOffset(NULL, Genlock, 1, 0),
+                 DTAPI_E_INVALID_ARG);
+    FINISH(Drv, Live);
+}
+
+// Each counter counts at its own clock's frequency, which it reports in whole Hertz.
+DT_TEST(CountersCountTheirClock)
+{
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject NonFrac;
+    DtDrvObject Frac;
+    DT_ASSERT(FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT,
+                         "NON_FRAC_CLK", &NonFrac));
+    DT_ASSERT(
+        FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK", &Frac));
+
+    uint32_t First = 0;
+    uint32_t Second = 0;
+    int FrequencyHz = 0;
+    DT_ASSERT_OK(DtPcieCmd_ClkCntGetTickCount(Drv, NonFrac, &First, &FrequencyHz));
+    DT_ASSERT_EQ(FrequencyHz, 148500000);
+    OsTime_SleepMs(2);
+    DT_ASSERT_OK(DtPcieCmd_ClkCntGetTickCount(Drv, NonFrac, &Second, &FrequencyHz));
+    DT_ASSERT(Second - First >= 148500u); // At least 1 ms of ticks, across a wrap too
+
+    DT_ASSERT_OK(DtPcieCmd_ClkCntGetTickCount(Drv, Frac, &First, &FrequencyHz));
+    DT_ASSERT_EQ(FrequencyHz, 148351648);
+
+    DT_ASSERT_EQ(DtPcieCmd_ClkCntGetTickCount(Drv, Frac, NULL, &FrequencyHz),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(FrequencyHz, 0);
+    DT_ASSERT_EQ(DtPcieCmd_ClkCntGetTickCount(Drv, Frac, &First, NULL),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(First, 0u);
+    FINISH(Drv, Live);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time of day +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Without a reference the clock runs free on its internal one; each state and reference
+// of the driver converts as DTAPI converts it, and one the driver does not define as free
+// run on the internal reference.
+DT_TEST(TimeOfDayStatesConvert)
+{
+    static const struct
+    {
+        int Driver;
+        int Reference;
+        int DtapiState;
+        int DtapiReference;
+    } Cases[] = {
+        {DT_TODCLOCKCTRL_STATE_FREE_RUN, DT_TODCLOCKCTRL_REF_INTERNAL,
+         DTAPI_TODCLK_FREE_RUN, DTAPI_TODREF_INTERNAL},
+        {DT_TODCLOCKCTRL_STATE_LOCKING, DT_TODCLOCKCTRL_REF_STEADYCLOCK,
+         DTAPI_TODCLK_LOCKING, DTAPI_TODREF_STEADYCLOCK},
+        {DT_TODCLOCKCTRL_STATE_LOCKED, DT_TODCLOCKCTRL_REF_STEADYCLOCK,
+         DTAPI_TODCLK_LOCKED, DTAPI_TODREF_STEADYCLOCK},
+        {DT_TODCLOCKCTRL_STATE_INVALID_REF, DT_TODCLOCKCTRL_REF_INTERNAL,
+         DTAPI_TODCLK_INVALID_REF, DTAPI_TODREF_INTERNAL},
+        {99, 99, DTAPI_TODCLK_FREE_RUN, DTAPI_TODREF_INTERNAL},
+    };
+    int Live = 0;
+    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    DT_ASSERT(Drv != NULL);
+    DtDrvObject Tod;
+    DT_ASSERT(
+        FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Tod));
+
+    DtTimeOfDayState State;
+    DT_ASSERT_OK(DtPcieCmd_TodClkCtrlGetState(Drv, Tod, &State));
+    DT_ASSERT_EQ(State.State, DTAPI_TODCLK_FREE_RUN);
+    DT_ASSERT_EQ(State.TodReference, DTAPI_TODREF_INTERNAL);
+    DT_ASSERT_EQ(State.RefDeviation, 0);
+    DT_ASSERT(State.TodTimestamp.Seconds > 0);
+    DT_ASSERT(State.TodTimestamp.Nanoseconds < 1000000000u);
+
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        SimClocks_SetTod(Cases[i].Driver, Cases[i].Reference, -3);
+        DT_ASSERT_OK(DtPcieCmd_TodClkCtrlGetState(Drv, Tod, &State));
+        DT_ASSERT_EQ(State.State, Cases[i].DtapiState);
+        DT_ASSERT_EQ(State.TodReference, Cases[i].DtapiReference);
+        DT_ASSERT_EQ(State.RefDeviation, -3);
+    }
+
+    DT_ASSERT_EQ(DtPcieCmd_TodClkCtrlGetState(Drv, Tod, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPcieCmd_TodClkCtrlGetState(NULL, Tod, &State), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(State.State, 0);
+    FINISH(Drv, Live);
+}
+
+DT_TEST_MAIN("SimClocks", DT_RUN(ObjectsAreThoseOfTheDevice),
+             DT_RUN(CommandsGoToTheirOwnObject), DT_RUN(GenlockStateAtPowerOn),
+             DT_RUN(GenlockStatesConvert), DT_RUN(ClockPropertiesAreListed),
+             DT_RUN(OffsetsAreSetAndRead), DT_RUN(CountersCountTheirClock),
+             DT_RUN(TimeOfDayStatesConvert))

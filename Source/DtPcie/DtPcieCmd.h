@@ -164,6 +164,63 @@ DtapiResult DtPcieCmd_SetIoConfig(OsDrv* Drv, const DtIoConfig* Config);
 // Reads the device's time-of-day clock.
 DtapiResult DtPcieCmd_GetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nanoseconds);
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Clocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The device's genlock controller, its time-of-day clock control and its transmit-clock
+// counters, each a driver function or building block of an API function of the device
+// rather than of a port: Object is the one the device layer found. The answers come in
+// DTAPI's terms, converted from the driver's.
+//
+
+// One transmit clock of the genlock controller, in the driver's units.
+typedef struct DtClockProps
+{
+    int ClockIndex;           // What the offset commands take
+    int ClockType;            // DTAPI_TXCLK_FRACTIONAL or DTAPI_TXCLK_NON_FRACTIONAL
+    int StepSizePpt;          // The offset's step, in parts per trillion
+    int RangePpt;             // How far the offset reaches either way, in ppt
+    int64_t FrequencyMicroHz; // The centre frequency
+} DtClockProps;
+
+// DT_CLKCNT_CMD_GET_TICK_COUNT: the counter's 32-bit count, which wraps, and the
+// frequency in Hz it counts at. Both are 0 after a failure.
+DtapiResult DtPcieCmd_ClkCntGetTickCount(OsDrv* Drv, DtDrvObject Object, uint32_t* Count,
+                                         int* FrequencyHz);
+
+// DT_GENLOCKCTRL_CMD_GET_DCO_CLK_PROPS: the transmit clocks, into the MaxProps of Props,
+// with *NumProps set to how many there are. When there are more than MaxProps, which a
+// driver answers with success and entries it has not filled, this returns
+// DTAPI_E_BUF_TOO_SMALL with nothing in Props. A clock type the driver does not define is
+// DTAPI_E_DEV_DRIVER.
+DtapiResult DtPcieCmd_GenlockGetClockProps(OsDrv* Drv, DtDrvObject Object,
+                                           DtClockProps* Props, int MaxProps,
+                                           int* NumProps);
+
+// DT_GENLOCKCTRL_CMD_GET_DCO_FREQ_OFFSET: the offset of clock ClockIndex, in parts per
+// trillion, and its frequency with the offset. Both are 0 after a failure.
+DtapiResult DtPcieCmd_GenlockGetFreqOffset(OsDrv* Drv, DtDrvObject Object, int ClockIndex,
+                                           int* OffsetPpt, int64_t* FrequencyMicroHz);
+
+// DT_GENLOCKCTRL_CMD_GET_STATE2, converted as DTAPI does it: the driver's free run is
+// DTAPI_GENL_LOCKED, as its own genlock event has it, and a state it does not define is
+// DTAPI_GENL_NO_REF; the video standards are DTAPI_VIDSTD_ codes. *State is zero after a
+// failure.
+DtapiResult DtPcieCmd_GenlockGetState(OsDrv* Drv, DtDrvObject Object,
+                                      DtGenlockState* State);
+
+// DT_GENLOCKCTRL_CMD_SET_DCO_FREQ_OFFSET: sets the offset of clock ClockIndex, in parts
+// per trillion. The driver refuses with DTAPI_E_IN_USE while the device is genlocked,
+// and with DTAPI_E_INVALID_ARG an offset beyond the clock's range or a clock it does not
+// have.
+DtapiResult DtPcieCmd_GenlockSetFreqOffset(OsDrv* Drv, DtDrvObject Object, int ClockIndex,
+                                           int OffsetPpt);
+
+// DT_TODCLOCKCTRL_CMD_GET_STATE, converted as DTAPI does it: a state the driver does not
+// define is DTAPI_TODCLK_FREE_RUN, and a reference DTAPI_TODREF_INTERNAL. *State is zero
+// after a failure.
+DtapiResult DtPcieCmd_TodClkCtrlGetState(OsDrv* Drv, DtDrvObject Object,
+                                         DtTimeOfDayState* State);
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SDI receiver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A command for a driver function rather than for the device goes to the function's UUID,

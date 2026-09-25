@@ -83,6 +83,7 @@ set(CDTAPI_SOURCES
     Source/DtPcie/DtEthIp.c
     Source/DtPcie/DtPcieCmd.c
     Source/DtPcie/DtPcieCmdAsi.c
+    Source/DtPcie/DtPcieCmdClock.c
     Source/DtPcie/DtPcieCmdPipe.c
     Source/DtPcie/DtPcieCmdSdiTx.c
     Source/DtPcie/DtPcieCmdVpd.c
@@ -97,6 +98,7 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimActivate.c
     Source/OAL/Sim/SimAsi.c
     Source/OAL/Sim/SimChSdiRx.c
+    Source/OAL/Sim/SimClocks.c
     Source/OAL/Sim/SimDta2110.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c

@@ -24,6 +24,7 @@
 #include "SimActivate.h"            // The activation object.
 #include "SimAsi.h"                 // The ASI blocks.
 #include "SimChSdiRx.h"             // The receive channels.
+#include "SimClocks.h"              // The genlock, time-of-day and transmit clocks.
 #include "SimDtPcie.h"              // What the emulated card reports.
 #include "SimDta2110.h"             // What the emulated DTA-2110 is.
 #include "SimDta2178.h"             // What the emulated card is.
@@ -960,6 +961,15 @@ static int Dispatch(SimDevice* Dev, int FunctionCode, const void* In, size_t InS
                 return SimFail(Dev, Status, DrvStatus);
             return OS_IOCTL_OK;
         }
+        if (SimClocks_Takes(FunctionCode))
+        {
+            uint32_t Status =
+                SimClocks_Cmd(FunctionCode, (Hdr->m_Uuid & DT_UUID_DF_FLAG) != 0, Type,
+                              Role, Cmd, In, InSize, Out, OutSize);
+            if (Status != DT_STATUS_OK)
+                return SimFail(Dev, Status, DrvStatus);
+            return OS_IOCTL_OK;
+        }
         if (SimAsi_Takes(FunctionCode))
             return AsiCmd(Dev, Hdr->m_Uuid, PortIndex, FunctionCode, Type, Cmd, In,
                           InSize, Out, OutSize, DrvStatus);
@@ -1247,6 +1257,7 @@ void SimDtPcie_Reset(void)
     SimNet_Reset();
     SimVpd_Reset();
     SimActivate_Reset();
+    SimClocks_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;
