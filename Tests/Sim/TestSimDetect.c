@@ -88,7 +88,7 @@ static SimSdiSignal SignalOf(const SdiFormat* Format, bool WithVpid)
     Signal.LineLock = 1;
     Signal.Valid = 1;
     Signal.NumSymsHanc = SdiFormat_HancSymbols(Format);
-    Signal.NumSymsVidVanc = SdiFormat_VancSymbols(Format);
+    Signal.NumSymsVidVanc = SdiFormat_ActiveSymbols(Format);
     Signal.NumLinesF1 = Format->LinesF1;
     Signal.NumLinesF2 = SdiFormat_LinesF2(Format);
     Signal.IsLevelB = SdiFormat_IsLevelB(Format) ? 1 : 0;
