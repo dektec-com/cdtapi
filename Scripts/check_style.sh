@@ -5,8 +5,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Rules 4 and 6 are enforced by clang-format, which this script also runs when it is
-# available. The rest are checked here:
+# Rules 4 and 6 are enforced by clang-format 18.1.8, which this script also runs, and
+# fails without. The rest are checked here:
 #
 #   Rule 2  Comments describe what the code does, never what it used to do.
 #   Rule 4  No line longer than 90 characters. Checked here as well as by clang-format,

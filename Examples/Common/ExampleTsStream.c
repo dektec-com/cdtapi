@@ -108,7 +108,7 @@ static const Glyph Glyphs[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrawText -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Draws Text in Colour with its top left corner at macroblock Col, Row, one macroblock
+// Draws Text in Ink with its top left corner at macroblock Col, Row, one macroblock
 // between characters; a colon is one macroblock wide.
 //
 static void DrawText(Colour Picture[MB_ROWS][MB_COLS], int Col, int Row, const char* Text,

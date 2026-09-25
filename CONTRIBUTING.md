@@ -41,8 +41,8 @@
     `DtEthIpHeader`, unpacked.
 
 Rules 4, 5 and 6 already match the surrounding DekTec code; they are adopted, not
-invented. `.clang-format` is derived from `Win/Applications/StreamXpertV3/.clang-format`,
-which states the house style in machine-readable form.
+invented. `.clang-format` is derived from the clang-format file of another DekTec
+application, which states the house style in machine-readable form.
 
 ### File header
 
@@ -153,6 +153,8 @@ belong wherever they are needed.
 | 8 | `Scripts/check_style.sh` |
 | 9 | `Scripts/check_style.sh` for `goto`, then review |
 | 10 | Review |
+| 11 | `Scripts/check_style.sh` |
+| 12 | Review |
 | Everything else | The compilers' warnings, as errors, and review. `.clang-tidy` configures clang-tidy for a run by hand; no gate runs it |
 
 Run them locally:

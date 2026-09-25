@@ -45,8 +45,8 @@ def Separator(Match):
     # of its pattern; an odd leftover character goes to the right-hand run.
     Left = (Available // 2) & ~1
     Right = Available - Left
-    # DekTec convention, as in LibDekTec_C/Source/Device.c: a ".-" rule mirrors around
-    # its title, so the right-hand run starts with "-."; a "+=" rule does not mirror.
+    # DekTec convention: a ".-" rule mirrors around its title, so the right-hand run
+    # starts with "-."; a "+=" rule does not mirror.
     RightPattern = "-." if Pattern == ".-" else "+="
     return "%s%s %s %s %s" % (Indent, Lead, Fill(Pattern, Left), Title,
                               Fill(RightPattern, Right))

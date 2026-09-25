@@ -16,8 +16,9 @@
 //     9217800001:1  checked 26596 packets  first 0  gaps 0  bad 0
 //
 // The port must be an input; DtConfigPort --input makes it one. Exits with 0 when every
-// packet is received, and checks when asked, 2 when the stream stops arriving or no port
-// suits, and 1 when a call fails, a check fails or the command line is wrong.
+// packet is received and, with --check, passes the check; 2 when the stream stops
+// arriving or no port suits; and 1 when a call fails, a check fails or the command line
+// is wrong.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

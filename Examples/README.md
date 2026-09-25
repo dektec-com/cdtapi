@@ -33,8 +33,9 @@ The emulator starts afresh in each process, so a configuration one program sets 
 for the next. On a card the configuration stays.
 
 The emulated DTA-2178 has no IP port. `CDTAPI_SIM_DTA2110` adds an emulated DTA-2110,
-a card with one, at the device index it holds, and `CDTAPI_SIM_LOOPBACK` makes the
-packets a program sends arrive at its own receive side:
+which has one, at the device index the variable holds, 1 or above, as the DTA-2178 is at
+0; and `CDTAPI_SIM_LOOPBACK` makes the packets a program sends arrive at its own receive
+side:
 
     CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtTransmit2110 --count 2 --width 320 \
         --height 240 --rate 25
@@ -66,7 +67,8 @@ up to 3G, where the pool goes unused. `GivePool` in either program has the calls
     DtConfigPort --port 1 --input --vidstd 2160P50 --linkstd 3
     DtReceiveFrames --port 1 --count 10 --threads 4
     DtConfigPort --port 5 --output
-    DtTransmitFrames --port 5 --vidstd 2160P50 --linkstd 3 --in frame --count 250         --threads 4
+    DtTransmitFrames --port 5 --vidstd 2160P50 --linkstd 3 --in frame --count 250 \
+        --threads 4
 
 The frames are the same whatever the number of threads. A pool can also run the pieces
 on a program's own threads, which join it, or on a pool the program already has; the
@@ -136,9 +138,9 @@ included, and 2 when it found nothing, such as no ports or no signal.
 
 Every program includes `cdtapi.h`, and the two ST 2110 programs `cdtapi_avfifo.h` as
 well, through `Common/ExampleCommon.h` and `Common/ExampleAvFifo.h`. The ASI programs
-make their streams with `Common/ExampleTsStream.c`. Nothing of the
-library's own headers is used, so what a program does, an application can do. CTest runs
-every program against the emulator.
+make and check their streams with `Common/ExampleTsStream.c`. None of the library's
+internal headers is used, so what a program does, an application can do. CTest runs every
+program against the emulator.
 
 On a machine with DTAPI's Linux SDK, `Scripts/compare_device_scan.sh <LinuxSDK>`
 compares `DtListDeviceDescs` with DTAPI's own device scan.

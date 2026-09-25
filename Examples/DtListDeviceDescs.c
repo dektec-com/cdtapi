@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Uses DtapiDeviceScan, which describes devices rather than ports. Prints one block per
-// device, every field of its descriptor by name but the network addresses Ip, IpV6 and
+// device, every field of its descriptor by name except the network addresses Ip, IpV6 and
 // MacAddr, then the number of devices:
 //
 //     Device 1

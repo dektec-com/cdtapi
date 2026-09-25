@@ -276,7 +276,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel, uint8_t* 
 
     // The output sends K28.5 from the attach on, and the receiver at the other end of the
     // cable needs a moment to lock to it; a stream sent at once loses its first tens of
-    // milliseconds. DekTec's DtPlay waits 200 ms too.
+    // milliseconds.
     Example_SleepMs(200);
 
     int Exit = Transmit(Channel, Port, TxMode, Stuff, Rate, Count, Src, Buffer);

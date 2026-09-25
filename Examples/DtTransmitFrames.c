@@ -16,10 +16,10 @@
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
-// With --threads a pool of that many threads of the library's own codes the frames, which
-// a 2160p output needs on a slow core. With --flags it then prints the channel's latched
-// flags. It detaches when every frame
-// is written, waiting until the card has sent them. The port must be an output;
+// With --threads a pool of that many threads of the library's own encodes the frames,
+// which a 2160p output needs on a slow core. With --flags it then prints the channel's
+// latched flags. It detaches when every frame is written, waiting until the card has sent
+// them. The port must be an output;
 // DtConfigPort makes it one. Exits with 0 when every frame is written, 2 when there is no
 // SDI output, and 1 when a call fails or the command line is wrong.
 

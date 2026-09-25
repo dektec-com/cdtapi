@@ -6,7 +6,8 @@ It assumes C and a compiler, and nothing about DekTec's other software.
 ## What you need
 
 - **The `DtPcie` driver**, loaded. It is what CDTAPI talks to, and it is all CDTAPI
-  needs at run time: there is no service, no closed library and no licence file.
+  needs at run time: no service for the API itself (ST 2110 timing needs DekTec's PTP
+  service, see `Examples/README.md`), no closed library and no licence file.
 - **A card**, or not: the emulated DTA-2178 answers when `CDTAPI_SIM=1` is set in the
   environment, so a program can be written and run before any hardware arrives.
 
@@ -176,8 +177,10 @@ what an application does not need.
 
 ## Handling failures
 
-Every call that can fail returns a `DtapiResult`. There are no exceptions and nothing is
-reported through `errno`.
+Every call that can fail returns a `DtapiResult`, except the AV FIFO's `Read`,
+`GetFromMemPool` and `SetMaxSize`, which return NULL or nothing and set the text
+`GetLastException` gives. There are no exceptions and nothing is reported through
+`errno`.
 
 **Results below `DTAPI_E` are successes**, some of which carry a warning, such as
 `DTAPI_OK_OBSOLETE_FW`. Compare against `DTAPI_E`, not against `DTAPI_OK`:
@@ -222,8 +225,7 @@ and on the other side:
 
 An ASI output sends idle characters, K28.5, from the moment the channel attaches or
 switches to ASI. Give the receiver at the other end about 200 ms to lock to them before
-the stream starts, as DekTec's DtPlay does; a stream sent at once loses its first tens
-of milliseconds.
+the stream starts; a stream sent at once loses its first tens of milliseconds.
 
 The rate is in bits a second of 188-byte packets, also in the 204-byte modes, as in
 DTAPI. `DtInpChannel_GetTsRateBps` and `DtInpChannel_GetStatus` report what arrives;
@@ -237,8 +239,8 @@ transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all o
 The emulated DTA-2178 has ten ports and no IP port. `CDTAPI_SIM_DTA2110=1` adds an
 emulated DTA-2110, which has one, at device index 1: the value is the index, and 0 is
 the DTA-2178's. `CDTAPI_SIM_LOOPBACK=1` makes the packets a program sends arrive at its
-own receive side. The emulator starts afresh in each
-process, so a configuration one program sets is gone for the next.
+own receive side. The emulator starts afresh in each process, so a configuration one
+program sets is gone for the next.
 
 Two more give the emulated SDI ports something to receive and somewhere to send to,
 through files:
@@ -250,7 +252,7 @@ The port is numbered from 1 and the video standard is a `DTAPI_VIDSTD_` name wit
 its prefix. A file holds whole frames of 10-bit symbols, packed least significant bit
 first, each line from its EAV on and each frame padded with zeros to a multiple of 8
 bytes: what FFmpeg's `sdi` format holds without its header, and what a 10-bit
-`ReadFrame` gives but for the padding. The source plays the file's frames over and
+`ReadFrame` gives, except for the padding. The source plays the file's frames over and
 over at the standard's frame rate, as a card receives them, so that a program that
 looks at the FIFO load before it reads sees them arrive; a value the emulator cannot
 use is reported on stderr and ignored.

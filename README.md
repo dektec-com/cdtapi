@@ -47,7 +47,8 @@ its section, say what it does and which result codes it returns.
     Scripts/build.sh -c windows-sim  # clean rebuild, no driver backends needed
     Scripts/build.sh --lint-only     # style checks only
 
-On Windows, `Scripts\build.ps1` takes the same options from PowerShell.
+On Windows, `Scripts\build.ps1` takes the same options, spelled as PowerShell parameters:
+`-Clean`, `-BuildOnly`, `-TestOnly`, `-Lint`, `-LintOnly` and `-List`.
 
 Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It reads
 `CMakePresets.json`, and the test suites appear in Test Explorer.

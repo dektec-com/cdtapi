@@ -13,8 +13,9 @@ the same interface under other file names.
 
 - **The functions.** Every function the wrapper's `CDTAPI.h` and `CDTAPI_AvFifo.h`
   declared is declared here, with the same meaning, and with the same prototype except
-  for the three that set an I/O configuration, see below, and for `ReadFrame` and
-  `Write`, which take a `void*` and a `const void*` buffer where the wrapper had `char*`.
+  for the three that set an I/O configuration, see below, for `ReadFrame` and `Write`,
+  which take a `void*` and a `const void*` buffer where the wrapper had `char*`, and for
+  `GetFrameProperties`, which returns a `DtapiResult` where the wrapper returned an int.
 - **The names and the values.** The structures, enumerations and macros are DTAPI's, as
   they were, down to the numbers: `DTAPI_OK`, the `DTAPI_E_` codes, `DTAPI_VIDSTD_`,
   `DTAPI_IOCONFIG_`, `MAX_DEVICE_NAME_SIZE`, and the rest.

@@ -47,7 +47,7 @@ bool Example_HasFlag(int Argc, char** Argv, const char* Name);
 const char* Example_Value(int Argc, char** Argv, const char* Name);
 
 // Reads option Name as a decimal integer into *Value, which is left alone when the option
-// is not given. Prints the problem and returns false for a value that is no integer.
+// is not given. Prints the problem and returns false for a value that is not an integer.
 bool Example_Int64(int Argc, char** Argv, const char* Name, int64_t* Value);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Ports +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -71,7 +71,7 @@ bool Example_Succeeded(unsigned int Result);
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Names +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The name of a video standard, its DTAPI_VIDSTD_ macro without the prefix, such as
-// "1080I50", or "UNKNOWN"; NULL for a number that is no video standard.
+// "1080I50", or "UNKNOWN"; NULL for a number that is not a video standard.
 const char* Example_VidStdName(int VidStd);
 
 // The video standard with Name, compared without regard to case. False when there is
