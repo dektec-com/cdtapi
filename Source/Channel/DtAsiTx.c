@@ -28,8 +28,8 @@
 // last word has room for.
 #define DT_ASITX_MAX_WORD_BYTES 128
 
-// EncodeFifo codes into the buffer only when it has at least this much room, and then as
-// much as fits.
+// EncodeFifo encodes into the buffer only when it has at least this much room, and then
+// as much as fits.
 #define DT_ASITX_MIN_OUTPUT_FREE (1024 * 1024)
 
 // A write wakes the converter when it leaves more than 100 packets or 5 ms of data in
@@ -175,7 +175,7 @@ static uint16_t* NextOutputSpan(const DtAsiTx* Asi, size_t Free, size_t* Syms)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InsertNulls -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Count null packets coded into the buffer as far as Free bytes allow.
+// Count null packets encoded into the buffer as far as Free bytes allow.
 //
 static DtapiResult InsertNulls(DtAsiTx* Asi, int64_t Count, size_t Free)
 {
@@ -205,8 +205,9 @@ static DtapiResult InsertNulls(DtAsiTx* Asi, int64_t Count, size_t Free)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// When the buffer has 1 MB of room, as much of what the FIFO holds as fits is coded into
-// it. With the FIFO empty and less than a data word left in the buffer, K28.5 fill that
+// When the buffer has DT_ASITX_MIN_OUTPUT_FREE of room, as much of what the FIFO holds as
+// fits is encoded into it. With the FIFO empty and less than a data word left in the
+// buffer, K28.5 fill that
 // word, so that the last symbols go out.
 //
 static DtapiResult EncodeFifo(DtAsiTx* Asi)
@@ -358,7 +359,7 @@ static DtapiResult SetSlavesOpMode(DtAsiTx* Asi, int OpMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseSlaves -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Every PHY and encoder idle, the functions released.
+// Every PHY and SDI encoder idle, the functions released.
 //
 static void ReleaseSlaves(DtAsiTx* Asi)
 {
@@ -381,8 +382,8 @@ static void ReleaseSlaves(DtAsiTx* Asi)
 //
 // Every port whose direction is a double-buffered output or a monitor naming this port in
 // ParXtra[0], taken exclusively through the function its direction gives, with its PHY
-// and, when it has one, its encoder. A slave another user holds fails the attach with the
-// driver's result.
+// and, when it has one, its SDI encoder. A slave another user holds fails the attach with
+// the driver's result.
 //
 static DtapiResult FindSlaves(DtAsiTx* Asi)
 {
@@ -938,7 +939,7 @@ static DtapiResult HasRoom(DtAsiTx* Asi, size_t Size, bool* Room)
 //
 // What fits goes into the FIFO at once; otherwise 1 MB at a time, waiting for room
 // without the lock, which a detach ends with DTAPI_E_CANCELLED and a return to idle with
-// DTAPI_E_IDLE. While holding the bytes are converted at once; while sending the thread
+// DTAPI_E_IDLE. While holding the bytes are encoded at once; while sending the thread
 // is woken when the FIFO holds more than 100 packets or 5 ms of data.
 //
 static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t Size)
@@ -996,7 +997,7 @@ static void WakeWaitingWrite(DtTx* Tx)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitUntilSent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Until the load is a data word or less, looking every 10 ms without the lock. The load
-// leaves out the burst FIFO once the buffer is empty, where up to half a megabyte of
+// leaves out the burst FIFO once the buffer is empty, where the burst FIFO's worth of
 // symbols, some 10 ms of the line, is still to go, so the burst FIFO is waited for as
 // well. The wait gives up when the load has not gone down for a second.
 //

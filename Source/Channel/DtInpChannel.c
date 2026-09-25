@@ -308,7 +308,7 @@ static DtapiResult AttachSide(DtInpChannel* Chan, int Port, uint64_t Caps)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The channel's checks, the port's, and then the side's, in that order.
 //
@@ -363,7 +363,8 @@ DtapiResult DtInpChannel_AttachToPort(DtInpChannel* InpChannel, DtDevice* Device
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Waits up to 100 ms for a read to return, then stops, releases the side and the device.
+// Waits DT_DETACH_TRIES pauses of DT_DETACH_PAUSE_MS for a read to return, then stops,
+// releases the side and the device.
 //
 DtapiResult DtInpChannel_Detach(DtInpChannel* InpChannel, int DetachMode)
 {
@@ -718,9 +719,9 @@ static DtapiResult WaitForData(DtInpChannel* Chan, int64_t RemainingMs)
 //
 // The checks a frame read makes, and DTAPI_E_IN_USE while a read on another thread has
 // not returned: two reads would take frames from the ring in no set order. Then, until a
-// frame is taken, the time is up or the channel is being detached: take a frame if the
-// side holds one, and otherwise wait without the lock, so that the channel is usable
-// while this read waits.
+// frame is delivered, the time is up or the channel is being detached: deliver a frame
+// when the side holds one, and otherwise wait without the lock, so that the channel is
+// usable while this read waits.
 //
 DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
                                     int* FrameSize, int TimeOut, DtTimeOfDay* ArrivalTime)

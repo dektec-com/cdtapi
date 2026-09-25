@@ -12,7 +12,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
-#include "Core/DtWorkerPool.h"  // The threads a batch of lines is coded over.
+#include "Core/DtWorkerPool.h"  // The threads a batch of lines is encoded over.
 #include "Device/DtFunc.h"      // Finding the transmit blocks.
 #include "DtPcieAbi.h"          // Operational modes and types.
 #include "DtSdiTx.h"            // Interface being implemented.
@@ -42,15 +42,15 @@
 // The burst FIFO's load is read at most five times for 75 % full.
 #define DT_SDITX_BURST_POLLS 5
 
-// The format event of the first frame of a run from which the thread may write a black
-// frame after it: the application has until then, half a frame, to write the second
-// frame. The last quarter of a frame goes out only when data follows it.
+// The sequence number of the first frame's format event from which on the thread may
+// follow that frame with a black one: the application has until then, half a frame, to
+// write the second frame. The last quarter of a frame goes out only when data follows it.
 #define DT_SDITX_FIRST_BLACK_EVENT_SEQ 2
 
 // The PHY's underflow flag is read every so many format events.
 #define DT_SDITX_PHY_POLL_EVENTS 50
 
-// The largest header with its padding: 20 bytes padded to 512 bits.
+// The largest header with its padding: DT_SDIFRAME_TX_HEADER_BYTES padded to 512 bits.
 #define DT_SDITX_MAX_HEADER_BYTES 64
 
 // The search for the start of line 1 of an SD frame.
@@ -93,7 +93,8 @@ typedef struct DtSdiTx
     bool FifoUfl, FifoUflLatched;
     bool DmaUfl, DmaUflLatched;
 
-    // The configured standard; Layout.VidStd is DTAPI_VIDSTD_UNKNOWN without a buffer.
+    // The configured standard; FrameLayout.VidStd is DTAPI_VIDSTD_UNKNOWN without a
+    // buffer.
     DtSdiFrameLayout FrameLayout;
     size_t CodedFrameSize; // A coded frame with its header
     size_t RawFrameSize;   // A raw frame in the current transmit mode
@@ -128,7 +129,7 @@ typedef struct DtSdiTx
     DtSdiTxWriteStage WriteStage;
     DtSdiTxSdSearchState SdSearchState;
     bool FrameRoomReserved;  // Its header is written and room for it was found
-    int LinesEncoded;        // Lines coded into the buffer
+    int LinesEncoded;        // Lines encoded into the buffer
     int LineStartBit;        // The bit the next line starts at in its first byte
     size_t PartialLineBytes; // Bytes in PartialLine
     size_t FrameBytesLeft;   // Raw bytes of the frame, padding included, not yet taken
@@ -331,8 +332,9 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalKeeperThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // While sending: waits for the formatter's format events, the only waiter for them,
-// takes their underflow flag and, now and then, the PHY's, and writes a black frame when
-// the frame going out is the last one written. After the first frame of a run it waits
+// takes their underflow flag and, every DT_SDITX_PHY_POLL_EVENTS events and after a wait
+// without an event, the PHY's, and writes a black frame when the frame going out is the
+// last one written. After the first frame of a run it waits
 // with that until the frame's event DT_SDITX_FIRST_BLACK_EVENT_SEQ or a wait that times
 // out, so that an application that wrote only one frame before sending has time to write
 // the next. Wakes a write waiting for room after each wait, whether an event came or not.
@@ -627,9 +629,9 @@ static DtapiResult ChangeTxControl(DtSdiTx* Sdi, int TxControl)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for five coded frames and as many more as a 48 MB FIFO holds of raw 10-bit
-// frames, rounded up to a power of two within the buffer's bounds, and to whole prefetch
-// units of pages.
+// Room for DT_SDITX_BUF_ROOM_FRAMES coded frames and as many more as
+// DT_SDITX_FIFO_SIZE_TYP holds of raw 10-bit frames, rounded up to a power of two within
+// the buffer's bounds, and to whole prefetch units of pages.
 //
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
@@ -646,7 +648,7 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocBandSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The conversion's working symbols, one set for every band a batch of lines divides into.
+// The encoder's working symbols, one set for every band a batch of lines divides into.
 // NULL for a standard that has none, which is every standard except 4K.
 //
 static uint16_t* AllocBandSymbols(DtSdiTx* Sdi)
@@ -1005,7 +1007,8 @@ static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesL
 // monotonic clock reaches Deadline, DT_TX_NO_DEADLINE for no limit. While sending the
 // thread wakes the wait after every format event; while holding nothing goes out, and the
 // wait looks again every quarter frame. Returns DTAPI_E_CANCELLED for a detach,
-// DTAPI_E_IDLE when the channel went idle meanwhile, and DTAPI_E_TIMEOUT.
+// DTAPI_E_IDLE when the channel went idle meanwhile, DTAPI_E_TIMEOUT, or the failure of
+// reading the read offset.
 //
 static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
 {
@@ -1088,8 +1091,8 @@ static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Byt
         Src = Sdi->PartialLine;
     }
 
-    // A raw line becomes one coded line, or the two coded lines of 4K, each of them
-    // preceded by its line header.
+    // A raw line becomes one coded line, or for 4K two coded lines, each behind its line
+    // header.
     size_t Coded = DtSdiFrame_TxCodedBytesPerLine(Layout);
     size_t Offset = WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
                                         (size_t)Sdi->LinesEncoded * Coded);
@@ -1132,7 +1135,7 @@ static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Byt
 //
 // Encodes the band of raw lines this piece takes straight into the buffer. The bands are
 // independent: a raw line's coded lines, one or the two of 4K with their headers, are
-// its own, no coding writes past them, and the working symbols are per band.
+// its own, no encoding writes past them, and the working symbols are per band.
 //
 typedef struct EncodeBand
 {
@@ -1200,7 +1203,7 @@ static void EncodeLines(void* Context, int Index, int Count)
 //
 // A batch holds the channel's lock while it runs, so it is capped at a quarter of the
 // frame: long enough that the threads earn their dispatch, short enough that a detach or
-// a stop does not wait a whole frame's coding for the lock.
+// a stop does not wait a whole frame's encoding for the lock.
 //
 static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft)
 {

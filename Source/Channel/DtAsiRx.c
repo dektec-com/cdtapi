@@ -31,8 +31,8 @@
 // How often a read looks for more.
 #define DT_ASIRX_READ_POLL_MS 5
 
-// Bytes a scan passed over, which a take passes over too: a packet dropped for want of
-// room, or bytes searched for the stream.
+// Bytes a scan passed over, which a delivery passes over too: a packet dropped for want
+// of room, or bytes searched for the stream.
 typedef struct DtAsiRxSkip
 {
     uint64_t Position; // Counted as DtAsiRx.ReadPosition
@@ -62,7 +62,7 @@ typedef struct DtAsiRx
     size_t NextSkipIndex;
     uint8_t* SearchBuffer; // Where the stream is searched for
 
-    // Output of a packet converted when the caller's buffer had less room than the
+    // Output of a packet decoded when the caller's buffer had less room than the
     // largest packet's output, kept for what the buffer could not take.
     uint8_t Pending[DT_TRP_MAX_OUTPUT_BYTES];
     int PendingPos, PendingLen;
@@ -130,7 +130,7 @@ static DtapiResult AdvanceReadOffset(DtAsiRx* Asi, size_t Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SkipBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Passes over Bytes after what was scanned, noting them for the take.
+// Passes over Bytes after what was scanned, noting them for the delivery.
 //
 static DtapiResult SkipBytes(DtAsiRx* Asi, size_t Bytes)
 {
@@ -174,8 +174,8 @@ static DtapiResult UpdateOvf(DtAsiRx* Asi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScanBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Walks what the card wrote since the last scan, converting it. In sync, each packet is
-// converted to count its output; out of sync, the stream is searched for in what three
+// Walks what the card wrote since the last scan, decoding it. In sync, each packet is
+// decoded to count its output; out of sync, the stream is searched for in what three
 // packets or more fill, and what was searched without finding it is passed over except
 // for its last three packets' worth less a byte, where a stream could still start. When
 // nothing is left to deliver, what was scanned is released at once, so that a stream the
@@ -207,7 +207,7 @@ static DtapiResult ScanBuffer(DtAsiRx* Asi)
                 DtTsTrp_Decode(&Asi->Scan, PacketAt(Asi, Asi->ScannedBytes, Copy), NULL);
             if (OutputBytes < 0)
             {
-                // The search accepts a first packet the conversion refuses, so it starts
+                // The search accepts a first packet the decoder refuses, so it starts
                 // a byte further on, or it would find this packet again.
                 Asi->OutOfSync = true;
                 Result = SkipBytes(Asi, 1);
@@ -395,7 +395,8 @@ static DtapiResult ClearFifo(DtRx* Rx)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The scan, the burst FIFO's flag, and the converter's.
+// DTAPI_RX_FIFO_OVF from packets dropped and from the burst FIFO's count, and the scan
+// decoder's DTAPI_RX_SYNC_ERR.
 //
 static DtapiResult GetFlags(DtRx* Rx, int* Flags, int* Latched)
 {

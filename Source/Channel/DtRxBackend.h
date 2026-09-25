@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "Core/DtWorkerPool.h" // The pool a frame's lines are converted over.
+#include "Core/DtWorkerPool.h" // The pool a frame's lines are decoded over.
 #include "Device/DtDevice.h"   // The device and its port capabilities.
 #include "DtPcieCmd.h"         // DtIoConfig and DtDrvObject.
 #include "cdtapi.h"            // Results and DtTimeOfDay.
@@ -25,7 +25,7 @@
 // DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. The side is a DtRx, a struct that each
 // side's own begins with, and its function table is the side's backend, a DtRxBackend.
 // DtInpChannel.c keeps the checks that do not depend on the side, the lock, detaching and
-// the waits of a read, and calls these with the lock held but where a function says
+// the waits of a read, and calls these with the lock held, except where a function says
 // otherwise (plan 0011).
 //
 // A function that is NULL gives the default the function says.
@@ -91,7 +91,7 @@ struct DtRxBackend
     // and gives it again to every side it attaches, and calls this with no read going on.
     // DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces, after
     // which the side works in the reading thread. NULL where the side has nothing to
-    // divide.
+    // divide, which gives DTAPI_OK.
     DtapiResult (*SetWorkerPool)(DtRx* Rx, DtWorkerPool* Pool, int NumThreads);
 
     // ReadFrame: CheckFrameBuffer checks a buffer of FrameSize bytes and gives the size

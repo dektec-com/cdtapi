@@ -315,7 +315,7 @@ static DtapiResult AttachSide(DtOutpChannel* Chan, int Port, uint64_t Caps)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AttachToPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Attach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The channel's checks, the port's, and then the side's attach, in that order. A failure
 // after the channel has its own handle lets go of all of it.
@@ -370,6 +370,9 @@ DtapiResult DtOutpChannel_AttachToPort(DtOutpChannel* OutpChannel, DtDevice* Dev
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Detach -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Waits DT_DETACH_TRIES pauses of DT_DETACH_PAUSE_MS for a write to return, then stops,
+// releases the side and the device.
 //
 DtapiResult DtOutpChannel_Detach(DtOutpChannel* OutpChannel, int DetachMode)
 {
@@ -608,9 +611,9 @@ DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_SetTxMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The channel's checks, then the side's: no 192-byte packets; on SDI, the full frame
-// added to a mode that names neither the full frame nor active video; and compression and
-// network byte order only on a port that has them.
+// The channel's checks, then the side's: not TS and SDI together, no 192-byte packets;
+// on SDI, the full frame added to a mode that names neither the full frame nor active
+// video; and compression and network byte order only on a port that has them.
 //
 DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int StuffMode)
 {

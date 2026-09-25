@@ -14,7 +14,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "Core/DtRing.h"        // Reading the ring.
-#include "Core/DtWorkerPool.h"  // The threads a frame's lines are converted over.
+#include "Core/DtWorkerPool.h"  // The threads a frame's lines are decoded over.
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
 #include "Device/DtFunc.h"      // Finding the receive channel.
 #include "DtPcieAbi.h"          // DT_FUNC_OPMODE_ and SDI rate values.
@@ -61,18 +61,17 @@ typedef struct DtSdiRx
     DtRing Ring;             // Base NULL without a ring
     bool RingMappedByCdtapi; // Mapped by CDTAPI rather than by the driver
     uint8_t*
-        WrapLineBuffer; // Coded lines that run across the end of the ring, one a band
-    uint16_t*
-        BandSymbols;    // The conversion's working symbols of a 4K line, one set a band
-    int QuarterFrameMs; // A quarter frame period, at least 1 ms
+        WrapLineBuffer;    // Coded lines that run across the end of the ring, one a band
+    uint16_t* BandSymbols; // The decoder's working symbols of a 4K line, one set a band
+    int QuarterFrameMs;    // A quarter frame period, at least 1 ms
 
     // The pool the channel gave, and the pieces it asked for: 0 for as many as the
     // standard calls for. The channel holds the pool.
     DtWorkerPool* WorkerPool;
     int WorkerThreads;
 
-    // The pieces a frame's lines are converted in, and what one band of them needs. The
-    // buffers above hold DtJobRunner_NumPieces(&Work) sets, so a band uses its own.
+    // The pieces a frame's lines are decoded in, and what one band of them needs. The
+    // buffers above hold DtJobRunner_NumPieces(&JobRunner) sets, so a band uses its own.
     DtJobRunner JobRunner;
     size_t WrapLineBufferBytes;
     size_t SymbolsPerBand;
@@ -106,8 +105,8 @@ static int BitsPerSymbolOf(int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingSizeFor -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Room for five coded frames and as many more as a 48 MB FIFO holds of raw 10-bit
-// frames, rounded up to a power of two within the ring's bounds.
+// Room for DT_SDIRX_RING_ROOM_FRAMES coded frames and as many more as DT_SDIRX_FIFO_SIZE
+// holds of raw 10-bit frames, rounded up to a power of two within the ring's bounds.
 //
 static int RingSizeFor(const DtSdiFrameLayout* Layout)
 {
@@ -189,8 +188,8 @@ static DtapiResult AllocBandBuffers(DtSdiRx* Sdi)
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working buffers by them. Buffers that
 // cannot be had for those pieces are taken for one, so that the side decodes in the
-// reading thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; LineBuf is NULL
-// when not even those can be had.
+// reading thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; WrapLineBuffer
+// is NULL when not even those can be had.
 //
 static DtapiResult ConfigureJobRunner(DtSdiRx* Sdi)
 {
@@ -842,7 +841,8 @@ static DtapiResult AfterWait(DtRx* Rx, const DtRxWaitState* State)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A side with no layout yet keeps the pool for ConfigureChannel, which sizes the work.
+// A side with no layout yet keeps the pool for ConfigureChannel, which sets the job
+// runner up.
 //
 static DtapiResult SetWorkerPool(DtRx* Rx, DtWorkerPool* Pool, int NumThreads)
 {

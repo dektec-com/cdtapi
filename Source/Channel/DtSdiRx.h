@@ -15,7 +15,7 @@
 //
 // The receiving side of a port whose I/O standard is SDI, which delivers raw SDI frames
 // straight from the card's CHSDIRX ring: it follows the write offset the driver reports,
-// checks each frame's header, converts the frame's coded lines into the caller's buffer
+// checks each frame's header, decodes the frame's coded lines into the caller's buffer
 // and sets the read offset past it. Plan 0007 holds where it departs from DTAPI.
 //
 
