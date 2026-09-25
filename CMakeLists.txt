@@ -77,6 +77,7 @@ set(CDTAPI_SOURCES
     Source/Core/DtWork.c
     Source/Device/DtAvInput.c
     Source/Device/DtDevActivate.c
+    Source/Device/DtDevClock.c
     Source/Device/DtDevice.c
     Source/Device/DtFunc.c
     Source/Net/DtNet.c

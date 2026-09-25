@@ -284,15 +284,24 @@ static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
     if ((Device = Attach(DtFailures)) == NULL)
         return;
 
+    // The last request attaching sent, to tell whether detection sent any.
+    static uint8_t Attached[SIM_MAX_RECORDED_INPUT];
+    static uint8_t Detected[SIM_MAX_RECORDED_INPUT];
+    int AttachedCode;
+    int DetectedCode;
+    size_t AttachedSize = SimDtPcie_LastInput(&AttachedCode, Attached, sizeof(Attached));
+
     if (DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd) != Expected)
         DT_FAIL("%s=%d %s=%d: not refused", Cap1, Has1, Cap2 ? Cap2 : "", Has2);
 
-    // The last request is still one of attaching's capability reads.
-    DtIoctlInputDataHdr Hdr;
-    int FunctionCode;
-    SimDtPcie_LastInput(&FunctionCode, &Hdr, sizeof(Hdr));
-    if (Expected != DTAPI_OK &&
-        (FunctionCode != DT_FUNC_CODE_PROPERTY_CMD || Hdr.m_Cmd != DT_PROP_CMD_GET_VALUE))
+    // Detection sent nothing, or its last request is a capability read.
+    size_t DetectedSize = SimDtPcie_LastInput(&DetectedCode, Detected, sizeof(Detected));
+    bool Sent = DetectedCode != AttachedCode || DetectedSize != AttachedSize ||
+                memcmp(Detected, Attached, DetectedSize) != 0;
+    const DtIoctlInputDataHdr* Hdr = (const DtIoctlInputDataHdr*)Detected;
+    if (Expected != DTAPI_OK && Sent &&
+        (DetectedCode != DT_FUNC_CODE_PROPERTY_CMD ||
+         Hdr->m_Cmd != DT_PROP_CMD_GET_VALUE))
     {
         DT_FAIL("%s=%d: a function was looked up", Cap1, Has1);
     }

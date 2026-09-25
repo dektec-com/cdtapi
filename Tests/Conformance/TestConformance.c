@@ -174,6 +174,30 @@ DT_TEST(DeviceCalls)
     DT_ASSERT_OK(DtDevice_GetTimeOfDay(Device, &ToD));
     DT_ASSERT(ToD.Seconds > 0);
 
+    // The clocks, which a device may not have. An offset is set to what it was, and only
+    // while the device is not genlocked.
+    DtGenlockState Genlock;
+    DT_ASSERT(IsOneOf(DtDevice_GetGenlockState(Device, &Genlock), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    DtTimeOfDayState TodState;
+    DT_ASSERT(IsOneOf(DtDevice_GetTimeOfDayState(Device, &TodState), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    DtTxClockProperties Clocks[4];
+    int NumClocks = 0;
+    DtapiResult Result = DtDevice_GetTxClockProperties(Device, 4, &NumClocks, Clocks);
+    DT_ASSERT(IsOneOf(Result, DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+    if (Result == DTAPI_OK && NumClocks > 0)
+    {
+        uint32_t Count = 0;
+        DT_ASSERT(IsOneOf(DtDevice_GetTxClockCount(Device, Clocks[0].TxClockId, &Count),
+                          DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+        double OffsetPpm = 0.0;
+        DT_ASSERT_OK(DtDevice_GetTxClockOffset(Device, Clocks[0].TxClockId, &OffsetPpm));
+        DT_ASSERT(
+            IsOneOf(DtDevice_SetTxClockOffset(Device, Clocks[0].TxClockId, OffsetPpm),
+                    DTAPI_OK, DTAPI_E_IN_USE));
+    }
+
     DT_ASSERT_OK(DtDevice_SetToInput(Device, Port.Port));
     DtIoConfig Config = {Port.Port,
                          DTAPI_IOCONFIG_IODIR,

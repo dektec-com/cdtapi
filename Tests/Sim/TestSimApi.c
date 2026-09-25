@@ -546,7 +546,7 @@ DT_TEST(AttachSurvivesAllocationFailure)
         DtAlloc_ResetCount();
 
         // The handle's own allocations fail as a device that cannot be opened; the
-        // port capabilities as memory.
+        // port capabilities and looking for the clocks as memory.
         if (Result != DTAPI_E_NO_SUCH_DEVICE && Result != DTAPI_E_OUT_OF_MEM)
             DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);

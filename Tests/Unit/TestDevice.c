@@ -114,6 +114,20 @@ DT_TEST(NullDeviceIsRefused)
     DT_ASSERT_EQ(DtDevice_SetToOutput(NULL, 1), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtDevice_GetTimeOfDay(NULL, &Tod), DTAPI_E_INVALID_ARG);
 
+    DtGenlockState Genlock;
+    DtTimeOfDayState TodState;
+    DtTxClockProperties Clock;
+    int Num = 7;
+    uint32_t Count = 7;
+    double OffsetPpm = 7.0;
+    DT_ASSERT_EQ(DtDevice_GetGenlockState(NULL, &Genlock), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTimeOfDayState(NULL, &TodState), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTxClockProperties(NULL, 1, &Num, &Clock),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTxClockCount(NULL, 0, &Count), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTxClockOffset(NULL, 0, &OffsetPpm), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(NULL, 0, 0.0), DTAPI_E_INVALID_ARG);
+
     DtDevice_Free(NULL);
     DtDevice_Freep(NULL);
     DtDevice_Freep(&Null);
@@ -132,6 +146,41 @@ DT_TEST(DetachedDeviceIsNotAttached)
     DT_ASSERT_EQ(Tod.Seconds, 0);
     DT_ASSERT_EQ(Tod.Nanoseconds, 0);
     DT_ASSERT_EQ(DtDevice_GetTimeOfDay(Device, NULL), DTAPI_E_INVALID_ARG);
+
+    // The clocks: the outputs are cleared, but for a null output, which is refused
+    // before the device is looked at.
+    DtGenlockState Genlock;
+    memset(&Genlock, 7, sizeof(Genlock));
+    DT_ASSERT_EQ(DtDevice_GetGenlockState(Device, &Genlock), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(Genlock.State, 0);
+    DT_ASSERT_EQ(DtDevice_GetGenlockState(Device, NULL), DTAPI_E_INVALID_ARG);
+    DtTimeOfDayState TodState;
+    memset(&TodState, 7, sizeof(TodState));
+    DT_ASSERT_EQ(DtDevice_GetTimeOfDayState(Device, &TodState), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(TodState.State, 0);
+    DT_ASSERT_EQ(DtDevice_GetTimeOfDayState(Device, NULL), DTAPI_E_INVALID_ARG);
+
+    DtTxClockProperties Clock;
+    int Num = 7;
+    DT_ASSERT_EQ(DtDevice_GetTxClockProperties(Device, 1, &Num, &Clock),
+                 DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(Num, 0);
+    DT_ASSERT_EQ(DtDevice_GetTxClockProperties(Device, -1, &Num, &Clock),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTxClockProperties(Device, 1, NULL, &Clock),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_GetTxClockProperties(Device, 1, &Num, NULL),
+                 DTAPI_E_INVALID_BUF);
+
+    uint32_t Count = 7;
+    DT_ASSERT_EQ(DtDevice_GetTxClockCount(Device, 0, &Count), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(Count, 0u);
+    DT_ASSERT_EQ(DtDevice_GetTxClockCount(Device, 0, NULL), DTAPI_E_INVALID_ARG);
+    double OffsetPpm = 7.0;
+    DT_ASSERT_EQ(DtDevice_GetTxClockOffset(Device, 0, &OffsetPpm), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT(OffsetPpm == 0.0);
+    DT_ASSERT_EQ(DtDevice_GetTxClockOffset(Device, 0, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtDevice_SetTxClockOffset(Device, 0, 1.0), DTAPI_E_NOT_ATTACHED);
 
     DtDevice_Freep(&Device);
     DT_ASSERT(Device == NULL);

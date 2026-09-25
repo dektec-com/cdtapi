@@ -75,6 +75,16 @@
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
 
+// An object of the device's own that a public function needs, looked for once, when the
+// application attaches: Found is DTAPI_OK with Ref what its commands go to,
+// DTAPI_E_NOT_SUPPORTED when the device does not have it or it was not looked for, and
+// DTAPI_E_DRIVER_INCOMP when the driver is too old for it.
+typedef struct DtDevObject
+{
+    DtapiResult Found;
+    DtDrvObject Ref;
+} DtDevObject;
+
 struct DtDevice
 {
     OsDrv* Drv; // NULL while detached
@@ -84,6 +94,11 @@ struct DtDevice
     int NumPorts;       // All ports, PORT_COUNT
     int NumPublicPorts; // The ports an application sees, MAIN_PORT_COUNT
     uint64_t* PortCaps; // DT_CAP_ flags per port index, for the larger count
+
+    // The clocks, which DtDevClock_OnAttach looks for.
+    DtDevObject Genlock;    // The genlock controller
+    DtDevObject TodClkCtrl; // The time-of-day clock control
+    DtDevObject ClkCnt[2];  // The transmit-clock counters, per DTAPI_TXCLK_ type
 };
 
 // Attaches Device, which must be detached, to the device the driver numbers Index, when

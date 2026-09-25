@@ -335,6 +335,15 @@ CDTAPI_API void DtDevice_Free(DtDevice* Device);
 // Frees *Device as DtDevice_Free does and sets *Device to NULL. NULL is allowed.
 CDTAPI_API void DtDevice_Freep(DtDevice** Device);
 
+// Reads the state of the device's genlock. A device that runs free, without a reference,
+// is DTAPI_GENL_LOCKED, as in DTAPI. *State is zero after a failure, but for
+// DTAPI_E_INVALID_ARG for a null Device or State, which leaves it untouched.
+//
+// Returns DTAPI_E_NOT_ATTACHED; DTAPI_E_NOT_SUPPORTED for a device without genlock;
+// DTAPI_E_DRIVER_INCOMP for a driver too old for it; and the driver's result.
+CDTAPI_API DtapiResult DtDevice_GetGenlockState(const DtDevice* Device,
+                                                DtGenlockState* State);
+
 // Reads the Count I/O configurations Configs names by Port and Group, and fills in their
 // Value, SubValue and ParXtra, which are -1 wherever this fails.
 //
@@ -351,6 +360,52 @@ CDTAPI_API DtapiResult DtDevice_GetIoConfig(DtDevice* Device, DtIoConfig* Config
 // DTAPI_E_INVALID_ARG for a null Device or TimeOfDay, which leaves it untouched.
 CDTAPI_API DtapiResult DtDevice_GetTimeOfDay(const DtDevice* Device,
                                              DtTimeOfDay* TimeOfDay);
+
+// Reads the state of the device's time-of-day clock. *State is zero after a failure, but
+// for DTAPI_E_INVALID_ARG for a null Device or State, which leaves it untouched.
+//
+// Returns DTAPI_E_NOT_ATTACHED; DTAPI_E_NOT_SUPPORTED for a device whose time-of-day
+// clock has no control; DTAPI_E_DRIVER_INCOMP for a driver too old for it; and the
+// driver's result.
+CDTAPI_API DtapiResult DtDevice_GetTimeOfDayState(const DtDevice* Device,
+                                                  DtTimeOfDayState* State);
+
+// Reads the 32-bit counter of transmit clock TxClockId, which counts its periods and
+// wraps. *TxClockCount is 0 after a failure, but for DTAPI_E_INVALID_ARG for a null
+// Device or TxClockCount.
+//
+// Returns DTAPI_E_NOT_ATTACHED; DTAPI_E_NOT_SUPPORTED for a device without transmit
+// clocks, or without a counter for the clock's type; DTAPI_E_DRIVER_INCOMP for a driver
+// too old for either; DTAPI_E_NOT_FOUND for a clock the device does not have; and the
+// driver's result.
+CDTAPI_API DtapiResult DtDevice_GetTxClockCount(const DtDevice* Device, int TxClockId,
+                                                uint32_t* TxClockCount);
+
+// Reads the offset of transmit clock TxClockId from its centre frequency, in ppm.
+// *OffsetPpm is 0 after a failure, but for DTAPI_E_INVALID_ARG for a null Device or
+// OffsetPpm.
+//
+// Returns DTAPI_E_NOT_ATTACHED; DTAPI_E_NOT_SUPPORTED for a device without transmit
+// clocks; DTAPI_E_DRIVER_INCOMP for a driver too old for them; DTAPI_E_INVALID_ARG for a
+// negative TxClockId, and from the driver for a clock the device does not have; and
+// the driver's result.
+CDTAPI_API DtapiResult DtDevice_GetTxClockOffset(const DtDevice* Device, int TxClockId,
+                                                 double* OffsetPpm);
+
+// Describes the device's transmit clocks, which its ASI and SDI outputs run on. Props
+// holds NumEntries descriptions; *NumEntriesResult receives how many clocks there are,
+// also when they do not all fit, and is 0 after any other failure.
+//
+// Returns DTAPI_E_INVALID_ARG for a null Device or NumEntriesResult or a negative
+// NumEntries; DTAPI_E_INVALID_BUF for a null Props with NumEntries not 0;
+// DTAPI_E_NOT_ATTACHED; DTAPI_E_NOT_SUPPORTED for a device without transmit clocks;
+// DTAPI_E_DRIVER_INCOMP for a driver too old for them; DTAPI_E_BUF_TOO_SMALL when there
+// are more clocks than NumEntries, leaving Props untouched; DTAPI_E_OUT_OF_MEM; and the
+// driver's result. With NumEntries 0 and Props NULL this asks for the count.
+CDTAPI_API DtapiResult DtDevice_GetTxClockProperties(const DtDevice* Device,
+                                                     int NumEntries,
+                                                     int* NumEntriesResult,
+                                                     DtTxClockProperties* Props);
 
 // Sets the Count I/O configurations in Configs, which the driver applies together or not
 // at all, so that a port and the ports that copy it change at once. Every entry is
@@ -370,6 +425,21 @@ CDTAPI_API DtapiResult DtDevice_SetToInput(DtDevice* Device, int Port);
 
 // Makes a port an output: DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_OUTPUT.
 CDTAPI_API DtapiResult DtDevice_SetToOutput(DtDevice* Device, int Port);
+
+// Sets the offset of transmit clock TxClockId from its centre frequency, in ppm, rounded
+// to the nearest part per trillion. The clock is the device's, so the offset holds for
+// every output that runs on it, in every program, and stays after this program ends or
+// detaches. The driver sets it only while the device is not genlocked.
+//
+// Returns DTAPI_E_INVALID_ARG for a null Device; DTAPI_E_NOT_ATTACHED;
+// DTAPI_E_NOT_SUPPORTED for a device without transmit clocks; DTAPI_E_DRIVER_INCOMP
+// for a driver too old for them; DTAPI_E_INVALID_ARG for an offset that is not a finite
+// number of parts per trillion an int holds, or a negative TxClockId; from the driver
+// DTAPI_E_IN_USE while the device is genlocked, and DTAPI_E_INVALID_ARG for an offset
+// beyond the clock's range or a clock the device does not have; and the driver's
+// result.
+CDTAPI_API DtapiResult DtDevice_SetTxClockOffset(DtDevice* Device, int TxClockId,
+                                                 double OffsetPpm);
 
 // Waits until a video standard is detected on a port, numbered from 1, and returns it.
 // Detection is retried every 5 ms, without a time limit, also while it fails. Returns at

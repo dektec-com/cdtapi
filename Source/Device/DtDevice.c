@@ -15,6 +15,7 @@
 #include "Core/DtVec.h"    // The scan's list of hardware functions.
 #include "DtAvInput.h"     // Video standard detection.
 #include "DtDevActivate.h" // Activating the device at attach.
+#include "DtDevClock.h"    // Finding the clocks at attach.
 #include "DtDevice.h"      // Interface being implemented.
 #include "DtIoConfig.h"    // I/O configuration validation.
 #include "DtPcieAbi.h"     // DT_FWSTATUS_ values.
@@ -168,6 +169,10 @@ DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
     Device->Drv = Drv;
     Device->Index = Index;
     Device->DriverVersion = Version;
+    Device->Genlock.Found = DTAPI_E_NOT_SUPPORTED;
+    Device->TodClkCtrl.Found = DTAPI_E_NOT_SUPPORTED;
+    Device->ClkCnt[0].Found = DTAPI_E_NOT_SUPPORTED;
+    Device->ClkCnt[1].Found = DTAPI_E_NOT_SUPPORTED;
     return DTAPI_OK;
 }
 
@@ -563,6 +568,12 @@ DtapiResult DtDevice_AttachToSerial(DtDevice* Device, int64_t SerialNumber)
         if (Result != DTAPI_OK)
             return Result;
 
+        Result = DtDevClock_OnAttach(Device);
+        if (Result != DTAPI_OK)
+        {
+            DtDevice_Release(Device);
+            return Result;
+        }
         if (Device->Info.FirmwareStatus == DT_FWSTATUS_OBSOLETE)
             return DTAPI_OK_OBSOLETE_FW;
         if (Device->Info.FirmwareStatus == DT_FWSTATUS_TAINTED)
