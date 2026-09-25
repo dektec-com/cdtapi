@@ -789,7 +789,7 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int R
 // gives DTAPI_E_NOT_IDLE.
 CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
-// Divides the channel's work over Pool, NULL for the reading thread alone, which is the
+// Divides the channel's jobs over a Pool, NULL for the reading thread alone, which is the
 // default. The channel holds the pool until it is set again or the channel is detached;
 // switching it to ASI and back keeps it. A channel whose signal has no lines, such as
 // ASI, takes the pool and keeps it for when it has. The frames are the same whatever
@@ -803,14 +803,14 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 //                        50 or 60 frames a second is more than one slow core has to
 //                        spare.
 //   2160p24 to 2160p30   2. The same frame, half as often.
-//   up to 3G-SDI         1. The decoding is a small part of a frame period even on a
-//                        slow core, so dividing it costs more than it saves. A channel
-//                        set to such a standard leaves a pool it was given with 0
-//                        unused.
+//   up to 3G-SDI         1. Decoding is a small part of a frame period even on a
+//                        slow core, so dividing it costs more than it saves. With
+//                        NumThreads 0 the channel therefore leaves the pool it is
+//                        given unused.
 //
 // A number is a ceiling, not a reservation: when other channels hold the pool's threads,
-// this channel's pieces wait for one. A channel that must not wait gets a pool of its
-// own.
+// this channel's pieces wait for one. A channel that must not wait should be given a
+// pool of its own.
 //
 // Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
 // DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a read has
@@ -995,8 +995,9 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
                                                    int TxPolarity);
 
 // Divides the channel's work over Pool, NULL for the writing thread alone, which is the
-// default. It is DtInpChannel_SetWorkerPool for an output channel, and what that one says
-// holds here, the number of pieces included.
+// default. What DtInpChannel_SetWorkerPool says holds here too: NumThreads is the number
+// of pieces a frame is divided into, 0 leaves it to the library by the same table, and a
+// channel set to a standard up to 3G leaves its pool unused.
 //
 // A channel can only divide the lines it has been given. DtOutpChannel_WriteFrame is
 // given a whole frame, so it always divides. DtOutpChannel_Write is given a stretch of
