@@ -87,6 +87,7 @@ set(CDTAPI_SOURCES
     Source/DtPcie/DtPcieCmdSdiTx.c
     Source/DtPcie/DtPcieCmdVpd.c
     Source/DtPcie/DtPcieStatus.c
+    Source/DtPcie/DtPcieVidStd.c
     Source/DtPcie/DtIoConfig.c
     Source/OAL/OsDispatch.c
     Source/OAL/OsDmaBuffer.c
