@@ -84,7 +84,7 @@ static DtapiResult LockAttached(DtOutpChannel* Chan)
 static void ReleaseAll(DtOutpChannel* Chan)
 {
     if (Chan->Tx != NULL)
-        Chan->Tx->Ops->Release(Chan->Tx);
+        Chan->Tx->Backend->Release(Chan->Tx);
     Chan->Tx = NULL;
     DtDevice_Release(&Chan->Device);
 }
@@ -96,8 +96,8 @@ static void ReleaseAll(DtOutpChannel* Chan)
 //
 static void GiveWork(DtOutpChannel* Chan)
 {
-    if (Chan->Tx->Ops->SetWorkPool != NULL)
-        Chan->Tx->Ops->SetWorkPool(Chan->Tx, Chan->WorkPool, Chan->WorkThreads);
+    if (Chan->Tx->Backend->SetWorkPool != NULL)
+        Chan->Tx->Backend->SetWorkPool(Chan->Tx, Chan->WorkPool, Chan->WorkThreads);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -119,8 +119,8 @@ static void DropWork(DtOutpChannel* Chan)
 static DtapiResult SetWorkPool(DtOutpChannel* Chan, DtWorkPool* Pool, int NumThreads)
 {
     DtapiResult Result = DTAPI_OK;
-    if (Chan->Tx->Ops->SetWorkPool != NULL)
-        Result = Chan->Tx->Ops->SetWorkPool(Chan->Tx, Pool, NumThreads);
+    if (Chan->Tx->Backend->SetWorkPool != NULL)
+        Result = Chan->Tx->Backend->SetWorkPool(Chan->Tx, Pool, NumThreads);
 
     DtWorkPool_Hold(Pool);
     DtWorkPool_Free(Chan->WorkPool);
@@ -159,7 +159,7 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
             OsMutex_Unlock(Chan->Lock);
             return DTAPI_E_TIMEOUT;
         }
-        Chan->Tx->Ops->Wake(Chan->Tx);
+        Chan->Tx->Backend->Wake(Chan->Tx);
         OsMutex_Unlock(Chan->Lock);
         OsTime_SleepMs(DT_DETACH_PAUSE_MS);
         OsMutex_Lock(Chan->Lock);
@@ -173,10 +173,10 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 
     DtTx* Tx = Chan->Tx;
     if ((DetachMode & DT_WAIT_UNTIL_SENT) != 0 && Tx->TxControl == DTAPI_TXCTRL_SEND)
-        Tx->Ops->WaitUntilSent(Tx);
+        Tx->Backend->WaitUntilSent(Tx);
     if ((DetachMode & DT_INSTANT_DETACH) != 0)
-        Tx->Ops->ClearFifo(Tx);
-    Tx->Ops->SetTxControl(Tx, DTAPI_TXCTRL_IDLE);
+        Tx->Backend->ClearFifo(Tx);
+    Tx->Backend->SetTxControl(Tx, DTAPI_TXCTRL_IDLE);
 
     ReleaseAll(Chan);
     Chan->Attached = false;
@@ -391,7 +391,7 @@ DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel)
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->ClearFifo(OutpChannel->Tx);
+    DtapiResult Result = OutpChannel->Tx->Backend->ClearFifo(OutpChannel->Tx);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -405,7 +405,7 @@ DtapiResult DtOutpChannel_GetFifoLoad(DtOutpChannel* OutpChannel, int* FifoLoad)
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->GetFifoLoad(OutpChannel->Tx, FifoLoad);
+    DtapiResult Result = OutpChannel->Tx->Backend->GetFifoLoad(OutpChannel->Tx, FifoLoad);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -419,7 +419,7 @@ DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel, int* FifoSize)
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->GetFifoSize(OutpChannel->Tx, FifoSize);
+    DtapiResult Result = OutpChannel->Tx->Backend->GetFifoSize(OutpChannel->Tx, FifoSize);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -434,7 +434,7 @@ DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel, int* MaxFif
         return DTAPI_E_NOT_ATTACHED;
 
     DtapiResult Result =
-        OutpChannel->Tx->Ops->GetMaxFifoSize(OutpChannel->Tx, MaxFifoSize);
+        OutpChannel->Tx->Backend->GetMaxFifoSize(OutpChannel->Tx, MaxFifoSize);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -448,7 +448,8 @@ DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status, int*
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->GetFlags(OutpChannel->Tx, Status, Latched);
+    DtapiResult Result =
+        OutpChannel->Tx->Backend->GetFlags(OutpChannel->Tx, Status, Latched);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -540,12 +541,12 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
         Config.ParXtra[0] = ParXtra0;
         Config.ParXtra[1] = ParXtra1;
         DtTx* Tx = OutpChannel->Tx;
-        const bool IsAsi = Tx->Ops->SetTsRateBps != NULL;
+        const bool IsAsi = Tx->Backend->SetTsRateBps != NULL;
         const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
 
         if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
         {
-            Tx->Ops->Release(Tx);
+            Tx->Backend->Release(Tx);
             OutpChannel->Tx = NULL;
             Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
             if (Result == DTAPI_OK && NewAsi)
@@ -563,11 +564,11 @@ DtapiResult DtOutpChannel_SetIoConfig(DtOutpChannel* OutpChannel, int Group, int
         }
         else
         {
-            if (Tx->Ops->BeforeIoConfig != NULL)
-                Result = Tx->Ops->BeforeIoConfig(Tx);
+            if (Tx->Backend->BeforeIoConfig != NULL)
+                Result = Tx->Backend->BeforeIoConfig(Tx);
             if (Result == DTAPI_OK)
                 Result = DtPcieCmd_SetIoConfig(OutpChannel->Device.Drv, &Config);
-            Result = Tx->Ops->ApplyIoConfig(Tx, &Config, Result);
+            Result = Tx->Backend->ApplyIoConfig(Tx, &Config, Result);
         }
     }
     OsMutex_Unlock(OutpChannel->Lock);
@@ -583,7 +584,8 @@ DtapiResult DtOutpChannel_SetTxControl(DtOutpChannel* OutpChannel, int TxControl
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->SetTxControl(OutpChannel->Tx, TxControl);
+    DtapiResult Result =
+        OutpChannel->Tx->Backend->SetTxControl(OutpChannel->Tx, TxControl);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -621,7 +623,7 @@ DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int TxMode, int 
         }
     }
     if (Result == DTAPI_OK)
-        Result = OutpChannel->Tx->Ops->SetTxMode(OutpChannel->Tx, TxMode, StuffMode);
+        Result = OutpChannel->Tx->Backend->SetTxMode(OutpChannel->Tx, TxMode, StuffMode);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -665,7 +667,7 @@ DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const void* Buffer,
     if (Result == DTAPI_OK)
     {
         OutpChannel->Writing = true;
-        Result = Tx->Ops->Write(Tx, (const uint8_t*)Buffer, (size_t)NumBytesToWrite);
+        Result = Tx->Backend->Write(Tx, (const uint8_t*)Buffer, (size_t)NumBytesToWrite);
         OutpChannel->Writing = false;
     }
     OsMutex_Unlock(OutpChannel->Lock);
@@ -700,14 +702,14 @@ DtapiResult DtOutpChannel_WriteFrame(DtOutpChannel* OutpChannel, const void* Fra
         Result = DTAPI_E_IDLE;
     else if (OutpChannel->Writing)
         Result = DTAPI_E_IN_USE;
-    else if (Tx->Ops->WriteFrame == NULL)
+    else if (Tx->Backend->WriteFrame == NULL)
         Result = DTAPI_E_NOT_SDI_MODE;
     else
     {
         uint64_t Deadline = TimeOut == -1 ? DT_TX_NO_DEADLINE : Start + (uint64_t)TimeOut;
 
         OutpChannel->Writing = true;
-        Result = Tx->Ops->WriteFrame(Tx, (const uint8_t*)Frame, FrameSize, Deadline);
+        Result = Tx->Backend->WriteFrame(Tx, (const uint8_t*)Frame, FrameSize, Deadline);
         OutpChannel->Writing = false;
     }
     OsMutex_Unlock(OutpChannel->Lock);
@@ -725,7 +727,7 @@ DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int Latched)
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->ClearFlags(OutpChannel->Tx, Latched);
+    DtapiResult Result = OutpChannel->Tx->Backend->ClearFlags(OutpChannel->Tx, Latched);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -740,9 +742,9 @@ DtapiResult DtOutpChannel_GetTsRateBps(DtOutpChannel* OutpChannel, int* TsRate)
         return DTAPI_E_NOT_ATTACHED;
 
     DtTx* Tx = OutpChannel->Tx;
-    DtapiResult Result = Tx->Ops->GetTsRateBps == NULL
+    DtapiResult Result = Tx->Backend->GetTsRateBps == NULL
                              ? DTAPI_E_NOT_SUPPORTED
-                             : Tx->Ops->GetTsRateBps(Tx, TsRate);
+                             : Tx->Backend->GetTsRateBps(Tx, TsRate);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -757,9 +759,9 @@ DtapiResult DtOutpChannel_SetTsRateBps(DtOutpChannel* OutpChannel, int TsRate)
         return DTAPI_E_NOT_ATTACHED;
 
     DtTx* Tx = OutpChannel->Tx;
-    DtapiResult Result = Tx->Ops->SetTsRateBps == NULL
+    DtapiResult Result = Tx->Backend->SetTsRateBps == NULL
                              ? DTAPI_E_NOT_SUPPORTED
-                             : Tx->Ops->SetTsRateBps(Tx, TsRate);
+                             : Tx->Backend->SetTsRateBps(Tx, TsRate);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }
@@ -773,7 +775,8 @@ DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel, int TxPolari
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = OutpChannel->Tx->Ops->SetTxPolarity(OutpChannel->Tx, TxPolarity);
+    DtapiResult Result =
+        OutpChannel->Tx->Backend->SetTxPolarity(OutpChannel->Tx, TxPolarity);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
 }

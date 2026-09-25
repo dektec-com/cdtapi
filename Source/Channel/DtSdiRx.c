@@ -796,7 +796,7 @@ static void PrepareWait(DtRx* Rx, DtRxWait* Wait)
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
     memset(Wait, 0, sizeof(*Wait));
-    Wait->Ops = Rx->Ops;
+    Wait->Backend = Rx->Backend;
     Wait->Drv = DrvOf(Sdi);
     Wait->Object = Sdi->Ch;
     Wait->MaxMs = Sdi->QuarterMs;
@@ -843,7 +843,7 @@ static DtapiResult SetWorkPool(DtRx* Rx, DtWorkPool* Pool, int NumThreads)
     return SizeWork(Sdi);
 }
 
-static const DtRxBackend g_Ops = {
+static const DtRxBackend g_SdiRxBackend = {
     .Release = Release,
     .SetRxMode = SetRxModeSdi,
     .SetRxControl = SetRxControlSdi,
@@ -873,7 +873,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     if (Sdi == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Sdi, 0, sizeof(*Sdi));
-    Sdi->Base.Ops = &g_Ops;
+    Sdi->Base.Backend = &g_SdiRxBackend;
     Sdi->Base.Port = *Port;
     Sdi->IoStdValue = IoStd->Value;
     Sdi->IoStdSubValue = IoStd->SubValue;

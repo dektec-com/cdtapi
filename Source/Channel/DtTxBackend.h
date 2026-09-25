@@ -24,11 +24,12 @@
 //
 // An output channel keeps one side that transmits, chosen by the port's I/O standard:
 // DtAsiTx.c for ASI, DtSdiTx.c for raw SDI frames. The side is a DtTx, a struct that each
-// side's own begins with, and its functions are the side's DtTxBackend, as DtRxBackend.h
-// describes for the input. DtOutpChannel.c keeps the checks that do not depend on the
-// side, the lock and detaching, and calls these with the lock held. A side may release
-// the lock while it waits, and has the channel's lock and its count of waiting detaches
-// for that; after a wait it gives DTAPI_E_CANCELLED while a detach waits.
+// side's own begins with, and its function table is the side's backend, a DtTxBackend,
+// as DtRxBackend.h describes for the input. DtOutpChannel.c keeps the checks that do not
+// depend on the side, the lock and detaching, and calls these with the lock held. A side
+// may release the lock while it waits, and has the channel's lock and its count of
+// waiting detaches for that; after a wait it gives DTAPI_E_CANCELLED while a detach
+// waits.
 //
 // A function that is NULL gives the default the function says.
 //
@@ -50,11 +51,11 @@ typedef struct DtTxPort
     const int* Detachers; // Detaches waiting for a write to return
 } DtTxPort;
 
-// What every side has: its functions, its port, and the transmit mode and control, which
+// What every side has: its backend, its port, and the transmit mode and control, which
 // the checks in DtOutpChannel.c read.
 typedef struct DtTx
 {
-    const DtTxBackend* Ops;
+    const DtTxBackend* Backend;
     DtTxPort Port;
     int TxMode;
     int TxControl;

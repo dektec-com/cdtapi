@@ -96,7 +96,7 @@ static DtapiResult LockAttached(DtInpChannel* Chan)
 static void ReleaseSide(DtInpChannel* Chan)
 {
     if (Chan->Rx != NULL)
-        Chan->Rx->Ops->Release(Chan->Rx);
+        Chan->Rx->Backend->Release(Chan->Rx);
     Chan->Rx = NULL;
 }
 
@@ -107,8 +107,8 @@ static void ReleaseSide(DtInpChannel* Chan)
 //
 static void GiveWork(DtInpChannel* Chan)
 {
-    if (Chan->Rx->Ops->SetWorkPool != NULL)
-        Chan->Rx->Ops->SetWorkPool(Chan->Rx, Chan->WorkPool, Chan->WorkThreads);
+    if (Chan->Rx->Backend->SetWorkPool != NULL)
+        Chan->Rx->Backend->SetWorkPool(Chan->Rx, Chan->WorkPool, Chan->WorkThreads);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -130,8 +130,8 @@ static void DropWork(DtInpChannel* Chan)
 static DtapiResult SetWorkPool(DtInpChannel* Chan, DtWorkPool* Pool, int NumThreads)
 {
     DtapiResult Result = DTAPI_OK;
-    if (Chan->Rx->Ops->SetWorkPool != NULL)
-        Result = Chan->Rx->Ops->SetWorkPool(Chan->Rx, Pool, NumThreads);
+    if (Chan->Rx->Backend->SetWorkPool != NULL)
+        Result = Chan->Rx->Backend->SetWorkPool(Chan->Rx, Pool, NumThreads);
 
     DtWorkPool_Hold(Pool);
     DtWorkPool_Free(Chan->WorkPool);
@@ -177,8 +177,8 @@ static DtapiResult Detach(DtInpChannel* Chan, int DetachMode, int Tries)
     }
 
     if ((DetachMode & DT_INSTANT_DETACH) != 0)
-        Chan->Rx->Ops->ClearFifo(Chan->Rx);
-    Chan->Rx->Ops->SetRxControl(Chan->Rx, DTAPI_RXCTRL_IDLE);
+        Chan->Rx->Backend->ClearFifo(Chan->Rx);
+    Chan->Rx->Backend->SetRxControl(Chan->Rx, DTAPI_RXCTRL_IDLE);
 
     ReleaseSide(Chan);
     DtDevice_Release(&Chan->Device);
@@ -384,7 +384,7 @@ DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel)
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->ClearFifo(InpChannel->Rx);
+    DtapiResult Result = InpChannel->Rx->Backend->ClearFifo(InpChannel->Rx);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -416,7 +416,7 @@ DtapiResult DtInpChannel_ClearFlags(DtInpChannel* InpChannel, int Latched)
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->ClearFlags(InpChannel->Rx, Latched);
+    DtapiResult Result = InpChannel->Rx->Backend->ClearFlags(InpChannel->Rx, Latched);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -435,12 +435,12 @@ DtapiResult DtInpChannel_DetectIoStd(DtInpChannel* InpChannel, int* Value, int* 
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    const DtRxBackend* Ops = InpChannel->Rx->Ops;
+    const DtRxBackend* Backend = InpChannel->Rx->Backend;
     DtapiResult Result;
-    if ((InpChannel->Port.Caps & Usable) == 0 || Ops->DetectIoStd == NULL)
+    if ((InpChannel->Port.Caps & Usable) == 0 || Backend->DetectIoStd == NULL)
         Result = DTAPI_E_NOT_SUPPORTED;
     else
-        Result = Ops->DetectIoStd(InpChannel->Rx, Value, SubValue);
+        Result = Backend->DetectIoStd(InpChannel->Rx, Value, SubValue);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -454,7 +454,7 @@ DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* FifoLoad)
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->GetFifoLoad(InpChannel->Rx, FifoLoad);
+    DtapiResult Result = InpChannel->Rx->Backend->GetFifoLoad(InpChannel->Rx, FifoLoad);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -468,7 +468,8 @@ DtapiResult DtInpChannel_GetMaxFifoSize(DtInpChannel* InpChannel, int* MaxFifoSi
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->GetMaxFifoSize(InpChannel->Rx, MaxFifoSize);
+    DtapiResult Result =
+        InpChannel->Rx->Backend->GetMaxFifoSize(InpChannel->Rx, MaxFifoSize);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -482,7 +483,8 @@ DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags, int* Lat
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->GetFlags(InpChannel->Rx, Flags, Latched);
+    DtapiResult Result =
+        InpChannel->Rx->Backend->GetFlags(InpChannel->Rx, Flags, Latched);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -574,7 +576,7 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         Config.SubValue = SubValue;
         Config.ParXtra[0] = ParXtra0;
         Config.ParXtra[1] = ParXtra1;
-        const bool IsAsi = InpChannel->Rx->Ops->Take != NULL;
+        const bool IsAsi = InpChannel->Rx->Backend->Take != NULL;
         const bool NewAsi = Value == DTAPI_IOCONFIG_ASI;
 
         if (Group == DTAPI_IOCONFIG_IOSTD && NewAsi != IsAsi)
@@ -598,7 +600,7 @@ DtapiResult DtInpChannel_SetIoConfig(DtInpChannel* InpChannel, int Group, int Va
         {
             Result = DtPcieCmd_SetIoConfig(InpChannel->Device.Drv, &Config);
             if (Result == DTAPI_OK)
-                Result = InpChannel->Rx->Ops->ApplyIoConfig(InpChannel->Rx, &Config);
+                Result = InpChannel->Rx->Backend->ApplyIoConfig(InpChannel->Rx, &Config);
         }
     }
     OsMutex_Unlock(InpChannel->Lock);
@@ -614,7 +616,7 @@ DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int RxControl)
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
 
-    DtapiResult Result = InpChannel->Rx->Ops->SetRxControl(InpChannel->Rx, RxControl);
+    DtapiResult Result = InpChannel->Rx->Backend->SetRxControl(InpChannel->Rx, RxControl);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -671,7 +673,7 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
         Result = DTAPI_E_INVALID_MODE;
     }
     else
-        Result = InpChannel->Rx->Ops->SetRxMode(InpChannel->Rx, RxMode);
+        Result = InpChannel->Rx->Backend->SetRxMode(InpChannel->Rx, RxMode);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -688,7 +690,7 @@ DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode)
 static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
 {
     DtRxWait Wait;
-    Chan->Rx->Ops->PrepareWait(Chan->Rx, &Wait);
+    Chan->Rx->Backend->PrepareWait(Chan->Rx, &Wait);
     int Ms = Wait.MaxMs;
     if (Remaining >= 0 && Remaining < Ms)
         Ms = (int)Remaining;
@@ -703,10 +705,11 @@ static DtapiResult WaitMore(DtInpChannel* Chan, int64_t Remaining)
     else
     {
         OsMutex_Unlock(Chan->Lock);
-        Result = Wait.Ops->Wait(&Wait, Ms);
+        Result = Wait.Backend->Wait(&Wait, Ms);
         OsMutex_Lock(Chan->Lock);
-        if (Result == DTAPI_OK && Chan->Detachers == 0 && Chan->Rx->Ops == Wait.Ops)
-            Result = Chan->Rx->Ops->AfterWait(Chan->Rx, &Wait);
+        if (Result == DTAPI_OK && Chan->Detachers == 0 &&
+            Chan->Rx->Backend == Wait.Backend)
+            Result = Chan->Rx->Backend->AfterWait(Chan->Rx, &Wait);
     }
     return Chan->Detachers > 0 ? DTAPI_E_CANCELLED : Result;
 }
@@ -749,7 +752,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_IN_USE;
     }
-    if (InpChannel->Rx->Ops->CheckFrame == NULL)
+    if (InpChannel->Rx->Backend->CheckFrame == NULL)
     {
         OsMutex_Unlock(InpChannel->Lock);
         return DTAPI_E_NOT_SDI_MODE;
@@ -757,7 +760,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
 
     size_t RawSize;
     DtapiResult Result =
-        InpChannel->Rx->Ops->CheckFrame(InpChannel->Rx, *FrameSize, &RawSize);
+        InpChannel->Rx->Backend->CheckFrame(InpChannel->Rx, *FrameSize, &RawSize);
 
     InpChannel->Reading = true;
     while (Result == DTAPI_OK)
@@ -765,7 +768,7 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         // While this read waited without the lock, another thread may have stopped the
         // channel, changed its standard or receive mode, and started it again.
         DtRx* Rx = InpChannel->Rx;
-        if (Rx->Ops->CheckFrame == NULL)
+        if (Rx->Backend->CheckFrame == NULL)
         {
             Result = DTAPI_E_NOT_SDI_MODE;
             break;
@@ -774,9 +777,10 @@ DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel, void* FrameBuffer,
         {
             bool Taken = false;
 
-            Result = Rx->Ops->CheckFrame(Rx, *FrameSize, &RawSize);
+            Result = Rx->Backend->CheckFrame(Rx, *FrameSize, &RawSize);
             if (Result == DTAPI_OK)
-                Result = Rx->Ops->TakeFrame(Rx, (uint8_t*)FrameBuffer, &Arrival, &Taken);
+                Result =
+                    Rx->Backend->TakeFrame(Rx, (uint8_t*)FrameBuffer, &Arrival, &Taken);
             if (Result != DTAPI_OK || Taken)
                 break;
         }
@@ -837,7 +841,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         Result = DTAPI_E_NOT_ATTACHED;
     else if (InpChannel->Reading)
         Result = DTAPI_E_IN_USE;
-    else if (Rx->Ops->Take == NULL)
+    else if (Rx->Backend->Take == NULL)
         Result = DTAPI_E_NOT_SUPPORTED;
     else if (NumBytesToRead < 0 || NumBytesToRead % 4 != 0)
         Result = DTAPI_E_INVALID_SIZE;
@@ -845,7 +849,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         Result = DTAPI_E_INVALID_BUF;
     else if (TimeOut != 0)
     {
-        Result = Rx->Ops->GetMaxFifoSize(Rx, &MaxFifoSize);
+        Result = Rx->Backend->GetMaxFifoSize(Rx, &MaxFifoSize);
         if (Result == DTAPI_OK && NumBytesToRead > MaxFifoSize)
             Result = DTAPI_E_INVALID_SIZE;
     }
@@ -863,7 +867,7 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         // While this read waited without the lock, another thread may have stopped the
         // channel, or switched it to SDI.
         Rx = InpChannel->Rx;
-        if (Rx->Ops->Take == NULL)
+        if (Rx->Backend->Take == NULL)
         {
             Result = DTAPI_E_NOT_SUPPORTED;
             break;
@@ -871,10 +875,10 @@ DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer, int NumByt
         const size_t Block = TimeOut == 0 && Left > DT_READ_BLOCK ? DT_READ_BLOCK : Left;
         size_t Load = 0;
         if (Rx->RxControl == DTAPI_RXCTRL_RCV)
-            Result = Rx->Ops->GetLoad(Rx, &Load);
+            Result = Rx->Backend->GetLoad(Rx, &Load);
         if (Result == DTAPI_OK && Load >= Block)
         {
-            Result = Rx->Ops->Take(Rx, Out, Block);
+            Result = Rx->Backend->Take(Rx, Out, Block);
             Out += Block;
             Left -= Block;
             continue;
@@ -910,10 +914,10 @@ DtapiResult DtInpChannel_GetStatus(DtInpChannel* InpChannel, int* PacketSize, in
         return DTAPI_E_NOT_ATTACHED;
 
     DtRx* Rx = InpChannel->Rx;
-    DtapiResult Result =
-        Rx->Ops->GetStatus == NULL
-            ? DTAPI_E_NOT_SUPPORTED
-            : Rx->Ops->GetStatus(Rx, PacketSize, NumInv, ClkDet, AsiLock, RateOk, AsiInv);
+    DtapiResult Result = Rx->Backend->GetStatus == NULL
+                             ? DTAPI_E_NOT_SUPPORTED
+                             : Rx->Backend->GetStatus(Rx, PacketSize, NumInv, ClkDet,
+                                                      AsiLock, RateOk, AsiInv);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -928,9 +932,9 @@ DtapiResult DtInpChannel_GetTsRateBps(DtInpChannel* InpChannel, int* TsRate)
         return DTAPI_E_NOT_ATTACHED;
 
     DtRx* Rx = InpChannel->Rx;
-    DtapiResult Result = Rx->Ops->GetTsRateBps == NULL
+    DtapiResult Result = Rx->Backend->GetTsRateBps == NULL
                              ? DTAPI_E_NOT_SUPPORTED
-                             : Rx->Ops->GetTsRateBps(Rx, TsRate);
+                             : Rx->Backend->GetTsRateBps(Rx, TsRate);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -945,9 +949,9 @@ DtapiResult DtInpChannel_GetViolCount(DtInpChannel* InpChannel, int* ViolCount)
         return DTAPI_E_NOT_ATTACHED;
 
     DtRx* Rx = InpChannel->Rx;
-    DtapiResult Result = Rx->Ops->GetViolCount == NULL
+    DtapiResult Result = Rx->Backend->GetViolCount == NULL
                              ? DTAPI_E_NOT_SUPPORTED
-                             : Rx->Ops->GetViolCount(Rx, ViolCount);
+                             : Rx->Backend->GetViolCount(Rx, ViolCount);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }
@@ -969,9 +973,9 @@ DtapiResult DtInpChannel_PolarityControl(DtInpChannel* InpChannel, int Polarity)
         return DTAPI_E_NOT_ATTACHED;
 
     DtRx* Rx = InpChannel->Rx;
-    DtapiResult Result = Rx->Ops->PolarityControl == NULL
+    DtapiResult Result = Rx->Backend->PolarityControl == NULL
                              ? DTAPI_E_NOT_SUPPORTED
-                             : Rx->Ops->PolarityControl(Rx, Polarity);
+                             : Rx->Backend->PolarityControl(Rx, Polarity);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }

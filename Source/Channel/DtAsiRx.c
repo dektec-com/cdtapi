@@ -527,7 +527,7 @@ static DtapiResult Take(DtRx* Base, uint8_t* Out, size_t Size)
 static void PrepareWait(DtRx* Base, DtRxWait* Wait)
 {
     memset(Wait, 0, sizeof(*Wait));
-    Wait->Ops = Base->Ops;
+    Wait->Backend = Base->Backend;
     Wait->MaxMs = DT_ASIRX_POLL_MS;
 }
 
@@ -736,7 +736,7 @@ static DtapiResult RegisterBuffer(DtAsiRx* Rx)
     return Result;
 }
 
-static const DtRxBackend g_Ops = {
+static const DtRxBackend g_AsiRxBackend = {
     .Release = Release,
     .SetRxMode = SetRxMode,
     .SetRxControl = SetRxControl,
@@ -766,7 +766,7 @@ DtapiResult DtAsiRx_Attach(const DtRxPort* Port, DtRx** Out)
     if (Rx == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Rx, 0, sizeof(*Rx));
-    Rx->Base.Ops = &g_Ops;
+    Rx->Base.Backend = &g_AsiRxBackend;
     Rx->Base.Port = *Port;
     Rx->Base.RxMode = DTAPI_RXMODE_ST188;
     Rx->Base.RxControl = DTAPI_RXCTRL_IDLE;

@@ -23,10 +23,10 @@
 //
 // An input channel keeps one side that receives, chosen by the port's I/O standard:
 // DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. The side is a DtRx, a struct that each
-// side's own begins with, and its functions are the side's DtRxBackend. DtInpChannel.c
-// keeps the checks that do not depend on the side, the lock, detaching and the waits of a
-// read, and calls these with the lock held but where a function says otherwise (plan
-// 0011).
+// side's own begins with, and its function table is the side's backend, a DtRxBackend.
+// DtInpChannel.c keeps the checks that do not depend on the side, the lock, detaching and
+// the waits of a read, and calls these with the lock held but where a function says
+// otherwise (plan 0011).
 //
 // A function that is NULL gives the default the function says.
 //
@@ -43,11 +43,11 @@ typedef struct DtRxPort
     uint64_t Caps; // DT_CAP_ flags of the port
 } DtRxPort;
 
-// What every side has: its functions, its port, and the receive mode and control, which
+// What every side has: its backend, its port, and the receive mode and control, which
 // the checks in DtInpChannel.c read.
 typedef struct DtRx
 {
-    const DtRxBackend* Ops;
+    const DtRxBackend* Backend;
     DtRxPort Port;
     int RxMode;
     int RxControl;
@@ -57,7 +57,7 @@ typedef struct DtRx
 // needs nothing the lock guards.
 typedef struct DtRxWait
 {
-    const DtRxBackend* Ops; // Of the side that prepared the wait
+    const DtRxBackend* Backend; // Of the side that prepared the wait
     OsDrv* Drv;
     DtDrvObject Object; // What the side waits on
     int MaxMs;          // The longest a wait lasts

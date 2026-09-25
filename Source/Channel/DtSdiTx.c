@@ -1729,7 +1729,7 @@ static DtapiResult SetWorkPool(DtTx* Tx, DtWorkPool* Pool, int NumThreads)
     return SizeWork(Sdi);
 }
 
-static const DtTxBackend g_Ops = {
+static const DtTxBackend g_SdiTxBackend = {
     .Release = Release,
     .SetWorkPool = SetWorkPool,
     .SetTxControl = SetTxControlSdi,
@@ -1757,7 +1757,7 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     if (Sdi == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Sdi, 0, sizeof(*Sdi));
-    Sdi->Base.Ops = &g_Ops;
+    Sdi->Base.Backend = &g_SdiTxBackend;
     Sdi->Base.Port = *Port;
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     DtWork_Init(&Sdi->Work);

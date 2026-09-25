@@ -1148,7 +1148,7 @@ static DtapiResult RegisterBuffer(DtAsiTx* Tx)
     return Result;
 }
 
-static const DtTxBackend g_Ops = {
+static const DtTxBackend g_AsiTxBackend = {
     .Release = Release,
     .SetTxControl = SetTxControl,
     .ClearFifo = ClearFifo,
@@ -1177,7 +1177,7 @@ DtapiResult DtAsiTx_Attach(const DtTxPort* Port, DtTx** Out)
     if (Tx == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Tx, 0, sizeof(*Tx));
-    Tx->Base.Ops = &g_Ops;
+    Tx->Base.Backend = &g_AsiTxBackend;
     Tx->Base.Port = *Port;
     Tx->Base.TxControl = DTAPI_TXCTRL_IDLE;
     OsDrv* Drv = Tx->Drv = Port->Device->Drv;
