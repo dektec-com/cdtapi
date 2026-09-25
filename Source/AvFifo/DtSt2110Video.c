@@ -17,13 +17,13 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The packet spacing is kept in thousandths of a nanosecond.
-#define SPACING_FRACTION 1000
+#define PS_PER_NS 1000
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PartOfPeriod -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PeriodFractionNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Part / Whole of a frame period at Rate, in nanoseconds; -1 when it does not fit an int.
 //
-static int PartOfPeriod(const FrameRate* Rate, int Part, int Whole)
+static int PeriodFractionNs(const FrameRate* Rate, int Part, int Whole)
 {
     uint64_t Ns =
         DtAvTime_MulAddDiv(DT_AV_NS_PER_SEC * (uint64_t)Part, (uint64_t)Rate->Denominator,
@@ -39,7 +39,7 @@ static int PartOfPeriod(const FrameRate* Rate, int Part, int Whole)
 //
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
-                                      const DtAvPixConv* Conv)
+                                      const DtAvPixConvTable* Conv)
 {
     memset(Tx, 0, sizeof(*Tx));
     int Width = Config->Resolution.Width;
@@ -66,15 +66,15 @@ DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
     Tx->RowSize = Width / 2 * Tx->PgroupBytes;
     Tx->RowSizeFrame = Tx->RowSize;
     Tx->NumRows = Height;
-    Tx->Interlaced = Config->Timing.VideoScanning == St2110_VideoScanning_Interlaced;
-    Tx->Psf = Config->Timing.VideoScanning == St2110_VideoScanning_PsF;
+    Tx->IsInterlaced = Config->Timing.VideoScanning == St2110_VideoScanning_Interlaced;
+    Tx->IsPsf = Config->Timing.VideoScanning == St2110_VideoScanning_PsF;
     Tx->Packing = Config->Packing;
     Tx->Scheduling = Config->Timing.Scheduling;
     Tx->Rate = Config->Timing.Rate;
 
     int Part = 0;
     int Whole = 0;
-    if (!Tx->Interlaced && !Tx->Psf)
+    if (!Tx->IsInterlaced && !Tx->IsPsf)
     {
         Tx->ActiveVideo = (Ratio){1080, 1125};
         Part = Height >= 1080 ? 43 : 28;
@@ -102,7 +102,7 @@ DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
             Whole = 1125;
         }
     }
-    Tx->TrOffsetNs = PartOfPeriod(&Tx->Rate, Part, Whole);
+    Tx->TrOffsetNs = PeriodFractionNs(&Tx->Rate, Part, Whole);
     return Tx->TrOffsetNs >= 0 ? DTAPI_OK : DTAPI_E_INVALID_ARG;
 }
 
@@ -121,8 +121,8 @@ DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
         return DTAPI_E_INVALID_ARG;
     }
     Tx->Is420 = Config->Is420 != 0;
-    Tx->Interlaced = Config->Timing.VideoScanning == St2110_VideoScanning_Interlaced;
-    Tx->Psf = Config->Timing.VideoScanning == St2110_VideoScanning_PsF;
+    Tx->IsInterlaced = Config->Timing.VideoScanning == St2110_VideoScanning_Interlaced;
+    Tx->IsPsf = Config->Timing.VideoScanning == St2110_VideoScanning_PsF;
     Tx->NumRows = Config->NumRows;
     Tx->RowSize = Config->RowSize;
     Tx->RowSizeFrame = Config->RowSize;
@@ -131,20 +131,20 @@ DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
     Tx->Packing = Config->Packing;
     Tx->Scheduling = Config->Timing.Scheduling;
     Tx->Rate = Config->Timing.Rate;
-    if (Tx->Interlaced || Tx->Psf)
+    if (Tx->IsInterlaced || Tx->IsPsf)
         Tx->Rate.Denominator *= 2;
     Tx->ActiveVideo = Config->ActiveVideo;
     Tx->TrOffsetNs = Config->TrOffset;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RowsToSend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RowsInField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A field has half the rows; the first field of an odd number of rows one more.
 //
-static int RowsToSend(const DtSt2110VideoTx* Tx, int Field)
+static int RowsInField(const DtSt2110VideoTx* Tx, int Field)
 {
-    if (!Tx->Interlaced && !Tx->Psf)
+    if (!Tx->IsInterlaced && !Tx->IsPsf)
         return Tx->NumRows;
     return Tx->NumRows / 2 + (Field == 0 && Tx->NumRows % 2 != 0 ? 1 : 0);
 }
@@ -175,13 +175,13 @@ static int SegmentBytes(const DtSt2110VideoTx* Tx, int RowOffset, int Used)
     return RowBytesToDo >= Tx->PayloadSize - Used ? Tx->PayloadSize - Used : RowBytesToDo;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketsForRows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The packets NumRows rows go out in, cut as DtSt2110VideoTx_Packetize cuts them. A
 // packet is full only where its three row headers reach far enough, so a closed formula
 // that divides the bytes by the payload undercounts; this walks the rows instead.
 //
-static int NumPackets(const DtSt2110VideoTx* Tx, int NumRows)
+static int PacketsForRows(const DtSt2110VideoTx* Tx, int NumRows)
 {
     int RowsToDo = NumRows;
     int RowOffset = 0;
@@ -212,9 +212,10 @@ static int NumPackets(const DtSt2110VideoTx* Tx, int NumRows)
 //
 static int PacketsPerFrame(const DtSt2110VideoTx* Tx)
 {
-    if (!Tx->Interlaced && !Tx->Psf)
-        return NumPackets(Tx, Tx->NumRows);
-    return NumPackets(Tx, RowsToSend(Tx, 0)) + NumPackets(Tx, RowsToSend(Tx, 1));
+    if (!Tx->IsInterlaced && !Tx->IsPsf)
+        return PacketsForRows(Tx, Tx->NumRows);
+    return PacketsForRows(Tx, RowsInField(Tx, 0)) +
+           PacketsForRows(Tx, RowsInField(Tx, 1));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -246,15 +247,14 @@ DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Strea
     Tx->PayloadSize = Payload;
     Tx->PacketsPerFrame = PacketsPerFrame(Tx);
 
-    uint64_t Numerator =
-        DT_AV_NS_PER_SEC * SPACING_FRACTION * (uint64_t)Tx->Rate.Denominator;
+    uint64_t Numerator = DT_AV_NS_PER_SEC * PS_PER_NS * (uint64_t)Tx->Rate.Denominator;
     uint64_t Denominator = (uint64_t)Tx->PacketsPerFrame * (uint64_t)Tx->Rate.Numerator;
     if (Tx->Scheduling == St2110_Scheduling_Gapped)
-        Tx->Spacing =
+        Tx->PacketSpacingPs =
             DtAvTime_MulAddDiv(Numerator, (uint64_t)Tx->ActiveVideo.Numerator, 0,
                                Denominator * (uint64_t)Tx->ActiveVideo.Denominator);
     else
-        Tx->Spacing = Numerator / Denominator;
+        Tx->PacketSpacingPs = Numerator / Denominator;
     Tx->PrevRtpTime = 0;
     return DTAPI_OK;
 }
@@ -271,7 +271,7 @@ int DtSt2110VideoTx_FrameBytes(const DtSt2110VideoTx* Tx, const DtAvTxStream* St
 //
 int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field)
 {
-    return RowsToSend(Tx, Field) * Tx->RowSizeFrame;
+    return RowsInField(Tx, Field) * Tx->RowSizeFrame;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoTx_Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -279,16 +279,16 @@ int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field)
 // A packet takes as many row headers as NumRowHeaders gives it.
 //
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
-                                      const AvFifo_Frame* Frame, const DtAvSink* Sink)
+                                      const AvFifo_Frame* Frame, const DtAvTxSink* Sink)
 {
     if (Frame->NumValidBytes != DtSt2110VideoTx_FrameSize(Tx, Frame->Field) ||
         (size_t)Frame->NumValidBytes > Frame->Size)
     {
         return DTAPI_E_INVALID_FORMAT;
     }
-    int RowsToDo = RowsToSend(Tx, Frame->Field);
+    int RowsToDo = RowsInField(Tx, Frame->Field);
     uint32_t RtpTime = Frame->RtpTime;
-    if (Tx->Psf && Frame->Field == 1)
+    if (Tx->IsPsf && Frame->Field == 1)
         RtpTime = Tx->PrevRtpTime;
     else
         Tx->PrevRtpTime = RtpTime;
@@ -306,11 +306,11 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
     {
         int NumHeaders = NumRowHeaders(Tx, Tx->RowSize - RowOffset, RowsToDo);
 
-        uint8_t* Packet = Sink->Begin(Sink->Context, MaxPacket);
+        uint8_t* Packet = Sink->ReserveRoom(Sink->Context, MaxPacket);
         uint8_t* Rtp = Packet + Header;
         uint8_t* Srd = Rtp + DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE;
         uint8_t* Dst = Srd + NumHeaders * DT_AV_SRD_SIZE;
-        DtAvPacket_Put16((uint16_t)(Stream->SequenceNumber >> 16),
+        DtAvPacket_Put16((uint16_t)(Stream->NextSequenceNumber >> 16),
                          Rtp + DT_AV_RTP_HEADER_SIZE);
 
         bool Marker = false;
@@ -346,41 +346,41 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
         DtAvRtp RtpHeader;
         RtpHeader.Marker = Marker;
         RtpHeader.PayloadType = Stream->PayloadType;
-        RtpHeader.SequenceNumber = (uint16_t)Stream->SequenceNumber++;
+        RtpHeader.SequenceNumber = (uint16_t)Stream->NextSequenceNumber++;
         RtpHeader.Timestamp = RtpTime;
         RtpHeader.Ssrc = Stream->Ssrc;
         DtAvRtp_Write(&RtpHeader, Rtp);
 
         int UdpPayload =
             DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE + NumHeaders * DT_AV_SRD_SIZE + Used;
-        uint64_t TodNs = (uint64_t)FirstTodNs + Offset / SPACING_FRACTION;
-        Sink->Commit(Sink->Context,
-                     DtAvNet_Finish(&Stream->Net, Packet, UdpPayload, 0, TodNs));
-        Offset += Tx->Spacing;
+        uint64_t TodNs = (uint64_t)FirstTodNs + Offset / PS_PER_NS;
+        Sink->CommitPacket(Sink->Context, DtAvNet_WriteHeaders(&Stream->Net, Packet,
+                                                               UdpPayload, 0, TodNs));
+        Offset += Tx->PacketSpacingPs;
     }
     return DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetSizes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForgetStreamAndFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Forgets the learned frame sizes and returns the frame being received to the pool.
 //
-static void ResetSizes(DtSt2110VideoRx* Rx)
+static void ForgetStreamAndFrame(DtSt2110VideoRx* Rx)
 {
     if (Rx->PartialFrame != NULL)
-        DtAvFramePool_Return(Rx->Target.Pool, &Rx->PartialFrame->Frame);
+        DtAvFramePool_Return(Rx->Sink.Pool, &Rx->PartialFrame->Frame);
     Rx->PartialFrame = NULL;
     Rx->CalculatedFrameSize = -1;
     Rx->NumRowsFrame = -1;
     Rx->CountedFrameSize = -1;
-    Rx->CountedNumLines = 0;
-    Rx->LineSizeFrame = -1;
-    Rx->WaitForEndFrame = true;
-    Rx->Interlaced = false;
+    Rx->CountedNumRows = 0;
+    Rx->RowSizeFrame = -1;
+    Rx->IsWaitingForMarker = true;
+    Rx->IsInterlaced = false;
     Rx->Is420 = false;
-    Rx->PrevRowNum = -1;
+    Rx->PrevNumRows = -1;
     Rx->InputNumBytes = 0;
     Rx->OutputNumBytes = 0;
 }
@@ -388,24 +388,24 @@ static void ResetSizes(DtSt2110VideoRx* Rx)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoRx_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSt2110VideoRx_Init(DtSt2110VideoRx* Rx, St2110_RxFrameFormat Format,
-                          const DtAvPixConv* Conv, const DtAvRxTarget* Target)
+                          const DtAvPixConvTable* Conv, const DtAvRxSink* Target)
 {
     memset(Rx, 0, sizeof(*Rx));
     Rx->Format = Format;
     Rx->Conv = Conv;
-    Rx->Target = *Target;
-    ResetSizes(Rx);
+    Rx->Sink = *Target;
+    ForgetStreamAndFrame(Rx);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoRx_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx)
 {
-    ResetSizes(Rx);
+    ForgetStreamAndFrame(Rx);
     Rx->LastSeqNum = 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRows -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadRowHeaders -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The row headers up to one without continuation or of length 0, at most three, each
 // checked against the payload size. Sets the offset of the data, and learns from a
@@ -413,21 +413,22 @@ void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx)
 // an IP packet error, with the frame skipped, or the field bit appearing once the size
 // is known, a size error that resets the learned sizes.
 //
-static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSize,
-                     DtAvSrd* Srd, int* NumRows, bool* Field1, int* DataOffset)
+static bool ReadRowHeaders(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSize,
+                           DtAvSrd* Srd, int* NumRows, bool* IsSecondField,
+                           int* DataOffset)
 {
     int Offset = DT_AV_ESN_SIZE;
     int Rows = 0;
     int64_t DataBytes = 0;
 
     *NumRows = 0;
-    *Field1 = false;
+    *IsSecondField = false;
     for (;;)
     {
         if (Offset + DT_AV_SRD_SIZE > PayloadSize)
         {
             Rx->Stats.IpPacketErrors++;
-            Rx->WaitForEndFrame = true;
+            Rx->IsWaitingForMarker = true;
             return false;
         }
         DtAvSrd Row;
@@ -436,16 +437,16 @@ static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSiz
             break;
         if (Row.Field)
         {
-            *Field1 = true;
-            if (!Rx->Interlaced)
+            *IsSecondField = true;
+            if (!Rx->IsInterlaced)
             {
                 if (Rx->CalculatedFrameSize != -1)
                 {
                     Rx->Stats.FramesSizeError++;
-                    ResetSizes(Rx);
+                    ForgetStreamAndFrame(Rx);
                     return false;
                 }
-                Rx->Interlaced = true;
+                Rx->IsInterlaced = true;
             }
         }
         Srd[Rows++] = Row;
@@ -456,7 +457,7 @@ static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSiz
         if (Rows == 3)
         {
             Rx->Stats.IpPacketErrors++;
-            Rx->WaitForEndFrame = true;
+            Rx->IsWaitingForMarker = true;
             return false;
         }
     }
@@ -465,7 +466,7 @@ static bool ReadRows(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSiz
     if (*DataOffset + DataBytes > PayloadSize)
     {
         Rx->Stats.IpPacketErrors++;
-        Rx->WaitForEndFrame = true;
+        Rx->IsWaitingForMarker = true;
         return false;
     }
     return true;
@@ -484,7 +485,7 @@ static void CountFrameSize(DtSt2110VideoRx* Rx, int NumRows, const DtAvSrd* Srd,
         Srd[0].Offset == 0)
     {
         Rx->CountedFrameSize = 0;
-        Rx->CountedNumLines = 0;
+        Rx->CountedNumRows = 0;
         Rx->LastSeqNum = SeqNum - 1;
     }
     if (Rx->CountedFrameSize != -1)
@@ -495,29 +496,29 @@ static void CountFrameSize(DtSt2110VideoRx* Rx, int NumRows, const DtAvSrd* Srd,
         {
             for (int i = 0; i < NumRows; i++)
                 Rx->CountedFrameSize += Srd[i].Length;
-            Rx->CountedNumLines = Srd[NumRows - 1].Row + 1;
+            Rx->CountedNumRows = Srd[NumRows - 1].Row + 1;
         }
     }
     if (NumRows == 0)
         return;
 
     Rx->NumRowsFrame = Srd[NumRows - 1].Row + 1;
-    if (Rx->PrevRowNum == -1)
-        Rx->PrevRowNum = Rx->NumRowsFrame;
-    else if (Rx->PrevRowNum != Rx->NumRowsFrame)
+    if (Rx->PrevNumRows == -1)
+        Rx->PrevNumRows = Rx->NumRowsFrame;
+    else if (Rx->PrevNumRows != Rx->NumRowsFrame)
     {
-        Rx->Is420 = Rx->NumRowsFrame - Rx->PrevRowNum == 2;
-        Rx->PrevRowNum = Rx->NumRowsFrame;
+        Rx->Is420 = Rx->NumRowsFrame - Rx->PrevNumRows == 2;
+        Rx->PrevNumRows = Rx->NumRowsFrame;
     }
     if (Srd[0].Offset == 0)
-        Rx->LineSizeFrame = 0;
-    if (Rx->LineSizeFrame != -1)
+        Rx->RowSizeFrame = 0;
+    if (Rx->RowSizeFrame != -1)
     {
         for (int i = 0; i < NumRows; i++)
         {
             if (Srd[i].Offset == 0)
-                Rx->LineSizeFrame = 0;
-            Rx->LineSizeFrame += Srd[i].Length;
+                Rx->RowSizeFrame = 0;
+            Rx->RowSizeFrame += Srd[i].Length;
         }
     }
 }
@@ -530,20 +531,21 @@ static void CountFrameSize(DtSt2110VideoRx* Rx, int NumRows, const DtAvSrd* Srd,
 static void CalculateFrameSize(DtSt2110VideoRx* Rx)
 {
     int64_t Size = -1;
-    if (Rx->NumRowsFrame >= 0 && Rx->LineSizeFrame >= 0)
-        Size = (int64_t)(Rx->NumRowsFrame + (Rx->Interlaced ? 1 : 0)) * Rx->LineSizeFrame;
-    if (Rx->CountedFrameSize != -1 && Rx->Interlaced && Rx->CountedNumLines > 0)
-        Rx->CountedFrameSize += Rx->CountedFrameSize / Rx->CountedNumLines;
+    if (Rx->NumRowsFrame >= 0 && Rx->RowSizeFrame >= 0)
+        Size =
+            (int64_t)(Rx->NumRowsFrame + (Rx->IsInterlaced ? 1 : 0)) * Rx->RowSizeFrame;
+    if (Rx->CountedFrameSize != -1 && Rx->IsInterlaced && Rx->CountedNumRows > 0)
+        Rx->CountedFrameSize += Rx->CountedFrameSize / Rx->CountedNumRows;
     if (Size < Rx->CountedFrameSize)
         Size = Rx->CountedFrameSize;
     Rx->CalculatedFrameSize = Size > 0 && Size <= INT_MAX ? (int)Size : -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Take -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AppendSegment -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Converts a row segment into the frame being received.
 //
-static void Take(DtSt2110VideoRx* Rx, const uint8_t* Src, int Length)
+static void AppendSegment(DtSt2110VideoRx* Rx, const uint8_t* Src, int Length)
 {
     uint8_t* Data = Rx->PartialFrame->Frame.Data;
     size_t Out = (size_t)Rx->OutputNumBytes;
@@ -575,26 +577,27 @@ static void Take(DtSt2110VideoRx* Rx, const uint8_t* Src, int Length)
     Rx->InputNumBytes += Length;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Finish -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Delivers the frame being received. A field has as many rows as its bytes fill.
 //
-static void Finish(DtSt2110VideoRx* Rx, bool Field1)
+static void DeliverFrame(DtSt2110VideoRx* Rx, bool IsSecondField)
 {
     DtAvFrame* Frame = Rx->PartialFrame;
     int LineSize = Rx->Format == St2110_RxFrameFormat_Uyvy422_10b_to_8b
-                       ? Rx->LineSizeFrame / 5 * 4
-                       : Rx->LineSizeFrame;
+                       ? Rx->RowSizeFrame / 5 * 4
+                       : Rx->RowSizeFrame;
 
     Frame->Frame.NumValidBytes = Rx->OutputNumBytes;
-    Frame->Frame.Field = Field1 ? 1 : 0;
-    Frame->Frame.NumRows =
-        Rx->Interlaced && LineSize > 0 ? Rx->OutputNumBytes / LineSize : Rx->NumRowsFrame;
+    Frame->Frame.Field = IsSecondField ? 1 : 0;
+    Frame->Frame.NumRows = Rx->IsInterlaced && LineSize > 0
+                               ? Rx->OutputNumBytes / LineSize
+                               : Rx->NumRowsFrame;
     Frame->Frame.Is420 = Rx->Is420 ? 1 : 0;
     Rx->PartialFrame = NULL;
     Rx->InputNumBytes = 0;
     Rx->OutputNumBytes = 0;
-    DtAvRxTarget_Deliver(&Rx->Target, &Rx->Stats, Frame);
+    DtAvRxSink_Deliver(&Rx->Sink, &Rx->Stats, Frame);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110VideoRx_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -603,27 +606,28 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
 {
     DtAvRxPacket Udp;
     if (!DtAvRxPacket_Parse(Packet, Size, &Udp) ||
-        Udp.UdpSize < DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE)
+        Udp.PayloadSize < DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE)
     {
         Rx->Stats.IpPacketErrors++;
         return;
     }
     DtAvRtp Rtp;
-    DtAvRtp_Read(Udp.Udp, &Rtp);
-    const uint8_t* Payload = Udp.Udp + DT_AV_RTP_HEADER_SIZE;
-    int PayloadSize = Udp.UdpSize - DT_AV_RTP_HEADER_SIZE;
+    DtAvRtp_Read(Udp.Payload, &Rtp);
+    const uint8_t* Payload = Udp.Payload + DT_AV_RTP_HEADER_SIZE;
+    int PayloadSize = Udp.PayloadSize - DT_AV_RTP_HEADER_SIZE;
 
     DtAvSrd Srd[3];
     int NumRows = 0;
-    bool Field1 = false;
+    bool IsSecondField = false;
     int DataOffset = 0;
-    if (!ReadRows(Rx, Payload, PayloadSize, Srd, &NumRows, &Field1, &DataOffset))
+    if (!ReadRowHeaders(Rx, Payload, PayloadSize, Srd, &NumRows, &IsSecondField,
+                        &DataOffset))
         return;
     bool EndOfFrame = Rtp.Marker;
     uint32_t SeqNum = (uint32_t)DtAvPacket_Get16(Payload) << 16 | Rtp.SequenceNumber;
 
     // Until a marker: learn the size.
-    if (Rx->WaitForEndFrame)
+    if (Rx->IsWaitingForMarker)
     {
         if (Rx->CalculatedFrameSize == -1)
             CountFrameSize(Rx, NumRows, Srd, SeqNum);
@@ -631,12 +635,12 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
         if (!EndOfFrame)
             return;
         if (Rx->CalculatedFrameSize == -1 &&
-            (Rx->NumRowsFrame == -1 || Rx->LineSizeFrame == -1) &&
+            (Rx->NumRowsFrame == -1 || Rx->RowSizeFrame == -1) &&
             Rx->CountedFrameSize == -1)
         {
             return;
         }
-        Rx->WaitForEndFrame = false;
+        Rx->IsWaitingForMarker = false;
         Rx->InputNumBytes = 0;
         Rx->OutputNumBytes = 0;
         return;
@@ -651,7 +655,7 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
             Srd[0].Offset != 0)
         {
             Rx->Stats.FramesIncomplete++;
-            Rx->WaitForEndFrame = !EndOfFrame;
+            Rx->IsWaitingForMarker = !EndOfFrame;
             Rx->InputNumBytes = 0;
             Rx->OutputNumBytes = 0;
             return;
@@ -663,20 +667,21 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
     {
         if (Rx->CalculatedFrameSize == -1)
         {
-            Rx->Interlaced = Rx->Interlaced || (NumRows > 0 && Srd[NumRows - 1].Field);
+            Rx->IsInterlaced =
+                Rx->IsInterlaced || (NumRows > 0 && Srd[NumRows - 1].Field);
             CalculateFrameSize(Rx);
             if (Rx->CalculatedFrameSize == -1)
             {
-                ResetSizes(Rx);
+                ForgetStreamAndFrame(Rx);
                 return;
             }
         }
         Rx->PartialFrame =
-            DtAvFramePool_Get(Rx->Target.Pool, (size_t)Rx->CalculatedFrameSize);
+            DtAvFramePool_Get(Rx->Sink.Pool, (size_t)Rx->CalculatedFrameSize);
         if (Rx->PartialFrame == NULL)
         {
             Rx->Stats.DroppedFrames++;
-            Rx->WaitForEndFrame = !EndOfFrame;
+            Rx->IsWaitingForMarker = !EndOfFrame;
             return;
         }
         Rx->InputNumBytes = 0;
@@ -694,12 +699,12 @@ void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size)
         if (Rx->InputNumBytes + Srd[i].Length > Rx->CalculatedFrameSize)
         {
             Rx->Stats.FramesSizeError++;
-            ResetSizes(Rx);
+            ForgetStreamAndFrame(Rx);
             return;
         }
-        Take(Rx, Src, Srd[i].Length);
+        AppendSegment(Rx, Src, Srd[i].Length);
         Src += Srd[i].Length;
     }
     if (EndOfFrame)
-        Finish(Rx, Field1);
+        DeliverFrame(Rx, IsSecondField);
 }

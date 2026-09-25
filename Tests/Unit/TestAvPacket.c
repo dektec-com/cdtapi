@@ -62,7 +62,7 @@ DT_TEST(Ipv4PacketBytes)
     DT_ASSERT_EQ(DtAvNet_HeaderSize(&Net), 18 + 42);
     DT_ASSERT_EQ(DtAvNet_PacketSize(&Net, 100), 160);
     memset(Packet, 0xAA, sizeof(Packet));
-    DT_ASSERT_EQ(DtAvNet_Finish(&Net, Packet, 100, 0, TOD), 160);
+    DT_ASSERT_EQ(DtAvNet_WriteHeaders(&Net, Packet, 100, 0, TOD), 160);
     DT_ASSERT_MEM(Packet + 18, Expected, 42);
     DT_ASSERT_EQ(Net.IpIdentification, 0x1235);
     for (int i = 18 + 42 + 100; i < 160; i++)
@@ -83,7 +83,7 @@ DT_TEST(Ipv4PacketBytes)
     DT_ASSERT_EQ(Header.Nanoseconds, 123456789u);
 
     // A destination port offset for a second substream.
-    DtAvNet_Finish(&Net, Packet, 100, 2, TOD);
+    DtAvNet_WriteHeaders(&Net, Packet, 100, 2, TOD);
     DT_ASSERT_EQ(DtAvPacket_Get16(Packet + 18 + 34 + 2), 5006);
 }
 
@@ -120,7 +120,7 @@ DT_TEST(Ipv6VlanHeaderV2PacketBytes)
     memcpy(Net.DstMac, Mac, 6);
 
     DT_ASSERT_EQ(DtAvNet_HeaderSize(&Net), 18 + 18 + 40 + 8);
-    int Size = DtAvNet_Finish(&Net, Packet, 1000, 0, TOD);
+    int Size = DtAvNet_WriteHeaders(&Net, Packet, 1000, 0, TOD);
     DT_ASSERT_EQ(Size, (18 + 18 + 40 + 8 + 1000 + 15) / 16 * 16);
     DT_ASSERT_EQ(Size, DtAvNet_PacketSize(&Net, 1000));
     DT_ASSERT_MEM(Packet + 18, Expected, 66);
@@ -143,11 +143,11 @@ DT_TEST(ParsingReceivedPackets)
     uint8_t Packet[256];
     DtAvRxPacket Rx;
 
-    int Size = DtAvNet_Finish(&Net, Packet, 100, 0, TOD);
+    int Size = DtAvNet_WriteHeaders(&Net, Packet, 100, 0, TOD);
     DT_ASSERT(DtAvRxPacket_Parse(Packet, Size, &Rx));
     DT_ASSERT_EQ(Rx.TodNs, TOD);
-    DT_ASSERT(Rx.Udp == Packet + 60);
-    DT_ASSERT_EQ(Rx.UdpSize, 100);
+    DT_ASSERT(Rx.Payload == Packet + 60);
+    DT_ASSERT_EQ(Rx.PayloadSize, 100);
     DT_ASSERT_EQ(Rx.SubStream, 0);
 
     // A frame that ends in the Ethernet checksum, on substream 2.
@@ -159,7 +159,7 @@ DT_TEST(ParsingReceivedPackets)
     DtEthIp_Write(&Header, Packet);
     Size += 8;
     DT_ASSERT(DtAvRxPacket_Parse(Packet, Size, &Rx));
-    DT_ASSERT_EQ(Rx.UdpSize, 100);
+    DT_ASSERT_EQ(Rx.PayloadSize, 100);
     DT_ASSERT_EQ(Rx.SubStream, 2);
 
     // Shorter than its header says, a UDP length beyond the frame, a UDP length below
@@ -176,7 +176,7 @@ DT_TEST(ParsingReceivedPackets)
     DT_ASSERT(!DtAvRxPacket_Parse(Packet, Size, &Rx));
     Packet[0] = 0;
     DT_ASSERT(!DtAvRxPacket_Parse(Packet, Size, &Rx));
-    DT_ASSERT(Rx.Udp == NULL);
+    DT_ASSERT(Rx.Payload == NULL);
 }
 
 DT_TEST(RtpHeaderBytes)

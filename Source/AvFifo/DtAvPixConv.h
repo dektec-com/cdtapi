@@ -37,29 +37,29 @@ typedef void (*DtAvPixConvPlanarFunc)(const uint8_t* Src, size_t NumPgroups, uin
                                       uint8_t* U, uint8_t* V);
 
 // A set of conversions.
-typedef struct DtAvPixConv
+typedef struct DtAvPixConvTable
 {
     DtAvPixConvFunc Pg10ToUyvy10;
     DtAvPixConvFunc Pg10ToUyvy8;
     DtAvPixConvFunc Uyvy10ToPg10;
     DtAvPixConvPlanarFunc Uyvy8ToYuv422p;
-} DtAvPixConv;
+} DtAvPixConvTable;
 
 // The conversions in portable C.
-const DtAvPixConv* DtAvPixConv_C(void);
+const DtAvPixConvTable* DtAvPixConv_C(void);
 
 // The conversions with SSSE3, or NULL when the library was built without them or the
 // processor lacks SSSE3.
-const DtAvPixConv* DtAvPixConv_Ssse3(void);
+const DtAvPixConvTable* DtAvPixConv_Ssse3(void);
 
 // The conversions with AVX2 for 10-bit video and SSSE3 for planar video, or NULL when the
 // library was built without them, or the processor or the operating system lacks AVX2.
-const DtAvPixConv* DtAvPixConv_Avx2(void);
+const DtAvPixConvTable* DtAvPixConv_Avx2(void);
 
 // The fastest conversions the processor runs: AVX2, SSSE3 or portable C.
-const DtAvPixConv* DtAvPixConv_Best(void);
+const DtAvPixConvTable* DtAvPixConv_Best(void);
 
 // The SSSE3 and the AVX2 conversions without the processor check; defined only in an
 // x86 build. Other code calls DtAvPixConv_Ssse3 or DtAvPixConv_Avx2, which check first.
-const DtAvPixConv* DtAvPixConv_Ssse3Table(void);
-const DtAvPixConv* DtAvPixConv_Avx2Table(void);
+const DtAvPixConvTable* DtAvPixConv_Ssse3Unchecked(void);
+const DtAvPixConvTable* DtAvPixConv_Avx2Unchecked(void);

@@ -66,18 +66,18 @@ int DtAvNet_PacketSize(const DtAvNet* Net, int PayloadSize);
 // Writes the headers of a packet whose UDP payload of PayloadSize bytes is in place after
 // them, to be sent at TodNs nanoseconds, to destination port DstPort plus DstPortOffset,
 // and zeroes the padding. Advances the IPv4 identification. Returns the packet's size.
-int DtAvNet_Finish(DtAvNet* Net, uint8_t* Packet, int PayloadSize, int DstPortOffset,
-                   uint64_t TodNs);
+int DtAvNet_WriteHeaders(DtAvNet* Net, uint8_t* Packet, int PayloadSize,
+                         int DstPortOffset, uint64_t TodNs);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // A received UDP packet.
 typedef struct DtAvRxPacket
 {
-    uint64_t TodNs;     // Time of arrival
-    int SubStream;      // Which of the filter's destination ports it arrived on
-    const uint8_t* Udp; // The UDP payload
-    int UdpSize;        // Its bytes, from the UDP header
+    uint64_t TodNs;         // Time of arrival
+    int SubStream;          // Which of the filter's destination ports it arrived on
+    const uint8_t* Payload; // The UDP payload
+    int PayloadSize;        // Its bytes, from the UDP header
 } DtAvRxPacket;
 
 // Reads the packet of Size bytes at Packet. False when its DtEthIp header does not check,

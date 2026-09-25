@@ -161,8 +161,8 @@ static void PrintCompiler(void)
 
 // Converts Count pixel groups from Src into pixel group First of a destination of Total
 // pixel groups at Dst.
-static void Convert(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src, uint8_t* Dst,
-                    size_t First, size_t Count, size_t Total)
+static void Convert(const DtAvPixConvTable* Conv, Which Kind, const uint8_t* Src,
+                    uint8_t* Dst, size_t First, size_t Count, size_t Total)
 {
     switch (Kind)
     {
@@ -183,7 +183,8 @@ static void Convert(const DtAvPixConv* Conv, Which Kind, const uint8_t* Src, uin
 }
 
 // Converts a frame's worth of pixel groups once, in the given way.
-static void ConvertFrame(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf)
+static void ConvertFrame(const DtAvPixConvTable* Conv, Which Kind, Way How,
+                         const Buffers* Buf)
 {
     size_t Bytes = (size_t)InputNumBytes(Kind);
     size_t PerPacket = Bytes == 5 ? PACKET_PGROUPS_10 : PACKET_PGROUPS_8;
@@ -217,8 +218,8 @@ typedef struct Speed
 } Speed;
 
 // Measures one conversion for Seconds.
-static Speed Measure(const DtAvPixConv* Conv, Which Kind, Way How, const Buffers* Buf,
-                     int Seconds)
+static Speed Measure(const DtAvPixConvTable* Conv, Which Kind, Way How,
+                     const Buffers* Buf, int Seconds)
 {
     size_t Bytes = FRAME_PGROUPS * (size_t)InputNumBytes(Kind);
     uint64_t Start = OsTime_MonotonicMs();
@@ -545,8 +546,8 @@ int main(int Argc, char** Argv)
         NUM_SETS = 3
     };
     static const char* const SetNames[NUM_SETS] = {"C", "SSSE3", "AVX2"};
-    const DtAvPixConv* Sets[NUM_SETS] = {DtAvPixConv_C(), DtAvPixConv_Ssse3(),
-                                         DtAvPixConv_Avx2()};
+    const DtAvPixConvTable* Sets[NUM_SETS] = {DtAvPixConv_C(), DtAvPixConv_Ssse3(),
+                                              DtAvPixConv_Avx2()};
     PrintCompiler();
     printf("A 3840x2160 frame; packets of %d pixel groups of 5 bytes or %d of 4 bytes\n",
            PACKET_PGROUPS_10, PACKET_PGROUPS_8);

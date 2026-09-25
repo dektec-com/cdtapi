@@ -44,7 +44,7 @@ typedef struct SimPipe
     bool InUse;
     void* Owner; // The handle that opened it
     int OpMode;
-    bool BufferSet;
+    bool BufferRegistered;
     uint8_t* Buffer;
     size_t BufferSize;
     uint32_t ReadOffset;
@@ -287,7 +287,7 @@ static void ClosePipe(SimPipe* Pipe)
     Pipe->InUse = false;
     Pipe->Owner = NULL;
     Pipe->OpMode = DT_PIPE_OPMODE_IDLE;
-    Pipe->BufferSet = false;
+    Pipe->BufferRegistered = false;
     Pipe->Buffer = NULL;
     Pipe->BufferSize = 0;
     Pipe->ReadOffset = 0;
@@ -304,7 +304,7 @@ static void ClosePipe(SimPipe* Pipe)
 typedef struct SimFrameInfo
 {
     int PacketType; // A DT_ETHIP_TYPE_ value
-    bool Udp;
+    bool IsUdp;
     int IpOffset;   // Bytes from the start of the frame to the source IP address
     int PortOffset; // Bytes from the frame's start to the transport header, 0 for none
     const uint8_t* SrcIp;
@@ -374,7 +374,7 @@ static void ReadFrame(const uint8_t* Frame, size_t Size, SimFrameInfo* Info)
 
     if (Size < Next + 8)
         return;
-    Info->Udp = IsUdp == 17;
+    Info->IsUdp = IsUdp == 17;
     Info->PortOffset = (int)Next;
     Info->SrcPort = Get16(Frame + Next);
     Info->DstPort = Get16(Frame + Next + 2);
@@ -517,7 +517,7 @@ static uint8_t* BuildPacket(const uint8_t* Frame, size_t Size, const SimFrameInf
     Header.IsVersion2 = Size > DT_ETHIP_MAX_FRAME_V1;
     Header.NumWords = DtEthIp_NumWords((int)Size, SIM_DTA2110_PACKET_ALIGNMENT);
     Header.PacketType = Info->PacketType;
-    Header.IsUdp = Info->Udp ? DT_ETHIP_PROTO_UDP : 0;
+    Header.IsUdp = Info->IsUdp ? DT_ETHIP_PROTO_UDP : 0;
     if (Info->PacketType != DT_ETHIP_TYPE_OTHER)
     {
         Header.IpAddressOffset = DT_ETHIP_HEADER_SIZE + Info->IpOffset;
@@ -577,7 +577,7 @@ static void Arrive(SimItem* Frame)
             continue;
         size_t Size = 0;
         uint8_t* Packet = NULL;
-        if (Pipe->OpMode == DT_PIPE_OPMODE_RUN && Pipe->BufferSet)
+        if (Pipe->OpMode == DT_PIPE_OPMODE_RUN && Pipe->BufferRegistered)
             Packet = BuildPacket(Frame->Data, Frame->Size, &Info, SubStream,
                                  Frame->TimeNs, &Size);
         if (Packet != NULL)
@@ -699,7 +699,7 @@ static bool Schedule(SimPipe* Pipe, const DtEthIpFields* Header, uint64_t NowNs)
 static bool CanTransmit(const SimPipe* Pipe)
 {
     return Pipe != NULL && IsTx(Pipe) && Pipe->OpMode == DT_PIPE_OPMODE_RUN &&
-           Pipe->BufferSet && (Pipe->ErrorFlags & DT_PIPE_ERROR_INVALID_TIME) == 0;
+           Pipe->BufferRegistered && (Pipe->ErrorFlags & DT_PIPE_ERROR_INVALID_TIME) == 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakeHwPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -812,7 +812,7 @@ static void Interval(uint64_t TickNs)
             Taken = true;
             size_t Size = 0;
             uint8_t* Packet = NULL;
-            if (Pipe->BufferSet)
+            if (Pipe->BufferRegistered)
                 Packet =
                     BuildPacket(Frame.Data, Frame.Size, &Info, 0, Frame.TimeNs, &Size);
             if (Packet != NULL)
@@ -1076,7 +1076,7 @@ static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutS
     uint8_t* Buffer;
     size_t Size;
 
-    if (Pipe->BufferSet)
+    if (Pipe->BufferRegistered)
         return DT_STATUS_IN_USE;
     if (g_Nw.AsLinux)
     {
@@ -1101,7 +1101,7 @@ static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutS
             return DT_STATUS_BUF_TOO_LARGE;
     }
 
-    Pipe->BufferSet = true;
+    Pipe->BufferRegistered = true;
     Pipe->Buffer = Buffer;
     Pipe->BufferSize = Size;
     Pipe->ReadOffset = 0;
@@ -1164,7 +1164,7 @@ static uint32_t SetOpMode(SimPipe* Pipe, int OpMode)
         {
             return DT_STATUS_INVALID_PARAMETER;
         }
-        if (OpMode != DT_PIPE_OPMODE_IDLE && !Pipe->BufferSet)
+        if (OpMode != DT_PIPE_OPMODE_IDLE && !Pipe->BufferRegistered)
             return DT_STATUS_NOT_INITIALISED;
         if (IsTx(Pipe) && OpMode == DT_PIPE_OPMODE_RUN &&
             Pipe->OpMode == DT_PIPE_OPMODE_STANDBY)
@@ -1190,7 +1190,7 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
     case DT_PIPE_CMD_SET_SHARED_BUFFER:
         return SetBuffer(Pipe, In, Out, OutSize);
     case DT_PIPE_CMD_RELEASE_SHARED_BUFFER:
-        Pipe->BufferSet = false;
+        Pipe->BufferRegistered = false;
         Pipe->Buffer = NULL;
         Pipe->BufferSize = 0;
         return DT_STATUS_OK;
@@ -1259,7 +1259,7 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
 
         if (!Pipe->Rx)
             return DT_STATUS_NOT_SUPPORTED;
-        if (Pipe->Hw && (!Pipe->BufferSet || Offset >= Pipe->BufferSize))
+        if (Pipe->Hw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
             return DT_STATUS_INVALID_PARAMETER;
         Pipe->ReadOffset = Offset;
         return DT_STATUS_OK;
@@ -1276,7 +1276,7 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
 
         if (!IsTx(Pipe))
             return DT_STATUS_NOT_SUPPORTED;
-        if (Pipe->Hw && (!Pipe->BufferSet || Offset >= Pipe->BufferSize))
+        if (Pipe->Hw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
             return DT_STATUS_INVALID_PARAMETER;
         if (!Pipe->Hw || Pipe->OpMode != DT_PIPE_OPMODE_STANDBY)
             Pipe->WriteOffset = Offset;
@@ -1572,7 +1572,7 @@ void SimDtPcie_GetNwPipeState(int PipeId, SimNwPipeState* State)
         State->InUse = Pipe->InUse;
         State->Type = Pipe->Type;
         State->OpMode = Pipe->OpMode;
-        State->BufferSet = Pipe->BufferSet;
+        State->BufferRegistered = Pipe->BufferRegistered;
         State->BufferSize = Pipe->BufferSize;
         State->ReadOffset = Pipe->ReadOffset;
         State->WriteOffset = Pipe->WriteOffset;

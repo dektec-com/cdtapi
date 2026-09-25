@@ -24,25 +24,25 @@
 // checked beforehand that the frame's packets fit.
 //
 
-typedef struct DtAvSink
+typedef struct DtAvTxSink
 {
     // Room for a packet of up to MaxSize bytes.
-    uint8_t* (*Begin)(void* Context, int MaxSize);
+    uint8_t* (*ReserveRoom)(void* Context, int MaxSize);
 
     // The packet is written, Size bytes including its padding.
-    void (*Commit)(void* Context, int Size);
+    void (*CommitPacket)(void* Context, int Size);
 
     void* Context;
-} DtAvSink;
+} DtAvTxSink;
 
 // What every packet of a transmitted stream carries.
 typedef struct DtAvTxStream
 {
     DtAvNet Net;
-    int PayloadType;         // RTP payload type
-    uint32_t Ssrc;           // RTP synchronisation source
-    int64_t OutputDelayNs;   // How much later than its time a packet leaves the card
-    uint32_t SequenceNumber; // Of the next packet; ST 2110-20 carries all 32 bits
+    int PayloadType;             // RTP payload type
+    uint32_t Ssrc;               // RTP synchronisation source
+    int64_t OutputDelayNs;       // How much later than its time a packet leaves the card
+    uint32_t NextSequenceNumber; // Of the next packet; ST 2110-20 carries all 32 bits
 } DtAvTxStream;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -52,7 +52,7 @@ typedef struct DtAvTxStream
 // counts a dropped frame and returns the frame to the pool.
 //
 
-typedef struct DtAvRxTarget
+typedef struct DtAvRxSink
 {
     DtAvFramePool* Pool;
 
@@ -60,11 +60,11 @@ typedef struct DtAvRxTarget
     bool (*Deliver)(void* Context, DtAvFrame* Frame);
 
     void* Context;
-} DtAvRxTarget;
+} DtAvRxSink;
 
 // Counts a received frame and delivers it.
-static inline void DtAvRxTarget_Deliver(const DtAvRxTarget* Target, RxStatistics* Stats,
-                                        DtAvFrame* Frame)
+static inline void DtAvRxSink_Deliver(const DtAvRxSink* Target, RxStatistics* Stats,
+                                      DtAvFrame* Frame)
 {
     Stats->FramesOk++;
     if (!Target->Deliver(Target->Context, Frame))

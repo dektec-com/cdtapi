@@ -154,7 +154,7 @@ typedef struct SimNwPipeState
     bool InUse;
     int Type; // A DT_PIPE_ value
     int OpMode;
-    bool BufferSet;
+    bool BufferRegistered;
     size_t BufferSize;
     uint32_t ReadOffset;
     uint32_t WriteOffset;

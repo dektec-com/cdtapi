@@ -31,7 +31,7 @@
 //
 
 // A shuffle index that gives zero.
-#define Z -128
+#define SHUF_ZERO -128
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pg10Lanes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -56,9 +56,13 @@ static void Pg10ToUyvy10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
         __m128i Shifted =
             _mm_mullo_epi16(Samples, _mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1));
         __m128i Even = _mm_shuffle_epi8(
-            Shifted, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, 13, 12, 9, 8, Z, 5, 4, 1, 0));
+            Shifted,
+            _mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                         SHUF_ZERO, 13, 12, 9, 8, SHUF_ZERO, 5, 4, 1, 0));
         __m128i Odd = _mm_shuffle_epi8(
-            Shifted, _mm_set_epi8(Z, Z, Z, Z, Z, Z, 15, 14, 11, 10, Z, 7, 6, 3, 2, Z));
+            Shifted,
+            _mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                         15, 14, 11, 10, SHUF_ZERO, 7, 6, 3, 2, SHUF_ZERO));
         _mm_storeu_si128((__m128i*)Dst, _mm_or_si128(Even, Odd));
     }
     DtAvPixConv_C()->Pg10ToUyvy10(Src, Dst, NumPgroups);
@@ -72,9 +76,10 @@ static void Pg10ToUyvy8(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
     for (; NumPgroups >= 4; NumPgroups -= 2, Src += 10, Dst += 8)
     {
-        __m128i High =
-            _mm_shuffle_epi8(Pg10Lanes(Src), _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, 15, 13,
-                                                          11, 9, 7, 5, 3, 1));
+        __m128i High = _mm_shuffle_epi8(
+            Pg10Lanes(Src),
+            _mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                         SHUF_ZERO, SHUF_ZERO, 15, 13, 11, 9, 7, 5, 3, 1));
         _mm_storel_epi64((__m128i*)Dst, High);
     }
     DtAvPixConv_C()->Pg10ToUyvy8(Src, Dst, NumPgroups);
@@ -97,9 +102,13 @@ static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
         __m128i Shifted =
             _mm_mullo_epi16(Samples, _mm_set_epi16(1, 4, 16, 64, 1, 4, 16, 64));
         __m128i Even = _mm_shuffle_epi8(
-            Shifted, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, 12, 13, 8, 9, Z, 4, 5, 0, 1));
+            Shifted,
+            _mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                         SHUF_ZERO, 12, 13, 8, 9, SHUF_ZERO, 4, 5, 0, 1));
         __m128i Odd = _mm_shuffle_epi8(
-            Shifted, _mm_set_epi8(Z, Z, Z, Z, Z, Z, 14, 15, 10, 11, Z, 6, 7, 2, 3, Z));
+            Shifted,
+            _mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                         14, 15, 10, 11, SHUF_ZERO, 6, 7, 2, 3, SHUF_ZERO));
         _mm_storeu_si128((__m128i*)Dst, _mm_or_si128(Even, Odd));
     }
     DtAvPixConv_C()->Uyvy10ToPg10(Src, Dst, NumPgroups);
@@ -135,11 +144,11 @@ static void Uyvy8ToYuv422p(const uint8_t* Src, size_t NumPgroups, uint8_t* Y, ui
     DtAvPixConv_C()->Uyvy8ToYuv422p(Src, NumPgroups, Y, U, V);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Ssse3Table -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtAvPixConv* DtAvPixConv_Ssse3Table(void)
+const DtAvPixConvTable* DtAvPixConv_Ssse3Unchecked(void)
 {
-    static const DtAvPixConv Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
-                                      Uyvy8ToYuv422p};
+    static const DtAvPixConvTable Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
+                                           Uyvy8ToYuv422p};
     return &Table;
 }

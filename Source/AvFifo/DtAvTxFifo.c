@@ -31,17 +31,13 @@
 // The FIFO size for audio when the application sets none: 400 frames, which hold at
 // least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
 // The default of 4 would then hold 500 us.
-#define TX_AUDIO_MAX_SIZE 400
+#define TX_AUDIO_FIFO_FRAMES 400
 
 // How long the thread waits for a frame before it looks at its stop flag again.
-#define TX_WAIT_MS 100
+#define TX_WAKE_TIMEOUT_MS 100
 
 // The fewest bytes of a shared buffer.
-#define TX_MIN_BUFFER (64 * 1024)
-
-#define KIND_NONE 0
-#define KIND_AUDIO 1
-#define KIND_VIDEO 2
+#define TX_MIN_SHARED_BUFFER_BYTES (64 * 1024)
 
 struct AvFifo_TxFifoC
 {
@@ -50,18 +46,18 @@ struct AvFifo_TxFifoC
     DtAtomicInt Started;
     DtAvPort Port;
 
-    int Kind;
+    DtAvKind Kind;
     St2110_TxConfigAudio AudioConfig;
     St2110_TxConfigVideo VideoConfig;
-    DtSt2110AudioTx Audio;
-    DtSt2110VideoTx Video;
-    bool IpParsSet;
-    DtAvIpPars Ip;
-    bool MaxSizeWasSet;
+    DtSt2110AudioTx AudioTx;
+    DtSt2110VideoTx VideoTx;
+    bool HasIpPars;
+    DtAvIpPars IpPars;
+    bool HasExplicitMaxSize;
 
     DtAvFramePool Pool;
     DtAvFrameFifo Fifo;
-    OsEvent* Wake; // Set when a frame is written, and to stop the thread
+    OsEvent* FrameWrittenEvent; // Set when a frame is written, and to stop the thread
     DtAtomicInt FramesOk;
 
     // While started.
@@ -70,65 +66,66 @@ struct AvFifo_TxFifoC
     DtAvTxStream Stream;
     OsNetSocket* Socket;
     OsThread* Thread;
-    DtAtomicInt Stop;
+    DtAtomicInt StopRequested;
 };
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The thread +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BytesNeeded -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PipeBytesForFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The room a frame's packets need: those of a video frame at most, those of an audio
 // frame exactly.
 //
-static int BytesNeeded(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
+static int PipeBytesForFrame(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 {
-    if (Fifo->Kind == KIND_VIDEO)
-        return DtSt2110VideoTx_FrameBytes(&Fifo->Video, &Fifo->Stream);
-    return DtSt2110AudioTx_PacketBytes(&Fifo->Audio, &Fifo->Stream, Frame);
+    if (Fifo->Kind == DT_AV_KIND_VIDEO)
+        return DtSt2110VideoTx_FrameBytes(&Fifo->VideoTx, &Fifo->Stream);
+    return DtSt2110AudioTx_PacketBytes(&Fifo->AudioTx, &Fifo->Stream, Frame);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TransmitThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvTxThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Takes the oldest frame, waits until the buffer has room for its packets, packetizes it
 // and returns it to the pool. A frame that no buffer's worth of room can hold, or that
 // fails to go out, returns to the pool unsent.
 //
-static void TransmitThread(void* Context)
+static void AvTxThread(void* Context)
 {
     AvFifo_TxFifo* Fifo = (AvFifo_TxFifo*)Context;
 
     OsThread_SetName("DtAvTx");
 
     OsThread_RaisePriority();
-    while (DtAtomic_Load(&Fifo->Stop) == 0)
+    while (DtAtomic_Load(&Fifo->StopRequested) == 0)
     {
         DtAvFrame* Frame = DtAvFrameFifo_Pop(&Fifo->Fifo);
         if (Frame == NULL)
         {
-            OsEvent_Wait(Fifo->Wake, TX_WAIT_MS);
+            OsEvent_Wait(Fifo->FrameWrittenEvent, TX_WAKE_TIMEOUT_MS);
             continue;
         }
 
-        int Needed = BytesNeeded(Fifo, &Frame->Frame);
-        bool Room = Needed >= 0 && (uint32_t)Needed <= DtAvPipe_MaxLoad(&Fifo->Pipe);
-        while (Room && DtAtomic_Load(&Fifo->Stop) == 0)
+        int PipeBytes = PipeBytesForFrame(Fifo, &Frame->Frame);
+        bool FitsInBuffer =
+            PipeBytes >= 0 && (uint32_t)PipeBytes <= DtAvPipe_UsableBytes(&Fifo->Pipe);
+        while (FitsInBuffer && DtAtomic_Load(&Fifo->StopRequested) == 0)
         {
             uint32_t Free = 0;
-            if (DtAvWriter_Free(&Fifo->Writer, &Free) == DTAPI_OK &&
-                Free >= (uint32_t)Needed)
+            if (DtAvWriter_FreeBytes(&Fifo->Writer, &Free) == DTAPI_OK &&
+                Free >= (uint32_t)PipeBytes)
             {
                 break;
             }
             OsTime_SleepMs(1);
         }
 
-        if (Room && DtAtomic_Load(&Fifo->Stop) == 0)
+        if (FitsInBuffer && DtAtomic_Load(&Fifo->StopRequested) == 0)
         {
             DtapiResult Result =
-                Fifo->Kind == KIND_VIDEO
-                    ? DtSt2110VideoTx_Packetize(&Fifo->Video, &Fifo->Stream,
+                Fifo->Kind == DT_AV_KIND_VIDEO
+                    ? DtSt2110VideoTx_Packetize(&Fifo->VideoTx, &Fifo->Stream,
                                                 &Frame->Frame, &Fifo->Writer.Sink)
-                    : DtSt2110AudioTx_Packetize(&Fifo->Audio, &Fifo->Stream,
+                    : DtSt2110AudioTx_Packetize(&Fifo->AudioTx, &Fifo->Stream,
                                                 &Frame->Frame, &Fifo->Writer.Sink);
             if (DtAvWriter_Flush(&Fifo->Writer) == DTAPI_OK && Result == DTAPI_OK)
                 DtAtomic_Increment(&Fifo->FramesOk);
@@ -139,28 +136,28 @@ static void TransmitThread(void* Context)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Starting +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RoundToPages -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RoundUpToPagesPlusOne -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Rounds up to whole 4 KB pages, and adds one page more.
 //
-static size_t RoundToPages(uint64_t Size)
+static size_t RoundUpToPagesPlusOne(uint64_t Size)
 {
     return (size_t)((Size + 4095) / 4096 + 1) * 4096;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SharedBufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The shared buffer size: 80 ms of video, at least two frames of it and the room a
 // frame's packets need; or 80 ms of audio samples, at least two of the largest packets.
-// Never less than TX_MIN_BUFFER.
+// Never less than TX_MIN_SHARED_BUFFER_BYTES.
 //
-static size_t BufferSize(AvFifo_TxFifo* Fifo)
+static size_t SharedBufferSize(AvFifo_TxFifo* Fifo)
 {
     uint64_t Size = 0;
     uint64_t Needed = 0;
-    if (Fifo->Kind == KIND_VIDEO)
+    if (Fifo->Kind == DT_AV_KIND_VIDEO)
     {
-        const DtSt2110VideoTx* Video = &Fifo->Video;
+        const DtSt2110VideoTx* Video = &Fifo->VideoTx;
         uint64_t Frame = (uint64_t)Video->NumRows * (uint64_t)Video->RowSizeFrame;
         Size = Frame * 8 * (uint64_t)Video->Rate.Numerator /
                (100 * (uint64_t)Video->Rate.Denominator);
@@ -170,25 +167,25 @@ static size_t BufferSize(AvFifo_TxFifo* Fifo)
     }
     else
     {
-        Size = (uint64_t)Fifo->Audio.BytesPerSample *
+        Size = (uint64_t)Fifo->AudioTx.BytesPerSamplePeriod *
                (uint64_t)Fifo->AudioConfig.SampleRate * 8 / 100;
         Needed = 2 * (uint64_t)DT_AV_PIPE_MAX_PACKET;
     }
     if (Size < Needed)
         Size = Needed;
-    if (Size < TX_MIN_BUFFER)
-        Size = TX_MIN_BUFFER;
-    return RoundToPages(Size);
+    if (Size < TX_MIN_SHARED_BUFFER_BYTES)
+        Size = TX_MIN_SHARED_BUFFER_BYTES;
+    return RoundUpToPagesPlusOne(Size);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Teardown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StopTransmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Stopping: the thread, the pipe and the socket, as far as they are there.
 //
-static void Teardown(AvFifo_TxFifo* Fifo)
+static void StopTransmitting(AvFifo_TxFifo* Fifo)
 {
-    DtAtomic_Store(&Fifo->Stop, 1);
-    OsEvent_Set(Fifo->Wake);
+    DtAtomic_Store(&Fifo->StopRequested, 1);
+    OsEvent_Set(Fifo->FrameWrittenEvent);
     OsThread_Join(Fifo->Thread);
     Fifo->Thread = NULL;
     DtAvPipe_Close(&Fifo->Pipe);
@@ -204,7 +201,7 @@ static uint32_t ByteSwapped(uint32_t Value)
     return Value >> 24 | (Value >> 8 & 0xFF00) | (Value << 8 & 0xFF0000) | Value << 24;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartTransmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Starting, in its order: the network, the pipe, the own address and a socket bound to
 // it, the destination's MAC address, the stream, the pipe's buffer, sized for the
@@ -212,21 +209,21 @@ static uint32_t ByteSwapped(uint32_t Value)
 // synchronisation source is the pipe's UUID with its bytes reversed, so that the RTP
 // header carries it least significant byte first.
 //
-static DtapiResult Start(AvFifo_TxFifo* Fifo)
+static DtapiResult StartTransmitting(AvFifo_TxFifo* Fifo)
 {
     static const char* const Where = "AvFifo_TxFifo_Start";
-    const AvFifo_IpPars* Pars = &Fifo->Ip.Pars;
-    bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->Ip);
-    bool Video = Fifo->Kind == KIND_VIDEO;
+    const AvFifo_IpPars* Pars = &Fifo->IpPars.Pars;
+    bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->IpPars);
+    bool IsVideo = Fifo->Kind == DT_AV_KIND_VIDEO;
 
     DtapiResult Result = DtAvPort_CheckNetwork(&Fifo->Port, Pars, Where);
     if (Result != DTAPI_OK)
         return Result;
-    Result = DtAvPort_OpenPipe(&Fifo->Port, &Fifo->Pipe, false, Video, Where);
+    Result = DtAvPort_OpenPipe(&Fifo->Port, &Fifo->Pipe, false, IsVideo, Where);
     if (Result != DTAPI_OK)
         return Result;
 
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     Result = DtNet_ChooseOutputAddress(Fifo->Port.Mac, Pars->Vlan.Id, IpV6, Pars->IpAddr,
                                        &Own);
     if (Result == DTAPI_OK &&
@@ -259,19 +256,19 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
     Stream->PayloadType = Pars->RtpPayloadType;
     Stream->Ssrc = ByteSwapped((uint32_t)Fifo->Pipe.Ref.Uuid);
     Stream->OutputDelayNs = DT_AV_OUTPUT_DELAY_NS;
-    if (Video)
+    if (IsVideo)
     {
-        Result = DtSt2110VideoTx_Configure(&Fifo->Video, &Fifo->VideoConfig,
+        Result = DtSt2110VideoTx_Configure(&Fifo->VideoTx, &Fifo->VideoConfig,
                                            DtAvPixConv_Best());
         if (Result == DTAPI_OK)
-            Result = DtSt2110VideoTx_Start(&Fifo->Video, Stream);
+            Result = DtSt2110VideoTx_Start(&Fifo->VideoTx, Stream);
         if (Result != DTAPI_OK)
             return DtAvError_Set(Result, Where, "Invalid video packing");
     }
     else
-        DtSt2110AudioTx_Reset(&Fifo->Audio);
+        DtSt2110AudioTx_Reset(&Fifo->AudioTx);
 
-    Result = DtAvPipe_SetBuffer(&Fifo->Pipe, BufferSize(Fifo));
+    Result = DtAvPipe_SetBuffer(&Fifo->Pipe, SharedBufferSize(Fifo));
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Allocating the shared buffer failed");
 
@@ -285,8 +282,8 @@ static DtapiResult Start(AvFifo_TxFifo* Fifo)
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Starting the pipe failed");
 
-    DtAtomic_Store(&Fifo->Stop, 0);
-    Fifo->Thread = OsThread_Start(TransmitThread, Fifo);
+    DtAtomic_Store(&Fifo->StopRequested, 0);
+    Fifo->Thread = OsThread_Start(AvTxThread, Fifo);
     if (Fifo->Thread == NULL)
         return DtAvError_Set(DTAPI_E_OUT_OF_RESOURCES, Where,
                              "Starting the thread failed");
@@ -308,21 +305,21 @@ static DtapiResult CheckStopped(const AvFifo_TxFifo* Fifo, const char* Where)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FrameSizeMatches -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The size checks the video and audio packetizers make, applied here when the frame is
 // written.
 //
-static bool CheckFrame(const AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
+static bool FrameSizeMatches(const AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 {
     if (Frame->NumValidBytes < 0 || (size_t)Frame->NumValidBytes > Frame->Size)
         return false;
-    if (Fifo->Kind == KIND_VIDEO)
+    if (Fifo->Kind == DT_AV_KIND_VIDEO)
         return Frame->NumValidBytes ==
-               DtSt2110VideoTx_FrameSize(&Fifo->Video, Frame->Field);
-    if (Fifo->Audio.BytesPerSample == 0)
+               DtSt2110VideoTx_FrameSize(&Fifo->VideoTx, Frame->Field);
+    if (Fifo->AudioTx.BytesPerSamplePeriod == 0)
         return Frame->NumValidBytes <= DT_ST2110_AUDIO_MAX_PAYLOAD;
-    return Frame->NumValidBytes % Fifo->Audio.BytesPerSample == 0;
+    return Frame->NumValidBytes % Fifo->AudioTx.BytesPerSamplePeriod == 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -336,16 +333,16 @@ AvFifo_TxFifo* AvFifo_TxFifo_Alloc(void)
         return NULL;
     memset(Fifo, 0, sizeof(*Fifo));
     Fifo->Lock = OsMutex_Create();
-    Fifo->Wake = OsEvent_Create();
+    Fifo->FrameWrittenEvent = OsEvent_Create();
     bool PoolMade = DtAvFramePool_Init(&Fifo->Pool) == DTAPI_OK;
     bool FifoMade = DtAvFrameFifo_Init(&Fifo->Fifo) == DTAPI_OK;
-    if (Fifo->Lock == NULL || Fifo->Wake == NULL || !PoolMade || !FifoMade)
+    if (Fifo->Lock == NULL || Fifo->FrameWrittenEvent == NULL || !PoolMade || !FifoMade)
     {
         if (FifoMade)
             DtAvFrameFifo_Destroy(&Fifo->Fifo);
         if (PoolMade)
             DtAvFramePool_Destroy(&Fifo->Pool);
-        OsEvent_Destroy(Fifo->Wake);
+        OsEvent_Destroy(Fifo->FrameWrittenEvent);
         OsMutex_Destroy(Fifo->Lock);
         DtAlloc_Free(Fifo);
         return NULL;
@@ -362,7 +359,7 @@ void AvFifo_TxFifo_Free(AvFifo_TxFifo* Fifo)
     AvFifo_TxFifo_Detach(Fifo);
     DtAvFrameFifo_Destroy(&Fifo->Fifo);
     DtAvFramePool_Destroy(&Fifo->Pool);
-    OsEvent_Destroy(Fifo->Wake);
+    OsEvent_Destroy(Fifo->FrameWrittenEvent);
     OsMutex_Destroy(Fifo->Lock);
     DtAlloc_Free(Fifo);
 }
@@ -417,7 +414,7 @@ DtapiResult AvFifo_TxFifo_Detach(AvFifo_TxFifo* Fifo)
         Result = DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "TxFifo not attached");
     else
     {
-        Teardown(Fifo);
+        StopTransmitting(Fifo);
         DtAvFrameFifo_Clear(&Fifo->Fifo, &Fifo->Pool);
         DtAvPort_Detach(&Fifo->Port);
         Fifo->Attached = false;
@@ -462,10 +459,10 @@ DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
     if (Result == DTAPI_OK)
     {
         Fifo->AudioConfig = *Config;
-        Fifo->Audio = Audio;
-        Fifo->Kind = KIND_AUDIO;
-        if (!Fifo->MaxSizeWasSet)
-            DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, TX_AUDIO_MAX_SIZE);
+        Fifo->AudioTx = Audio;
+        Fifo->Kind = DT_AV_KIND_AUDIO;
+        if (!Fifo->HasExplicitMaxSize)
+            DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, TX_AUDIO_FIFO_FRAMES);
     }
     OsMutex_Unlock(Fifo->Lock);
     return Result;
@@ -490,8 +487,8 @@ DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
     if (Result == DTAPI_OK)
     {
         Fifo->VideoConfig = *Config;
-        Fifo->Video = Video;
-        Fifo->Kind = KIND_VIDEO;
+        Fifo->VideoTx = Video;
+        Fifo->Kind = DT_AV_KIND_VIDEO;
     }
     OsMutex_Unlock(Fifo->Lock);
     return Result;
@@ -514,9 +511,9 @@ DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo, const AvFifo_IpPars* Ip
         Result = DtAvIpPars_Copy(&Copy, IpPars, Where);
     if (Result == DTAPI_OK)
     {
-        Fifo->Ip = Copy;
-        Fifo->Ip.Pars.SrcFlt = IpPars->NSrcFlt > 0 ? Fifo->Ip.Sources : NULL;
-        Fifo->IpParsSet = true;
+        Fifo->IpPars = Copy;
+        Fifo->IpPars.Pars.SrcFlt = IpPars->NSrcFlt > 0 ? Fifo->IpPars.Sources : NULL;
+        Fifo->HasIpPars = true;
     }
     OsMutex_Unlock(Fifo->Lock);
     return Result;
@@ -533,17 +530,17 @@ DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO");
     OsMutex_Lock(Fifo->Lock);
     DtapiResult Result = CheckStopped(Fifo, Where);
-    if (Result == DTAPI_OK && Fifo->Kind == KIND_NONE)
+    if (Result == DTAPI_OK && Fifo->Kind == DT_AV_KIND_NONE)
         Result =
             DtAvError_Set(DTAPI_E_CONFIG, Where, "Configure the TxFifo before starting");
-    if (Result == DTAPI_OK && !Fifo->IpParsSet)
+    if (Result == DTAPI_OK && !Fifo->HasIpPars)
         Result = DtAvError_Set(DTAPI_E_NO_IPPARS, Where,
                                "Set IP parameters before starting the TxFifo");
     if (Result == DTAPI_OK)
     {
-        Result = Start(Fifo);
+        Result = StartTransmitting(Fifo);
         if (Result != DTAPI_OK)
-            Teardown(Fifo);
+            StopTransmitting(Fifo);
     }
     OsMutex_Unlock(Fifo->Lock);
     return Result;
@@ -561,7 +558,7 @@ DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo)
     if (!Fifo->Attached)
         Result = DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "TxFifo not attached");
     else if (DtAtomic_Load(&Fifo->Started) != 0)
-        Teardown(Fifo);
+        StopTransmitting(Fifo);
     OsMutex_Unlock(Fifo->Lock);
     return Result;
 }
@@ -588,12 +585,12 @@ DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame)
     if (!DtAvFramePool_Owns(&Fifo->Pool, Frame))
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
                              "The frame is not a frame this TxFifo gave");
-    if (!CheckFrame(Fifo, Frame))
+    if (!FrameSizeMatches(Fifo, Frame))
         return DtAvError_Set(DTAPI_E_INVALID_FORMAT, Where,
                              "Incorrect frame size for the configuration");
     if (!DtAvFrameFifo_Push(&Fifo->Fifo, DtAvFrame_Of(Frame)))
         return DtAvError_Set(DTAPI_E_FIFO_FULL, Where, "TxFifo overflow");
-    OsEvent_Set(Fifo->Wake);
+    OsEvent_Set(Fifo->FrameWrittenEvent);
     return DTAPI_OK;
 }
 
@@ -607,7 +604,7 @@ AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size)
         DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or a negative size");
         return NULL;
     }
-    if (Fifo->Kind == KIND_NONE)
+    if (Fifo->Kind == DT_AV_KIND_NONE)
     {
         DtAvError_Set(DTAPI_E_CONFIG, Where,
                       "Configure the TxFifo before calling GetFromMemPool");
@@ -647,7 +644,7 @@ void AvFifo_TxFifo_SetMaxSize(AvFifo_TxFifo* Fifo, int Size)
     else if (DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, Size) != DTAPI_OK)
         DtAvError_Set(DTAPI_E_OUT_OF_MEM, Where, "No memory for the FIFO");
     else
-        Fifo->MaxSizeWasSet = true;
+        Fifo->HasExplicitMaxSize = true;
     OsMutex_Unlock(Fifo->Lock);
 }
 

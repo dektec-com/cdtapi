@@ -30,13 +30,13 @@
 //
 
 // A shuffle index that gives zero.
-#define Z -128
+#define SHUF_ZERO -128
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Lanes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BothLanes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The same 128-bit constant in both lanes.
 //
-static __m256i Lanes(__m128i Constant)
+static __m256i BothLanes(__m128i Constant)
 {
     return _mm256_broadcastsi128_si256(Constant);
 }
@@ -71,8 +71,9 @@ static __m256i Pg10Lanes(const uint8_t* Src)
 {
     __m256i Words = _mm256_shuffle_epi8(
         LoadGroups(Src),
-        Lanes(_mm_set_epi8(8, 9, 7, 8, 6, 7, 5, 6, 3, 4, 2, 3, 1, 2, 0, 1)));
-    return _mm256_mullo_epi16(Words, Lanes(_mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1)));
+        BothLanes(_mm_set_epi8(8, 9, 7, 8, 6, 7, 5, 6, 3, 4, 2, 3, 1, 2, 0, 1)));
+    return _mm256_mullo_epi16(Words,
+                              BothLanes(_mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1)));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pg10ToUyvy10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -82,18 +83,20 @@ static void Pg10ToUyvy10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
     for (; NumPgroups >= 6; NumPgroups -= 4, Src += 20, Dst += 20)
     {
         __m256i Samples = _mm256_srli_epi16(Pg10Lanes(Src), 6);
-        __m256i Shifted =
-            _mm256_mullo_epi16(Samples, Lanes(_mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1)));
+        __m256i Shifted = _mm256_mullo_epi16(
+            Samples, BothLanes(_mm_set_epi16(64, 16, 4, 1, 64, 16, 4, 1)));
         __m256i Even = _mm256_shuffle_epi8(
-            Shifted,
-            Lanes(_mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, 13, 12, 9, 8, Z, 5, 4, 1, 0)));
+            Shifted, BothLanes(_mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                                            SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, 13, 12, 9, 8,
+                                            SHUF_ZERO, 5, 4, 1, 0)));
         __m256i Odd = _mm256_shuffle_epi8(
-            Shifted,
-            Lanes(_mm_set_epi8(Z, Z, Z, Z, Z, Z, 15, 14, 11, 10, Z, 7, 6, 3, 2, Z)));
+            Shifted, BothLanes(_mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                                            SHUF_ZERO, SHUF_ZERO, 15, 14, 11, 10,
+                                            SHUF_ZERO, 7, 6, 3, 2, SHUF_ZERO)));
         StoreGroups(Dst, _mm256_or_si256(Even, Odd));
     }
     _mm256_zeroupper();
-    DtAvPixConv_Ssse3Table()->Pg10ToUyvy10(Src, Dst, NumPgroups);
+    DtAvPixConv_Ssse3Unchecked()->Pg10ToUyvy10(Src, Dst, NumPgroups);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pg10ToUyvy8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -107,12 +110,14 @@ static void Pg10ToUyvy8(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
     {
         __m256i High = _mm256_shuffle_epi8(
             Pg10Lanes(Src),
-            Lanes(_mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, 15, 13, 11, 9, 7, 5, 3, 1)));
+            BothLanes(_mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                                   SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, 15, 13, 11, 9, 7, 5,
+                                   3, 1)));
         __m256i Packed = _mm256_permute4x64_epi64(High, _MM_SHUFFLE(3, 1, 2, 0));
         _mm_storeu_si128((__m128i*)Dst, _mm256_castsi256_si128(Packed));
     }
     _mm256_zeroupper();
-    DtAvPixConv_Ssse3Table()->Pg10ToUyvy8(Src, Dst, NumPgroups);
+    DtAvPixConv_Ssse3Unchecked()->Pg10ToUyvy8(Src, Dst, NumPgroups);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Uyvy10ToPg10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -123,20 +128,22 @@ static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
     {
         __m256i Words = _mm256_shuffle_epi8(
             LoadGroups(Src),
-            Lanes(_mm_set_epi8(9, 8, 8, 7, 7, 6, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0)));
-        __m256i Weights = Lanes(_mm_set_epi16(1, 4, 16, 64, 1, 4, 16, 64));
+            BothLanes(_mm_set_epi8(9, 8, 8, 7, 7, 6, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0)));
+        __m256i Weights = BothLanes(_mm_set_epi16(1, 4, 16, 64, 1, 4, 16, 64));
         __m256i Samples = _mm256_srli_epi16(_mm256_mullo_epi16(Words, Weights), 6);
         __m256i Shifted = _mm256_mullo_epi16(Samples, Weights);
         __m256i Even = _mm256_shuffle_epi8(
-            Shifted,
-            Lanes(_mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, 12, 13, 8, 9, Z, 4, 5, 0, 1)));
+            Shifted, BothLanes(_mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                                            SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, 12, 13, 8, 9,
+                                            SHUF_ZERO, 4, 5, 0, 1)));
         __m256i Odd = _mm256_shuffle_epi8(
-            Shifted,
-            Lanes(_mm_set_epi8(Z, Z, Z, Z, Z, Z, 14, 15, 10, 11, Z, 6, 7, 2, 3, Z)));
+            Shifted, BothLanes(_mm_set_epi8(SHUF_ZERO, SHUF_ZERO, SHUF_ZERO, SHUF_ZERO,
+                                            SHUF_ZERO, SHUF_ZERO, 14, 15, 10, 11,
+                                            SHUF_ZERO, 6, 7, 2, 3, SHUF_ZERO)));
         StoreGroups(Dst, _mm256_or_si256(Even, Odd));
     }
     _mm256_zeroupper();
-    DtAvPixConv_Ssse3Table()->Uyvy10ToPg10(Src, Dst, NumPgroups);
+    DtAvPixConv_Ssse3Unchecked()->Uyvy10ToPg10(Src, Dst, NumPgroups);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Uyvy8ToYuv422p -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -144,14 +151,14 @@ static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 static void Uyvy8ToYuv422p(const uint8_t* Src, size_t NumPgroups, uint8_t* Y, uint8_t* U,
                            uint8_t* V)
 {
-    DtAvPixConv_Ssse3Table()->Uyvy8ToYuv422p(Src, NumPgroups, Y, U, V);
+    DtAvPixConv_Ssse3Unchecked()->Uyvy8ToYuv422p(Src, NumPgroups, Y, U, V);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Avx2Table -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Avx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtAvPixConv* DtAvPixConv_Avx2Table(void)
+const DtAvPixConvTable* DtAvPixConv_Avx2Unchecked(void)
 {
-    static const DtAvPixConv Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
-                                      Uyvy8ToYuv422p};
+    static const DtAvPixConvTable Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
+                                           Uyvy8ToYuv422p};
     return &Table;
 }

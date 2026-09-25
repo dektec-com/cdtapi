@@ -129,11 +129,11 @@ DT_TEST(FifoKeepsOrderAndOverflows)
     DT_ASSERT(DtAvFrameFifo_Pop(&Fifo) == NULL);
     for (int i = 0; i < 4; i++)
         DT_ASSERT(DtAvFrameFifo_Push(&Fifo, Frames[i]));
-    DT_ASSERT(!DtAvFrameFifo_TakeOverflow(&Fifo));
+    DT_ASSERT(!DtAvFrameFifo_ReadAndClearOverflow(&Fifo));
     DT_ASSERT(!DtAvFrameFifo_Push(&Fifo, Frames[4]));
     DT_ASSERT_EQ(DtAvFrameFifo_Load(&Fifo), 4);
-    DT_ASSERT(DtAvFrameFifo_TakeOverflow(&Fifo));
-    DT_ASSERT(!DtAvFrameFifo_TakeOverflow(&Fifo));
+    DT_ASSERT(DtAvFrameFifo_ReadAndClearOverflow(&Fifo));
+    DT_ASSERT(!DtAvFrameFifo_ReadAndClearOverflow(&Fifo));
 
     // Wrap the ring, then grow it: the order stays.
     DT_ASSERT(DtAvFrameFifo_Pop(&Fifo) == Frames[0]);
@@ -165,7 +165,7 @@ DT_TEST(FifoKeepsOrderAndOverflows)
     DT_ASSERT(DtAvFramePool_Return(&Pool, &Frames[0]->Frame));
     DtAvFrameFifo_Clear(&Fifo, &Pool);
     DT_ASSERT_EQ(DtAvFrameFifo_Load(&Fifo), 0);
-    DT_ASSERT(!DtAvFrameFifo_TakeOverflow(&Fifo));
+    DT_ASSERT(!DtAvFrameFifo_ReadAndClearOverflow(&Fifo));
     DT_ASSERT_EQ(DtAvFramePool_NumFree(&Pool), 5);
 
     DtAvFrameFifo_Destroy(&Fifo);

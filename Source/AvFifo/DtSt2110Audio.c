@@ -26,27 +26,27 @@ DtapiResult DtSt2110AudioTx_Configure(DtSt2110AudioTx* Tx,
     {
         return DTAPI_E_INVALID_ARG;
     }
-    int SampleBytes = 0;
+    int BytesPerChannelSample = 0;
     switch (Config->Format)
     {
     case St2110_AudioFormat_L16BE:
-        SampleBytes = 2;
+        BytesPerChannelSample = 2;
         break;
     case St2110_AudioFormat_L24BE:
-        SampleBytes = 3;
+        BytesPerChannelSample = 3;
         break;
     case St2110_AudioFormat_Raw:
         break;
     default:
         return DTAPI_E_INVALID_ARG;
     }
-    int64_t PayloadSize =
-        (int64_t)SampleBytes * Config->NumChannels * Config->NumSamplesPerIpPacket;
+    int64_t PayloadSize = (int64_t)BytesPerChannelSample * Config->NumChannels *
+                          Config->NumSamplesPerIpPacket;
     if (PayloadSize > DT_ST2110_AUDIO_MAX_PAYLOAD)
         return DTAPI_E_INVALID_ARG;
 
     Tx->Config = *Config;
-    Tx->BytesPerSample = SampleBytes * Config->NumChannels;
+    Tx->BytesPerSamplePeriod = BytesPerChannelSample * Config->NumChannels;
     Tx->PayloadSize = (int)PayloadSize;
     return DTAPI_OK;
 }
@@ -55,22 +55,22 @@ DtapiResult DtSt2110AudioTx_Configure(DtSt2110AudioTx* Tx,
 //
 void DtSt2110AudioTx_Reset(DtSt2110AudioTx* Tx)
 {
-    Tx->LeftOver = 0;
+    Tx->LeftOverBytes = 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketsForFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The packets Frame makes, or -1 when it cannot be sent.
 //
-static int NumPackets(const DtSt2110AudioTx* Tx, const AvFifo_Frame* Frame)
+static int PacketsForFrame(const DtSt2110AudioTx* Tx, const AvFifo_Frame* Frame)
 {
     if (Frame->NumValidBytes < 0 || (size_t)Frame->NumValidBytes > Frame->Size)
         return -1;
-    if (Tx->BytesPerSample == 0)
+    if (Tx->BytesPerSamplePeriod == 0)
         return Frame->NumValidBytes <= DT_ST2110_AUDIO_MAX_PAYLOAD ? 1 : -1;
-    if (Frame->NumValidBytes % Tx->BytesPerSample != 0)
+    if (Frame->NumValidBytes % Tx->BytesPerSamplePeriod != 0)
         return -1;
-    return (int)(((int64_t)Frame->NumValidBytes + Tx->LeftOver) / Tx->PayloadSize);
+    return (int)(((int64_t)Frame->NumValidBytes + Tx->LeftOverBytes) / Tx->PayloadSize);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110AudioTx_PacketBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -78,39 +78,41 @@ static int NumPackets(const DtSt2110AudioTx* Tx, const AvFifo_Frame* Frame)
 int DtSt2110AudioTx_PacketBytes(const DtSt2110AudioTx* Tx, const DtAvTxStream* Stream,
                                 const AvFifo_Frame* Frame)
 {
-    int Packets = NumPackets(Tx, Frame);
+    int Packets = PacketsForFrame(Tx, Frame);
     if (Packets < 0)
         return -1;
-    int Payload = Tx->BytesPerSample == 0 ? Frame->NumValidBytes : Tx->PayloadSize;
+    int Payload = Tx->BytesPerSamplePeriod == 0 ? Frame->NumValidBytes : Tx->PayloadSize;
     return Packets * DtAvNet_PacketSize(&Stream->Net, DT_AV_RTP_HEADER_SIZE + Payload);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WritePacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Sends a packet of samples: FirstSize bytes from First, then RestSize bytes from Rest.
+// Writes a packet of samples: LeftOverBytes bytes from LeftOver, then FromFrameBytes
+// bytes from FromFrame.
 //
-static void SendPacket(DtAvTxStream* Stream, const DtAvSink* Sink, uint32_t RtpTime,
-                       uint64_t TodNs, const uint8_t* First, int FirstSize,
-                       const uint8_t* Rest, int RestSize)
+static void WritePacket(DtAvTxStream* Stream, const DtAvTxSink* Sink, uint32_t RtpTime,
+                        uint64_t TodNs, const uint8_t* LeftOver, int LeftOverBytes,
+                        const uint8_t* FromFrame, int FromFrameBytes)
 {
     int Header = DtAvNet_HeaderSize(&Stream->Net);
-    int Payload = DT_AV_RTP_HEADER_SIZE + FirstSize + RestSize;
+    int Payload = DT_AV_RTP_HEADER_SIZE + LeftOverBytes + FromFrameBytes;
     uint8_t* Packet =
-        Sink->Begin(Sink->Context, DtAvNet_PacketSize(&Stream->Net, Payload));
+        Sink->ReserveRoom(Sink->Context, DtAvNet_PacketSize(&Stream->Net, Payload));
 
     DtAvRtp Rtp;
     Rtp.Marker = false;
     Rtp.PayloadType = Stream->PayloadType;
-    Rtp.SequenceNumber = (uint16_t)Stream->SequenceNumber++;
+    Rtp.SequenceNumber = (uint16_t)Stream->NextSequenceNumber++;
     Rtp.Timestamp = RtpTime;
     Rtp.Ssrc = Stream->Ssrc;
     DtAvRtp_Write(&Rtp, Packet + Header);
     uint8_t* Samples = Packet + Header + DT_AV_RTP_HEADER_SIZE;
-    if (FirstSize > 0)
-        memcpy(Samples, First, (size_t)FirstSize);
-    if (RestSize > 0)
-        memcpy(Samples + FirstSize, Rest, (size_t)RestSize);
-    Sink->Commit(Sink->Context, DtAvNet_Finish(&Stream->Net, Packet, Payload, 0, TodNs));
+    if (LeftOverBytes > 0)
+        memcpy(Samples, LeftOver, (size_t)LeftOverBytes);
+    if (FromFrameBytes > 0)
+        memcpy(Samples + LeftOverBytes, FromFrame, (size_t)FromFrameBytes);
+    Sink->CommitPacket(Sink->Context,
+                       DtAvNet_WriteHeaders(&Stream->Net, Packet, Payload, 0, TodNs));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110AudioTx_Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -119,34 +121,34 @@ static void SendPacket(DtAvTxStream* Stream, const DtAvSink* Sink, uint32_t RtpT
 // from the sample rate.
 //
 DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
-                                      const AvFifo_Frame* Frame, const DtAvSink* Sink)
+                                      const AvFifo_Frame* Frame, const DtAvTxSink* Sink)
 {
-    int Packets = NumPackets(Tx, Frame);
+    int Packets = PacketsForFrame(Tx, Frame);
     if (Packets < 0)
         return DTAPI_E_INVALID_FORMAT;
     uint64_t FrameTodNs = DtAvTime_ToNs(&Frame->ToD);
 
-    if (Tx->BytesPerSample == 0)
+    if (Tx->BytesPerSamplePeriod == 0)
     {
-        SendPacket(Stream, Sink, Frame->RtpTime,
-                   FrameTodNs - (uint64_t)Stream->OutputDelayNs, Frame->Data,
-                   Frame->NumValidBytes, NULL, 0);
+        WritePacket(Stream, Sink, Frame->RtpTime,
+                    FrameTodNs - (uint64_t)Stream->OutputDelayNs, Frame->Data,
+                    Frame->NumValidBytes, NULL, 0);
         return DTAPI_OK;
     }
 
-    uint64_t FirstTodNs = Tx->LeftOver != 0 ? Tx->LeftOverTodNs : FrameTodNs;
-    uint32_t RtpTime = Tx->LeftOver != 0 ? Tx->LeftOverRtp : Frame->RtpTime;
+    uint64_t FirstTodNs = Tx->LeftOverBytes != 0 ? Tx->LeftOverTodNs : FrameTodNs;
+    uint32_t RtpTime = Tx->LeftOverBytes != 0 ? Tx->LeftOverRtpTime : Frame->RtpTime;
     uint64_t Offset = 0; // In thousandths of a nanosecond
     const uint8_t* Src = Frame->Data;
-    int SamplesPerPacket = Tx->PayloadSize / Tx->BytesPerSample;
+    int SamplesPerPacket = Tx->PayloadSize / Tx->BytesPerSamplePeriod;
     for (int i = 0; i < Packets; i++)
     {
         uint64_t TodNs = FirstTodNs - (uint64_t)Stream->OutputDelayNs + Offset / 1000;
-        int FromFrame = Tx->PayloadSize - Tx->LeftOver;
-        SendPacket(Stream, Sink, RtpTime, TodNs, Tx->LeftOverSamples, Tx->LeftOver, Src,
-                   FromFrame);
+        int FromFrame = Tx->PayloadSize - Tx->LeftOverBytes;
+        WritePacket(Stream, Sink, RtpTime, TodNs, Tx->LeftOverSamples, Tx->LeftOverBytes,
+                    Src, FromFrame);
         Src += FromFrame;
-        Tx->LeftOver = 0;
+        Tx->LeftOverBytes = 0;
         Offset += DT_AV_NS_PER_SEC * 1000 * (uint64_t)SamplesPerPacket /
                   (uint64_t)Tx->Config.SampleRate;
         RtpTime += (uint32_t)SamplesPerPacket;
@@ -156,13 +158,13 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
     int Remaining = (int)(Frame->Data + Frame->NumValidBytes - Src);
     if (Remaining > 0)
     {
-        if (Tx->LeftOver == 0)
+        if (Tx->LeftOverBytes == 0)
         {
             Tx->LeftOverTodNs = FirstTodNs + Offset / 1000;
-            Tx->LeftOverRtp = RtpTime;
+            Tx->LeftOverRtpTime = RtpTime;
         }
-        memcpy(Tx->LeftOverSamples + Tx->LeftOver, Src, (size_t)Remaining);
-        Tx->LeftOver += Remaining;
+        memcpy(Tx->LeftOverSamples + Tx->LeftOverBytes, Src, (size_t)Remaining);
+        Tx->LeftOverBytes += Remaining;
     }
     return DTAPI_OK;
 }
@@ -172,11 +174,11 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110AudioRx_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSt2110AudioRx_Init(DtSt2110AudioRx* Rx, const St2110_RxConfigAudio* Config,
-                          const DtAvRxTarget* Target)
+                          const DtAvRxSink* Target)
 {
     memset(Rx, 0, sizeof(*Rx));
     Rx->Config = *Config;
-    Rx->Target = *Target;
+    Rx->Sink = *Target;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSt2110AudioRx_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -184,23 +186,24 @@ void DtSt2110AudioRx_Init(DtSt2110AudioRx* Rx, const St2110_RxConfigAudio* Confi
 void DtSt2110AudioRx_Parse(DtSt2110AudioRx* Rx, const uint8_t* Packet, int Size)
 {
     DtAvRxPacket Udp;
-    if (!DtAvRxPacket_Parse(Packet, Size, &Udp) || Udp.UdpSize < DT_AV_RTP_HEADER_SIZE)
+    if (!DtAvRxPacket_Parse(Packet, Size, &Udp) ||
+        Udp.PayloadSize < DT_AV_RTP_HEADER_SIZE)
     {
         Rx->Stats.IpPacketErrors++;
         return;
     }
-    int PayloadSize = Udp.UdpSize - DT_AV_RTP_HEADER_SIZE;
-    DtAvFrame* Frame = DtAvFramePool_Get(Rx->Target.Pool, (size_t)PayloadSize);
+    int PayloadSize = Udp.PayloadSize - DT_AV_RTP_HEADER_SIZE;
+    DtAvFrame* Frame = DtAvFramePool_Get(Rx->Sink.Pool, (size_t)PayloadSize);
     if (Frame == NULL)
     {
         Rx->Stats.DroppedFrames++;
         return;
     }
     DtAvRtp Rtp;
-    DtAvRtp_Read(Udp.Udp, &Rtp);
+    DtAvRtp_Read(Udp.Payload, &Rtp);
     Frame->Frame.RtpTime = Rtp.Timestamp;
     Frame->Frame.ToD = DtAvTime_FromNs(Udp.TodNs);
-    memcpy(Frame->Frame.Data, Udp.Udp + DT_AV_RTP_HEADER_SIZE, (size_t)PayloadSize);
+    memcpy(Frame->Frame.Data, Udp.Payload + DT_AV_RTP_HEADER_SIZE, (size_t)PayloadSize);
     Frame->Frame.NumValidBytes = PayloadSize;
-    DtAvRxTarget_Deliver(&Rx->Target, &Rx->Stats, Frame);
+    DtAvRxSink_Deliver(&Rx->Sink, &Rx->Stats, Frame);
 }

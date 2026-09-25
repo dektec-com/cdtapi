@@ -356,7 +356,7 @@ DT_TEST(StartedAndStopped)
     int Id = PipeInUse(SIM_NW_FIRST_RX_HWP, SIM_NW_FIRST_RX_HWP + 2, &State);
     DT_ASSERT(Id != 0);
     DT_ASSERT_EQ(State.OpMode, DT_PIPE_OPMODE_RUN);
-    DT_ASSERT(State.BufferSet && State.BufferSize >= 64 * 1024 * 1024);
+    DT_ASSERT(State.BufferRegistered && State.BufferSize >= 64 * 1024 * 1024);
     DT_ASSERT(State.FilterSet);
     DT_ASSERT_EQ(State.FilterFlags,
                  DT_PIPE_IPFLT_FLAG_EN_FILT | DT_PIPE_IPFLT_FLAG_EN_DSTIP_IPV4 |
@@ -372,7 +372,7 @@ DT_TEST(StartedAndStopped)
 
     DT_ASSERT_OK(AvFifo_RxFifo_Stop(Rx));
     SimDtPcie_GetNwPipeState(Id, &State);
-    DT_ASSERT(!State.InUse && !State.BufferSet);
+    DT_ASSERT(!State.InUse && !State.BufferRegistered);
     DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);
     DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);
     DT_ASSERT_OK(AvFifo_RxFifo_Stop(Rx));

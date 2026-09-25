@@ -28,9 +28,9 @@ static bool HasVlan(const DtAvNet* Net)
     return Net->VlanId != 0 || Net->VlanPriority != 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EthernetSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EthernetHeaderSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int EthernetSize(const DtAvNet* Net)
+static int EthernetHeaderSize(const DtAvNet* Net)
 {
     return DT_AV_ETH_HEADER_SIZE + (HasVlan(Net) ? DT_AV_VLAN_TAG_SIZE : 0);
 }
@@ -41,7 +41,7 @@ static int EthernetSize(const DtAvNet* Net)
 //
 int DtAvNet_HeaderSize(const DtAvNet* Net)
 {
-    return DT_ETHIP_HEADER_SIZE + EthernetSize(Net) +
+    return DT_ETHIP_HEADER_SIZE + EthernetHeaderSize(Net) +
            (Net->IpV6 ? DT_AV_IPV6_HEADER_SIZE : DT_AV_IPV4_HEADER_SIZE) +
            DT_AV_UDP_HEADER_SIZE;
 }
@@ -54,10 +54,10 @@ int DtAvNet_PacketSize(const DtAvNet* Net, int PayloadSize)
     return DtEthIp_NumWords(FrameSize, Net->Alignment) * DT_ETHIP_WORD_SIZE;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvNet_Finish -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvNet_WriteHeaders -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtAvNet_Finish(DtAvNet* Net, uint8_t* Packet, int PayloadSize, int DstPortOffset,
-                   uint64_t TodNs)
+int DtAvNet_WriteHeaders(DtAvNet* Net, uint8_t* Packet, int PayloadSize,
+                         int DstPortOffset, uint64_t TodNs)
 {
     int UdpLength = DT_AV_UDP_HEADER_SIZE + PayloadSize;
     int FrameSize = DtAvNet_HeaderSize(Net) - DT_ETHIP_HEADER_SIZE + PayloadSize;
@@ -151,23 +151,23 @@ bool DtAvRxPacket_Parse(const uint8_t* Packet, int Size, DtAvRxPacket* Rx)
     memset(Rx, 0, sizeof(*Rx));
     if (Size < DT_ETHIP_HEADER_SIZE || !DtEthIp_Read(Packet, &Header))
         return false;
-    int End = DtEthIp_HeaderSize(Header.PacketType) + Header.FrameSize;
-    if (End > Size || Header.IsUdp != DT_ETHIP_PROTO_UDP ||
+    int FrameEnd = DtEthIp_HeaderSize(Header.PacketType) + Header.FrameSize;
+    if (FrameEnd > Size || Header.IsUdp != DT_ETHIP_PROTO_UDP ||
         (Header.PacketType != DT_ETHIP_TYPE_IPV4 &&
          Header.PacketType != DT_ETHIP_TYPE_IPV6) ||
-        Header.PortOffset + DT_AV_UDP_HEADER_SIZE > End)
+        Header.PortOffset + DT_AV_UDP_HEADER_SIZE > FrameEnd)
     {
         return false;
     }
     const uint8_t* Udp = Packet + Header.PortOffset;
     int UdpLength = DtAvPacket_Get16(Udp + 4);
-    if (UdpLength < DT_AV_UDP_HEADER_SIZE || Header.PortOffset + UdpLength > End)
+    if (UdpLength < DT_AV_UDP_HEADER_SIZE || Header.PortOffset + UdpLength > FrameEnd)
         return false;
 
     Rx->TodNs = (uint64_t)Header.Seconds * DT_AV_NS_PER_SEC + Header.Nanoseconds;
     Rx->SubStream = Header.SubStream;
-    Rx->Udp = Udp + DT_AV_UDP_HEADER_SIZE;
-    Rx->UdpSize = UdpLength - DT_AV_UDP_HEADER_SIZE;
+    Rx->Payload = Udp + DT_AV_UDP_HEADER_SIZE;
+    Rx->PayloadSize = UdpLength - DT_AV_UDP_HEADER_SIZE;
     return true;
 }
 

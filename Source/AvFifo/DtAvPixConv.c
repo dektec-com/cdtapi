@@ -73,12 +73,12 @@ static uint64_t ReadPgroup10(const uint8_t* Src)
            (uint64_t)Src[3] << 8 | Src[4];
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Samples10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReverseSamples10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The four samples of a pixel group in the other bit order: the first sample lowest
 // rather than highest, which is what UYVY 10 packs, and the same the other way about.
 //
-static uint64_t Samples10(uint64_t Bits)
+static uint64_t ReverseSamples10(uint64_t Bits)
 {
     return (Bits >> 30 & 0x3FF) | (Bits >> 20 & 0x3FF) << 10 |
            (Bits >> 10 & 0x3FF) << 20 | (Bits & 0x3FF) << 30;
@@ -89,10 +89,10 @@ static uint64_t Samples10(uint64_t Bits)
 static void Pg10ToUyvy10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
     for (; NumPgroups >= 2; NumPgroups--, Src += 5, Dst += 5)
-        StoreLe(Dst, Samples10(Swap64(LoadLe(Src)) >> 24));
+        StoreLe(Dst, ReverseSamples10(Swap64(LoadLe(Src)) >> 24));
     for (; NumPgroups > 0; NumPgroups--, Src += 5, Dst += 5)
     {
-        uint64_t Packed = Samples10(ReadPgroup10(Src));
+        uint64_t Packed = ReverseSamples10(ReadPgroup10(Src));
         for (int k = 0; k < 5; k++)
             Dst[k] = (uint8_t)(Packed >> 8 * k);
     }
@@ -127,13 +127,13 @@ static void Pg10ToUyvy8(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 static void Uyvy10ToPg10(const uint8_t* Src, uint8_t* Dst, size_t NumPgroups)
 {
     for (; NumPgroups >= 2; NumPgroups--, Src += 5, Dst += 5)
-        StoreLe(Dst, Swap64(Samples10(LoadLe(Src)) << 24));
+        StoreLe(Dst, Swap64(ReverseSamples10(LoadLe(Src)) << 24));
     for (; NumPgroups > 0; NumPgroups--, Src += 5, Dst += 5)
     {
         uint64_t Packed = 0;
         for (int k = 0; k < 5; k++)
             Packed |= (uint64_t)Src[k] << 8 * k;
-        uint64_t Bits = Samples10(Packed);
+        uint64_t Bits = ReverseSamples10(Packed);
         for (int k = 0; k < 5; k++)
             Dst[k] = (uint8_t)(Bits >> 8 * (4 - k));
     }
@@ -158,10 +158,10 @@ static void Uyvy8ToYuv422p(const uint8_t* Src, size_t NumPgroups, uint8_t* Y, ui
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_C -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtAvPixConv* DtAvPixConv_C(void)
+const DtAvPixConvTable* DtAvPixConv_C(void)
 {
-    static const DtAvPixConv Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
-                                      Uyvy8ToYuv422p};
+    static const DtAvPixConvTable Table = {Pg10ToUyvy10, Pg10ToUyvy8, Uyvy10ToPg10,
+                                           Uyvy8ToYuv422p};
     return &Table;
 }
 
@@ -190,10 +190,10 @@ static bool HasSsse3(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Ssse3 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtAvPixConv* DtAvPixConv_Ssse3(void)
+const DtAvPixConvTable* DtAvPixConv_Ssse3(void)
 {
 #if defined(CDTAPI_HAVE_SSSE3)
-    return HasSsse3() ? DtAvPixConv_Ssse3Table() : NULL;
+    return HasSsse3() ? DtAvPixConv_Ssse3Unchecked() : NULL;
 #else
     return NULL;
 #endif
@@ -255,10 +255,10 @@ static bool HasAvx2(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtAvPixConv* DtAvPixConv_Avx2(void)
+const DtAvPixConvTable* DtAvPixConv_Avx2(void)
 {
 #if defined(CDTAPI_HAVE_AVX2)
-    return HasSsse3() && HasAvx2() ? DtAvPixConv_Avx2Table() : NULL;
+    return HasSsse3() && HasAvx2() ? DtAvPixConv_Avx2Unchecked() : NULL;
 #else
     return NULL;
 #endif
@@ -266,11 +266,11 @@ const DtAvPixConv* DtAvPixConv_Avx2(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPixConv_Best -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtAvPixConv* DtAvPixConv_Best(void)
+const DtAvPixConvTable* DtAvPixConv_Best(void)
 {
-    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    const DtAvPixConvTable* Avx2 = DtAvPixConv_Avx2();
     if (Avx2 != NULL)
         return Avx2;
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    const DtAvPixConvTable* Ssse3 = DtAvPixConv_Ssse3();
     return Ssse3 != NULL ? Ssse3 : DtAvPixConv_C();
 }

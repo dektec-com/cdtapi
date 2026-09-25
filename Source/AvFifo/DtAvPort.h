@@ -24,14 +24,14 @@
 #define DT_AV_OUTPUT_DELAY_NS 14800
 
 // How long a FIFO's thread sleeps when there is nothing to do.
-#define DT_AV_POLL_MS 2
+#define DT_AV_RX_IDLE_SLEEP_MS 2
 
 typedef struct DtAvPort
 {
     DtDevice Device; // The FIFO's own handle
     int PortIndex;   // From 0
     DtDrvObject Nw;  // The network function
-    HwOrSwPipe Preference;
+    HwOrSwPipe PipePreference;
     uint8_t Mac[6]; // Read at Start
 } DtAvPort;
 
@@ -51,8 +51,8 @@ DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
 // Opens a receive or transmit pipe by the preference: for HwOrSwPipe_Auto a hardware pipe
 // with a software fallback when PreferHardware, else a software pipe. A forced hardware
 // pipe that is not free gives DTAPI_E_OUT_OF_RESOURCES.
-DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool Receive,
-                              bool PreferHardware, const char* Where);
+DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool IsRx,
+                              bool HardwareIfAuto, const char* Where);
 
 // Whether a FIFO uses a hardware pipe: from the pipe when started, else from the
 // preference, and DTAPI_E_NOT_STARTED when that leaves it open.
@@ -77,4 +77,12 @@ DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
 bool DtAvIpPars_IsIpV6(const DtAvIpPars* Ip);
 
 // The sources as DtNet_Join takes them, 16 bytes each, into Sources; returns how many.
-int DtAvIpPars_Sources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16]);
+int DtAvIpPars_CopySources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16]);
+
+// What a FIFO carries: nothing yet, audio or video.
+typedef enum DtAvKind
+{
+    DT_AV_KIND_NONE,
+    DT_AV_KIND_AUDIO,
+    DT_AV_KIND_VIDEO
+} DtAvKind;

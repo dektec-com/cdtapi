@@ -36,9 +36,9 @@ typedef struct DtAvPipe
     DtDrvObject Nw;  // The network function
     DtDrvObject Ref; // The pipe; its UUID 0 while none is open
     DtPipeProps Props;
-    OsDmaBuffer Buf;
-    bool BufferSet; // The driver has the buffer
-    uint32_t Size;  // Bytes of the buffer
+    OsDmaBuffer SharedBuffer;
+    bool BufferRegistered; // The driver has the buffer
+    uint32_t BufferSize;   // Bytes of the buffer
     uint32_t Offset;
 } DtAvPipe;
 
@@ -62,33 +62,34 @@ bool DtAvPipe_IsJumbo(const DtAvPipe* Pipe);
 int DtAvPipe_Alignment(const DtAvPipe* Pipe);
 
 // The bytes the buffer can hold at once: its size less a data word.
-uint32_t DtAvPipe_MaxLoad(const DtAvPipe* Pipe);
+uint32_t DtAvPipe_UsableBytes(const DtAvPipe* Pipe);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A writer is a DtAvSink over the buffer: a packet is written in place where it fits
+// A writer is a DtAvTxSink over the buffer: a packet is written in place where it fits
 // before the end of the buffer, and otherwise into a scratch packet that is copied in two
 // parts around the end. The driver hears of the written packets every
-// DT_AV_WRITER_BATCH packets and at a flush.
+// DT_AV_WRITER_FLUSH_EVERY_PACKETS packets and at a flush.
 //
 
-#define DT_AV_WRITER_BATCH 100
+#define DT_AV_WRITER_FLUSH_EVERY_PACKETS 100
 
 typedef struct DtAvWriter
 {
     DtAvPipe* Pipe;
-    DtAvSink Sink; // Writes through this writer
-    uint8_t Scratch[DT_AV_PIPE_MAX_PACKET];
-    bool InScratch;
-    int Unflushed;      // Packets the driver has not heard of
-    DtapiResult Result; // The first failed flush since the last DtAvWriter_Flush
+    DtAvTxSink Sink; // Writes through this writer
+    uint8_t WrapPacket[DT_AV_PIPE_MAX_PACKET];
+    bool IsInWrapPacket;
+    int UnflushedPackets; // Packets the driver has not heard of
+    DtapiResult
+        FirstFlushFailure; // The first failed flush since the last DtAvWriter_Flush
 } DtAvWriter;
 
 // Sets up a writer on a pipe with a buffer, from the pipe's offset.
 void DtAvWriter_Init(DtAvWriter* Writer, DtAvPipe* Pipe);
 
 // The bytes that can be written now: up to 4 bytes before the pipe's read offset.
-DtapiResult DtAvWriter_Free(DtAvWriter* Writer, uint32_t* Free);
+DtapiResult DtAvWriter_FreeBytes(DtAvWriter* Writer, uint32_t* Free);
 
 // Tells the driver of every packet written. Returns the first failure since the last
 // flush.
@@ -106,7 +107,7 @@ DtapiResult DtAvWriter_Flush(DtAvWriter* Writer);
 typedef struct DtAvReader
 {
     DtAvPipe* Pipe;
-    uint8_t Scratch[DT_AV_PIPE_MAX_PACKET];
+    uint8_t WrapPacket[DT_AV_PIPE_MAX_PACKET];
 } DtAvReader;
 
 // Takes one packet of Size bytes.

@@ -35,8 +35,8 @@ typedef struct DtSt2110VideoTx
 {
     // From the configuration.
     bool Is420;
-    bool Interlaced;
-    bool Psf;
+    bool IsInterlaced;
+    bool IsPsf;
     int NumRows;      // Rows of a frame
     int RowSize;      // Bytes of a row in the packets, whole pixel groups
     int RowSizeFrame; // Bytes of a row in the application's frame
@@ -50,9 +50,9 @@ typedef struct DtSt2110VideoTx
     DtAvPixConvFunc Convert; // From the frame to the packets, or NULL to copy
 
     // From the start.
-    int PayloadSize;     // Bytes of video per packet
-    int PacketsPerFrame; // Of a whole frame, both fields
-    uint64_t Spacing;    // Between packets, in thousandths of a nanosecond
+    int PayloadSize;          // Bytes of video per packet
+    int PacketsPerFrame;      // Of a whole frame, both fields
+    uint64_t PacketSpacingPs; // Between packets, in picoseconds
     uint32_t PrevRtpTime;
 } DtSt2110VideoTx;
 
@@ -62,7 +62,7 @@ typedef struct DtSt2110VideoTx
 // positive height.
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
-                                      const DtAvPixConv* Conv);
+                                      const DtAvPixConvTable* Conv);
 
 // Configures a packetizer for rows of pixel groups as the application gives them.
 // DTAPI_E_INVALID_ARG for a pixel group, row, row count or rate that is not valid.
@@ -85,7 +85,7 @@ int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field);
 // Hands the packets of Frame to Sink. DTAPI_E_INVALID_FORMAT, sending nothing, when its
 // valid bytes are not those of DtSt2110VideoTx_FrameSize.
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
-                                      const AvFifo_Frame* Frame, const DtAvSink* Sink);
+                                      const AvFifo_Frame* Frame, const DtAvTxSink* Sink);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -106,23 +106,23 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
 typedef struct DtSt2110VideoRx
 {
     St2110_RxFrameFormat Format;
-    const DtAvPixConv* Conv;
-    DtAvRxTarget Target;
+    const DtAvPixConvTable* Conv;
+    DtAvRxSink Sink;
     RxStatistics Stats;
 
     // What the stream taught.
     int CalculatedFrameSize; // Bytes of pixel groups a frame gets room for, or -1
     int CountedFrameSize;    // Bytes of a frame from row 0 counted, or -1
-    int CountedNumLines;     // Last row number plus one of the rows counted
-    bool Interlaced;
+    int CountedNumRows;      // Last row number plus one of the rows counted
+    bool IsInterlaced;
     bool Is420;
-    int LineSizeFrame; // Bytes of pixel groups of a row, or -1
-    int NumRowsFrame;  // Last row number plus one, or -1
-    int PrevRowNum;    // The previous packet's NumRowsFrame, or -1
+    int RowSizeFrame; // Bytes of pixel groups of a row, or -1
+    int NumRowsFrame; // Last row number plus one, or -1
+    int PrevNumRows;  // The previous packet's NumRowsFrame, or -1
 
     // The frame being received.
     uint32_t LastSeqNum;
-    bool WaitForEndFrame;
+    bool IsWaitingForMarker;
     DtAvFrame* PartialFrame;
     int InputNumBytes;  // Bytes of pixel groups taken into it
     int OutputNumBytes; // Bytes written into it
@@ -130,7 +130,7 @@ typedef struct DtSt2110VideoRx
 
 // Sets up a parser that converts to Format with Conv and delivers to Target.
 void DtSt2110VideoRx_Init(DtSt2110VideoRx* Rx, St2110_RxFrameFormat Format,
-                          const DtAvPixConv* Conv, const DtAvRxTarget* Target);
+                          const DtAvPixConvTable* Conv, const DtAvRxSink* Target);
 
 // Returns the frame being received to the pool and forgets what the stream taught.
 void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx);

@@ -31,12 +31,12 @@
 typedef struct DtSt2110AudioTx
 {
     St2110_TxConfigAudio Config;
-    int BytesPerSample; // For all channels; 0 for raw audio
-    int PayloadSize;    // Bytes of samples per packet
-    int LeftOver;       // Bytes of samples waiting for the next frame
+    int BytesPerSamplePeriod; // For all channels; 0 for raw audio
+    int PayloadSize;          // Bytes of samples per packet
+    int LeftOverBytes;        // Bytes of samples waiting for the next frame
     uint8_t LeftOverSamples[DT_ST2110_AUDIO_MAX_PAYLOAD];
     uint64_t LeftOverTodNs;
-    uint32_t LeftOverRtp;
+    uint32_t LeftOverRtpTime;
 } DtSt2110AudioTx;
 
 // Configures a packetizer. DTAPI_E_INVALID_ARG for a format that is none of the three,
@@ -57,7 +57,7 @@ int DtSt2110AudioTx_PacketBytes(const DtSt2110AudioTx* Tx, const DtAvTxStream* S
 // valid bytes that are negative or beyond the frame's size, a raw frame of more than
 // DT_ST2110_AUDIO_MAX_PAYLOAD bytes, or a frame of samples that holds a partial sample.
 DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
-                                      const AvFifo_Frame* Frame, const DtAvSink* Sink);
+                                      const AvFifo_Frame* Frame, const DtAvTxSink* Sink);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -68,13 +68,13 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
 typedef struct DtSt2110AudioRx
 {
     St2110_RxConfigAudio Config;
-    DtAvRxTarget Target;
+    DtAvRxSink Sink;
     RxStatistics Stats;
 } DtSt2110AudioRx;
 
 // Sets up a parser that delivers to Target.
 void DtSt2110AudioRx_Init(DtSt2110AudioRx* Rx, const St2110_RxConfigAudio* Config,
-                          const DtAvRxTarget* Target);
+                          const DtAvRxSink* Target);
 
 // Parses one packet of the pipe. A packet whose headers do not check counts an IP packet
 // error; one for which the pool has no memory a dropped frame.

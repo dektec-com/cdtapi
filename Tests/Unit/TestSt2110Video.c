@@ -92,7 +92,7 @@ static DtAvTxStream Stream(void)
     S.PayloadType = 96;
     S.Ssrc = 0xCAFEBABE;
     S.OutputDelayNs = DELAY_NS;
-    S.SequenceNumber = 0x0001FFF0;
+    S.NextSequenceNumber = 0x0001FFF0;
     return S;
 }
 
@@ -326,8 +326,8 @@ static void CheckTransmit(const St2110_TxConfigVideo* Config, bool Gapped,
     Frame->Frame.NumValidBytes = FrameSize;
     Frame->Frame.RtpTime = 123456;
     Frame->Frame.ToD = DtAvTime_FromNs(TOD);
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
-    uint32_t FirstSeq = S.SequenceNumber;
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
+    uint32_t FirstSeq = S.NextSequenceNumber;
     DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Tx, &S, &Frame->Frame, &Out));
     DT_ASSERT(!Sink.Overrun);
     DT_ASSERT(Sink.Count <= Tx.PacketsPerFrame);
@@ -343,7 +343,7 @@ static void CheckTransmit(const St2110_TxConfigVideo* Config, bool Gapped,
     DT_ASSERT(R.Markers == 1 && R.MarkerLast);
     DT_ASSERT_EQ(R.RtpTime, 123456);
     DT_ASSERT_EQ(R.FirstTodNs, TOD + (uint64_t)Tx.TrOffsetNs - DELAY_NS);
-    uint64_t Spacing = Tx.Spacing;
+    uint64_t Spacing = Tx.PacketSpacingPs;
     uint64_t Expected = (uint64_t)(Sink.Count - 1) * Spacing / 1000;
     DT_ASSERT_EQ(R.LastTodNs - R.FirstTodNs, Expected);
     uint64_t Period =
@@ -446,7 +446,7 @@ DT_TEST(FieldsAndPsf)
     DT_ASSERT_EQ(Tx.TrOffsetNs, 782222); // 22/1125 of 40 ms
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Tx, &S));
     DT_ASSERT(Sink_Init(&Sink, (size_t)DtSt2110VideoTx_FrameBytes(&Tx, &S), 8000));
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
 
     DtAvFrame* Frame = DtAvFramePool_Get(&Pool, 3840 * 540);
     DT_ASSERT(Frame != NULL);
@@ -454,7 +454,7 @@ DT_TEST(FieldsAndPsf)
     Frame->Frame.NumValidBytes = 3840 * 540;
     Frame->Frame.Field = 1;
     Frame->Frame.RtpTime = 42;
-    uint32_t FirstSeq = S.SequenceNumber;
+    uint32_t FirstSeq = S.NextSequenceNumber;
     DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Tx, &S, &Frame->Frame, &Out));
     uint8_t* Image = (uint8_t*)calloc(3840 * 540, 1);
     DT_ASSERT(Image != NULL);
@@ -479,7 +479,7 @@ DT_TEST(FieldsAndPsf)
     Sink.Count = 0;
     Frame->Frame.Field = 1;
     Frame->Frame.RtpTime = 2800;
-    FirstSeq = S.SequenceNumber;
+    FirstSeq = S.NextSequenceNumber;
     DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Tx, &S, &Frame->Frame, &Out));
     DT_ASSERT_EQ(Sink.Count, FirstField);
     ReadFrame(&Sink, 0, Sink.Count, Image, 3840, 4, 2, 1, true, FirstSeq, &R);
@@ -522,14 +522,14 @@ DT_TEST(Raw420Rows)
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Tx, &S));
     DT_ASSERT_EQ(Tx.PayloadSize, 1416);
     DT_ASSERT(Sink_Init(&Sink, (size_t)DtSt2110VideoTx_FrameBytes(&Tx, &S), 100));
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
 
     DtAvFrame* Frame = DtAvFramePool_Get(&Pool, 20 * 600);
     DT_ASSERT(Frame != NULL);
     FillFrame(Frame->Frame.Data, 20, 600, 9);
     Frame->Frame.NumValidBytes = 20 * 600;
     Frame->Frame.ToD = DtAvTime_FromNs(TOD);
-    uint32_t FirstSeq = S.SequenceNumber;
+    uint32_t FirstSeq = S.NextSequenceNumber;
     DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Tx, &S, &Frame->Frame, &Out));
     DT_ASSERT_EQ(Sink.Count, Tx.PacketsPerFrame);
     uint8_t Image[20 * 600];
@@ -695,7 +695,7 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
     static Collected Got;
     memset(&Got, 0, sizeof(Got));
     Got.Pool = &Pool;
-    const DtAvRxTarget Target = {&Pool, Collect, &Got};
+    const DtAvRxSink Target = {&Pool, Collect, &Got};
     DtSt2110VideoRx Rx;
     DtSt2110VideoRx_Init(&Rx, St2110_RxFrameFormat_Uyvy422_8b, DtAvPixConv_C(), &Target);
     Maker M = {{0}, 0, 0x0000FFF0, 10, 64, 24};
@@ -705,9 +705,9 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
     // The first frame teaches the size, and the second is received.
     SendFrame(&M, &Rx, Frame, 1, TOD, FAULT_NONE);
     DT_ASSERT_EQ(Got.Count, 0);
-    DT_ASSERT(!Rx.WaitForEndFrame);
+    DT_ASSERT(!Rx.IsWaitingForMarker);
     DT_ASSERT_EQ(Rx.NumRowsFrame, 10);
-    DT_ASSERT_EQ(Rx.LineSizeFrame, 64);
+    DT_ASSERT_EQ(Rx.RowSizeFrame, 64);
     DT_ASSERT_EQ(Rx.CountedFrameSize, 640);
     SendFrame(&M, &Rx, Frame, 2, TOD + 1000, FAULT_NONE);
     DT_ASSERT_EQ(Got.Count, 1);
@@ -735,7 +735,7 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
     SendFrame(&M, &Rx, Frame, 6, TOD, FAULT_NO_MARKER);
     SendFrame(&M, &Rx, Frame, 7, TOD, FAULT_NONE);
     DT_ASSERT_EQ(Rx.Stats.FramesSizeError, 1);
-    DT_ASSERT(Rx.WaitForEndFrame || Rx.CalculatedFrameSize == -1);
+    DT_ASSERT(Rx.IsWaitingForMarker || Rx.CalculatedFrameSize == -1);
     SendFrame(&M, &Rx, Frame, 8, TOD, FAULT_NONE);
     DT_ASSERT_EQ(Got.Count, 4);
     SendFrame(&M, &Rx, Frame, 9, TOD, FAULT_NONE);
@@ -799,8 +799,8 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
     DT_ASSERT_OK(DtSt2110VideoTx_Configure(&Tx, &Config, DtAvPixConv_Best()));
     DT_ASSERT_OK(DtSt2110VideoTx_Start(&Tx, &S));
     DT_ASSERT(Sink_Init(&Sink, (size_t)DtSt2110VideoTx_FrameBytes(&Tx, &S), 8000));
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
-    const DtAvRxTarget Target = {&Pool, Collect, &Got};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvRxSink Target = {&Pool, Collect, &Got};
     DtSt2110VideoRx Rx;
     DtSt2110VideoRx_Init(&Rx, RxFormat, DtAvPixConv_Best(), &Target);
 

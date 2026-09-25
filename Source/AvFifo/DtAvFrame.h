@@ -29,8 +29,8 @@
 typedef struct DtAvFrame
 {
     AvFifo_Frame Frame;           // Must be first
-    uint8_t* Blob;                // The allocation Frame.Data lies in
-    size_t Capacity;              // Bytes after Frame.Data
+    uint8_t* Allocation;          // The allocation Frame.Data lies in
+    size_t DataCapacity;          // Bytes after Frame.Data
     bool IsFree;                  // In the pool's free list
     struct DtAvFrame* NextFree;   // Free list
     struct DtAvFrame* NextInPool; // Every frame of the pool
@@ -52,8 +52,8 @@ static inline DtAvFrame* DtAvFrame_Of(AvFifo_Frame* Frame)
 typedef struct DtAvFramePool
 {
     OsMutex* Mutex;
-    DtAvFrame* Free;
-    DtAvFrame* All;
+    DtAvFrame* FreeList;
+    DtAvFrame* AllFrames;
     int NumFrames;
     int NumFree;
 } DtAvFramePool;
@@ -92,12 +92,12 @@ int DtAvFramePool_NumFree(const DtAvFramePool* Pool);
 typedef struct DtAvFrameFifo
 {
     OsMutex* Mutex;
-    DtAvFrame** Items; // A ring of Capacity items
-    int Capacity;
+    DtAvFrame** Ring; // A ring of Capacity items
+    int RingSlots;
     int Head;
-    int Count;
+    int Load;
     int MaxSize;
-    bool Overflow;
+    bool HasOverflowed;
 } DtAvFrameFifo;
 
 // Makes an empty FIFO of DT_AV_FIFO_DEFAULT_MAX_SIZE frames. DTAPI_E_OUT_OF_MEM when
@@ -122,7 +122,7 @@ int DtAvFrameFifo_GetMaxSize(const DtAvFrameFifo* Fifo);
 DtapiResult DtAvFrameFifo_SetMaxSize(DtAvFrameFifo* Fifo, int MaxSize);
 
 // Whether a frame was refused since the last call or Clear; clears the mark.
-bool DtAvFrameFifo_TakeOverflow(DtAvFrameFifo* Fifo);
+bool DtAvFrameFifo_ReadAndClearOverflow(DtAvFrameFifo* Fifo);
 
 // Empties the FIFO, returning its frames to Pool, and clears the overflow mark.
 void DtAvFrameFifo_Clear(DtAvFrameFifo* Fifo, DtAvFramePool* Pool);

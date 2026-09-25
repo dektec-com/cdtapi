@@ -17,9 +17,9 @@
 // The most addresses of an interface that are looked at; the rest are ignored.
 #define DT_NET_MAX_ADDRS 32
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Length -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddressLength -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static size_t Length(bool IpV6)
+static size_t AddressLength(bool IpV6)
 {
     return IpV6 ? 16 : 4;
 }
@@ -30,7 +30,7 @@ static size_t Length(bool IpV6)
 //
 bool DtNet_IsEmpty(bool IpV6, const uint8_t* Ip)
 {
-    for (size_t i = 0; i < Length(IpV6); i++)
+    for (size_t i = 0; i < AddressLength(IpV6); i++)
     {
         if (Ip[i] != 0)
             return false;
@@ -78,7 +78,7 @@ bool DtNet_IsGlobalV6(const uint8_t* Ip)
 void DtNet_PrefixMask(bool IpV6, int PrefixLength, uint8_t* Mask)
 {
     memset(Mask, 0, 16);
-    for (int Bit = 0; Bit < PrefixLength && Bit < (int)Length(IpV6) * 8; Bit++)
+    for (int Bit = 0; Bit < PrefixLength && Bit < (int)AddressLength(IpV6) * 8; Bit++)
         Mask[Bit / 8] = (uint8_t)(Mask[Bit / 8] | 0x80 >> (Bit % 8));
 }
 
@@ -86,7 +86,7 @@ void DtNet_PrefixMask(bool IpV6, int PrefixLength, uint8_t* Mask)
 //
 bool DtNet_SameSubnet(bool IpV6, const uint8_t* A, const uint8_t* B, const uint8_t* Mask)
 {
-    for (size_t i = 0; i < Length(IpV6); i++)
+    for (size_t i = 0; i < AddressLength(IpV6); i++)
     {
         if ((A[i] & Mask[i]) != (B[i] & Mask[i]))
             return false;
@@ -115,12 +115,12 @@ void DtNet_MulticastMac(bool IpV6, const uint8_t* Group, uint8_t* Mac)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Own address +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddressIsOfKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Whether an address of the interface is of Kind. An other address is in Hint's subnet,
-// or of no other kind when Hint is empty.
+// Whether an address of the interface is of Kind. An other address is in SubnetOf's
+// subnet, or of no other kind when SubnetOf is empty.
 //
-static bool IsKind(const OsNetAddr* Addr, int Kind, const uint8_t* Hint)
+static bool AddressIsOfKind(const OsNetAddr* Addr, int Kind, const uint8_t* SubnetOf)
 {
     const uint8_t* Ip = Addr->Ip;
 
@@ -140,10 +140,10 @@ static bool IsKind(const OsNetAddr* Addr, int Kind, const uint8_t* Hint)
                                              0, 0, 0, 0, 0, 0, 0, 1};
         uint8_t Mask[16];
 
-        if (Hint != NULL && !DtNet_IsEmpty(true, Hint))
+        if (SubnetOf != NULL && !DtNet_IsEmpty(true, SubnetOf))
         {
             DtNet_PrefixMask(true, Addr->PrefixLength, Mask);
-            return DtNet_SameSubnet(true, Ip, Hint, Mask);
+            return DtNet_SameSubnet(true, Ip, SubnetOf, Mask);
         }
         return !DtNet_IsGlobalV6(Ip) && !DtNet_IsLinkLocal(true, Ip) &&
                !DtNet_IsSiteLocalV6(Ip) && !DtNet_IsMulticast(true, Ip) &&
@@ -155,32 +155,33 @@ static bool IsKind(const OsNetAddr* Addr, int Kind, const uint8_t* Hint)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNet_GetOwnAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
-                                const uint8_t* Hint, DtNetOwn* Own)
+                                const uint8_t* SubnetOf, DtNetOwnAddress* Own)
 {
     if (Own != NULL)
         memset(Own, 0, sizeof(*Own));
-    if (Mac == NULL || Own == NULL || Kind < DT_NET_ADDR_IPV4 || Kind > DT_NET_ADDR_OTHER)
+    if (Mac == NULL || Own == NULL || Kind < DT_NET_ADDR_IPV4 ||
+        Kind > DT_NET_ADDR_OTHER_V6)
         return DTAPI_E_INVALID_ARG;
 
-    int Outcome = OsNet_FindInterface(Mac, VlanId, &Own->Itf);
-    if (Outcome == OS_NET_NOT_FOUND && VlanId != 0 &&
+    int OsResult = OsNet_FindInterface(Mac, VlanId, &Own->Itf);
+    if (OsResult == OS_NET_NOT_FOUND && VlanId != 0 &&
         OsNet_FindInterface(Mac, 0, &Own->Itf) == OS_NET_OK)
     {
         memset(&Own->Itf, 0, sizeof(Own->Itf));
         return DTAPI_E_VLAN_NOT_FOUND;
     }
-    if (Outcome == OS_NET_NO_MEMORY)
+    if (OsResult == OS_NET_NO_MEMORY)
         return DTAPI_E_OUT_OF_MEM;
-    if (Outcome != OS_NET_OK)
+    if (OsResult != OS_NET_OK)
         return DTAPI_E_NW_DRIVER;
 
     bool IpV6 = Kind != DT_NET_ADDR_IPV4;
     OsNetAddr Addrs[DT_NET_MAX_ADDRS];
     int Count = 0;
-    Outcome = OsNet_GetAddresses(Own->Itf.Index, IpV6, Addrs, DT_NET_MAX_ADDRS, &Count);
-    if (Outcome == OS_NET_TOO_SMALL)
+    OsResult = OsNet_GetAddresses(Own->Itf.Index, IpV6, Addrs, DT_NET_MAX_ADDRS, &Count);
+    if (OsResult == OS_NET_TOO_SMALL)
         Count = DT_NET_MAX_ADDRS;
-    else if (Outcome != OS_NET_OK)
+    else if (OsResult != OS_NET_OK)
         Count = 0;
 
     const OsNetAddr* Found = NULL;
@@ -189,7 +190,7 @@ DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
     {
         for (int i = 0; i < Count && Found == NULL; i++)
         {
-            if (Addrs[i].State == State && IsKind(&Addrs[i], Kind, Hint))
+            if (Addrs[i].State == State && AddressIsOfKind(&Addrs[i], Kind, SubnetOf))
                 Found = &Addrs[i];
         }
     }
@@ -208,13 +209,13 @@ DtapiResult DtNet_GetOwnAddress(const uint8_t* Mac, int VlanId, int Kind,
 // Tries the kinds in order and gives the first own address found, or the last failure.
 //
 static DtapiResult TryKinds(const uint8_t* Mac, int VlanId, const int* Kinds,
-                            int NumKinds, const uint8_t* Hint, DtNetOwn* Own)
+                            int NumKinds, const uint8_t* SubnetOf, DtNetOwnAddress* Own)
 {
     DtapiResult Result = DTAPI_E_NO_ADAPTER_IP_ADDR;
 
     for (int i = 0; i < NumKinds; i++)
     {
-        Result = DtNet_GetOwnAddress(Mac, VlanId, Kinds[i], Hint, Own);
+        Result = DtNet_GetOwnAddress(Mac, VlanId, Kinds[i], SubnetOf, Own);
         if (Result == DTAPI_OK)
             break;
     }
@@ -224,29 +225,29 @@ static DtapiResult TryKinds(const uint8_t* Mac, int VlanId, const int* Kinds,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNet_ChooseInputAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtNet_ChooseInputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
-                                     const uint8_t* Stream, DtNetOwn* Own)
+                                     const uint8_t* StreamAddress, DtNetOwnAddress* Own)
 {
     if (Own != NULL)
         memset(Own, 0, sizeof(*Own));
-    if (Stream == NULL || Own == NULL)
+    if (StreamAddress == NULL || Own == NULL)
         return DTAPI_E_INVALID_ARG;
     if (!IpV6)
         return DtNet_GetOwnAddress(Mac, VlanId, DT_NET_ADDR_IPV4, NULL, Own);
 
-    if (DtNet_IsMulticast(true, Stream) || DtNet_IsEmpty(true, Stream))
+    if (DtNet_IsMulticast(true, StreamAddress) || DtNet_IsEmpty(true, StreamAddress))
     {
         static const int Kinds[] = {DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_SITE_LOCAL,
-                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER};
+                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER_V6};
         return TryKinds(Mac, VlanId, Kinds, 4, NULL, Own);
     }
 
-    int Kind = DtNet_IsGlobalV6(Stream)          ? DT_NET_ADDR_GLOBAL
-               : DtNet_IsLinkLocal(true, Stream) ? DT_NET_ADDR_LINK_LOCAL
-               : DtNet_IsSiteLocalV6(Stream)     ? DT_NET_ADDR_SITE_LOCAL
-                                                 : DT_NET_ADDR_OTHER;
-    DtapiResult Result = DtNet_GetOwnAddress(Mac, VlanId, Kind, Stream, Own);
+    int Kind = DtNet_IsGlobalV6(StreamAddress)          ? DT_NET_ADDR_GLOBAL
+               : DtNet_IsLinkLocal(true, StreamAddress) ? DT_NET_ADDR_LINK_LOCAL
+               : DtNet_IsSiteLocalV6(StreamAddress)     ? DT_NET_ADDR_SITE_LOCAL
+                                                        : DT_NET_ADDR_OTHER_V6;
+    DtapiResult Result = DtNet_GetOwnAddress(Mac, VlanId, Kind, StreamAddress, Own);
     if (Result == DTAPI_OK)
-        memcpy(Own->Ip, Stream, 16);
+        memcpy(Own->Ip, StreamAddress, 16);
     return Result;
 }
 
@@ -257,15 +258,15 @@ DtapiResult DtNet_ChooseInputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
 // site-local, and any other scope global.
 //
 DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
-                                      const uint8_t* Dst, DtNetOwn* Own)
+                                      const uint8_t* Dst, DtNetOwnAddress* Own)
 {
     static const int LinkLocal[] = {DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_SITE_LOCAL,
-                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER};
+                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER_V6};
     static const int SiteLocal[] = {DT_NET_ADDR_SITE_LOCAL, DT_NET_ADDR_LINK_LOCAL,
-                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER};
+                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER_V6};
     static const int Global[] = {DT_NET_ADDR_GLOBAL, DT_NET_ADDR_SITE_LOCAL,
-                                 DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_OTHER};
-    static const int Other[] = {DT_NET_ADDR_OTHER, DT_NET_ADDR_GLOBAL,
+                                 DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_OTHER_V6};
+    static const int Other[] = {DT_NET_ADDR_OTHER_V6, DT_NET_ADDR_GLOBAL,
                                 DT_NET_ADDR_SITE_LOCAL, DT_NET_ADDR_LINK_LOCAL};
 
     if (Own != NULL)
@@ -311,7 +312,7 @@ DtapiResult DtNet_ChooseOutputAddress(const uint8_t* Mac, int VlanId, bool IpV6,
 // when Own's prefix is longer than the link's, as Windows reports for temporary IPv6
 // addresses.
 //
-DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
+DtapiResult DtNet_ResolveDstMac(const DtNetOwnAddress* Own, const uint8_t* Dst,
                                 const uint8_t* Gateway, uint8_t* Mac)
 {
     if (Mac != NULL)
@@ -326,7 +327,7 @@ DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
         return DTAPI_OK;
     }
 
-    bool SameSubnet =
+    bool IsOnLink =
         DtNet_SameSubnet(IpV6, Own->Ip, Dst, Own->Mask) || DtNet_IsLinkLocal(IpV6, Dst);
     if (!IpV6)
     {
@@ -335,22 +336,23 @@ DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
             NetBroadcast = NetBroadcast && (Dst[i] | Own->Mask[i]) == 0xFF;
         bool LocalBroadcast =
             Dst[0] == 169 && Dst[1] == 254 && Dst[2] == 255 && Dst[3] == 255;
-        if ((SameSubnet && NetBroadcast) || LocalBroadcast)
+        if ((IsOnLink && NetBroadcast) || LocalBroadcast)
         {
             memset(Mac, 0xFF, 6);
             return DTAPI_OK;
         }
     }
 
-    bool Forced = Gateway != NULL && !DtNet_IsEmpty(IpV6, Gateway);
-    if (!SameSubnet && !Forced)
+    bool HasForcedGateway = Gateway != NULL && !DtNet_IsEmpty(IpV6, Gateway);
+    if (!IsOnLink && !HasForcedGateway)
     {
         uint8_t RouteGateway[16];
         if (OsNet_GetBestRoute(Own->Itf.Index, IpV6, Own->Ip, Dst, RouteGateway) ==
             OS_NET_OK)
         {
-            const uint8_t* Hop = DtNet_IsEmpty(IpV6, RouteGateway) ? Dst : RouteGateway;
-            if (OsNet_ResolveNeighbour(Own->Itf.Index, IpV6, Own->Ip, Hop, Mac) ==
+            const uint8_t* NextHop =
+                DtNet_IsEmpty(IpV6, RouteGateway) ? Dst : RouteGateway;
+            if (OsNet_ResolveNeighbour(Own->Itf.Index, IpV6, Own->Ip, NextHop, Mac) ==
                 OS_NET_OK)
             {
                 return DTAPI_OK;
@@ -358,9 +360,9 @@ DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
         }
     }
 
-    const uint8_t* Next = SameSubnet ? Dst : Forced ? Gateway : Own->Gateway;
-    if (DtNet_IsEmpty(IpV6, Next) ||
-        OsNet_ResolveNeighbour(Own->Itf.Index, IpV6, Own->Ip, Next, Mac) != OS_NET_OK)
+    const uint8_t* NextHop = IsOnLink ? Dst : HasForcedGateway ? Gateway : Own->Gateway;
+    if (DtNet_IsEmpty(IpV6, NextHop) ||
+        OsNet_ResolveNeighbour(Own->Itf.Index, IpV6, Own->Ip, NextHop, Mac) != OS_NET_OK)
     {
         memset(Mac, 0, 6);
         return DTAPI_E_DST_MAC_ADDR;
@@ -370,14 +372,14 @@ DtapiResult DtNet_ResolveDstMac(const DtNetOwn* Own, const uint8_t* Dst,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Operation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFamily -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckIpVersion -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult CheckFamily(const uint8_t* Mac, int VlanId, bool IpV6)
+static DtapiResult CheckIpVersion(const uint8_t* Mac, int VlanId, bool IpV6)
 {
     static const int IpV4Kinds[] = {DT_NET_ADDR_IPV4};
     static const int IpV6Kinds[] = {DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_SITE_LOCAL,
-                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER};
-    DtNetOwn Own;
+                                    DT_NET_ADDR_GLOBAL, DT_NET_ADDR_OTHER_V6};
+    DtNetOwnAddress Own;
 
     DtapiResult Result = IpV6 ? TryKinds(Mac, VlanId, IpV6Kinds, 4, NULL, &Own)
                               : TryKinds(Mac, VlanId, IpV4Kinds, 1, NULL, &Own);
@@ -401,9 +403,9 @@ DtapiResult DtNet_CheckOperational(const uint8_t* Mac, int VlanId, bool IpV4, bo
         return DTAPI_E_INVALID_ARG;
     DtapiResult Result = DTAPI_OK;
     if (IpV4)
-        Result = CheckFamily(Mac, VlanId, false);
+        Result = CheckIpVersion(Mac, VlanId, false);
     if (Result == DTAPI_OK && IpV6)
-        Result = CheckFamily(Mac, VlanId, true);
+        Result = CheckIpVersion(Mac, VlanId, true);
     return Result;
 }
 
@@ -417,18 +419,19 @@ static bool IsRepeated(bool IpV6, const uint8_t* Sources, int Index)
 {
     for (int k = 0; k < Index; k++)
     {
-        if (memcmp(Sources + 16 * k, Sources + 16 * Index, Length(IpV6)) == 0)
+        if (memcmp(Sources + 16 * k, Sources + 16 * Index, AddressLength(IpV6)) == 0)
             return true;
     }
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Membership -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinOrLeaveSources -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Joins or leaves every distinct source; stops at a failed join and returns false.
 //
-static bool Membership(bool Join, OsNetSocket* Socket, uint32_t IfIndex, bool IpV6,
-                       const uint8_t* Group, const uint8_t* Sources, int NumSources)
+static bool JoinOrLeaveSources(bool Join, OsNetSocket* Socket, uint32_t ItfIndex,
+                               bool IpV6, const uint8_t* Group, const uint8_t* Sources,
+                               int NumSources)
 {
     bool Succeeded = true;
 
@@ -442,9 +445,9 @@ static bool Membership(bool Join, OsNetSocket* Socket, uint32_t IfIndex, bool Ip
             if (!DtNet_IsEmpty(IpV6, Sources + 16 * i))
                 Source = Sources + 16 * i;
         }
-        int Outcome = Join ? OsNetSocket_Join(Socket, IfIndex, Group, Source)
-                           : OsNetSocket_Leave(Socket, IfIndex, Group, Source);
-        if (Outcome != OS_NET_OK)
+        int OsResult = Join ? OsNetSocket_Join(Socket, ItfIndex, Group, Source)
+                            : OsNetSocket_Leave(Socket, ItfIndex, Group, Source);
+        if (OsResult != OS_NET_OK)
         {
             Succeeded = false;
             if (Join)
@@ -456,7 +459,7 @@ static bool Membership(bool Join, OsNetSocket* Socket, uint32_t IfIndex, bool Ip
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNet_Join -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtNet_Join(OsNetSocket* Socket, uint32_t IfIndex, bool IpV6,
+DtapiResult DtNet_Join(OsNetSocket* Socket, uint32_t ItfIndex, bool IpV6,
                        const uint8_t* Group, const uint8_t* Sources, int NumSources)
 {
     if (Socket == NULL || Group == NULL || NumSources < 0 ||
@@ -464,14 +467,14 @@ DtapiResult DtNet_Join(OsNetSocket* Socket, uint32_t IfIndex, bool IpV6,
     {
         return DTAPI_E_INVALID_ARG;
     }
-    if (!Membership(true, Socket, IfIndex, IpV6, Group, Sources, NumSources))
+    if (!JoinOrLeaveSources(true, Socket, ItfIndex, IpV6, Group, Sources, NumSources))
         return DTAPI_E_MULTICASTJOIN;
     return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNet_Leave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtNet_Leave(OsNetSocket* Socket, uint32_t IfIndex, bool IpV6, const uint8_t* Group,
+void DtNet_Leave(OsNetSocket* Socket, uint32_t ItfIndex, bool IpV6, const uint8_t* Group,
                  const uint8_t* Sources, int NumSources)
 {
     if (Socket == NULL || Group == NULL || NumSources < 0 ||
@@ -479,5 +482,5 @@ void DtNet_Leave(OsNetSocket* Socket, uint32_t IfIndex, bool IpV6, const uint8_t
     {
         return;
     }
-    Membership(false, Socket, IfIndex, IpV6, Group, Sources, NumSources);
+    JoinOrLeaveSources(false, Socket, ItfIndex, IpV6, Group, Sources, NumSources);
 }

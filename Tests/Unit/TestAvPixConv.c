@@ -105,7 +105,7 @@ static void PutSample(uint8_t* Buf, size_t I, int K, bool MsbFirst, unsigned Val
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Checks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Checks one set of conversions against the reference for every count and pattern.
-static void CheckAgainstReference(const DtAvPixConv* Conv, int* DtFailures)
+static void CheckAgainstReference(const DtAvPixConvTable* Conv, int* DtFailures)
 {
     for (size_t c = 0; c < sizeof(Counts) / sizeof(Counts[0]); c++)
     {
@@ -190,7 +190,7 @@ DT_TEST(PortableMatchesReference)
 
 DT_TEST(Ssse3MatchesReference)
 {
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    const DtAvPixConvTable* Ssse3 = DtAvPixConv_Ssse3();
     if (Ssse3 == NULL)
     {
         printf("    no SSSE3 in this build or on this processor; skipped\n");
@@ -201,7 +201,7 @@ DT_TEST(Ssse3MatchesReference)
 
 DT_TEST(Avx2MatchesReference)
 {
-    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    const DtAvPixConvTable* Avx2 = DtAvPixConv_Avx2();
     if (Avx2 == NULL)
     {
         printf("    no AVX2 in this build or on this processor; skipped\n");
@@ -212,9 +212,9 @@ DT_TEST(Avx2MatchesReference)
 
 // The conversions of Fast give the portable ones' bytes for three 3840-pixel rows of
 // random data, converted in pieces of varying lengths, each piece into its own place.
-static void CheckAgainstPortable(const DtAvPixConv* Fast, int* DtFailures)
+static void CheckAgainstPortable(const DtAvPixConvTable* Fast, int* DtFailures)
 {
-    const DtAvPixConv* C = DtAvPixConv_C();
+    const DtAvPixConvTable* C = DtAvPixConv_C();
     size_t N = 3840 / 2 * 3;
     uint8_t* Src = (uint8_t*)malloc(N * 5);
     uint8_t* A[4] = {Destination(N * 5), Destination(N * 4), Destination(N * 5),
@@ -260,7 +260,7 @@ static void CheckAgainstPortable(const DtAvPixConv* Fast, int* DtFailures)
 
 DT_TEST(Ssse3MatchesPortable)
 {
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    const DtAvPixConvTable* Ssse3 = DtAvPixConv_Ssse3();
     if (Ssse3 == NULL)
     {
         printf("    no SSSE3 in this build or on this processor; skipped\n");
@@ -271,7 +271,7 @@ DT_TEST(Ssse3MatchesPortable)
 
 DT_TEST(Avx2MatchesPortable)
 {
-    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
+    const DtAvPixConvTable* Avx2 = DtAvPixConv_Avx2();
     if (Avx2 == NULL)
     {
         printf("    no AVX2 in this build or on this processor; skipped\n");
@@ -282,9 +282,9 @@ DT_TEST(Avx2MatchesPortable)
 
 DT_TEST(BestIsAvailable)
 {
-    const DtAvPixConv* Best = DtAvPixConv_Best();
-    const DtAvPixConv* Avx2 = DtAvPixConv_Avx2();
-    const DtAvPixConv* Ssse3 = DtAvPixConv_Ssse3();
+    const DtAvPixConvTable* Best = DtAvPixConv_Best();
+    const DtAvPixConvTable* Avx2 = DtAvPixConv_Avx2();
+    const DtAvPixConvTable* Ssse3 = DtAvPixConv_Ssse3();
     DT_ASSERT(Best != NULL);
     DT_ASSERT(Best == (Avx2 != NULL ? Avx2 : Ssse3 != NULL ? Ssse3 : DtAvPixConv_C()));
     printf("    %s\n", Best == Avx2 ? "AVX2" : Best == Ssse3 ? "SSSE3" : "portable C");

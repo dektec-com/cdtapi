@@ -105,17 +105,18 @@ DT_TEST(OpenBufferClose)
     DT_ASSERT(DtAvPipe_IsHardware(&Pipe));
     DT_ASSERT_EQ(DtAvPipe_Alignment(&Pipe), SIM_DTA2110_PACKET_ALIGNMENT);
     DT_ASSERT_OK(DtAvPipe_SetBuffer(&Pipe, 100000));
-    DT_ASSERT_EQ(Pipe.Size % (4096 * SIM_NW_HWP_PREFETCH_PAGES), 0);
-    DT_ASSERT(Pipe.Size >= 100000);
-    DT_ASSERT_EQ(DtAvPipe_MaxLoad(&Pipe), Pipe.Size - 8);
+    DT_ASSERT_EQ(Pipe.BufferSize % (4096 * SIM_NW_HWP_PREFETCH_PAGES), 0);
+    DT_ASSERT(Pipe.BufferSize >= 100000);
+    DT_ASSERT_EQ(DtAvPipe_UsableBytes(&Pipe), Pipe.BufferSize - 8);
     SimNwPipeState State;
     SimDtPcie_GetNwPipeState(Pipe.Ref.Uuid >> 20, &State);
-    DT_ASSERT(State.InUse && State.BufferSet && State.BufferSize == Pipe.Size);
+    DT_ASSERT(State.InUse && State.BufferRegistered &&
+              State.BufferSize == Pipe.BufferSize);
     DT_ASSERT_EQ(DtAvPipe_SetBuffer(&Pipe, 100000), DTAPI_E_INVALID_ARG);
     int Id = Pipe.Ref.Uuid >> 20;
     DtAvPipe_Close(&Pipe);
     SimDtPcie_GetNwPipeState(Id, &State);
-    DT_ASSERT(!State.InUse && !State.BufferSet);
+    DT_ASSERT(!State.InUse && !State.BufferRegistered);
     DtAvPipe_Close(&Pipe);
 
     // Three hardware receive pipes; a fourth is refused unless a software one stands in.
@@ -181,7 +182,7 @@ DT_TEST(FramesAroundTheBuffers)
     // Buffers of a frame and a half.
     DT_ASSERT_OK(DtAvPipe_SetBuffer(&Tx, (size_t)FrameNumBytes * 3 / 2));
     DT_ASSERT_OK(DtAvPipe_SetBuffer(&Rx, (size_t)FrameNumBytes * 3 / 2));
-    DT_ASSERT((uint32_t)FrameNumBytes < DtAvPipe_MaxLoad(&Tx));
+    DT_ASSERT((uint32_t)FrameNumBytes < DtAvPipe_UsableBytes(&Tx));
     DtIpFilter Filter;
     memset(&Filter, 0, sizeof(Filter));
     memcpy(Filter.DstIp, DstIp, 4);
@@ -203,7 +204,7 @@ DT_TEST(FramesAroundTheBuffers)
     for (int i = 0; i < HEIGHT * ROW; i++)
         Image[i] = (uint8_t)(i * 7 + i / ROW);
     Received Got = {&Pool, 0, true, Image, 0};
-    const DtAvRxTarget Target = {&Pool, Deliver, &Got};
+    const DtAvRxSink Target = {&Pool, Deliver, &Got};
     DtSt2110VideoRx Parser;
     DtSt2110VideoRx_Init(&Parser, St2110_RxFrameFormat_Uyvy422_8b, DtAvPixConv_C(),
                          &Target);
@@ -220,12 +221,12 @@ DT_TEST(FramesAroundTheBuffers)
         Frame->Frame.ToD = DtAvTime_FromNs(T0 + 100 * MS + (uint64_t)f * 40 * MS);
 
         uint32_t Free = 0;
-        DT_ASSERT_OK(DtAvWriter_Free(&Writer, &Free));
+        DT_ASSERT_OK(DtAvWriter_FreeBytes(&Writer, &Free));
         DT_ASSERT(Free >= (uint32_t)FrameNumBytes);
         uint32_t Before = Tx.Offset;
         DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Video, &S, &Frame->Frame, &Writer.Sink));
         DT_ASSERT_OK(DtAvWriter_Flush(&Writer));
-        Written += (Tx.Offset + Tx.Size - Before) % Tx.Size;
+        Written += (Tx.Offset + Tx.BufferSize - Before) % Tx.BufferSize;
         DtAvFramePool_Return(&Pool, &Frame->Frame);
 
         // The frame goes out and comes back, a pass of the reader at a time.
@@ -247,8 +248,8 @@ DT_TEST(FramesAroundTheBuffers)
         DT_ASSERT_OK(DtAvReader_Pass(&Reader, ParsePacket, &Context, &Packets, &Lost));
         DT_ASSERT(!Lost);
     }
-    DT_ASSERT(Written > 3 * (uint64_t)Tx.Size);
-    DT_ASSERT(Context.Bytes > 3 * (int)Rx.Size);
+    DT_ASSERT(Written > 3 * (uint64_t)Tx.BufferSize);
+    DT_ASSERT(Context.Bytes > 3 * (int)Rx.BufferSize);
     DT_ASSERT_EQ(Got.Count, 7);
     DT_ASSERT(Got.AllEqual);
     DT_ASSERT_EQ(Parser.Stats.IpPacketErrors + Parser.Stats.FramesIncomplete, 0);
@@ -264,7 +265,7 @@ DT_TEST(FramesAroundTheBuffers)
     DT_ASSERT_OK(DtAvWriter_Flush(&Writer));
     DtAvFramePool_Return(&Pool, &Frame->Frame);
     SimDtPcie_AdvanceNwTime(100 * MS);
-    Rx.Offset = (Rx.Offset + 8) % Rx.Size;
+    Rx.Offset = (Rx.Offset + 8) % Rx.BufferSize;
     int Packets = 0;
     bool Lost = false;
     DT_ASSERT_OK(DtAvReader_Pass(&Reader, ParsePacket, &Context, &Packets, &Lost));

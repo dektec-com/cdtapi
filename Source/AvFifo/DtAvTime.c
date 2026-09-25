@@ -16,13 +16,13 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Arithmetic +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The range of a 32-bit RTP timestamp.
-#define RTP_RANGE (UINT64_C(1) << 32)
+#define RTP_WRAP (UINT64_C(1) << 32)
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Multiply -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Multiply128 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The 128-bit product of A and B, from 32-bit halves.
 //
-static void Multiply(uint64_t A, uint64_t B, uint64_t* High, uint64_t* Low)
+static void Multiply128(uint64_t A, uint64_t B, uint64_t* High, uint64_t* Low)
 {
     uint64_t A0 = A & 0xFFFFFFFFu;
     uint64_t A1 = A >> 32;
@@ -48,7 +48,7 @@ uint64_t DtAvTime_MulAddDiv(uint64_t A, uint64_t B, uint64_t Add, uint64_t Div)
 {
     uint64_t High = 0;
     uint64_t Low = 0;
-    Multiply(A, B, &High, &Low);
+    Multiply128(A, B, &High, &Low);
     Low += Add;
     if (Low < Add)
         High++;
@@ -92,11 +92,11 @@ DtTimeOfDay DtAvTime_FromNs(uint64_t Ns)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTime_Align -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTime_ToGrid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The number of whole periods, rounded, and their time, rounded.
 //
-uint64_t DtAvTime_Align(uint64_t Ns, int Numerator, int Denominator)
+uint64_t DtAvTime_ToGrid(uint64_t Ns, int Numerator, int Denominator)
 {
     if (Numerator <= 0 || Denominator <= 0)
         return Ns;
@@ -134,13 +134,13 @@ uint64_t DtAvTime_Rtp2Tod(int RtpRate, uint32_t RtpTime, uint64_t ApproxNs)
     if (RtpRate <= 0)
         return ApproxNs;
     uint64_t NumWraps =
-        DtAvTime_MulAddDiv(ApproxNs, (uint64_t)RtpRate, 0, RTP_RANGE * DT_AV_NS_PER_SEC);
+        DtAvTime_MulAddDiv(ApproxNs, (uint64_t)RtpRate, 0, RTP_WRAP * DT_AV_NS_PER_SEC);
     int64_t Diff = (int64_t)RtpTime - (int64_t)DtAvTime_Tod2Rtp(RtpRate, ApproxNs);
-    if (Diff <= -(int64_t)(RTP_RANGE / 2))
+    if (Diff <= -(int64_t)(RTP_WRAP / 2))
         NumWraps++;
-    else if (Diff >= (int64_t)(RTP_RANGE / 2) && NumWraps > 0)
+    else if (Diff >= (int64_t)(RTP_WRAP / 2) && NumWraps > 0)
         NumWraps--;
-    uint64_t Ticks = NumWraps * RTP_RANGE + RtpTime;
+    uint64_t Ticks = NumWraps * RTP_WRAP + RtpTime;
     return DtAvTime_MulAddDiv(Ticks, DT_AV_NS_PER_SEC, 0, (uint64_t)RtpRate);
 }
 
@@ -152,7 +152,7 @@ DtTimeOfDay Tod2Grid_Audio(const DtTimeOfDay* ToD, int SampleRate)
 {
     if (ToD == NULL)
         return DtAvTime_FromNs(0);
-    return DtAvTime_FromNs(DtAvTime_Align(DtAvTime_ToNs(ToD), SampleRate, 1));
+    return DtAvTime_FromNs(DtAvTime_ToGrid(DtAvTime_ToNs(ToD), SampleRate, 1));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Tod2Grid_Video -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -164,7 +164,7 @@ DtTimeOfDay Tod2Grid_Video(const DtTimeOfDay* ToD, const FrameRate* Rate)
     if (Rate == NULL)
         return *ToD;
     return DtAvTime_FromNs(
-        DtAvTime_Align(DtAvTime_ToNs(ToD), Rate->Numerator, Rate->Denominator));
+        DtAvTime_ToGrid(DtAvTime_ToNs(ToD), Rate->Numerator, Rate->Denominator));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Rtp2Tod_Audio -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

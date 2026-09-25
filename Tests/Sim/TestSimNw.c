@@ -533,7 +533,7 @@ DT_TEST(SharedBuffers)
 
         SimNwPipeState State;
         SimDtPcie_GetNwPipeState(IdOf(Hwp), &State);
-        DT_ASSERT(State.BufferSet);
+        DT_ASSERT(State.BufferRegistered);
         DT_ASSERT_EQ(State.BufferSize, 16 * 4096);
         SimDtPcie_GetNwPipeState(IdOf(Swp), &State);
         DT_ASSERT_EQ(State.BufferSize, 4096);

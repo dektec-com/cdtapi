@@ -42,7 +42,7 @@ DtTimeOfDay DtAvTime_FromNs(uint64_t Ns);
 
 // The time on the grid of Numerator / Denominator periods per second nearest to Ns,
 // rounded to a nanosecond.
-uint64_t DtAvTime_Align(uint64_t Ns, int Numerator, int Denominator);
+uint64_t DtAvTime_ToGrid(uint64_t Ns, int Numerator, int Denominator);
 
 // The RTP timestamp of Ns on a clock of RtpRate Hz: truncated after adding an eighth of a
 // tick at 90 kHz and half a tick at any other rate.

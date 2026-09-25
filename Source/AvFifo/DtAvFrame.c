@@ -29,11 +29,11 @@ DtapiResult DtAvFramePool_Init(DtAvFramePool* Pool)
 //
 void DtAvFramePool_Destroy(DtAvFramePool* Pool)
 {
-    DtAvFrame* Frame = Pool->All;
+    DtAvFrame* Frame = Pool->AllFrames;
     while (Frame != NULL)
     {
         DtAvFrame* Next = Frame->NextInPool;
-        DtAlloc_Free(Frame->Blob);
+        DtAlloc_Free(Frame->Allocation);
         DtAlloc_Free(Frame);
         Frame = Next;
     }
@@ -42,24 +42,25 @@ void DtAvFramePool_Destroy(DtAvFramePool* Pool)
     memset(Pool, 0, sizeof(*Pool));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Reserve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureDataCapacity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Gives a frame's data room for Size bytes on the alignment boundary; false when there
 // is no memory, leaving the frame as it was.
 //
-static bool Reserve(DtAvFrame* Frame, size_t Size)
+static DtapiResult EnsureDataCapacity(DtAvFrame* Frame, size_t Size)
 {
-    if (Frame->Blob != NULL && Frame->Capacity >= Size)
+    if (Frame->Allocation != NULL && Frame->DataCapacity >= Size)
         return true;
-    uint8_t* Blob = (uint8_t*)DtAlloc_Malloc(Size + DT_AV_FRAME_ALIGNMENT);
-    if (Blob == NULL)
+    uint8_t* Allocation = (uint8_t*)DtAlloc_Malloc(Size + DT_AV_FRAME_ALIGNMENT);
+    if (Allocation == NULL)
         return false;
-    DtAlloc_Free(Frame->Blob);
-    size_t Skip = (DT_AV_FRAME_ALIGNMENT - (uintptr_t)Blob % DT_AV_FRAME_ALIGNMENT) %
-                  DT_AV_FRAME_ALIGNMENT;
-    Frame->Blob = Blob;
-    Frame->Frame.Data = Blob + Skip;
-    Frame->Capacity = Size + DT_AV_FRAME_ALIGNMENT - Skip;
+    DtAlloc_Free(Frame->Allocation);
+    size_t AlignPad =
+        (DT_AV_FRAME_ALIGNMENT - (uintptr_t)Allocation % DT_AV_FRAME_ALIGNMENT) %
+        DT_AV_FRAME_ALIGNMENT;
+    Frame->Allocation = Allocation;
+    Frame->Frame.Data = Allocation + AlignPad;
+    Frame->DataCapacity = Size + DT_AV_FRAME_ALIGNMENT - AlignPad;
     return true;
 }
 
@@ -68,10 +69,10 @@ static bool Reserve(DtAvFrame* Frame, size_t Size)
 DtAvFrame* DtAvFramePool_Get(DtAvFramePool* Pool, size_t Size)
 {
     OsMutex_Lock(Pool->Mutex);
-    DtAvFrame* Frame = Pool->Free;
+    DtAvFrame* Frame = Pool->FreeList;
     if (Frame != NULL)
     {
-        Pool->Free = Frame->NextFree;
+        Pool->FreeList = Frame->NextFree;
         Pool->NumFree--;
         Frame->IsFree = false;
         Frame->NextFree = NULL;
@@ -86,7 +87,7 @@ DtAvFrame* DtAvFramePool_Get(DtAvFramePool* Pool, size_t Size)
             return NULL;
         memset(Frame, 0, sizeof(*Frame));
     }
-    if (!Reserve(Frame, Size))
+    if (!EnsureDataCapacity(Frame, Size))
     {
         if (IsNew)
             DtAlloc_Free(Frame);
@@ -98,8 +99,8 @@ DtAvFrame* DtAvFramePool_Get(DtAvFramePool* Pool, size_t Size)
     if (IsNew)
     {
         OsMutex_Lock(Pool->Mutex);
-        Frame->NextInPool = Pool->All;
-        Pool->All = Frame;
+        Frame->NextInPool = Pool->AllFrames;
+        Pool->AllFrames = Frame;
         Pool->NumFrames++;
         OsMutex_Unlock(Pool->Mutex);
     }
@@ -119,15 +120,15 @@ bool DtAvFramePool_Return(DtAvFramePool* Pool, AvFifo_Frame* Frame)
     if (Frame == NULL)
         return false;
     OsMutex_Lock(Pool->Mutex);
-    DtAvFrame* Found = Pool->All;
+    DtAvFrame* Found = Pool->AllFrames;
     while (Found != NULL && &Found->Frame != Frame)
         Found = Found->NextInPool;
     bool Returned = Found != NULL && !Found->IsFree;
     if (Returned)
     {
         Found->IsFree = true;
-        Found->NextFree = Pool->Free;
-        Pool->Free = Found;
+        Found->NextFree = Pool->FreeList;
+        Pool->FreeList = Found;
         Pool->NumFree++;
     }
     OsMutex_Unlock(Pool->Mutex);
@@ -139,7 +140,7 @@ bool DtAvFramePool_Return(DtAvFramePool* Pool, AvFifo_Frame* Frame)
 bool DtAvFramePool_Owns(DtAvFramePool* Pool, const AvFifo_Frame* Frame)
 {
     OsMutex_Lock(Pool->Mutex);
-    DtAvFrame* Found = Pool->All;
+    DtAvFrame* Found = Pool->AllFrames;
     while (Found != NULL && &Found->Frame != Frame)
         Found = Found->NextInPool;
     bool Owns = Found != NULL && !Found->IsFree;
@@ -176,10 +177,10 @@ DtapiResult DtAvFrameFifo_Init(DtAvFrameFifo* Fifo)
     memset(Fifo, 0, sizeof(*Fifo));
     Fifo->Mutex = OsMutex_Create();
     Fifo->MaxSize = DT_AV_FIFO_DEFAULT_MAX_SIZE;
-    Fifo->Items =
+    Fifo->Ring =
         (DtAvFrame**)DtAlloc_Malloc(DT_AV_FIFO_DEFAULT_MAX_SIZE * sizeof(DtAvFrame*));
-    Fifo->Capacity = DT_AV_FIFO_DEFAULT_MAX_SIZE;
-    if (Fifo->Mutex == NULL || Fifo->Items == NULL)
+    Fifo->RingSlots = DT_AV_FIFO_DEFAULT_MAX_SIZE;
+    if (Fifo->Mutex == NULL || Fifo->Ring == NULL)
     {
         DtAvFrameFifo_Destroy(Fifo);
         return DTAPI_E_OUT_OF_MEM;
@@ -193,7 +194,7 @@ void DtAvFrameFifo_Destroy(DtAvFrameFifo* Fifo)
 {
     if (Fifo->Mutex != NULL)
         OsMutex_Destroy(Fifo->Mutex);
-    DtAlloc_Free(Fifo->Items);
+    DtAlloc_Free(Fifo->Ring);
     memset(Fifo, 0, sizeof(*Fifo));
 }
 
@@ -202,14 +203,14 @@ void DtAvFrameFifo_Destroy(DtAvFrameFifo* Fifo)
 bool DtAvFrameFifo_Push(DtAvFrameFifo* Fifo, DtAvFrame* Frame)
 {
     OsMutex_Lock(Fifo->Mutex);
-    bool Pushed = Fifo->Count < Fifo->MaxSize && Fifo->Count < Fifo->Capacity;
+    bool Pushed = Fifo->Load < Fifo->MaxSize && Fifo->Load < Fifo->RingSlots;
     if (Pushed)
     {
-        Fifo->Items[(Fifo->Head + Fifo->Count) % Fifo->Capacity] = Frame;
-        Fifo->Count++;
+        Fifo->Ring[(Fifo->Head + Fifo->Load) % Fifo->RingSlots] = Frame;
+        Fifo->Load++;
     }
     else
-        Fifo->Overflow = true;
+        Fifo->HasOverflowed = true;
     OsMutex_Unlock(Fifo->Mutex);
     return Pushed;
 }
@@ -221,11 +222,11 @@ DtAvFrame* DtAvFrameFifo_Pop(DtAvFrameFifo* Fifo)
     DtAvFrame* Frame = NULL;
 
     OsMutex_Lock(Fifo->Mutex);
-    if (Fifo->Count > 0)
+    if (Fifo->Load > 0)
     {
-        Frame = Fifo->Items[Fifo->Head];
-        Fifo->Head = (Fifo->Head + 1) % Fifo->Capacity;
-        Fifo->Count--;
+        Frame = Fifo->Ring[Fifo->Head];
+        Fifo->Head = (Fifo->Head + 1) % Fifo->RingSlots;
+        Fifo->Load--;
     }
     OsMutex_Unlock(Fifo->Mutex);
     return Frame;
@@ -236,7 +237,7 @@ DtAvFrame* DtAvFrameFifo_Pop(DtAvFrameFifo* Fifo)
 int DtAvFrameFifo_Load(const DtAvFrameFifo* Fifo)
 {
     OsMutex_Lock(Fifo->Mutex);
-    int Count = Fifo->Count;
+    int Count = Fifo->Load;
     OsMutex_Unlock(Fifo->Mutex);
     return Count;
 }
@@ -261,7 +262,7 @@ DtapiResult DtAvFrameFifo_SetMaxSize(DtAvFrameFifo* Fifo, int MaxSize)
         return DTAPI_E_INVALID_ARG;
     DtapiResult Result = DTAPI_OK;
     OsMutex_Lock(Fifo->Mutex);
-    if (MaxSize > Fifo->Capacity)
+    if (MaxSize > Fifo->RingSlots)
     {
         DtAvFrame** Items =
             (DtAvFrame**)DtAlloc_Malloc((size_t)MaxSize * sizeof(DtAvFrame*));
@@ -269,11 +270,11 @@ DtapiResult DtAvFrameFifo_SetMaxSize(DtAvFrameFifo* Fifo, int MaxSize)
             Result = DTAPI_E_OUT_OF_MEM;
         else
         {
-            for (int i = 0; i < Fifo->Count; i++)
-                Items[i] = Fifo->Items[(Fifo->Head + i) % Fifo->Capacity];
-            DtAlloc_Free(Fifo->Items);
-            Fifo->Items = Items;
-            Fifo->Capacity = MaxSize;
+            for (int i = 0; i < Fifo->Load; i++)
+                Items[i] = Fifo->Ring[(Fifo->Head + i) % Fifo->RingSlots];
+            DtAlloc_Free(Fifo->Ring);
+            Fifo->Ring = Items;
+            Fifo->RingSlots = MaxSize;
             Fifo->Head = 0;
         }
     }
@@ -283,13 +284,13 @@ DtapiResult DtAvFrameFifo_SetMaxSize(DtAvFrameFifo* Fifo, int MaxSize)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvFrameFifo_TakeOverflow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.- DtAvFrameFifo_ReadAndClearOverflow -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool DtAvFrameFifo_TakeOverflow(DtAvFrameFifo* Fifo)
+bool DtAvFrameFifo_ReadAndClearOverflow(DtAvFrameFifo* Fifo)
 {
     OsMutex_Lock(Fifo->Mutex);
-    bool Overflow = Fifo->Overflow;
-    Fifo->Overflow = false;
+    bool Overflow = Fifo->HasOverflowed;
+    Fifo->HasOverflowed = false;
     OsMutex_Unlock(Fifo->Mutex);
     return Overflow;
 }
@@ -304,6 +305,6 @@ void DtAvFrameFifo_Clear(DtAvFrameFifo* Fifo, DtAvFramePool* Pool)
         DtAvFramePool_Return(Pool, &Frame->Frame);
     }
     OsMutex_Lock(Fifo->Mutex);
-    Fifo->Overflow = false;
+    Fifo->HasOverflowed = false;
     OsMutex_Unlock(Fifo->Mutex);
 }

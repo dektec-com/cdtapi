@@ -42,23 +42,24 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Opening the device failed");
 
-    DtFuncInstance Af;
-    DtVec_Init(&Af.Objects, sizeof(DtFuncObject));
-    Result = DtFunc_Find(Port->Device.Drv, PortIndex, "AF_NW", "", &Af);
+    DtFuncInstance NwFunction;
+    DtVec_Init(&NwFunction.Objects, sizeof(DtFuncObject));
+    Result = DtFunc_Find(Port->Device.Drv, PortIndex, "AF_NW", "", &NwFunction);
     const DtFuncObject* Object =
-        Result == DTAPI_OK ? DtFunc_FindObject(&Af, true, DT_FUNC_TYPE_NW, "") : NULL;
+        Result == DTAPI_OK ? DtFunc_FindObject(&NwFunction, true, DT_FUNC_TYPE_NW, "")
+                           : NULL;
     if (Result == DTAPI_OK && Object == NULL)
         Result = DTAPI_E_NOT_FOUND;
     if (Result == DTAPI_OK)
         Port->Nw = Object->Object;
-    DtFunc_Release(&Af);
+    DtFunc_Release(&NwFunction);
     if (Result != DTAPI_OK)
     {
         DtDevice_Release(&Port->Device);
         return DtAvError_Set(Result, Where, "Network subsystem error");
     }
     Port->PortIndex = PortIndex;
-    Port->Preference = Preference;
+    Port->PipePreference = Preference;
     return DTAPI_OK;
 }
 
@@ -115,35 +116,35 @@ DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPort_OpenPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool Receive,
-                              bool PreferHardware, const char* Where)
+DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool IsRx,
+                              bool HardwareIfAuto, const char* Where)
 {
-    int Hardware = Receive ? DT_PIPE_RX_RT_HWP : DT_PIPE_TX_RT_HWP;
-    int Software = Receive ? DT_PIPE_RX_RT_SWP : DT_PIPE_TX_RT_SWP;
-    int Type = Software;
+    int HwPipeType = IsRx ? DT_PIPE_RX_RT_HWP : DT_PIPE_TX_RT_HWP;
+    int SwPipeType = IsRx ? DT_PIPE_RX_RT_SWP : DT_PIPE_TX_RT_SWP;
+    int Type = SwPipeType;
     int Fallback = -1;
 
-    switch (Port->Preference)
+    switch (Port->PipePreference)
     {
     case HwOrSwPipe_ForceHwPipe:
-        Type = Hardware;
+        Type = HwPipeType;
         break;
     case HwOrSwPipe_PreferHwPipe:
-        Type = Hardware;
-        Fallback = Software;
+        Type = HwPipeType;
+        Fallback = SwPipeType;
         break;
     case HwOrSwPipe_Auto:
-        if (PreferHardware)
+        if (HardwareIfAuto)
         {
-            Type = Hardware;
-            Fallback = Software;
+            Type = HwPipeType;
+            Fallback = SwPipeType;
         }
         break;
     default:
         break;
     }
     DtapiResult Result = DtAvPipe_Open(Pipe, Port->Device.Drv, Port->Nw, Type, Fallback);
-    if (Result == DTAPI_E_IN_USE && Fallback == -1 && Type == Hardware)
+    if (Result == DTAPI_E_IN_USE && Fallback == -1 && Type == HwPipeType)
         return DtAvError_Set(DTAPI_E_OUT_OF_RESOURCES, Where,
                              "The requested hardware pipe is not available");
     if (Result != DTAPI_OK)
@@ -158,9 +159,9 @@ DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPi
 {
     if (Started)
         *UsesHwPipe = DtAvPipe_IsHardware(Pipe) ? 1 : 0;
-    else if (Port->Preference == HwOrSwPipe_ForceHwPipe)
+    else if (Port->PipePreference == HwOrSwPipe_ForceHwPipe)
         *UsesHwPipe = 1;
-    else if (Port->Preference == HwOrSwPipe_UseSwPipe)
+    else if (Port->PipePreference == HwOrSwPipe_UseSwPipe)
         *UsesHwPipe = 0;
     else
         return DtAvError_Set(DTAPI_E_NOT_STARTED, Where,
@@ -213,9 +214,9 @@ bool DtAvIpPars_IsIpV6(const DtAvIpPars* Ip)
     return Ip->Pars.IpVersion == IpProtocolVersion_IPv6;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_Sources -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_CopySources -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtAvIpPars_Sources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16])
+int DtAvIpPars_CopySources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16])
 {
     memset(Sources, 0, 3 * 16);
     for (int i = 0; i < Ip->Pars.NSrcFlt; i++)

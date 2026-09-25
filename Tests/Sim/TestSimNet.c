@@ -314,7 +314,7 @@ DT_TEST(OwnAddressOfEachKind)
 {
     static const uint8_t Mask24[16] = {255, 255, 255, 0};
     static const uint8_t Mask64[16] = {255, 255, 255, 255, 255, 255, 255, 255};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     int Live = Start();
 
     DT_ASSERT_OK(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_IPV4, NULL, &Own));
@@ -333,9 +333,9 @@ DT_TEST(OwnAddressOfEachKind)
     DT_ASSERT_MEM(Own.Ip, Global, 16);
     DT_ASSERT_EQ(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_SITE_LOCAL, NULL, &Own),
                  DTAPI_E_NO_ADAPTER_IP_ADDR);
-    DT_ASSERT_EQ(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_OTHER, NULL, &Own),
+    DT_ASSERT_EQ(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_OTHER_V6, NULL, &Own),
                  DTAPI_E_NO_ADAPTER_IP_ADDR);
-    DT_ASSERT_OK(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_OTHER, Global, &Own));
+    DT_ASSERT_OK(DtNet_GetOwnAddress(Mac2110, 0, DT_NET_ADDR_OTHER_V6, Global, &Own));
     DT_ASSERT_MEM(Own.Ip, Global, 16);
 
     SimDtPcie_SetNetGateway(ITF, false, NULL);
@@ -351,7 +351,7 @@ DT_TEST(PreferredBeforeDeprecatedNeverTentative)
                                           0,    0,    0,    0,    0, 0, 0, 1};
     static const uint8_t Deprecated[16] = {0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 2,
                                            0,    0,    0,    0,    0, 0, 0, 1};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     int Live = Start();
 
     SimDtPcie_ClearNetAddresses(ITF, true);
@@ -374,7 +374,7 @@ DT_TEST(MissingInterfacesAndVlans)
 {
     static const uint8_t Unknown[6] = {0x00, 0x14, 0xF4, 0x08, 0x00, 0x09};
     static const uint8_t VlanIp[16] = {10, 0, 100, 10};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     int Live = Start();
 
     DT_ASSERT_EQ(DtNet_GetOwnAddress(Unknown, 0, DT_NET_ADDR_IPV4, NULL, &Own),
@@ -411,7 +411,7 @@ DT_TEST(InputAddressChoice)
     static const uint8_t StreamSiteLocal[16] = {0xFD, 0, 0, 0, 0, 0, 0, 0,
                                                 0,    0, 0, 0, 0, 0, 0, 0x99};
     static const uint8_t Group[16] = {239, 1, 2, 3};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     int Live = Start();
 
     DT_ASSERT_OK(DtNet_ChooseInputAddress(Mac2110, 0, false, Group, &Own));
@@ -450,7 +450,7 @@ DT_TEST(OutputAddressChoice)
     static const uint8_t DstSiteLocal[16] = {0xFD, 0, 0, 0, 0, 0, 0, 0,
                                              0,    0, 0, 0, 0, 0, 0, 0x77};
     static const uint8_t Group[16] = {239, 1, 2, 3};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     int Live = Start();
 
     DT_ASSERT_OK(DtNet_ChooseOutputAddress(Mac2110, 0, false, Group, &Own));
@@ -496,7 +496,7 @@ DT_TEST(DestinationMacIpV4)
     static const uint8_t Net10[16] = {10, 0, 0, 0};
     static const uint8_t Router[16] = {192, 168, 1, 2};
     static const uint8_t RouterMac[6] = {0x02, 0, 0, 0, 0, 0x02};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     uint8_t Mac[6];
     int Live = Start();
 
@@ -555,7 +555,7 @@ DT_TEST(DestinationMacIpV6)
     static const uint8_t PeerMac[6] = {0x02, 0, 0, 0, 0, 0x33};
     static const uint8_t Far[16] = {0x20, 0x01, 0x0D, 0xB9, 0, 0, 0, 0,
                                     0,    0,    0,    0,    0, 0, 0, 1};
-    DtNetOwn Own;
+    DtNetOwnAddress Own;
     uint8_t Mac[6];
     int Live = Start();
 

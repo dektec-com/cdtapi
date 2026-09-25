@@ -72,7 +72,7 @@ static DtAvTxStream Stream(void)
     S.PayloadType = 97;
     S.Ssrc = 0x11223344;
     S.OutputDelayNs = DELAY_NS;
-    S.SequenceNumber = 0xFFFE;
+    S.NextSequenceNumber = 0xFFFE;
     return S;
 }
 
@@ -136,7 +136,7 @@ DT_TEST(ConfigurationChecks)
     St2110_TxConfigAudio Config = {St2110_AudioFormat_L24BE, 2, 125, 48000};
 
     DT_ASSERT_OK(DtSt2110AudioTx_Configure(&Tx, &Config));
-    DT_ASSERT_EQ(Tx.BytesPerSample, 6);
+    DT_ASSERT_EQ(Tx.BytesPerSamplePeriod, 6);
     DT_ASSERT_EQ(Tx.PayloadSize, 750);
 
     Config.NumSamplesPerIpPacket = 240; // 1,440 bytes: the most
@@ -167,7 +167,7 @@ DT_TEST(SamplesAcrossFrames)
     DtSt2110AudioTx Tx;
     const St2110_TxConfigAudio Config = {St2110_AudioFormat_L24BE, 2, 125, 48000};
     DtAvTxStream S = Stream();
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
     memset(&Sink, 0, sizeof(Sink));
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
     DT_ASSERT_OK(DtSt2110AudioTx_Configure(&Tx, &Config));
@@ -200,7 +200,7 @@ DT_TEST(SamplesAcrossFrames)
         Sample += (uint64_t)Samples[f];
     }
     DT_ASSERT(!Sink.Overrun);
-    DT_ASSERT_EQ(Tx.LeftOver, NumSent % 750);
+    DT_ASSERT_EQ(Tx.LeftOverBytes, NumSent % 750);
 
     for (int i = 0; i < Sink.Count; i++)
     {
@@ -222,11 +222,11 @@ DT_TEST(SamplesAcrossFrames)
             DtAvTime_MulAddDiv(125u * (uint64_t)i, DT_AV_NS_PER_SEC, 0, 48000) - DELAY_NS;
         DT_ASSERT(P.TodNs + 3 >= Expected && P.TodNs <= Expected + 1);
     }
-    DT_ASSERT_EQ(S.SequenceNumber, 0xFFFEu + (uint32_t)Sink.Count);
+    DT_ASSERT_EQ(S.NextSequenceNumber, 0xFFFEu + (uint32_t)Sink.Count);
 
     // A reset drops the waiting samples.
     DtSt2110AudioTx_Reset(&Tx);
-    DT_ASSERT_EQ(Tx.LeftOver, 0);
+    DT_ASSERT_EQ(Tx.LeftOverBytes, 0);
     DtAvFramePool_Destroy(&Pool);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
@@ -239,7 +239,7 @@ DT_TEST(InvalidAndRawFrames)
     DtSt2110AudioTx Tx;
     St2110_TxConfigAudio Config = {St2110_AudioFormat_L16BE, 2, 48, 48000};
     DtAvTxStream S = Stream();
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
     memset(&Sink, 0, sizeof(Sink));
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
     DT_ASSERT_OK(DtSt2110AudioTx_Configure(&Tx, &Config));
@@ -309,13 +309,13 @@ DT_TEST(ReceivedPacketsAreFrames)
     const St2110_TxConfigAudio Config = {St2110_AudioFormat_L16BE, 8, 48, 48000};
     const St2110_RxConfigAudio RxConfig = {St2110_AudioFormat_L16BE, 48000};
     DtAvTxStream S = Stream();
-    const DtAvSink Out = {SinkBegin, SinkCommit, &Sink};
+    const DtAvTxSink Out = {SinkBegin, SinkCommit, &Sink};
     memset(&Sink, 0, sizeof(Sink));
     memset(&Got, 0, sizeof(Got));
     DT_ASSERT_OK(DtAvFramePool_Init(&TxPool));
     DT_ASSERT_OK(DtAvFramePool_Init(&RxPool));
     DT_ASSERT_OK(DtSt2110AudioTx_Configure(&Tx, &Config));
-    const DtAvRxTarget Target = {&RxPool, Collect, &Got};
+    const DtAvRxSink Target = {&RxPool, Collect, &Got};
     DtSt2110AudioRx_Init(&Rx, &RxConfig, &Target);
 
     DtAvFrame* Frame = MakeFrame(&TxPool, 48 * 16 * 3, 9, 1000, TOD);
@@ -351,7 +351,7 @@ DT_TEST(ReceivedPacketsAreFrames)
     // No memory for a frame.
     DtAvFramePool Empty;
     DT_ASSERT_OK(DtAvFramePool_Init(&Empty));
-    const DtAvRxTarget NoMemory = {&Empty, Collect, &Got};
+    const DtAvRxSink NoMemory = {&Empty, Collect, &Got};
     DtSt2110AudioRx_Init(&Rx, &RxConfig, &NoMemory);
     DtAlloc_FailAfter(0);
     DtSt2110AudioRx_Parse(&Rx, Sink.Buf + Sink.Offsets[1], Sink.Sizes[1]);
