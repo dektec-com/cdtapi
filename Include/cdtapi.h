@@ -789,34 +789,44 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxControl(DtInpChannel* InpChannel, int R
 // gives DTAPI_E_NOT_IDLE.
 CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMode);
 
-// Divides the channel's jobs over a Pool, NULL for the reading thread alone, which is the
-// default. The channel holds the pool until it is set again or the channel is detached;
-// switching it to ASI and back keeps it. A channel whose signal has no lines, such as
-// ASI, takes the pool and keeps it for when it has. The frames are the same whatever
-// the pool.
+// Before a read returns a frame, the channel prepares the data received from the card
+// in the memory layout expected by the application. By default, this work is performed
+// entirely by the reading thread. When a worker pool is assigned, the preparation is
+// performed by jobs running on threads from that pool instead. Using a worker pool does
+// not change the video data or video format of the frame; it only moves the preparation
+// work to worker threads.
 //
-// NumThreads is how many pieces the channel divides a frame into, no more than the pool
-// runs at once. 0 leaves it to the library, which follows the standard the channel is
-// set to, not the fastest the port carries:
+// The channel retains the assigned pool until another pool is assigned or the channel
+// is detached. Switching the channel to ASI and back does not release the pool. A
+// channel whose signal does not currently require frame preparation, such as ASI, still
+// retains the pool so that it is available when preparation is required.
 //
-//   2160p50, 2160p60     4. A 12G signal is four times the work of a 3G one, which at
-//                        50 or 60 frames a second is more than one slow core has to
-//                        spare.
-//   2160p24 to 2160p30   2. The same frame, half as often.
-//   up to 3G-SDI         1. Decoding is a small part of a frame period even on a
-//                        slow core, so dividing it costs more than it saves. With
-//                        NumThreads 0 the channel therefore leaves the pool it is
-//                        given unused.
+// NumThreads specifies the maximum number of pool threads that the channel may use
+// for its jobs. It is a limit, not a reservation: the channel may use fewer threads,
+// for example when the pool is already being used by other channels. If NumThreads
+// is 0, the library selects the number of threads based on the video standard
+// configured for the channel:
 //
-// A number is a ceiling, not a reservation: when other channels hold the pool's threads,
-// this channel's pieces wait for one. A channel that must not wait should be given a
-// pool of its own.
+//   2160p50, 2160p60     4 threads. Preparing a 12G-SDI frame requires approximately
+//                        four times as much work as preparing a 3G-SDI frame. At 50 or
+//                        60 frames per second, this can exceed the capacity of a single
+//                        slow core.
 //
-// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
-// DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a read has
-// not returned, as the buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
-// the buffers for those pieces cannot be allocated, after which the channel decodes in
-// the reading thread until its standard changes or the pool is set again.
+//   2160p24 to 2160p30   2 threads. The frame size is the same, but the lower frame rate
+//                        reduces the processing required per unit of time.
+//
+//   Up to 3G-SDI         1 thread. Preparing a frame at 3G-SDI or below normally takes
+//                        only a small part of the frame period, even on a slow core.
+//                        Using multiple threads would therefore add overhead without
+//                        providing a benefit. The pool is then not used.
+//
+// If a channel must not be delayed by other channels using the pool, assign it a
+// dedicated worker pool.
+//
+// Returns DTAPI_E_INVALID_ARG if InpChannel is NULL or NumThreads is negative;
+// DTAPI_E_NOT_ATTACHED if the channel is not attached;
+// DTAPI_E_IN_USE if the channel is currently reading a frame; and
+// DTAPI_E_OUT_OF_MEM if the required buffers cannot be allocated.
 CDTAPI_API DtapiResult DtInpChannel_SetWorkerPool(DtInpChannel* InpChannel,
                                                   DtWorkerPool* Pool, int NumThreads);
 
@@ -994,10 +1004,11 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxMode(DtOutpChannel* OutpChannel, int T
 CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
                                                    int TxPolarity);
 
-// Divides the channel's work over Pool, NULL for the writing thread alone, which is the
-// default. What DtInpChannel_SetWorkerPool says holds here too: NumThreads is the number
-// of pieces a frame is divided into, 0 leaves it to the library by the same table, and a
-// channel set to a standard up to 3G leaves its pool unused.
+// Before a written frame goes out, the channel prepares it in the layout the card sends.
+// By default, this work is performed entirely by the writing thread. When a worker pool
+// is assigned, the preparation is performed by jobs running on threads from that pool
+// instead. What DtInpChannel_SetWorkerPool says about retaining the pool, about
+// NumThreads and about the number of threads selected for 0 holds here as well.
 //
 // A channel can only divide the lines it has been given. DtOutpChannel_WriteFrame is
 // given a whole frame, so it always divides. DtOutpChannel_Write is given a stretch of
@@ -1005,11 +1016,10 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
 // frame at a time gets the same as WriteFrame, and a caller that writes a line at a time
 // gets no division, because there is nothing in that call to divide.
 //
-// Returns DTAPI_E_INVALID_ARG for a null channel or a NumThreads below 0;
-// DTAPI_E_NOT_ATTACHED when the channel is not attached; DTAPI_E_IN_USE while a write
-// has not returned; and DTAPI_E_OUT_OF_MEM when the buffers for those pieces cannot be
-// allocated, after which the channel encodes in the writing thread until its standard
-// changes or the pool is set again.
+// Returns DTAPI_E_INVALID_ARG if OutpChannel is NULL or NumThreads is negative;
+// DTAPI_E_NOT_ATTACHED if the channel is not attached;
+// DTAPI_E_IN_USE if the channel is currently writing; and
+// DTAPI_E_OUT_OF_MEM if the required buffers cannot be allocated.
 CDTAPI_API DtapiResult DtOutpChannel_SetWorkerPool(DtOutpChannel* OutpChannel,
                                                    DtWorkerPool* Pool, int NumThreads);
 
