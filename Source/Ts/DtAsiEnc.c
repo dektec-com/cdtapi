@@ -153,7 +153,7 @@ static void PutByte(DtAsiEnc* Enc, uint16_t** Out, uint8_t Byte)
 // whole bits a second sends in it are a whole number.
 #define RATE_INTERVAL_SECONDS (188 * 8)
 
-// The states of a DTAPI_TXMODE_TXONTIME conversion.
+// The states of DTAPI_TXMODE_TXONTIME encoding.
 enum
 {
     ONTIME_INIT,
@@ -280,9 +280,9 @@ DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc)
     return DTAPI_OK;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Conversion +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Encoding +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Where a conversion stands: what is left of the input and of the room for symbols.
+// Where an encoding stands: what is left of the input and of the room for symbols.
 typedef struct Cursor
 {
     const uint8_t* In;

@@ -15,5 +15,5 @@
 
 // The DTAPI_VIDSTD_ code of a driver's DT_VIDSTD_ code, for every standard CDTAPI knows;
 // DTAPI_VIDSTD_UNKNOWN for DT_VIDSTD_UNKNOWN, DT_VIDSTD_TS, the driver's standards that
-// CDTAPI does not know, and a value that is no DT_VIDSTD_ code.
+// CDTAPI does not know, and a value that is not a DT_VIDSTD_ code.
 int DtPcieVidStd_FromDriver(int DrvVidStd);

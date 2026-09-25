@@ -54,9 +54,6 @@ void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtDrvObject Object)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_InitDeviceHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The header of a device-level command. That addresses no function, so the UUID is zero
-// and the port index -1, which the driver reads as "the device itself".
-//
 void DtPcieCmd_InitDeviceHeader(DtIoctlInputDataHdr* Hdr, int Cmd)
 {
     const DtDrvObject Device = {0, DT_PROPERTY_DEVICE};
@@ -677,8 +674,8 @@ DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtDrvObject Object)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxConfigure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// An SDI rate that cannot be converted is refused with DTAPI_E_INVALID_RATE before
-// anything is sent.
+// An SDI rate that is not a DT_DRV_SDIRATE_ value is refused with DTAPI_E_INVALID_RATE
+// before anything is sent.
 //
 DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtDrvObject Object,
                                        const DtChSdiRxConfig* Config)
@@ -841,8 +838,7 @@ DtapiResult DtPcieCmd_ChSdiRxGetProps(OsDrv* Drv, DtDrvObject Object,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_ChSdiRxGetSdiStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The answer is converted as DtPcieCmd_SdiRxGetStatus converts it, except that the
-// carrier is left out.
+// The answer is converted exactly as DtPcieCmd_SdiRxGetStatus converts it.
 //
 DtapiResult DtPcieCmd_ChSdiRxGetSdiStatus(OsDrv* Drv, DtDrvObject Object,
                                           DtSdiRxStatus* Status)

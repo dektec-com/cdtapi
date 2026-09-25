@@ -4,24 +4,28 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Each entry is X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, OneLinkVidStd):
+// Each entry is X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd,
+// OneLinkVidStd):
 //
-//   Name     the DTAPI_VIDSTD_ macro name without its prefix
-//   FpsNum   the frame rate as a reduced fraction; an interlaced standard is named after
-//   FpsDen   its field rate, so 1080i50 has 25 frames per second
-//   Lines    the lines of a frame: 525, 625, 750 or 1125
-//   Scan     P for progressive, I for interlaced, PSF for progressive segmented frames,
-//            as DT_SCAN_ values
-//   Hanc     the symbols per line in the horizontal blanking, EAV and SAV not included:
-//            the samples of a whole line times two, less the active symbols, EAV and SAV
-//   LevelB   true for 3G level B, and for the 2160p standards made of level-B links
-//   IoStd    the I/O standard that carries it, a DTAPI_IOCONFIG_ name without its prefix
-//   OneLink  for a 2160p standard the 1080p standard of one of its links, whose frame the
-//            standard's frame properties describe; UNKNOWN for the others
+//   Name           the DTAPI_VIDSTD_ macro name without its prefix
+//   FpsNum         the frame rate as a reduced fraction; an interlaced standard is named
+//   FpsDen         after its field rate, so 1080i50 has 25 frames per second
+//   NumLines       the lines of a frame: 525, 625, 750 or 1125
+//   Scan           P for progressive, I for interlaced, PSF for progressive segmented
+//                  frames, as DT_SCAN_ values
+//   LineNumSymHanc the symbols per line in the horizontal blanking, EAV and SAV not
+//                  included: the samples of a whole line times two, less the active
+//                  symbols, EAV and SAV
+//   IsLevelB       true for 3G level B, and for the 2160p standards made of level-B links
+//   IoStd          the I/O standard that carries it, a DTAPI_IOCONFIG_ name without its
+//                  prefix
+//   OneLinkVidStd  for a 2160p standard the 1080p standard of one of its links, whose
+//                  frame the standard's frame properties describe; UNKNOWN for the others
 //
 // Including this file with X defined expands the list:
 //
-//     #define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, One) {Name},
+//     #define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, \
+//               OneLinkVidStd) {Name},
 //     #include "Tables/DtVidStdList.inc"
 //     #undef X
 //

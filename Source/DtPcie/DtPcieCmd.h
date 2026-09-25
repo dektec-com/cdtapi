@@ -172,7 +172,8 @@ DtapiResult DtPcieCmd_GetTimeOfDay(OsDrv* Drv, uint32_t* Seconds, uint32_t* Nano
 // DTAPI's terms, converted from the driver's.
 //
 
-// One transmit clock of the genlock controller, in the driver's units.
+// One transmit clock of the genlock controller; the offsets and the frequency in the
+// driver's units.
 typedef struct DtClockProps
 {
     int ClockIndex;           // What the offset commands take
@@ -242,7 +243,7 @@ typedef struct DtSdiRxStatus
     bool IsLevelB;      // 3G level B
     uint32_t PayloadId; // The SMPTE 352 VPID, 0 for none
     double FrameRate;   // Frames per second, 0 when the driver reports no frame period
-    int SdiRate;        // -1 unknown, 0 SD, 1 HD, 2 3G, 3 6G, 4 12G
+    int SdiRate; // DT_DRV_SDIRATE_ value; UNKNOWN for one the driver does not define
 } DtSdiRxStatus;
 
 // Reads the status of the SDI receiver Object. Clears *Status first.
@@ -301,7 +302,9 @@ DtapiResult DtPcieCmd_ChSdiRxAttach(OsDrv* Drv, DtDrvObject Object, bool Exclusi
 // Detaches from the channel.
 DtapiResult DtPcieCmd_ChSdiRxDetach(OsDrv* Drv, DtDrvObject Object);
 
-// Configures the channel, which must be idle.
+// Configures the channel, which must be idle. NumPorts outside 1 to 4 gives
+// DTAPI_E_INVALID_ARG and an SdiRate that is not a DT_DRV_SDIRATE_ value
+// DTAPI_E_INVALID_RATE, without a command.
 DtapiResult DtPcieCmd_ChSdiRxConfigure(OsDrv* Drv, DtDrvObject Object,
                                        const DtChSdiRxConfig* Config);
 
@@ -388,9 +391,9 @@ DtapiResult DtPcieCmd_CdmacGetProps(OsDrv* Drv, DtDrvObject Object, DtCdmacProps
 // both can be tested on every platform. A direction the driver does not define, an empty
 // buffer and one larger than an int can count give DTAPI_E_INVALID_ARG.
 //
-// With the buffer as the output, as on Windows, the answer's size is not checked against
-// the buffer's: the driver reports the output it was given, which could not be confirmed
-// on a card.
+// With the buffer as the output, as on Windows, the answer's size is checked only against
+// the fixed output structure, not against the buffer: that the driver reports the whole
+// buffer is not confirmed on a card.
 DtapiResult DtPcieCmd_CdmacAllocateBuffer(OsDrv* Drv, DtDrvObject Object, int Direction,
                                           const OsDmaBuffer* Buf);
 DtapiResult DtPcieCmd_CdmacAllocateBufferAs(OsDrv* Drv, DtDrvObject Object, int Direction,

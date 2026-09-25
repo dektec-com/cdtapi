@@ -16,9 +16,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieVidStd_FromDriver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Each standard of Tables/DtVidStdList.inc has a DT_VIDSTD_ code of the same name, so
-// the cases come from that list and cannot fall out of step with it. DTAPI's own
-// conversion also names 480p59.94, 525p59.94 and 625p50, which CDTAPI does not know, and
-// leaves out the three 2160p level-B standards, which it does.
+// the cases come from that list and cannot fall out of step with it.
 //
 int DtPcieVidStd_FromDriver(int DrvVidStd)
 {

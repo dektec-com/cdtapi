@@ -61,7 +61,7 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtTsTrp_Decode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// One packet converted on its own; the FIFO it goes into is the channel's.
+// One packet decoded on its own; the FIFO it goes into is the channel's.
 //
 int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* Packet, uint8_t* Out)
 {

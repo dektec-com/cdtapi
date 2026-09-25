@@ -50,8 +50,6 @@ const DtVidStdEntry* DtVidStd_Find(int VidStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtVidStd_FrameRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
-//
 void DtVidStd_FrameRate(int VidStd, int* Num, int* Den)
 {
     const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
@@ -170,8 +168,8 @@ void DtVidStdProps_FromSmpte352(DtVidStdProps* Props, uint32_t Vpid)
             VidStd = FindVidStd(DTAPI_IOCONFIG_HDSDI, 750, DT_SCAN_P, Num, Den, false);
         break;
 
-    // IsProgressive in a progressive transport, PsF in an interlaced one, interlaced if
-    // both are.
+    // Progressive pictures in a progressive transport, PsF in an interlaced one,
+    // interlaced when both are.
     case DT_S352_ID_S292_1080:
         if (IsProgressive || IsInterlacedTransport)
         {

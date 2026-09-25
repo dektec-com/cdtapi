@@ -55,15 +55,15 @@ typedef struct DtVidStdEntry
 // The information of a video standard; NULL for a code that is not a standard.
 const DtVidStdEntry* DtVidStd_Find(int VidStd);
 
-// The standards in the order deduction tries them: DtVidStd_At(Index) for an Index from
-// 0 to DtVidStd_Count() - 1, NULL outside that range.
 // The frame rate of a video standard as a reduced fraction; 0/1 for anything else.
 void DtVidStd_FrameRate(int VidStd, int* Num, int* Den);
 
+// The standards in the order deduction tries them: DtVidStd_At(Index) for an Index from
+// 0 to DtVidStd_Count() - 1, NULL outside that range.
 int DtVidStd_Count(void);
 const DtVidStdEntry* DtVidStd_At(int Index);
 
-// True for the eleven 2160p standards.
+// True for the 2160p standards, the ones an I/O standard of 6G or 12G carries.
 bool DtVidStd_Is4k(int VidStd);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Standard properties +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

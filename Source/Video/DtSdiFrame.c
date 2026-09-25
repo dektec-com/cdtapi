@@ -609,8 +609,9 @@ bool DtSdiFrame_EncodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= 4K lines +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The tiles are described in DtSdi4k.h. The band buffer holds the raw line's symbols,
-// which one pass then writes in the symbol size of the raw frame.
+// The tiles are described in DtSdi4k.h. The band buffer holds one raw line's symbols, one
+// to a word: what GatherLine read, for WriteRaw to pack, or what ReadRaw unpacked, for
+// ScatterLine to write.
 //
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unpack10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -783,7 +784,7 @@ size_t DtSdiFrame_NumBandSymbols(const DtSdiFrameLayout* Layout)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DecodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The portable conversion of DtSdi4kConv_C: gathers the line into BandSymbols, then
+// The portable decoding of DtSdi4kConv_C: gathers the line into BandSymbols, then
 // writes it in the raw frame's symbol size.
 //
 static void DecodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
@@ -812,7 +813,7 @@ void DtSdiFrame_DecodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeLineC -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The portable coding of DtSdi4kConv_C: reads the raw line into BandSymbols, then
+// The portable encoding of DtSdi4kConv_C: reads the raw line into BandSymbols, then
 // scatters it over the two coded lines. The sections' padding is left as it was.
 //
 static void EncodeLineC(const DtSdiFrameLayout* Layout, int BitsPerSymbol,

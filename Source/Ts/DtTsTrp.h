@@ -57,14 +57,15 @@ void DtTsTrp_Start(DtTsTrp* Trp, int RxMode);
 // number of bytes, 0 for a packet that is dropped, or -1 for bytes that are not a packet
 // in sync, with a sync nibble or a valid count that is wrong, after which the stream must
 // be found again. With Out NULL only the number is given, and the flags set. The number
-// depends on P and the mode alone.
+// depends on Packet and the mode alone.
 int DtTsTrp_Decode(DtTsTrp* Trp, const uint8_t* Packet, uint8_t* Out);
 
 // Searches Size bytes of Buf for DT_TRP_NUM_SYNC packets in a row with the sync nibble,
 // consecutive sequence numbers and a valid count the mode accepts, the first packet's any
 // up to 204. On success *Offset is where a whole packet starts: the one found, or the
-// next when the one found started before Buf. Returns false when none is found; Buf is
-// then all except its last DT_TRP_NUM_SYNC packets' worth of bytes without one.
+// next when the one found started before Buf. Returns false when none is found: no run of
+// DT_TRP_NUM_SYNC packets starts in the first Size - DT_TRP_NUM_SYNC * DT_TRP_SIZE bytes
+// of Buf.
 bool DtTsTrp_FindSync(const DtTsTrp* Trp, const uint8_t* Buf, size_t Size,
                       size_t* Offset);
 

@@ -111,17 +111,15 @@ size_t DtSdiFrame_RxCodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
 // The pieces a channel divides a frame's lines into when the program leaves the number to
-// the library. It follows the standard of the layout, the one the channel is set to, and
-// not the fastest the port can carry: 4 for 2160p50 and 2160p60, which a 12G link
-// carries; 2 for 2160p24 to 2160p30, which a 6G link carries; and 1 for everything up to
-// 3G, where dividing costs more than it saves, SD on a 12G port included. The coding a
-// second grows with the standard's rate, so each piece gets about the work of one 3G
-// link. A port that sends 4K over four 3G links codes it as 12G.
+// the library: 4 for a 4K standard on a port whose I/O standard is 12G-SDI, 2 for a 4K
+// standard on any other port, 6G-SDI or four 3G links, and 1 for everything up to 3G,
+// where dividing costs more than it saves, SD on a 12G port included. Each piece then
+// gets about the work of one 3G link.
 int DtSdiFrame_NumJobPieces(const DtSdiFrameLayout* Layout);
 
 // The coded lines one raw line is made of, and the bytes all of them together take as
 // they are received and as they are sent. For 4K a raw line is two coded lines, so the
-// two sizes are not those of a single coded line, which are Stride and TxStride.
+// two sizes are not those of a single coded line, which are RxStride and TxStride.
 static inline int DtSdiFrame_NumCodedLinesPerLine(const DtSdiFrameLayout* Layout)
 {
     return Layout->NumCodedLines / Layout->NumLines;
@@ -246,7 +244,7 @@ int DtSdiFrame_BandLineStep(const DtSdiFrameLayout* Layout, int BitsPerSymbol);
 // index LineIndex from 0, into its place in the raw frame at Raw, whose symbols take
 // BitsPerSymbol, 8, 10 or 16. With 10 bits a line can share a byte with the line before
 // or after it, so the raw frame must be cleared beforehand; the lines can then be
-// converted in any order. Padding bits of the coded line are not copied.
+// decoded in any order. Padding bits of the coded line are not copied.
 void DtSdiFrame_DecodeLine(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
                            const uint8_t* CodedLine, int LineIndex, uint8_t* Raw);
 
@@ -319,5 +317,6 @@ bool DtSdiFrame_EncodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 // Writes the coded lines of a black frame of Layout's standard at Lines, as a transmitter
 // takes them: Layout->NumCodedLines times Layout->TxStride bytes, line headers included,
 // padding bits 0. A 4K frame's four links are each the black frame of a 1080p link.
-// Returns false when a 4K frame's working memory cannot be allocated.
+// Returns false for a 4K frame whose one-link layout cannot be made or whose working
+// memory cannot be allocated.
 bool DtSdiFrame_WriteBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);

@@ -20,8 +20,6 @@
 #include "DtPcieCmd.h"      // Interface being implemented.
 #include "DtPcieCmdIssue.h" // Issuing commands.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtPcieCmd_VpdGetProps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

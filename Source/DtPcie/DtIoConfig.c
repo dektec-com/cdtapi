@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtIoConfig.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Translation between I/O configuration codes and driver names
+// CDTAPI - I/O configuration codes: their driver names, and which combinations are valid
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -46,8 +46,8 @@ int DtIoConfig_Count(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtIoConfig_GetCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A linear search. There are about a hundred entries and configuration is set rarely, so
-// a hash or a sorted index would add code without making anything measurably faster.
+// A linear search: configuration is set rarely, so a hash or a sorted index would add
+// code without making anything measurably faster.
 //
 DtapiResult DtIoConfig_GetCode(const char* Name, int* Code)
 {

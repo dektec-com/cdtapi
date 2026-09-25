@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* DtIoConfig.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - Translation between I/O configuration codes and driver names
+// CDTAPI - I/O configuration codes: their driver names, and which combinations are valid
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -18,11 +18,10 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Code and name +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // The API takes I/O configuration as integers, DTAPI_IOCONFIG_IODIR and so on. The driver
-// takes names: DtIoctlIoConfig carries its group, value and sub-value as strings. These
-// two functions translate between the two, with one special case: -1 means "no value"
-// and corresponds to the empty name.
-//
-// Both return a DTAPI result code.
+// takes names: DtIoctlIoConfig carries its group, value and sub-value as strings.
+// DtIoConfig_GetCode and DtIoConfig_GetName translate between the two and return a DTAPI
+// result code, with one special case: -1 means "no value" and corresponds to the empty
+// name.
 //
 
 // The number of I/O configuration codes. Valid codes run from 0 to this number minus one.

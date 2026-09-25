@@ -15,8 +15,6 @@
 #include "DtVidStd.h"     // The standards, and the VPID route of deduction.
 #include "cdtapi.h"       // DTAPI_VIDSTD_ codes.
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame rates +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame geometry +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetFieldLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

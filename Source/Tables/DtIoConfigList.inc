@@ -27,7 +27,8 @@
 // that every code from zero upwards appears exactly once, so a new constant added to
 // cdtapi.h without an entry here fails that test rather than going unnoticed.
 //
-// The kinds and parents are what DTAPI validates a configuration against. They are
+// The kinds and parents are the relation DtIoConfig_CheckConfig validates a configuration
+// against. They are
 // derived from DekTec's capability definitions by Scripts/extract_ioconfig_relation.py;
 // see plan 0003.
 //
