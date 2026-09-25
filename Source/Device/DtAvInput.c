@@ -13,7 +13,7 @@
 // CDTAPI includes
 #include "DtAvInput.h"        // Interface being implemented.
 #include "DtFunc.h"           // The port's ASI/SDI receiver API function.
-#include "DtPcieAbi.h"        // DT_FWSTATUS_ values and DT_FUNC_TYPE_SDIRX.
+#include "DtPcieAbi.h"        // DT_FUNC_TYPE_SDIRX.
 #include "Video/DtSmpte352.h" // Link number and aspect ratio from the VPID.
 #include "Video/DtVidStd.h"   // Deducing the standard.
 
@@ -37,8 +37,6 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
 
     uint64_t Caps = Device->PortCaps[Port - 1];
     if ((Caps & (DT_CAP_INPUT | DT_CAP_INTINPUT)) == 0)
-        return DTAPI_E_NOT_SUPPORTED;
-    if ((Caps & (DT_CAP_MATRIX2 | DT_CAP_SDIRX | DT_CAP_HDMI)) == 0)
         return DTAPI_E_NOT_SUPPORTED;
 
     // A DtPcie card goes through the Matrix API's function, and only with its capability.
