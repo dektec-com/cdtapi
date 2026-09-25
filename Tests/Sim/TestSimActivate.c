@@ -38,7 +38,7 @@ static OsDrv* OpenDta2110(int* DtFailures, int* Live)
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(DTA2110_INDEX);
     DtAlloc_ResetCount();
-    *Live = DtAlloc_Live();
+    *Live = DtAlloc_NumLive();
     Drv = OsDrv_Open(DTA2110_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
@@ -57,7 +57,7 @@ static OsDrv* OpenDta2110(int* DtFailures, int* Live)
     {                                                                                    \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= VPD +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -156,7 +156,7 @@ DT_TEST(OtherDeviceNeedsNone)
 {
     SimDtPcie_Reset();
     DtAlloc_ResetCount();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     DT_ASSERT(Drv != NULL);
 
@@ -171,7 +171,7 @@ DT_TEST(AttachActivates)
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(DTA2110_INDEX);
     DtAlloc_ResetCount();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT(Device != NULL);
@@ -182,7 +182,7 @@ DT_TEST(AttachActivates)
     DT_ASSERT_OK(DtDevice_Detach(Device));
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // A card that cannot be activated still attaches: it is there and answers for itself,
@@ -193,7 +193,7 @@ DT_TEST(AttachSucceedsWithoutActivation)
     SimDtPcie_SetDta2110Index(DTA2110_INDEX);
     SimVpd_SetTailBlank(true);
     DtAlloc_ResetCount();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT(Device != NULL);
@@ -203,7 +203,7 @@ DT_TEST(AttachSucceedsWithoutActivation)
     DT_ASSERT_OK(DtDevice_Detach(Device));
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // The object answers only the handle that holds it, so while another handle holds it

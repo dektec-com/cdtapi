@@ -37,8 +37,8 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
         (int)Preference > (int)HwOrSwPipe_PreferHwPipe)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "Unknown pipe preference");
 
-    DtapiResult Result =
-        DtDevice_AttachIndex(&Port->Device, Device->Index, true, Device->Info.Serial);
+    DtapiResult Result = DtDevice_AttachToIndex(&Port->Device, Device->DriverIndex, true,
+                                                Device->Info.Serial);
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Opening the device failed");
 
@@ -46,11 +46,11 @@ DtapiResult DtAvPort_Attach(DtAvPort* Port, const DtDevice* Device, int PortInde
     DtVec_Init(&Af.Objects, sizeof(DtFuncObject));
     Result = DtFunc_Find(Port->Device.Drv, PortIndex, "AF_NW", "", &Af);
     const DtFuncObject* Object =
-        Result == DTAPI_OK ? DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "") : NULL;
+        Result == DTAPI_OK ? DtFunc_FindObject(&Af, true, DT_FUNC_TYPE_NW, "") : NULL;
     if (Result == DTAPI_OK && Object == NULL)
         Result = DTAPI_E_NOT_FOUND;
     if (Result == DTAPI_OK)
-        Port->Nw = Object->Ref;
+        Port->Nw = Object->Object;
     DtFunc_Release(&Af);
     if (Result != DTAPI_OK)
     {

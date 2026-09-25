@@ -27,55 +27,57 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The clocks asked for at first; a device with more is asked again.
-#define LOCAL_CLOCKS 4
+#define NUM_INLINE_CLOCKS 4
 
-// The device's transmit clocks, in Local unless there were more than it holds.
-typedef struct Clocks
+// The device's transmit clocks, in Inline unless there were more than it holds.
+typedef struct ClockList
 {
-    DtClockProps Local[LOCAL_CLOCKS];
-    DtClockProps* Props;
-    int Num;
-} Clocks;
+    DtClockProps Inline[NUM_INLINE_CLOCKS];
+    DtClockProps* Clocks;
+    int NumClocks;
+} ClockList;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckDeviceHasObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // What every function checks after its arguments: that the device is attached, and has
 // Object.
 //
-static DtapiResult CheckDevice(const DtDevice* Device, const DtDevObject* Object)
+static DtapiResult CheckDeviceHasObject(const DtDevice* Device, const DtDevObject* Object)
 {
     if (Device->Drv == NULL)
         return DTAPI_E_NOT_ATTACHED;
-    return Object->Found;
+    return Object->LookupResult;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LookUpObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The object of Instance that is a driver function when IsDf, of Type and with Role.
+// The object of Instance that is a driver function when IsDriverFunction, of Type and
+// with Role.
 //
-static DtDevObject FindObject(const DtDevice* Device, const DtFuncInstance* Instance,
-                              bool IsDf, int Type, const char* Role)
+static DtDevObject LookUpObject(const DtDevice* Device, const DtFuncInstance* Instance,
+                                bool IsDriverFunction, int Type, const char* Role)
 {
-    DtDevObject Object;
-    const DtFuncObject* Found = DtFunc_Get(Instance, IsDf, Type, Role);
+    DtDevObject Looked;
+    const DtFuncObject* Match = DtFunc_FindObject(Instance, IsDriverFunction, Type, Role);
 
-    memset(&Object, 0, sizeof(Object));
-    Object.Found = DTAPI_E_NOT_SUPPORTED;
-    if (Found != NULL)
+    memset(&Looked, 0, sizeof(Looked));
+    Looked.LookupResult = DTAPI_E_NOT_SUPPORTED;
+    if (Match != NULL)
     {
-        Object.Found = DtFunc_CheckDriverVersion(&Device->DriverVersion, IsDf, Type);
-        Object.Ref = Found->Ref;
+        Looked.LookupResult =
+            DtFunc_CheckDriverVersion(&Device->DriverVersion, IsDriverFunction, Type);
+        Looked.Object = Match->Object;
     }
-    return Object;
+    return Looked;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeClocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void FreeClocks(Clocks* List)
+static void FreeClocks(ClockList* List)
 {
-    if (List->Props != List->Local)
-        DtAlloc_Free(List->Props);
-    List->Props = List->Local;
+    if (List->Clocks != List->Inline)
+        DtAlloc_Free(List->Clocks);
+    List->Clocks = List->Inline;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadClocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -84,25 +86,25 @@ static void FreeClocks(Clocks* List)
 // the driver says there are. A driver whose count keeps growing is not believed. Free
 // List with FreeClocks, whatever the result.
 //
-static DtapiResult ReadClocks(const DtDevice* Device, Clocks* List)
+static DtapiResult ReadClocks(const DtDevice* Device, ClockList* List)
 {
-    int Max = LOCAL_CLOCKS;
+    int Room = NUM_INLINE_CLOCKS;
 
-    List->Props = List->Local;
-    List->Num = 0;
+    List->Clocks = List->Inline;
+    List->NumClocks = 0;
     for (int Try = 0; Try < 3; Try++)
     {
         DtapiResult Result = DtPcieCmd_GenlockGetClockProps(
-            Device->Drv, Device->Genlock.Ref, List->Props, Max, &List->Num);
+            Device->Drv, Device->Genlock.Object, List->Clocks, Room, &List->NumClocks);
         if (Result != DTAPI_E_BUF_TOO_SMALL)
             return Result;
 
         FreeClocks(List);
-        Max = List->Num;
-        List->Props = (DtClockProps*)DtAlloc_Malloc((size_t)Max * sizeof(DtClockProps));
-        if (List->Props == NULL)
+        Room = List->NumClocks;
+        List->Clocks = (DtClockProps*)DtAlloc_Malloc((size_t)Room * sizeof(DtClockProps));
+        if (List->Clocks == NULL)
         {
-            List->Props = List->Local;
+            List->Clocks = List->Inline;
             return DTAPI_E_OUT_OF_MEM;
         }
     }
@@ -127,7 +129,7 @@ DtapiResult DtDevClock_OnAttach(DtDevice* Device)
     if (Result == DTAPI_OK)
     {
         Device->Genlock =
-            FindObject(Device, &Instance, true, DT_FUNC_TYPE_GENLOCKCTRL, "");
+            LookUpObject(Device, &Instance, true, DT_FUNC_TYPE_GENLOCKCTRL, "");
         DtFunc_Release(&Instance);
     }
 
@@ -138,7 +140,7 @@ DtapiResult DtDevClock_OnAttach(DtDevice* Device)
     if (Result == DTAPI_OK)
     {
         Device->TodClkCtrl =
-            FindObject(Device, &Instance, true, DT_FUNC_TYPE_TODCLKCTRL, "");
+            LookUpObject(Device, &Instance, true, DT_FUNC_TYPE_TODCLKCTRL, "");
         DtFunc_Release(&Instance);
     }
 
@@ -148,9 +150,9 @@ DtapiResult DtDevClock_OnAttach(DtDevice* Device)
     if (Result == DTAPI_OK)
     {
         Device->ClkCnt[DTAPI_TXCLK_FRACTIONAL] =
-            FindObject(Device, &Instance, false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK");
+            LookUpObject(Device, &Instance, false, DT_BLOCK_TYPE_CLKCNT, "FRAC_CLK");
         Device->ClkCnt[DTAPI_TXCLK_NON_FRACTIONAL] =
-            FindObject(Device, &Instance, false, DT_BLOCK_TYPE_CLKCNT, "NON_FRAC_CLK");
+            LookUpObject(Device, &Instance, false, DT_BLOCK_TYPE_CLKCNT, "NON_FRAC_CLK");
         DtFunc_Release(&Instance);
     }
     return DTAPI_OK;
@@ -166,10 +168,10 @@ DtapiResult DtDevice_GetGenlockState(const DtDevice* Device, DtGenlockState* Sta
         return DTAPI_E_INVALID_ARG;
     memset(State, 0, sizeof(*State));
 
-    DtapiResult Result = CheckDevice(Device, &Device->Genlock);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->Genlock);
     if (Result != DTAPI_OK)
         return Result;
-    return DtPcieCmd_GenlockGetState(Device->Drv, Device->Genlock.Ref, State);
+    return DtPcieCmd_GenlockGetState(Device->Drv, Device->Genlock.Object, State);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetTimeOfDayState -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -180,10 +182,10 @@ DtapiResult DtDevice_GetTimeOfDayState(const DtDevice* Device, DtTimeOfDayState*
         return DTAPI_E_INVALID_ARG;
     memset(State, 0, sizeof(*State));
 
-    DtapiResult Result = CheckDevice(Device, &Device->TodClkCtrl);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->TodClkCtrl);
     if (Result != DTAPI_OK)
         return Result;
-    return DtPcieCmd_TodClkCtrlGetState(Device->Drv, Device->TodClkCtrl.Ref, State);
+    return DtPcieCmd_TodClkCtrlGetState(Device->Drv, Device->TodClkCtrl.Object, State);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_GetTxClockCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -198,29 +200,29 @@ DtapiResult DtDevice_GetTxClockCount(const DtDevice* Device, int TxClockId,
         return DTAPI_E_INVALID_ARG;
     *TxClockCount = 0;
 
-    DtapiResult Result = CheckDevice(Device, &Device->Genlock);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->Genlock);
     if (Result != DTAPI_OK)
         return Result;
 
-    Clocks List;
+    ClockList List;
     Result = ReadClocks(Device, &List);
-    int Type = -1;
-    for (int i = 0; Result == DTAPI_OK && i < List.Num; i++)
+    int ClockType = -1;
+    for (int i = 0; Result == DTAPI_OK && i < List.NumClocks; i++)
     {
-        if (List.Props[i].ClockIndex == TxClockId)
-            Type = List.Props[i].ClockType;
+        if (List.Clocks[i].ClockIndex == TxClockId)
+            ClockType = List.Clocks[i].ClockType;
     }
     FreeClocks(&List);
     if (Result != DTAPI_OK)
         return Result;
-    if (Type < 0)
+    if (ClockType < 0)
         return DTAPI_E_NOT_FOUND;
 
-    const DtDevObject* Counter = &Device->ClkCnt[Type];
-    if (Counter->Found != DTAPI_OK)
-        return Counter->Found;
+    const DtDevObject* Counter = &Device->ClkCnt[ClockType];
+    if (Counter->LookupResult != DTAPI_OK)
+        return Counter->LookupResult;
     int FrequencyHz;
-    return DtPcieCmd_ClkCntGetTickCount(Device->Drv, Counter->Ref, TxClockCount,
+    return DtPcieCmd_ClkCntGetTickCount(Device->Drv, Counter->Object, TxClockCount,
                                         &FrequencyHz);
 }
 
@@ -233,7 +235,7 @@ DtapiResult DtDevice_GetTxClockOffset(const DtDevice* Device, int TxClockId,
         return DTAPI_E_INVALID_ARG;
     *OffsetPpm = 0.0;
 
-    DtapiResult Result = CheckDevice(Device, &Device->Genlock);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->Genlock);
     if (Result != DTAPI_OK)
         return Result;
     if (TxClockId < 0)
@@ -241,8 +243,8 @@ DtapiResult DtDevice_GetTxClockOffset(const DtDevice* Device, int TxClockId,
 
     int OffsetPpt;
     int64_t FrequencyMicroHz;
-    Result = DtPcieCmd_GenlockGetFreqOffset(Device->Drv, Device->Genlock.Ref, TxClockId,
-                                            &OffsetPpt, &FrequencyMicroHz);
+    Result = DtPcieCmd_GenlockGetFreqOffset(Device->Drv, Device->Genlock.Object,
+                                            TxClockId, &OffsetPpt, &FrequencyMicroHz);
     if (Result == DTAPI_OK)
         *OffsetPpm = OffsetPpt / 1e6;
     return Result;
@@ -263,20 +265,20 @@ DtapiResult DtDevice_GetTxClockProperties(const DtDevice* Device, int NumEntries
     if (Props == NULL && NumEntries != 0)
         return DTAPI_E_INVALID_BUF;
 
-    DtapiResult Result = CheckDevice(Device, &Device->Genlock);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->Genlock);
     if (Result != DTAPI_OK)
         return Result;
 
-    Clocks List;
+    ClockList List;
     Result = ReadClocks(Device, &List);
     if (Result == DTAPI_OK)
-        *NumEntriesResult = List.Num;
-    if (Result == DTAPI_OK && List.Num > NumEntries)
+        *NumEntriesResult = List.NumClocks;
+    if (Result == DTAPI_OK && List.NumClocks > NumEntries)
         Result = DTAPI_E_BUF_TOO_SMALL;
 
-    for (int i = 0; Result == DTAPI_OK && i < List.Num; i++)
+    for (int i = 0; Result == DTAPI_OK && i < List.NumClocks; i++)
     {
-        const DtClockProps* Clock = &List.Props[i];
+        const DtClockProps* Clock = &List.Clocks[i];
         DtTxClockProperties* Out = &Props[i];
 
         memset(Out, 0, sizeof(*Out));
@@ -310,7 +312,7 @@ DtapiResult DtDevice_SetTxClockOffset(DtDevice* Device, int TxClockId, double Of
     if (Device == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    DtapiResult Result = CheckDevice(Device, &Device->Genlock);
+    DtapiResult Result = CheckDeviceHasObject(Device, &Device->Genlock);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -321,6 +323,6 @@ DtapiResult DtDevice_SetTxClockOffset(DtDevice* Device, int TxClockId, double Of
         return DTAPI_E_INVALID_ARG;
     }
     int OffsetPpt = (int)(Ppt < 0.0 ? Ppt - 0.5 : Ppt + 0.5);
-    return DtPcieCmd_GenlockSetFreqOffset(Device->Drv, Device->Genlock.Ref, TxClockId,
+    return DtPcieCmd_GenlockSetFreqOffset(Device->Drv, Device->Genlock.Object, TxClockId,
                                           OffsetPpt);
 }

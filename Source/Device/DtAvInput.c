@@ -28,10 +28,9 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
     if (Device == NULL || Device->Drv == NULL)
         return DTAPI_E_DEVICE;
 
-    if (Device->Info.FirmwareStatus == DT_FWSTATUS_OBSOLETE)
-        return DTAPI_E_OBSOLETE_FW;
-    if (Device->Info.FirmwareStatus == DT_FWSTATUS_TAINTED)
-        return DTAPI_E_TAINTED_FW;
+    DtapiResult Result = DtDevice_CheckFirmware(Device);
+    if (Result != DTAPI_OK)
+        return Result;
 
     if (Port < 1 || Port > Device->NumPorts)
         return DTAPI_E_NO_SUCH_PORT;
@@ -49,27 +48,28 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port)
     // The ASI/SDI receiver API function with the empty role holds the objects; the SDI
     // receiver with the empty role is taken from them here, at attach, rather than at
     // detection.
-    DtFuncInstance Func;
-    DtapiResult Result = DtFunc_Find(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Func);
+    DtFuncInstance Instance;
+    Result = DtFunc_Find(Device->Drv, Port - 1, "AF_ASISDIRX", "", &Instance);
     if (Result != DTAPI_OK)
         return Result;
-    const DtFuncObject* SdiRx = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncObject* SdiRx =
+        DtFunc_FindObject(&Instance, true, DT_FUNC_TYPE_SDIRX, "");
     if (SdiRx != NULL)
     {
         Input->Device = Device;
         Input->PortIndex = Port - 1;
         Input->Caps = Caps;
-        Input->SdiRx = SdiRx->Ref;
+        Input->SdiRx = SdiRx->Object;
     }
-    DtFunc_Release(&Func);
+    DtFunc_Release(&Instance);
     return SdiRx != NULL ? DTAPI_OK : DTAPI_E_NOT_FOUND;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Detect +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvInput_SetUnknown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDetVidStd_SetUnknown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtAvInput_SetUnknown(DtDetVidStd* Info)
+void DtDetVidStd_SetUnknown(DtDetVidStd* Info)
 {
     memset(Info, 0, sizeof(*Info));
     Info->VidStd = DTAPI_VIDSTD_UNKNOWN;
@@ -91,9 +91,9 @@ void DtAvInput_SetUnknown(DtDetVidStd* Info)
 DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
 {
     OsDrv* Drv = Input->Device->Drv;
-    bool Scale = false;
+    bool IsDownscaled = false;
 
-    DtAvInput_SetUnknown(Info);
+    DtDetVidStd_SetUnknown(Info);
 
     DtapiResult Result;
     if ((Input->Caps & DT_CAP_SCALE_12GTO3G) != 0)
@@ -106,7 +106,7 @@ DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         Result = DtPcieCmd_GetIoConfig(Drv, &Config);
         if (Result != DTAPI_OK)
             return Result;
-        Scale = Config.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
+        IsDownscaled = Config.Value == DTAPI_IOCONFIG_SCALE_12GTO3G;
     }
 
     Result = DtFunc_CheckDriverVersion(&Input->Device->DriverVersion, true,
@@ -141,7 +141,7 @@ DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
         Info->AspectRatio = DtSmpte352_Is16x9(Info->Vpid) ? DT_AR_16_9 : DT_AR_4_3;
     }
 
-    if (Scale && DtVidStd_Is4k(Props.VidStd) &&
+    if (IsDownscaled && DtVidStd_Is4k(Props.VidStd) &&
         DtVidStd_NumPhysicalLinks(Props.LinkStd) == 1)
     {
         Info->VidStd = Props.Frame.VidStd;

@@ -76,19 +76,19 @@
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
 
 // An object of the device's own that a public function needs, looked for once, when the
-// application attaches: Found is DTAPI_OK with Ref what its commands go to,
+// application attaches: LookupResult is DTAPI_OK with Object what its commands go to,
 // DTAPI_E_NOT_SUPPORTED when the device does not have it or it was not looked for, and
 // DTAPI_E_DRIVER_INCOMP when the driver is too old for it.
 typedef struct DtDevObject
 {
-    DtapiResult Found;
-    DtDrvObject Ref;
+    DtapiResult LookupResult;
+    DtDrvObject Object;
 } DtDevObject;
 
 struct DtDevice
 {
-    OsDrv* Drv; // NULL while detached
-    int Index;  // The index the driver numbers the device by
+    OsDrv* Drv;      // NULL while detached
+    int DriverIndex; // The index the driver numbers the device by
     DtDriverVersion DriverVersion;
     DtDeviceInfo Info;
     int NumPorts;       // All ports, PORT_COUNT
@@ -107,11 +107,15 @@ struct DtDevice
 // DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM. An attached
 // device is activated too, as DtDevActivate_OnAttach describes, which can take tens of
 // milliseconds; the result of that does not decide the attach.
-DtapiResult DtDevice_AttachIndex(DtDevice* Device, int Index, bool MatchSerial,
-                                 int64_t Serial);
+DtapiResult DtDevice_AttachToIndex(DtDevice* Device, int Index, bool MatchSerial,
+                                   int64_t Serial);
 
 // Releases what an attached Device holds and leaves it detached.
 void DtDevice_Release(DtDevice* Device);
+
+// DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW for obsolete or tainted firmware, else
+// DTAPI_OK.
+DtapiResult DtDevice_CheckFirmware(const DtDevice* Device);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -149,11 +153,11 @@ bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port);
 // "DTA-2178 port 1" or "DTA-2172A port 3". A DTA-2178 with sub-type 1 is the
 // DTA-2178-ASI: "DTA-2178-ASI port 1". Returns DTAPI_E_BUF_TOO_SMALL, with an empty Buf,
 // when Size cannot hold it.
-DtapiResult DtDevice_Describe(int TypeNumber, int SubType, int Port, char* Buf,
-                              size_t Size);
+DtapiResult DtDevice_FormatPortName(int TypeNumber, int SubType, int Port, char* Buf,
+                                    size_t Size);
 
 // Fills Desc for a port of an attached Device, numbered from 1.
-void DtDevice_HwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
+void DtDevice_DescribeHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
 // Fills Desc for an attached Device. Reads the I/O direction of each public port that is
 // not only an input, only an output or an IP port; the channel counts stop at the first

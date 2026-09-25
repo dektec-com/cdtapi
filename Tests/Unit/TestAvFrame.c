@@ -15,7 +15,7 @@
 
 DT_TEST(PoolGivesAlignedClearedFrames)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
 
@@ -55,12 +55,12 @@ DT_TEST(PoolGivesAlignedClearedFrames)
     DT_ASSERT_EQ(DtAvFramePool_NumFrames(&Pool), 2);
 
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(PoolRefusesWrongReturns)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DtAvFramePool Other;
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
@@ -78,12 +78,12 @@ DT_TEST(PoolRefusesWrongReturns)
 
     DtAvFramePool_Destroy(&Other);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(PoolSurvivesFailedAllocations)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
 
@@ -106,14 +106,14 @@ DT_TEST(PoolSurvivesFailedAllocations)
     DT_ASSERT(DtAvFramePool_Get(&Pool, 5000) == Frame);
 
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= FIFO +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 DT_TEST(FifoKeepsOrderAndOverflows)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DtAvFrameFifo Fifo;
     DtAvFrame* Frames[10];
@@ -170,7 +170,7 @@ DT_TEST(FifoKeepsOrderAndOverflows)
 
     DtAvFrameFifo_Destroy(&Fifo);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame properties +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

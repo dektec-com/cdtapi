@@ -27,7 +27,7 @@ static const struct
 {
     const char* Name;
     const char* Role;
-    bool IsDf;
+    bool IsDriverFunction;
     int Type;
 } g_Objects[] = {
     {"BC_SWITCH#2", "SDI_MUX_IN", false, DT_BLOCK_TYPE_SWITCH},
@@ -50,7 +50,7 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
 
     SimDtPcie_Reset();
     DtAlloc_ResetCount();
-    *Live = DtAlloc_Live();
+    *Live = DtAlloc_NumLive();
     Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
@@ -68,7 +68,7 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
     {                                                                                    \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
 // The object at Index of an instance.
@@ -95,17 +95,17 @@ DT_TEST(ObjectsOfTheReceiverFunction)
     for (size_t i = 0; i < OBJECT_COUNT && i < DtVec_Count(&Func.Objects); i++)
     {
         const DtFuncObject* Object = ObjectAt(&Func, i);
-        DT_ASSERT_EQ(Object->Ref.PortIndex, 5);
+        DT_ASSERT_EQ(Object->Object.PortIndex, 5);
         int Uuid = 0;
 
         DT_ASSERT_STR(Object->Name, g_Objects[i].Name);
         DT_ASSERT_STR(Object->Role, g_Objects[i].Role);
-        DT_ASSERT_EQ(Object->IsDf, g_Objects[i].IsDf);
+        DT_ASSERT_EQ(Object->IsDriverFunction, g_Objects[i].IsDriverFunction);
         DT_ASSERT_EQ(Object->FuncOrBlockType, g_Objects[i].Type);
         char Key[PROPERTY_NAME_MAX_SIZE];
         snprintf(Key, sizeof(Key), "%s_UUID", g_Objects[i].Name);
         DT_ASSERT_OK(DtPcieCmd_GetPropertyInt(Drv, Key, 5, &Uuid));
-        DT_ASSERT_EQ(Object->Ref.Uuid, Uuid);
+        DT_ASSERT_EQ(Object->Object.Uuid, Uuid);
     }
     DtFunc_Release(&Func);
     DT_ASSERT_EQ(DtVec_Count(&Func.Objects), 0);
@@ -122,7 +122,7 @@ DT_TEST(ObjectsOfTheTransmitFunctions)
         const char* Af;
         const char* Name;
         const char* Role;
-        bool IsDf;
+        bool IsDriverFunction;
         int Type;
     } Expected[] = {
         {"AF_ASISDITX", "BC_ASITXG#1", "", false, DT_BLOCK_TYPE_ASITXG},
@@ -161,10 +161,11 @@ DT_TEST(ObjectsOfTheTransmitFunctions)
 
             DT_ASSERT_STR(Object->Name, Expected[i].Name);
             DT_ASSERT_STR(Object->Role, Expected[i].Role);
-            DT_ASSERT_EQ(Object->IsDf, Expected[i].IsDf);
+            DT_ASSERT_EQ(Object->IsDriverFunction, Expected[i].IsDriverFunction);
             DT_ASSERT_EQ(Object->FuncOrBlockType, Expected[i].Type);
-            DT_ASSERT_EQ(Object->Ref.Uuid & DT_UUID_FLAG_MASK,
-                         Expected[i].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
+            DT_ASSERT_EQ(Object->Object.Uuid & DT_UUID_FLAG_MASK,
+                         Expected[i].IsDriverFunction ? DT_UUID_DF_FLAG
+                                                      : DT_UUID_BC_FLAG);
         }
         DtFunc_Release(&Tx);
         DtFunc_Release(&Dma);
@@ -205,7 +206,7 @@ DT_TEST(UuidsAreUnique)
                         Count < (int)(sizeof(Uuids) / sizeof(Uuids[0]));
                  i++)
             {
-                int Uuid = ObjectAt(&Func, i)->Ref.Uuid;
+                int Uuid = ObjectAt(&Func, i)->Object.Uuid;
 
                 for (j = 0; j < Count; j++)
                 {
@@ -344,22 +345,22 @@ DT_TEST(ObjectsAreGotByKindTypeAndRole)
     DtFuncInstance Func;
     DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
 
-    const DtFuncObject* Object = DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncObject* Object = DtFunc_FindObject(&Func, true, DT_FUNC_TYPE_SDIRX, "");
     DT_ASSERT(Object != NULL && strcmp(Object->Name, "DF_SDIRX#1") == 0);
-    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
+    Object = DtFunc_FindObject(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_OUT");
     DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#3") == 0);
-    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    Object = DtFunc_FindObject(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
     DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#2") == 0);
 
-    DT_ASSERT(DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "") == NULL);
-    DT_ASSERT(DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDIRX, "OTHER") == NULL);
-    DT_ASSERT(DtFunc_Get(&Func, false, DT_FUNC_TYPE_SDIRX, "") == NULL);
-    DT_ASSERT(DtFunc_Get(&Func, true, DT_FUNC_TYPE_SDITXPHY, "") == NULL);
+    DT_ASSERT(DtFunc_FindObject(&Func, false, DT_BLOCK_TYPE_SWITCH, "") == NULL);
+    DT_ASSERT(DtFunc_FindObject(&Func, true, DT_FUNC_TYPE_SDIRX, "OTHER") == NULL);
+    DT_ASSERT(DtFunc_FindObject(&Func, false, DT_FUNC_TYPE_SDIRX, "") == NULL);
+    DT_ASSERT(DtFunc_FindObject(&Func, true, DT_FUNC_TYPE_SDITXPHY, "") == NULL);
     DtFunc_Release(&Func);
 
     SimDtPcie_OverrideString("BC_SWITCH#3", 0, true, "SDI_MUX_IN");
     DT_ASSERT_OK(DtFunc_Find(Drv, 0, "AF_ASISDIRX", "", &Func));
-    Object = DtFunc_Get(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
+    Object = DtFunc_FindObject(&Func, false, DT_BLOCK_TYPE_SWITCH, "SDI_MUX_IN");
     DT_ASSERT(Object != NULL && strcmp(Object->Name, "BC_SWITCH#3") == 0);
     DtFunc_Release(&Func);
 
@@ -374,7 +375,7 @@ DT_TEST(DriverVersionPerObjectType)
 {
     static const struct
     {
-        bool IsDf;
+        bool IsDriverFunction;
         int Type;
         DtDriverVersion Enough;
         DtDriverVersion TooOld;
@@ -398,13 +399,14 @@ DT_TEST(DriverVersionPerObjectType)
 
     for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
-        bool IsDf = Cases[i].IsDf;
+        bool IsDriverFunction = Cases[i].IsDriverFunction;
 
-        if (DtFunc_CheckDriverVersion(&Cases[i].Enough, IsDf, Cases[i].Type) !=
+        if (DtFunc_CheckDriverVersion(&Cases[i].Enough, IsDriverFunction,
+                                      Cases[i].Type) != DTAPI_OK ||
+            DtFunc_CheckDriverVersion(&Newest, IsDriverFunction, Cases[i].Type) !=
                 DTAPI_OK ||
-            DtFunc_CheckDriverVersion(&Newest, IsDf, Cases[i].Type) != DTAPI_OK ||
-            DtFunc_CheckDriverVersion(&Cases[i].TooOld, IsDf, Cases[i].Type) !=
-                DTAPI_E_DRIVER_INCOMP)
+            DtFunc_CheckDriverVersion(&Cases[i].TooOld, IsDriverFunction,
+                                      Cases[i].Type) != DTAPI_E_DRIVER_INCOMP)
         {
             DT_FAIL("type %d", Cases[i].Type);
         }

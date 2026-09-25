@@ -34,9 +34,9 @@
 
 typedef struct DtBuf DtBuf;
 
-// Called once, when the last reference to a wrapped buffer is dropped. Opaque is the
+// Called once, when the last reference to a wrapped buffer is dropped. Context is the
 // pointer given to DtBuf_Wrap.
-typedef void (*DtBufReleaseFunc)(void* Opaque, uint8_t* Data, size_t Size);
+typedef void (*DtBufReleaseFunc)(void* Context, uint8_t* Data, size_t Size);
 
 // Allocates a buffer of Size bytes with a reference count of one. The contents are
 // uninitialised. Returns NULL when out of memory, or when Size is zero.
@@ -45,7 +45,7 @@ DtBuf* DtBuf_Alloc(size_t Size);
 // Wraps bytes the caller already owns, with a reference count of one. Release may be
 // NULL, which means the bytes outlive the buffer and nothing has to be done for them.
 // Returns NULL when out of memory, or when Data is NULL, or when Size is zero.
-DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opaque);
+DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Context);
 
 // Adds a reference and returns Buf, so that it can be used in an assignment. Passing
 // NULL returns NULL.

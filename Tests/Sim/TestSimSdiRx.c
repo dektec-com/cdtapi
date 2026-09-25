@@ -30,7 +30,7 @@ typedef struct Function
     const char* Name;
     const char* Role;
     int Type;
-    bool IsDf;
+    bool IsDriverFunction;
 } Function;
 
 static const Function g_Functions[] = {
@@ -382,7 +382,7 @@ DT_TEST(EverySdiPortHasTheReceiverFunction)
 
             int Uuid = UuidOf(Drv, F->Name, Port);
             DT_ASSERT_EQ(Uuid & DT_UUID_FLAG_MASK,
-                         F->IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
+                         F->IsDriverFunction ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG);
             DT_ASSERT((Uuid & DT_UUID_INDEX_MASK) != 0);
             int j;
             for (j = 0; j < Count; j++)

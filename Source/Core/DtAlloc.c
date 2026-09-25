@@ -23,7 +23,7 @@
 
 static DtAtomicInt g_AllocCount = 0;
 static DtAtomicInt g_FailAfter = -1;
-static DtAtomicInt g_Live = 0;
+static DtAtomicInt g_NumLive = 0;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_FailAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -32,18 +32,18 @@ void DtAlloc_FailAfter(int Count)
     DtAtomic_Store(&g_FailAfter, Count < 0 ? -1 : Count);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Count -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_NumAllocations -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtAlloc_Count(void)
+int DtAlloc_NumAllocations(void)
 {
     return DtAtomic_Load(&g_AllocCount);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_Live -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_NumLive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtAlloc_Live(void)
+int DtAlloc_NumLive(void)
 {
-    return DtAtomic_Load(&g_Live);
+    return DtAtomic_Load(&g_NumLive);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAlloc_ResetCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -81,7 +81,7 @@ void* DtAlloc_Malloc(size_t Size)
 
     void* Block = malloc(Size);
     if (Block != NULL)
-        DtAtomic_Increment(&g_Live);
+        DtAtomic_Increment(&g_NumLive);
     return Block;
 }
 
@@ -97,7 +97,7 @@ void* DtAlloc_Realloc(void* Ptr, size_t Size)
 
     void* Block = realloc(Ptr, Size);
     if (Block != NULL && Ptr == NULL)
-        DtAtomic_Increment(&g_Live);
+        DtAtomic_Increment(&g_NumLive);
     return Block;
 }
 
@@ -106,7 +106,7 @@ void* DtAlloc_Realloc(void* Ptr, size_t Size)
 void DtAlloc_Free(void* Ptr)
 {
     if (Ptr != NULL)
-        DtAtomic_Decrement(&g_Live);
+        DtAtomic_Decrement(&g_NumLive);
     free(Ptr);
 }
 

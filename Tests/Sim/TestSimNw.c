@@ -50,7 +50,7 @@ typedef struct Fixture
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     Fix->Drv = OsDrv_Open(INDEX);
@@ -66,9 +66,9 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close(Fix->Drv);
         return false;
     }
-    const DtFuncObject* Object = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
+    const DtFuncObject* Object = DtFunc_FindObject(&Af, true, DT_FUNC_TYPE_NW, "");
     if (Object != NULL)
-        Fix->Nw = Object->Ref;
+        Fix->Nw = Object->Object;
     DtFunc_Release(&Af);
     return true;
 }
@@ -80,7 +80,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // The number in a pipe's UUID.

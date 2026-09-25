@@ -63,7 +63,7 @@ DT_TEST(ListsInterfaces)
 {
     OsNetItf Itfs[MAX_ITFS];
     int Num = -1;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     DT_ASSERT_OK(OsNet_ListInterfaces(Itfs, MAX_ITFS, &Num));
     DT_ASSERT(Num >= 0);
@@ -81,7 +81,7 @@ DT_TEST(ListsInterfaces)
     int Outcome = OsNet_ListInterfaces(NULL, 0, &Counted);
     DT_ASSERT(Outcome == (Num > 0 ? OS_NET_TOO_SMALL : OS_NET_OK));
     DT_ASSERT_EQ(Counted, Num);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(FindsAnInterfaceByItsMac)
@@ -116,7 +116,7 @@ DT_TEST(BindsJoinsAndLeaves)
     OsNetItf Usable;
     OsNetAddr Addr;
     OsNetSocket* Socket = NULL;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     if (!FindUsable(&Usable, &Addr))
     {
@@ -140,7 +140,7 @@ DT_TEST(BindsJoinsAndLeaves)
         printf("    joining 239.255.77.11 on %s failed; not checked\n", Usable.Name);
     }
     OsNetSocket_Close(Socket);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(RoutesAndNeighbours)

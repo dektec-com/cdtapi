@@ -62,7 +62,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     OsDrv* Drv;
 
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Device = NULL;
     Fix->Channel = NULL;
     Fix->Buffer = NULL;
@@ -98,7 +98,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // Sets the I/O standard of the port at Port to VidStd.

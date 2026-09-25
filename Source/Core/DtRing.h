@@ -28,7 +28,7 @@
 // empty one both have the two offsets equal and could not be told apart. The hardware
 // keeps one data word free, not one byte: for a PCIe data width of 64 bits that is eight
 // bytes. The reserve is therefore a parameter, taken from the driver, and the maximum
-// load is Size - Reserve.
+// load is Size - ReservedBytes.
 //
 // The wrap is the part that gets written wrong, so it lives here once rather than in
 // every caller: a read that crosses the end of the buffer is two copies.
@@ -45,14 +45,15 @@ typedef struct DtRing
     size_t WriteOffset;
 } DtRing;
 
-// Prepares a ring over Size bytes at Base, with both offsets at zero, keeping Reserve
-// bytes permanently free. Returns 0 on success, -1 when Base is NULL, when Reserve is
-// zero, or when Reserve leaves no room at all.
-int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve);
+// Prepares a ring over Size bytes at Base, with both offsets at zero, keeping
+// ReservedBytes permanently free. Returns 0 on success, -1 when Base is NULL, when
+// ReservedBytes is zero, or when ReservedBytes leaves no room at all.
+int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t ReservedBytes);
 
 // Records where the producer has got to. Returns 0 on success, and -1 when Offset is not
-// inside the buffer or would put more than Size - Reserve bytes in the ring. Either means
-// the driver and the library disagree about the ring, and reading on would read garbage.
+// inside the buffer or would put more than Size - ReservedBytes bytes in the ring. Either
+// means the driver and the library disagree about the ring, and reading on would read
+// garbage.
 int DtRing_SetWriteOffset(DtRing* Ring, size_t Offset);
 
 // Empties the ring with both offsets at Offset, which is where reading and writing start
@@ -62,8 +63,9 @@ int DtRing_Restart(DtRing* Ring, size_t Offset);
 // How many bytes are available to read.
 size_t DtRing_Load(const DtRing* Ring);
 
-// How many bytes could still be written before the ring is full: Size - Reserve - Load.
-size_t DtRing_Free(const DtRing* Ring);
+// How many bytes could still be written before the ring is full:
+// Size - ReservedBytes - Load.
+size_t DtRing_Room(const DtRing* Ring);
 
 // Copies Length bytes to Dst without consuming them, handling the wrap. Returns 0 on
 // success, -1 when fewer than Length bytes are available.

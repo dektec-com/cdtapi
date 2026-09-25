@@ -46,7 +46,7 @@ static bool StartSim(int* DtFailures, int* Live)
         return false;
     }
     OsDrv_Close(Drv);
-    *Live = DtAlloc_Live();
+    *Live = DtAlloc_NumLive();
     return true;
 }
 
@@ -72,7 +72,7 @@ static DtDevice* Attach(int* DtFailures)
     {                                                                                    \
         DtDevice_Free(Device);                                                           \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
 // The signal an SDI receiver reports for a format: locked, with the line timing's
@@ -341,7 +341,7 @@ DT_TEST(InternalInputIsNoInputToTheScan)
     DT_ASSERT_EQ(Found, SIM_PORT_COUNT);
     DT_ASSERT(!Funcs[PORT_INPUT - 1].IsInput);
     DT_ASSERT(Funcs[PORT_INPUT - 1].IsOutput);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

@@ -54,7 +54,7 @@ typedef struct DtJobRunner
 {
     DtWorkerPool* Pool; // NULL: every piece in the thread that calls DtJobRunner_Run
     OsEvent* Done;      // Set by the piece that finishes a job on the pool's threads
-    int Pieces;         // What DtJobRunner_Run divides a job into, 1 or more
+    int NumPieces;      // What DtJobRunner_Run divides a job into, 1 or more
 } DtJobRunner;
 
 // One piece, in the calling thread. A DtJobRunner must be initialised before it is used
@@ -75,16 +75,18 @@ DtapiResult DtJobRunner_SetPool(DtJobRunner* Runner, DtWorkerPool* Pool, int Num
 // caller of it needs, and how many parts it should cut its work into.
 static inline int DtJobRunner_NumPieces(const DtJobRunner* Runner)
 {
-    return Runner->Pieces;
+    return Runner->NumPieces;
 }
 
 // Runs Func over DtJobRunner_NumPieces pieces and returns when every one of them has
 // finished.
 void DtJobRunner_Run(const DtJobRunner* Runner, DtJobFunc Func, void* Context);
 
-// The half-open range [*First, *Last) of Total items that piece Index of Count takes.
+// The half-open range [*First, *End) of Total items that piece PieceIndex of NumPieces
+// takes.
 // Every boundary other than Total is a multiple of Unit, which is 1 where the items are
 // independent one by one and more where they are independent only in groups of that
 // many. The ranges cover the items exactly and are as near equal in length as the unit
 // allows; a range can be empty when there are fewer units than pieces.
-void DtJobRunner_Split(int Total, int Index, int Count, int Unit, int* First, int* Last);
+void DtJobRunner_Split(int Total, int PieceIndex, int NumPieces, int Unit, int* First,
+                       int* End);

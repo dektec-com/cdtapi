@@ -48,5 +48,6 @@ bool SimClocks_Takes(int FunctionCode);
 // Handles one command for an object of type Type, a DT_FUNC_TYPE_ for a driver function
 // and a DT_BLOCK_TYPE_ otherwise, with role Role, and gives its DT_STATUS_ outcome. An
 // object that does not take the function code refuses with DT_STATUS_NOT_SUPPORTED.
-uint32_t SimClocks_Cmd(int FunctionCode, bool IsDf, int Type, const char* Role, int Cmd,
-                       const void* In, size_t InSize, void* Out, size_t* OutSize);
+uint32_t SimClocks_Cmd(int FunctionCode, bool IsDriverFunction, int Type,
+                       const char* Role, int Cmd, const void* In, size_t InSize,
+                       void* Out, size_t* OutSize);

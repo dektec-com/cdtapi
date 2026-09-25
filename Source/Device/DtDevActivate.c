@@ -17,7 +17,7 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h"          // The command that carries the data.
+#include "Core/DtAlloc.h"          // Allocation seam.
 #include "DtDevActivate.h"         // Interface being implemented.
 #include "DtPcie/DtPcieAbi.h"      // Vendored driver structures and IOCTL codes.
 #include "DtPcie/DtPcieCmd.h"      // Properties and the VPD.
@@ -39,12 +39,12 @@
 // How often to try for the object, a millisecond apart, before giving up on it.
 #define ACTIVATE_ACQUIRE_TRIES 10
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Acquire -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AcquireExclusiveAccess -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The object answers nothing without exclusive access, so it is taken for the whole pass
 // and released again.
 //
-static DtapiResult Acquire(OsDrv* Drv, DtDrvObject Object)
+static DtapiResult AcquireExclusiveAccess(OsDrv* Drv, DtDrvObject Object)
 {
     DtapiResult Result = DTAPI_E_IN_USE;
 
@@ -57,21 +57,22 @@ static DtapiResult Acquire(OsDrv* Drv, DtDrvObject Object)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. FindObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindActivationObject -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The object belongs to the device rather than to a port, and is addressed by the UUID
 // the driver gives it. DTAPI_E_NOT_FOUND for a device that has no such object.
 //
-static DtapiResult FindObject(OsDrv* Drv, DtDrvObject* Object)
+static DtapiResult FindActivationObject(OsDrv* Drv, DtDrvObject* Object)
 {
     Object->PortIndex = DT_PROPERTY_DEVICE;
     return DtPcieCmd_GetPropertyInt(Drv, ACTIVATE_UUID_PROPERTY, DT_PROPERTY_DEVICE,
                                     &Object->Uuid);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetObjectStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static DtapiResult GetStatus(OsDrv* Drv, DtDrvObject Object, bool* Busy, bool* Ready)
+static DtapiResult GetObjectStatus(OsDrv* Drv, DtDrvObject Object, bool* Busy,
+                                   bool* Ready)
 {
     DtIoctlIpSecGCmdGetStatusOutput Out;
 
@@ -87,12 +88,13 @@ static DtapiResult GetStatus(OsDrv* Drv, DtDrvObject Object, bool* Busy, bool* R
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Apply -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HandData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Hands the object its data. A count of zero is what a card whose EEPROM holds nothing
 // for it gets, and is a command of its own rather than no command at all.
 //
-static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, int Count)
+static DtapiResult HandData(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words,
+                            int Count)
 {
     const size_t InSize =
         sizeof(DtIoctlIpSecGCmdCheckInput) + (size_t)Count * sizeof(uint32_t);
@@ -112,7 +114,7 @@ static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, 
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadEepromData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The data lies in the EEPROM behind the read-only and read-write sections, after the one
 // that ends last, whatever their order. A card whose EEPROM was never given any holds the
@@ -120,12 +122,12 @@ static DtapiResult Apply(OsDrv* Drv, DtDrvObject Object, const uint32_t* Words, 
 // byte first, and the words are assembled from the bytes, so that their values do not
 // depend on this processor's byte order.
 //
-static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
+static DtapiResult ReadEepromData(OsDrv* Drv, uint32_t* Words, bool* HasData)
 {
     DtVpdProperties Props;
     uint8_t Bytes[ACTIVATE_NUM_WORDS * sizeof(uint32_t)];
 
-    *Present = false;
+    *HasData = false;
     DtapiResult Result = DtPcieCmd_VpdGetProperties(Drv, &Props);
     if (!DT_SUCCEEDED(Result))
         return Result;
@@ -159,7 +161,7 @@ static DtapiResult ReadData(OsDrv* Drv, uint32_t* Words, bool* Present)
     if (AllSame)
         return DTAPI_OK;
 
-    *Present = true;
+    *HasData = true;
     return DTAPI_OK;
 }
 
@@ -176,31 +178,31 @@ DtapiResult DtDevActivate_OnAttach(OsDrv* Drv)
     if (Drv == NULL)
         return DTAPI_E_INVALID_ARG;
 
-    DtapiResult Result = FindObject(Drv, &Object);
+    DtapiResult Result = FindActivationObject(Drv, &Object);
     if (Result == DTAPI_E_NOT_FOUND)
         return DTAPI_OK; // Nothing to activate on this device
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = Acquire(Drv, Object);
+    Result = AcquireExclusiveAccess(Drv, Object);
     if (Result != DTAPI_OK)
         return Result;
 
-    Result = GetStatus(Drv, Object, &Busy, &Ready);
+    Result = GetObjectStatus(Drv, Object, &Busy, &Ready);
     if (DT_SUCCEEDED(Result) && !Ready)
     {
         uint32_t Words[ACTIVATE_NUM_WORDS];
-        bool Present = false;
+        bool HasData = false;
 
         memset(Words, 0, sizeof(Words));
-        Result = ReadData(Drv, Words, &Present);
+        Result = ReadEepromData(Drv, Words, &HasData);
         if (DT_SUCCEEDED(Result))
-            Result = Apply(Drv, Object, Words, Present ? ACTIVATE_NUM_WORDS : 0);
+            Result = HandData(Drv, Object, Words, HasData ? ACTIVATE_NUM_WORDS : 0);
 
         for (int Waited = 0; DT_SUCCEEDED(Result) && Waited < ACTIVATE_TIMEOUT_MS;
              Waited += ACTIVATE_POLL_MS)
         {
-            Result = GetStatus(Drv, Object, &Busy, &Ready);
+            Result = GetObjectStatus(Drv, Object, &Busy, &Ready);
             if (!Busy)
                 break;
             OsTime_SleepMs(ACTIVATE_POLL_MS);

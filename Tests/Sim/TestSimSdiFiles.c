@@ -58,7 +58,7 @@ typedef struct Fixture
 static bool Start(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Device = NULL;
     Fix->Buffer = NULL;
 
@@ -93,7 +93,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         free((Fix).Buffer);                                                              \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // Frame FrameNumber of the emulator's pattern of VidStd as a raw frame of 10-bit

@@ -117,7 +117,7 @@ typedef struct SimFunction
     const char* Name;
     const char* Role;
     int Type; // DT_FUNC_TYPE_ or DT_BLOCK_TYPE_
-    bool IsDf;
+    bool IsDriverFunction;
 } SimFunction;
 
 static const SimFunction g_AsiSdiRxObjects[] = {
@@ -221,7 +221,7 @@ static int FunctionUuid(int Af, int PortIndex, int Index)
     for (i = 0; i < Af; i++)
         Base += g_ApiFunctions[i].NumObjects * Instances(&g_ApiFunctions[i]);
     int Instance = Api->OfDevice ? 0 : PortIndex;
-    return (Api->Objects[Index].IsDf ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG) |
+    return (Api->Objects[Index].IsDriverFunction ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG) |
            (Base + Instance * Api->NumObjects + Index + 1);
 }
 

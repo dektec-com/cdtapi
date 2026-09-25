@@ -19,7 +19,7 @@ struct DtBuf
     uint8_t* Data;
     size_t Size;
     DtBufReleaseFunc Release;
-    void* Opaque;
+    void* Context;
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseOwned -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -27,9 +27,9 @@ struct DtBuf
 // The release callback used by DtBuf_Alloc. Having one rather than a flag keeps the
 // teardown path in DtBuf_Unref down to a single branch.
 //
-static void ReleaseOwned(void* Opaque, uint8_t* Data, size_t Size)
+static void ReleaseOwned(void* Context, uint8_t* Data, size_t Size)
 {
-    (void)Opaque;
+    (void)Context;
     (void)Size;
     DtAlloc_Free(Data);
 }
@@ -38,7 +38,7 @@ static void ReleaseOwned(void* Opaque, uint8_t* Data, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtBuf_Wrap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Opaque)
+DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Context)
 {
     if (Data == NULL || Size == 0)
         return NULL;
@@ -51,7 +51,7 @@ DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Op
     Buf->Data = Data;
     Buf->Size = Size;
     Buf->Release = Release;
-    Buf->Opaque = Opaque;
+    Buf->Context = Context;
 
     return Buf;
 }
@@ -108,7 +108,7 @@ void DtBuf_Unref(DtBuf** Buf)
         return;
 
     if (Target->Release != NULL)
-        Target->Release(Target->Opaque, Target->Data, Target->Size);
+        Target->Release(Target->Context, Target->Data, Target->Size);
 
     DtAlloc_Free(Target);
 }

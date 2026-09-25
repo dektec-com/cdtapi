@@ -49,7 +49,7 @@ typedef struct Fixture
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     SimDtPcie_SetNwLoopback(true);
@@ -74,7 +74,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
         DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);                                     \
         DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);                                 \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // IP parameters of the multicast stream, with one source of 192.168.1.50 when Source.
@@ -231,7 +231,7 @@ DT_TEST(ResultsOfTheLifecycle)
 DT_TEST(SdiPortIsRefused)
 {
     SimDtPcie_Reset();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtDevice* Device = DtDevice_Alloc();
     AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
     DT_ASSERT(Device != NULL && Rx != NULL);
@@ -241,7 +241,7 @@ DT_TEST(SdiPortIsRefused)
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
     SimDtPcie_Reset();
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Starting +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

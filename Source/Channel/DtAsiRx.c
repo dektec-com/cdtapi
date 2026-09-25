@@ -675,7 +675,7 @@ static DtapiResult FindDriverBlocks(DtAsiRx* Asi, const DtDriverVersion* Version
         DtFuncInstance* Instance;
         bool IsDriverFunction;
         int Type;
-        DtDrvObject* Ref;
+        DtDrvObject* Object;
     } DriverBlockSpec;
     const DriverBlockSpec Objects[] = {
         {&Asi->RxFunction, true, DT_FUNC_TYPE_ASIRX, &Asi->AsiRx},
@@ -690,13 +690,13 @@ static DtapiResult FindDriverBlocks(DtAsiRx* Asi, const DtDriverVersion* Version
     for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
          i++)
     {
-        const DtFuncObject* Object = DtFunc_Get(
+        const DtFuncObject* Object = DtFunc_FindObject(
             Objects[i].Instance, Objects[i].IsDriverFunction, Objects[i].Type, "");
         if (Object == NULL)
             Result = DTAPI_E_NOT_FOUND;
         else
         {
-            *Objects[i].Ref = Object->Ref;
+            *Objects[i].Object = Object->Object;
             Result = DtFunc_CheckDriverVersion(Version, Objects[i].IsDriverFunction,
                                                Objects[i].Type);
         }

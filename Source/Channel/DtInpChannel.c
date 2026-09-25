@@ -331,8 +331,8 @@ static DtapiResult Attach(DtInpChannel* Chan, DtDevice* Device, int Port)
          !DtDevice_PortHasSdiCaps(Device, Port)))
         return DTAPI_E_NOT_SUPPORTED;
 
-    DtapiResult Result =
-        DtDevice_AttachIndex(&Chan->Device, Device->Index, true, Device->Info.Serial);
+    DtapiResult Result = DtDevice_AttachToIndex(&Chan->Device, Device->DriverIndex, true,
+                                                Device->Info.Serial);
     if (Result != DTAPI_OK)
         return Result;
 

@@ -536,7 +536,7 @@ int DtWorkerPool_NumThreads(const DtWorkerPool* Pool)
 void DtJobRunner_Init(DtJobRunner* Runner)
 {
     memset(Runner, 0, sizeof(*Runner));
-    Runner->Pieces = 1;
+    Runner->NumPieces = 1;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -578,7 +578,7 @@ DtapiResult DtJobRunner_SetPool(DtJobRunner* Runner, DtWorkerPool* Pool, int Num
     const int MaxPieces = DtWorkerPool_NumThreads(Pool);
     Runner->Pool = Pool;
     Runner->Done = Done;
-    Runner->Pieces = NumThreads > 0 && NumThreads < MaxPieces ? NumThreads : MaxPieces;
+    Runner->NumPieces = NumThreads > 0 && NumThreads < MaxPieces ? NumThreads : MaxPieces;
     return DTAPI_OK;
 }
 
@@ -591,31 +591,32 @@ void DtJobRunner_Run(const DtJobRunner* Runner, DtJobFunc Func, void* Context)
 {
     const DtWorkerPool* Pool = Runner->Pool;
 
-    if (Pool == NULL || Runner->Pieces == 1 || Pool->NumThreads == 0)
+    if (Pool == NULL || Runner->NumPieces == 1 || Pool->NumThreads == 0)
     {
-        for (int i = 0; i < Runner->Pieces; i++)
-            Func(Context, i, Runner->Pieces);
+        for (int i = 0; i < Runner->NumPieces; i++)
+            Func(Context, i, Runner->NumPieces);
         return;
     }
     if (Pool->Dispatch != NULL)
     {
-        Pool->Dispatch(Pool->User, Func, Context, Runner->Pieces);
+        Pool->Dispatch(Pool->User, Func, Context, Runner->NumPieces);
         return;
     }
-    RunQueued(Runner->Pool, Runner->Done, Func, Context, Runner->Pieces);
+    RunQueued(Runner->Pool, Runner->Done, Func, Context, Runner->NumPieces);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Split -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtJobRunner_Split(int Total, int Index, int Count, int Unit, int* First, int* Last)
+void DtJobRunner_Split(int Total, int PieceIndex, int NumPieces, int Unit, int* First,
+                       int* End)
 {
     // Counted in whole units, of which the last may be short.
     const int Units = (Total + Unit - 1) / Unit;
-    const int Each = Units / Count;
-    const int Over = Units % Count;
-    const int FirstUnit = Index * Each + (Index < Over ? Index : Over);
-    const int LastUnit = FirstUnit + Each + (Index < Over ? 1 : 0);
+    const int Each = Units / NumPieces;
+    const int Over = Units % NumPieces;
+    const int FirstUnit = PieceIndex * Each + (PieceIndex < Over ? PieceIndex : Over);
+    const int LastUnit = FirstUnit + Each + (PieceIndex < Over ? 1 : 0);
 
     *First = FirstUnit * Unit < Total ? FirstUnit * Unit : Total;
-    *Last = LastUnit * Unit < Total ? LastUnit * Unit : Total;
+    *End = LastUnit * Unit < Total ? LastUnit * Unit : Total;
 }

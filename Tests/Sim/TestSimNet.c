@@ -43,7 +43,7 @@ static int Start(void)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(INDEX);
-    return DtAlloc_Live();
+    return DtAlloc_NumLive();
 }
 
 // Checks that no socket is open and nothing is allocated, and resets the emulator.
@@ -51,7 +51,7 @@ static int Start(void)
     do                                                                                   \
     {                                                                                    \
         DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);                                     \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Live));                                            \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Live));                                         \
         SimDtPcie_Reset();                                                               \
     } while (0)
 

@@ -56,7 +56,7 @@ static bool Start(Fixture* Fix, int* DtFailures, bool Attach)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetTxRealTime(false);
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Device = DtDevice_Alloc();
     Fix->Channel = DtOutpChannel_Alloc();
     Fix->Data = (uint8_t*)malloc(MAX_PACKETS * 204);
@@ -87,7 +87,7 @@ static bool Start(Fixture* Fix, int* DtFailures, bool Attach)
         free((Fix).Got);                                                                 \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // Count numbered packets of Size bytes from First, one after the other.

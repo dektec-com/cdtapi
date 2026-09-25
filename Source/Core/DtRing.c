@@ -17,16 +17,16 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t Reserve)
+int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t ReservedBytes)
 {
     // A reserve of zero would make a full ring indistinguishable from an empty one, and a
     // reserve of the whole buffer would leave a ring that can never hold anything.
-    if (Ring == NULL || Base == NULL || Reserve == 0 || Reserve >= Size)
+    if (Ring == NULL || Base == NULL || ReservedBytes == 0 || ReservedBytes >= Size)
         return -1;
 
     Ring->Base = Base;
     Ring->Size = Size;
-    Ring->MaxLoad = Size - Reserve;
+    Ring->MaxLoad = Size - ReservedBytes;
     Ring->ReadOffset = 0;
     Ring->WriteOffset = 0;
     return 0;
@@ -84,9 +84,9 @@ size_t DtRing_Load(const DtRing* Ring)
     return (Ring->WriteOffset + Ring->Size - Ring->ReadOffset) % Ring->Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtRing_Room -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t DtRing_Free(const DtRing* Ring)
+size_t DtRing_Room(const DtRing* Ring)
 {
     if (Ring == NULL || Ring->Base == NULL)
         return 0;

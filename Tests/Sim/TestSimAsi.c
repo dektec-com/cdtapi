@@ -59,7 +59,7 @@ static DtapiResult Configure(OsDrv* Drv, int Index, int Group, int Value, int Su
 static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     DtVec_Init(&Fix->Rx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->RxDma.Objects, sizeof(DtFuncObject));
@@ -88,13 +88,15 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close(Fix->Drv);
         return false;
     }
-    Fix->AsiRx = DtFunc_Get(&Fix->Rx, true, DT_FUNC_TYPE_ASIRX, "")->Ref;
-    Fix->RxCdmac = DtFunc_Get(&Fix->RxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Ref;
-    Fix->RxBurst = DtFunc_Get(&Fix->RxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Ref;
-    Fix->AsiTxG = DtFunc_Get(&Fix->Tx, false, DT_BLOCK_TYPE_ASITXG, "")->Ref;
-    Fix->TxPhy = DtFunc_Get(&Fix->Tx, true, DT_FUNC_TYPE_SDITXPHY, "")->Ref;
-    Fix->TxCdmac = DtFunc_Get(&Fix->TxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Ref;
-    Fix->TxBurst = DtFunc_Get(&Fix->TxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Ref;
+    Fix->AsiRx = DtFunc_FindObject(&Fix->Rx, true, DT_FUNC_TYPE_ASIRX, "")->Object;
+    Fix->RxCdmac = DtFunc_FindObject(&Fix->RxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Object;
+    Fix->RxBurst =
+        DtFunc_FindObject(&Fix->RxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Object;
+    Fix->AsiTxG = DtFunc_FindObject(&Fix->Tx, false, DT_BLOCK_TYPE_ASITXG, "")->Object;
+    Fix->TxPhy = DtFunc_FindObject(&Fix->Tx, true, DT_FUNC_TYPE_SDITXPHY, "")->Object;
+    Fix->TxCdmac = DtFunc_FindObject(&Fix->TxDma, false, DT_BLOCK_TYPE_CDMAC, "")->Object;
+    Fix->TxBurst =
+        DtFunc_FindObject(&Fix->TxDma, false, DT_BLOCK_TYPE_BURSTFIFO, "")->Object;
     return true;
 }
 
@@ -122,7 +124,7 @@ static bool Acquire(Fixture* Fix)
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // Whether the last command was Cmd of FunctionCode for Object, with an input of

@@ -1452,14 +1452,14 @@ static DtapiResult FindDriverBlocks(DtSdiTx* Sdi)
         if (!Objects[i].Needed && !Optional)
             continue;
         const DtFuncObject* Object =
-            DtFunc_Get(Objects[i].Instance, Objects[i].IsDriverFunction, Objects[i].Type,
-                       Objects[i].Role);
+            DtFunc_FindObject(Objects[i].Instance, Objects[i].IsDriverFunction,
+                              Objects[i].Type, Objects[i].Role);
 
         if (Object == NULL && !Optional)
             Result = DTAPI_E_NOT_FOUND;
         else if (Object != NULL)
         {
-            *Objects[i].Object = Object->Ref;
+            *Objects[i].Object = Object->Object;
             Result =
                 DtFunc_CheckDriverVersion(&Sdi->Tx.Port.Device->DriverVersion,
                                           Objects[i].IsDriverFunction, Objects[i].Type);

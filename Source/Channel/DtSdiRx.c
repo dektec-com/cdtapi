@@ -621,7 +621,7 @@ static DtapiResult DetectIoStd(DtRx* Rx, int* Value, int* SubValue)
     DtDetVidStd Info;
     DtAvInput Input;
 
-    DtAvInput_SetUnknown(&Info);
+    DtDetVidStd_SetUnknown(&Info);
     DtapiResult Result = DtAvInput_Attach(&Input, Rx->Port.Device, Rx->Port.Port);
     if (Result == DTAPI_OK)
         Result = DtAvInput_DetectVidStd(&Input, &Info);
@@ -899,8 +899,10 @@ DtapiResult DtSdiRx_Attach(const DtRxAttachedPort* Port, const DtIoConfig* IoStd
         DtAlloc_Free(Sdi);
         return Result;
     }
-    const DtFuncObject* SdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_SDIRX, "");
-    const DtFuncObject* ChSdiRx = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
+    const DtFuncObject* SdiRx =
+        DtFunc_FindObject(&Instance, true, DT_FUNC_TYPE_SDIRX, "");
+    const DtFuncObject* ChSdiRx =
+        DtFunc_FindObject(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
     Result = SdiRx == NULL || ChSdiRx == NULL ? DTAPI_E_NOT_FOUND : DTAPI_OK;
     if (Result == DTAPI_OK)
         Result = DtFunc_CheckDriverVersion(&Port->Device->DriverVersion, true,
@@ -909,7 +911,7 @@ DtapiResult DtSdiRx_Attach(const DtRxAttachedPort* Port, const DtIoConfig* IoStd
         Result = DtFunc_CheckDriverVersion(&Port->Device->DriverVersion, true,
                                            DT_FUNC_TYPE_CHSDIRX);
     if (Result == DTAPI_OK)
-        Sdi->ChSdiRx = ChSdiRx->Ref;
+        Sdi->ChSdiRx = ChSdiRx->Object;
     DtFunc_Release(&Instance);
     if (Result != DTAPI_OK)
     {

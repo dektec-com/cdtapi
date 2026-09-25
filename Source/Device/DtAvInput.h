@@ -46,7 +46,7 @@ DtapiResult DtAvInput_Attach(DtAvInput* Input, DtDevice* Device, int Port);
 
 // Sets every field of *Info to unknown: the standards to DTAPI_VIDSTD_UNKNOWN, the link
 // standards and link number to -1, the VPIDs to 0 and the aspect ratio to DT_AR_UNKNOWN.
-void DtAvInput_SetUnknown(DtDetVidStd* Info);
+void DtDetVidStd_SetUnknown(DtDetVidStd* Info);
 
 // Detects the video standard on an attached input. Sets every field of *Info to unknown
 // first; returns DTAPI_OK with the standard, or with it unknown when the receiver reports

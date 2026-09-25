@@ -432,14 +432,14 @@ static DtapiResult FindSlaves(DtAsiTx* Asi)
         if (Result == DTAPI_OK)
         {
             const DtFuncObject* Phy =
-                DtFunc_Get(&Slave.Function, true, DT_FUNC_TYPE_SDITXPHY, "");
+                DtFunc_FindObject(&Slave.Function, true, DT_FUNC_TYPE_SDITXPHY, "");
             const DtFuncObject* Txp =
-                DtFunc_Get(&Slave.Function, false, DT_BLOCK_TYPE_SDITXP, "");
+                DtFunc_FindObject(&Slave.Function, false, DT_BLOCK_TYPE_SDITXP, "");
             Result = Phy == NULL ? DTAPI_E_NOT_FOUND : DTAPI_OK;
             if (Phy != NULL)
-                Slave.Phy = Phy->Ref;
+                Slave.Phy = Phy->Object;
             if (Txp != NULL)
-                Slave.Txp = Txp->Ref;
+                Slave.Txp = Txp->Object;
         }
         if (DtVec_Push(&Asi->Slaves, &Slave) != 0)
         {
@@ -1109,24 +1109,24 @@ static DtapiResult FindDriverBlocks(DtAsiTx* Asi)
         return Result;
 
     const DtFuncObject* Cdmac =
-        DtFunc_Get(&Asi->DmaFunction, false, DT_BLOCK_TYPE_CDMAC, "");
+        DtFunc_FindObject(&Asi->DmaFunction, false, DT_BLOCK_TYPE_CDMAC, "");
     const DtFuncObject* Burst =
-        DtFunc_Get(&Asi->DmaFunction, false, DT_BLOCK_TYPE_BURSTFIFO, "");
+        DtFunc_FindObject(&Asi->DmaFunction, false, DT_BLOCK_TYPE_BURSTFIFO, "");
     const DtFuncObject* Gate =
-        DtFunc_Get(&Asi->TxFunction, false, DT_BLOCK_TYPE_ASITXG, "");
+        DtFunc_FindObject(&Asi->TxFunction, false, DT_BLOCK_TYPE_ASITXG, "");
     const DtFuncObject* Phy =
-        DtFunc_Get(&Asi->TxFunction, true, DT_FUNC_TYPE_SDITXPHY, "");
+        DtFunc_FindObject(&Asi->TxFunction, true, DT_FUNC_TYPE_SDITXPHY, "");
     const DtFuncObject* Ser =
-        DtFunc_Get(&Asi->TxFunction, false, DT_BLOCK_TYPE_ASITXSER, "");
+        DtFunc_FindObject(&Asi->TxFunction, false, DT_BLOCK_TYPE_ASITXSER, "");
     if (Cdmac == NULL || Burst == NULL || Gate == NULL || (Phy == NULL && Ser == NULL))
         return DTAPI_E_NOT_FOUND;
-    Asi->Cdmac = Cdmac->Ref;
-    Asi->BurstFifo = Burst->Ref;
-    Asi->AsiTxG = Gate->Ref;
+    Asi->Cdmac = Cdmac->Object;
+    Asi->BurstFifo = Burst->Object;
+    Asi->AsiTxG = Gate->Object;
     if (Phy != NULL)
-        Asi->Phy = Phy->Ref;
+        Asi->Phy = Phy->Object;
     if (Ser != NULL)
-        Asi->Ser = Ser->Ref;
+        Asi->Ser = Ser->Object;
 
     Result = DtFunc_CheckDriverVersion(Version, false, DT_BLOCK_TYPE_CDMAC);
     if (Result == DTAPI_OK)

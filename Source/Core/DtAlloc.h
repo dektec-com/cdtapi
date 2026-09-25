@@ -36,7 +36,7 @@ void DtAlloc_FailAfter(int Count);
 
 // How many allocations have been made since the last DtAlloc_ResetCount. Lets a test
 // assert that the path it meant to exercise really did allocate.
-int DtAlloc_Count(void);
+int DtAlloc_NumAllocations(void);
 
 // Sets the count back to zero and disarms any pending injection.
 void DtAlloc_ResetCount(void);
@@ -44,7 +44,7 @@ void DtAlloc_ResetCount(void);
 // How many blocks allocated through the seam have not been freed. A test compares it
 // before and after an operation to find a leak, which matters on platforms where no leak
 // sanitizer runs. DtAlloc_ResetCount does not change it.
-int DtAlloc_Live(void);
+int DtAlloc_NumLive(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

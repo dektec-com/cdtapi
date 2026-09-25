@@ -52,7 +52,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetTxRealTime(false);
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Device = DtDevice_Alloc();
     Fix->Channel = DtInpChannel_Alloc();
     Fix->Buffer = (uint8_t*)malloc(BUFFER_SIZE);
@@ -84,7 +84,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // Restarts the source with packets of Size bytes from number 0, pieces without sync

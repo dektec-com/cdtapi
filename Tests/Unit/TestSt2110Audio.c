@@ -162,7 +162,7 @@ DT_TEST(ConfigurationChecks)
 DT_TEST(SamplesAcrossFrames)
 {
     static MemSink Sink;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DtSt2110AudioTx Tx;
     const St2110_TxConfigAudio Config = {St2110_AudioFormat_L24BE, 2, 125, 48000};
@@ -228,13 +228,13 @@ DT_TEST(SamplesAcrossFrames)
     DtSt2110AudioTx_Reset(&Tx);
     DT_ASSERT_EQ(Tx.LeftOver, 0);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(InvalidAndRawFrames)
 {
     static MemSink Sink;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DtSt2110AudioTx Tx;
     St2110_TxConfigAudio Config = {St2110_AudioFormat_L16BE, 2, 48, 48000};
@@ -275,7 +275,7 @@ DT_TEST(InvalidAndRawFrames)
     DT_ASSERT_EQ(Sink.Count, 1);
 
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -301,7 +301,7 @@ DT_TEST(ReceivedPacketsAreFrames)
 {
     static MemSink Sink;
     static Collected Got;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool TxPool;
     DtAvFramePool RxPool;
     DtSt2110AudioTx Tx;
@@ -363,7 +363,7 @@ DT_TEST(ReceivedPacketsAreFrames)
 
     DtAvFramePool_Destroy(&TxPool);
     DtAvFramePool_Destroy(&RxPool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST_MAIN("St2110Audio", DT_RUN(ConfigurationChecks), DT_RUN(SamplesAcrossFrames),

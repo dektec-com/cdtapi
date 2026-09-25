@@ -46,7 +46,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
     SimDtPcie_SetTxRealTime(false);
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     DtVec_Init(&Fix->Tx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->Dma.Objects, sizeof(DtFuncObject));
@@ -74,22 +74,24 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
         SimDtPcie_Reset();                                                               \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // The object of Instance at Index.
 static DtDrvObject RefAt(const DtFuncInstance* Instance, size_t Index)
 {
-    return DT_VEC_AT(&Instance->Objects, DtFuncObject, Index).Ref;
+    return DT_VEC_AT(&Instance->Objects, DtFuncObject, Index).Object;
 }
 
-// The object of Instance with IsDf, Type and Role; with UUID 0 when there is none.
-static DtDrvObject RefOf(const DtFuncInstance* Instance, bool IsDf, int Type,
+// The object of Instance with IsDriverFunction, Type and Role; with UUID 0 when there is
+// none.
+static DtDrvObject RefOf(const DtFuncInstance* Instance, bool IsDriverFunction, int Type,
                          const char* Role)
 {
-    const DtFuncObject* Object = DtFunc_Get(Instance, IsDf, Type, Role);
+    const DtFuncObject* Object =
+        DtFunc_FindObject(Instance, IsDriverFunction, Type, Role);
     const DtDrvObject None = {0, PORT};
-    return Object != NULL ? Object->Ref : None;
+    return Object != NULL ? Object->Object : None;
 }
 
 // The objects a transmit channel drives.

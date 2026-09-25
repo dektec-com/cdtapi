@@ -25,7 +25,7 @@ static const char* Describe(int TypeNumber, int SubType, int Port)
 {
     static char Buf[MAX_DEVICE_DESC_SIZE];
 
-    if (DtDevice_Describe(TypeNumber, SubType, Port, Buf, sizeof(Buf)) != DTAPI_OK)
+    if (DtDevice_FormatPortName(TypeNumber, SubType, Port, Buf, sizeof(Buf)) != DTAPI_OK)
         return "(failed)";
     return Buf;
 }
@@ -59,12 +59,12 @@ DT_TEST(DescriptionMustFit)
 {
     char Buf[16];
 
-    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, Buf, 15), DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(DtDevice_FormatPortName(2178, 0, 1, Buf, 15), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_STR(Buf, "");
-    DT_ASSERT_OK(DtDevice_Describe(2178, 0, 1, Buf, 16));
+    DT_ASSERT_OK(DtDevice_FormatPortName(2178, 0, 1, Buf, 16));
     DT_ASSERT_STR(Buf, "DTA-2178 port 1");
-    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, NULL, 16), DTAPI_E_INVALID_BUF);
-    DT_ASSERT_EQ(DtDevice_Describe(2178, 0, 1, Buf, 0), DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtDevice_FormatPortName(2178, 0, 1, NULL, 16), DTAPI_E_INVALID_BUF);
+    DT_ASSERT_EQ(DtDevice_FormatPortName(2178, 0, 1, Buf, 0), DTAPI_E_INVALID_BUF);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Driver version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

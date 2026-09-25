@@ -257,20 +257,22 @@ static uint32_t TodClkCtrlCmd(int Cmd, size_t InSize, void* Out, size_t* OutSize
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimClocks_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint32_t SimClocks_Cmd(int FunctionCode, bool IsDf, int Type, const char* Role, int Cmd,
-                       const void* In, size_t InSize, void* Out, size_t* OutSize)
+uint32_t SimClocks_Cmd(int FunctionCode, bool IsDriverFunction, int Type,
+                       const char* Role, int Cmd, const void* In, size_t InSize,
+                       void* Out, size_t* OutSize)
 {
-    if (FunctionCode == DT_FUNC_CODE_GENLOCKCTRL_CMD && IsDf &&
+    if (FunctionCode == DT_FUNC_CODE_GENLOCKCTRL_CMD && IsDriverFunction &&
         Type == DT_FUNC_TYPE_GENLOCKCTRL)
     {
         return GenlockCmd(Cmd, In, InSize, Out, OutSize);
     }
-    if (FunctionCode == DT_FUNC_CODE_TODCLOCKCTRL_CMD && IsDf &&
+    if (FunctionCode == DT_FUNC_CODE_TODCLOCKCTRL_CMD && IsDriverFunction &&
         Type == DT_FUNC_TYPE_TODCLKCTRL)
     {
         return TodClkCtrlCmd(Cmd, InSize, Out, OutSize);
     }
-    if (FunctionCode == DT_FUNC_CODE_CLKCNT_CMD && !IsDf && Type == DT_BLOCK_TYPE_CLKCNT)
+    if (FunctionCode == DT_FUNC_CODE_CLKCNT_CMD && !IsDriverFunction &&
+        Type == DT_BLOCK_TYPE_CLKCNT)
         return ClkCntCmd(Role, Cmd, InSize, Out, OutSize);
     return DT_STATUS_NOT_SUPPORTED;
 }

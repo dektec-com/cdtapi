@@ -47,7 +47,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     const DtFuncObject* Object;
 
     SimDtPcie_Reset();
-    Fix->Live = DtAlloc_Live();
+    Fix->Live = DtAlloc_NumLive();
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     memset(&Fix->Ch, 0, sizeof(Fix->Ch));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
@@ -58,9 +58,9 @@ static bool Open(Fixture* Fix, int* DtFailures)
         OsDrv_Close(Fix->Drv);
         return false;
     }
-    Object = DtFunc_Get(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
+    Object = DtFunc_FindObject(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
     if (Object != NULL)
-        Fix->Ch = Object->Ref;
+        Fix->Ch = Object->Object;
     DtFunc_Release(&Instance);
     return Object != NULL;
 }
@@ -71,7 +71,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     {                                                                                    \
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), (Fix).Live);                                        \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
 // A configuration for VidStd with a ring of at least RingSize bytes.

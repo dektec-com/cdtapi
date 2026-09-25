@@ -51,9 +51,9 @@ static OsDrv* OpenDevice(DtDrvObject* Nw)
     DtVec_Init(&Af.Objects, sizeof(DtFuncObject));
     if (Drv != NULL && DtFunc_Find(Drv, PORT, "AF_NW", "", &Af) == DTAPI_OK)
     {
-        const DtFuncObject* Object = DtFunc_Get(&Af, true, DT_FUNC_TYPE_NW, "");
+        const DtFuncObject* Object = DtFunc_FindObject(&Af, true, DT_FUNC_TYPE_NW, "");
         if (Object != NULL)
-            *Nw = Object->Ref;
+            *Nw = Object->Object;
     }
     DtFunc_Release(&Af);
     return Drv;
@@ -95,7 +95,7 @@ static void ParsePacket(void* Context, const uint8_t* Packet, int Size)
 
 DT_TEST(OpenBufferClose)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtDrvObject Nw;
     OsDrv* Drv = OpenDevice(&Nw);
     DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
@@ -133,14 +133,14 @@ DT_TEST(OpenBufferClose)
     OsDrv_Close(Drv);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
     SimDtPcie_Reset();
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // Eight frames of 320x240 8-bit video through buffers a frame and a half long; the
 // parser learns the size from the first, so seven arrive.
 DT_TEST(FramesAroundTheBuffers)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtDrvObject Nw;
     OsDrv* Drv = OpenDevice(&Nw);
     DT_ASSERT(Drv != NULL && Nw.Uuid != 0);
@@ -283,7 +283,7 @@ DT_TEST(FramesAroundTheBuffers)
     OsDrv_Close(Drv);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
     SimDtPcie_Reset();
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST_MAIN("SimAvPipe", DT_RUN(OpenBufferClose), DT_RUN(FramesAroundTheBuffers))

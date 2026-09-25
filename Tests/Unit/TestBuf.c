@@ -25,17 +25,17 @@ typedef struct ReleaseRecord
     int Calls;
     uint8_t* Data;
     size_t Size;
-    void* Opaque;
+    void* Context;
 } ReleaseRecord;
 
 static ReleaseRecord g_Record;
 
-static void RecordingRelease(void* Opaque, uint8_t* Data, size_t Size)
+static void RecordingRelease(void* Context, uint8_t* Data, size_t Size)
 {
     g_Record.Calls++;
     g_Record.Data = Data;
     g_Record.Size = Size;
-    g_Record.Opaque = Opaque;
+    g_Record.Context = Context;
 }
 
 static void ResetRecord(void)
@@ -112,7 +112,7 @@ DT_TEST(ReleaseRunsOnceAtLastReference)
     DT_ASSERT_EQ(g_Record.Calls, 1);
     DT_ASSERT(g_Record.Data == Bytes);
     DT_ASSERT_EQ(g_Record.Size, sizeof(Bytes));
-    DT_ASSERT(g_Record.Opaque == &Marker);
+    DT_ASSERT(g_Record.Context == &Marker);
 }
 
 DT_TEST(WrapAcceptsNoReleaseFunction)

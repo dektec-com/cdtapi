@@ -307,7 +307,7 @@ DT_TEST(ConfigurationChecks)
 static void CheckTransmit(const St2110_TxConfigVideo* Config, bool Gapped,
                           int* DtFailures)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtSt2110VideoTx Tx;
     DtAvTxStream S = Stream();
     DtAvFramePool Pool;
@@ -371,7 +371,7 @@ static void CheckTransmit(const St2110_TxConfigVideo* Config, bool Gapped,
     free(Image);
     Sink_Free(&Sink);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(Transmit1080p10Bit)
@@ -431,7 +431,7 @@ DT_TEST(TransmitOneLinePerPacket)
 // first field's timestamp; a frame of the wrong size sends nothing.
 DT_TEST(FieldsAndPsf)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     St2110_TxConfigVideo Config = {
         St2110_TxFrameFormat_Uyvy422_8b,
         {0, St2110_PackingMode_General, -1},
@@ -495,13 +495,13 @@ DT_TEST(FieldsAndPsf)
     free(Image);
     Sink_Free(&Sink);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // Raw 4:2:0 rows of pixel groups: row numbers step by two.
 DT_TEST(Raw420Rows)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     St2110_TxConfigRawVideo Raw;
     memset(&Raw, 0, sizeof(Raw));
     Raw.Is420 = 1;
@@ -542,7 +542,7 @@ DT_TEST(Raw420Rows)
 
     Sink_Free(&Sink);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -689,7 +689,7 @@ static void SendFrame(Maker* M, DtSt2110VideoRx* Rx, const uint8_t* Frame, uint3
 // Frames of 8-bit video, 32 pixels by 10 rows, in packets of 24 bytes.
 DT_TEST(ReceiveLearnsAndCountsFaults)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAvFramePool Pool;
     DT_ASSERT_OK(DtAvFramePool_Init(&Pool));
     static Collected Got;
@@ -774,7 +774,7 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
 
     DtSt2110VideoRx_Reset(&Rx);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // Frames transmitted by the packetizer and received by the parser, in each receive
@@ -783,7 +783,7 @@ DT_TEST(ReceiveLearnsAndCountsFaults)
 static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat RxFormat,
                           St2110_VideoScanning Scanning, int* DtFailures)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     const St2110_TxConfigVideo Config = {TxFormat,
                                          {0, St2110_PackingMode_General, -1},
                                          {1920, 1080},
@@ -878,7 +878,7 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
     DtSt2110VideoRx_Reset(&Rx);
     Sink_Free(&Sink);
     DtAvFramePool_Destroy(&Pool);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(Loopback10Bit)

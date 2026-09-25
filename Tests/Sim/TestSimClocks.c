@@ -33,7 +33,7 @@
 static OsDrv* OpenSim(int* DtFailures, int* Live)
 {
     SimDtPcie_Reset();
-    *Live = DtAlloc_Live();
+    *Live = DtAlloc_NumLive();
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
     {
@@ -45,18 +45,19 @@ static OsDrv* OpenSim(int* DtFailures, int* Live)
     return Drv;
 }
 
-// The object of the device's API function Name that is a driver function when IsDf, of
-// Type and with Role; false when there is none.
-static bool FindObject(OsDrv* Drv, const char* Name, bool IsDf, int Type,
+// The object of the device's API function Name that is a driver function when
+// IsDriverFunction, of Type and with Role; false when there is none.
+static bool FindObject(OsDrv* Drv, const char* Name, bool IsDriverFunction, int Type,
                        const char* Role, DtDrvObject* Ref)
 {
     DtFuncInstance Instance;
 
     if (DtFunc_Find(Drv, DT_PROPERTY_DEVICE, Name, "", &Instance) != DTAPI_OK)
         return false;
-    const DtFuncObject* Object = DtFunc_Get(&Instance, IsDf, Type, Role);
+    const DtFuncObject* Object =
+        DtFunc_FindObject(&Instance, IsDriverFunction, Type, Role);
     if (Object != NULL)
-        *Ref = Object->Ref;
+        *Ref = Object->Object;
     DtFunc_Release(&Instance);
     return Object != NULL;
 }
@@ -67,7 +68,7 @@ static bool FindObject(OsDrv* Drv, const char* Name, bool IsDf, int Type,
     {                                                                                    \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Objects +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -387,7 +388,7 @@ DT_TEST(TimeOfDayStatesConvert)
 // a failure, when that is not possible.
 static DtDevice* AttachSim(int* DtFailures, int* Live)
 {
-    *Live = DtAlloc_Live();
+    *Live = DtAlloc_NumLive();
     DtDevice* Device = DtDevice_Alloc();
     if (Device == NULL || DtDevice_AttachToSerial(Device, SIM_SERIAL) != DTAPI_OK)
     {
@@ -405,7 +406,7 @@ static DtDevice* AttachSim(int* DtFailures, int* Live)
     {                                                                                    \
         DtDevice_Freep(&(Device));                                                       \
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);                                              \
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
 // The states come through the device as the commands give them.

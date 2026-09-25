@@ -15,13 +15,13 @@
 DT_TEST(AllocationsAreCounted)
 {
     DtAlloc_ResetCount();
-    DT_ASSERT_EQ(DtAlloc_Count(), 0);
+    DT_ASSERT_EQ(DtAlloc_NumAllocations(), 0);
 
     void* First = DtAlloc_Malloc(16);
     void* Second = DtAlloc_Malloc(16);
     DT_ASSERT(First != NULL);
     DT_ASSERT(Second != NULL);
-    DT_ASSERT_EQ(DtAlloc_Count(), 2);
+    DT_ASSERT_EQ(DtAlloc_NumAllocations(), 2);
 
     DtAlloc_Free(First);
     DtAlloc_Free(Second);
@@ -58,7 +58,7 @@ DT_TEST(ReallocGrowsThroughTheSeam)
     Ptr = (unsigned char*)DtAlloc_Realloc(Ptr, 64);
     DT_ASSERT(Ptr != NULL);
     DT_ASSERT_EQ(Ptr[0], 0x42);
-    DT_ASSERT_EQ(DtAlloc_Count(), 2);
+    DT_ASSERT_EQ(DtAlloc_NumAllocations(), 2);
 
     DtAlloc_Free(Ptr);
     DtAlloc_ResetCount();
@@ -93,20 +93,20 @@ DT_TEST(ResetDisarmsInjection)
 // make another, and neither does a failed allocation or freeing NULL.
 DT_TEST(LiveBlocksAreCounted)
 {
-    int Before = DtAlloc_Live();
+    int Before = DtAlloc_NumLive();
 
     void* Block = DtAlloc_Malloc(16);
-    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Before + 1);
 
     void* Grown = DtAlloc_Realloc(Block, 64);
     DT_ASSERT(Grown != NULL);
-    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Before + 1);
 
     DtAlloc_Free(Grown);
-    DT_ASSERT_EQ(DtAlloc_Live(), Before);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Before);
 
     Block = DtAlloc_Realloc(NULL, 8);
-    DT_ASSERT_EQ(DtAlloc_Live(), Before + 1);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Before + 1);
     DtAlloc_Free(Block);
 
     DtAlloc_ResetCount();
@@ -115,19 +115,19 @@ DT_TEST(LiveBlocksAreCounted)
     DtAlloc_FailAfter(0);
     DT_ASSERT(DtAlloc_Realloc(NULL, 8) == NULL);
     DtAlloc_Free(NULL);
-    DT_ASSERT_EQ(DtAlloc_Live(), Before);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Before);
     DtAlloc_ResetCount();
 }
 
 DT_TEST(FreeAcceptsNull)
 {
     DtAlloc_ResetCount();
-    int Before = DtAlloc_Count();
+    int Before = DtAlloc_NumAllocations();
 
     DtAlloc_Free(NULL);
 
     // Freeing nothing must neither crash nor be counted as an allocation.
-    DT_ASSERT_EQ(DtAlloc_Count(), Before);
+    DT_ASSERT_EQ(DtAlloc_NumAllocations(), Before);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

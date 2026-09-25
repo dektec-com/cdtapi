@@ -33,10 +33,10 @@ typedef struct DtFuncObject
 {
     char Name[DT_PROPERTY_STR_SIZE]; // Such as DF_SDIRX#1
     char Role[DT_PROPERTY_STR_SIZE]; // Empty for the object's plain role
-    bool IsDf;                       // A driver function, otherwise a building block
+    bool IsDriverFunction;           // A driver function, otherwise a building block
     int FuncOrBlockType;             // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value,
-                                     // whichever IsDf says
-    DtDrvObject Ref;                 // What commands to the object go to
+                                     // whichever IsDriverFunction says
+    DtDrvObject Object;              // What commands to the object go to
 } DtFuncObject;
 
 typedef struct DtFuncInstance
@@ -60,11 +60,12 @@ DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char*
 // Frees the objects of an instance, which is then empty.
 void DtFunc_Release(DtFuncInstance* Instance);
 
-// The object of the instance that is a driver function when IsDf, or a building block
-// otherwise, of Type and with Role; NULL when there is none. The objects are walked from
-// the back, so a later object of the same type and role wins.
-const DtFuncObject* DtFunc_Get(const DtFuncInstance* Instance, bool IsDf,
-                               int FuncOrBlockType, const char* Role);
+// The object of the instance that is a driver function when IsDriverFunction, or a
+// building block otherwise, of Type and with Role; NULL when there is none. The objects
+// are walked from the back, so a later object of the same type and role wins.
+const DtFuncObject* DtFunc_FindObject(const DtFuncInstance* Instance,
+                                      bool IsDriverFunction, int FuncOrBlockType,
+                                      const char* Role);
 
 // Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every object
 // of the instance. An object that does not support it is passed over. The first other
@@ -75,5 +76,5 @@ DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cm
 // Checks that the driver is new enough for an object before it is used: DTAPI_OK,
 // DTAPI_E_DRIVER_INCOMP when it is older, and DTAPI_E_INTERNAL for a type the table does
 // not have. The table holds the types CDTAPI uses.
-DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version, bool IsDf,
-                                      int Type);
+DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version,
+                                      bool IsDriverFunction, int Type);

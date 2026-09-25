@@ -87,7 +87,7 @@ DT_TEST(RefusesBadArguments)
 DT_TEST(CountsWithoutAnArray)
 {
     int Count = -1;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -95,7 +95,7 @@ DT_TEST(CountsWithoutAnArray)
     DT_ASSERT_EQ(DtapiDeviceScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, 1);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // A zero-sized array that is not NULL is also allowed, and left alone.
@@ -174,7 +174,7 @@ DT_TEST(DescribesTheCard)
 {
     static const unsigned char Zero[sizeof(((DtDeviceDesc*)0)->IpV6)] = {0};
     DtDeviceDesc Desc;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     if (!StartSim(DtFailures) || !ScanOne(&Desc, DtFailures))
         return;
@@ -214,7 +214,7 @@ DT_TEST(DescribesTheCard)
     DT_ASSERT_EQ(Desc.PcieMaxReadRequestSize, SIM_PCIE_MAX_READ_REQUEST_SIZE);
     DT_ASSERT_EQ(Desc.PcieMaxSlotPower, SIM_PCIE_MAX_SLOT_POWER);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // A driver without GET_DEV_INFO2 describes the same device, without the slot power.

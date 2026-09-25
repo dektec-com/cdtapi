@@ -102,7 +102,7 @@ static int Direction(int Port, int* SubValue)
 DT_TEST(ScanCountsThePorts)
 {
     int Count = -1;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -110,7 +110,7 @@ DT_TEST(ScanCountsThePorts)
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 // Every port of the card, as the scan describes a hardware function: capabilities,
@@ -253,7 +253,7 @@ DT_TEST(ScanLeavesOutDevicesItCannotAttach)
 DT_TEST(ScanSurvivesAllocationFailure)
 {
     int Count = -1;
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     if (!StartSim(DtFailures))
         return;
@@ -262,7 +262,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
     DtAlloc_ResetCount();
     DtHwFuncDesc Funcs[SIM_PORT_COUNT];
     DT_ASSERT_OK(DtapiHwFuncScan(SIM_PORT_COUNT, &Count, Funcs));
-    int Needed = DtAlloc_Count();
+    int Needed = DtAlloc_NumAllocations();
     DT_ASSERT(Needed > 0);
 
     for (int Fail = 0; Fail < Needed; Fail++)
@@ -279,7 +279,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
         if (Result == DTAPI_OK && Count != 0 && Count != SIM_PORT_COUNT)
             DT_FAIL("allocation %d failing gave %d ports", Fail, Count);
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     }
 }
 
@@ -287,7 +287,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
 
 DT_TEST(AttachAndDetach)
 {
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtDevice* Device = AttachSim(DtFailures);
 
     if (Device == NULL)
@@ -303,7 +303,7 @@ DT_TEST(AttachAndDetach)
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
 DT_TEST(FreepDetachesAndClears)
@@ -378,7 +378,7 @@ DT_TEST(UnreadableDeviceIsNoSuchDevice)
         return;
 
     DtDevice* Device = DtDevice_Alloc();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO2, DT_STATUS_FAIL);
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_GET_DEV_INFO, DT_STATUS_FAIL);
@@ -408,7 +408,7 @@ DT_TEST(UnreadableDeviceIsNoSuchDevice)
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Detach(Device);
 
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
     DtDevice_Free(Device);
 }
@@ -530,12 +530,12 @@ DT_TEST(AttachSurvivesAllocationFailure)
         return;
 
     DtDevice* Device = DtDevice_Alloc();
-    int Live = DtAlloc_Live();
+    int Live = DtAlloc_NumLive();
     DtAlloc_ResetCount();
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
-    int Needed = DtAlloc_Count();
+    int Needed = DtAlloc_NumAllocations();
     DtDevice_Detach(Device);
-    DT_ASSERT_EQ(DtAlloc_Live(), Live);
+    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     DT_ASSERT(Needed >= 3);
 
     for (int Fail = 0; Fail < Needed; Fail++)
@@ -551,7 +551,7 @@ DT_TEST(AttachSurvivesAllocationFailure)
             DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
         DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
         DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
-        DT_ASSERT_EQ(DtAlloc_Live(), Live);
+        DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     }
     DtDevice_Free(Device);
 }

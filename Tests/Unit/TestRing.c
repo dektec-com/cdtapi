@@ -56,7 +56,7 @@ DT_TEST(StartsEmpty)
 
     DT_ASSERT_OK(DtRing_Init(&Ring, Base, RING_SIZE, 1));
     DT_ASSERT_EQ(DtRing_Load(&Ring), 0);
-    DT_ASSERT_EQ(DtRing_Free(&Ring), RING_SIZE - 1);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), RING_SIZE - 1);
     DT_ASSERT_EQ(DtRing_ReadOffset(&Ring), 0);
 }
 
@@ -186,7 +186,7 @@ DT_TEST(FullRingHoldsSizeMinusOne)
     DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, RING_SIZE - 1));
 
     DT_ASSERT_EQ(DtRing_Load(&Ring), RING_SIZE - 1);
-    DT_ASSERT_EQ(DtRing_Free(&Ring), 0);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
 }
 
 DT_TEST(ClearDropsEverythingAvailable)
@@ -238,7 +238,7 @@ DT_TEST(ManyLapsStayConsistent)
 DT_TEST(NullIsAcceptedEverywhere)
 {
     DT_ASSERT_EQ(DtRing_Load(NULL), 0);
-    DT_ASSERT_EQ(DtRing_Free(NULL), 0);
+    DT_ASSERT_EQ(DtRing_Room(NULL), 0);
     DT_ASSERT_EQ(DtRing_ReadOffset(NULL), 0);
     uint8_t Out[4];
     DT_ASSERT_EQ(DtRing_Peek(NULL, Out, 4), -1);
@@ -265,7 +265,7 @@ DT_TEST(ZeroedStructIsTreatedAsEmpty)
     memset(&Ring, 0, sizeof(Ring));
 
     DT_ASSERT_EQ(DtRing_Load(&Ring), 0);
-    DT_ASSERT_EQ(DtRing_Free(&Ring), 0);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
     DT_ASSERT_EQ(DtRing_SetWriteOffset(&Ring, 0), -1);
     uint8_t Out[4];
     DT_ASSERT_EQ(DtRing_Peek(&Ring, Out, 4), -1);
@@ -283,14 +283,14 @@ DT_TEST(ReserveOfOneDataWord)
     uint8_t Base[RING_SIZE];
 
     DT_ASSERT_OK(DtRing_Init(&Ring, Base, RING_SIZE, 8));
-    DT_ASSERT_EQ(DtRing_Free(&Ring), RING_SIZE - 8);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), RING_SIZE - 8);
 
     DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, 5));
     DT_ASSERT_EQ(DtRing_Load(&Ring), 5);
-    DT_ASSERT_EQ(DtRing_Free(&Ring), RING_SIZE - 8 - 5);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), RING_SIZE - 8 - 5);
 
     DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, RING_SIZE - 8));
-    DT_ASSERT_EQ(DtRing_Free(&Ring), 0);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
 }
 
 // A write offset that would fill the reserve cannot come from a consistent driver.

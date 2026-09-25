@@ -1025,7 +1025,7 @@ DT_TEST(OpenSurvivesAllocationFailure)
     DtAlloc_ResetCount();
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     DT_ASSERT(Drv != NULL);
-    DT_ASSERT_EQ(DtAlloc_Count(), 2);
+    DT_ASSERT_EQ(DtAlloc_NumAllocations(), 2);
     OsDrv_Close(Drv);
 }
 
