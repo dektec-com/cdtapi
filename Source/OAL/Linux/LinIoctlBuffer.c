@@ -43,10 +43,9 @@ int LinIoctlBuffer_Pack(bool HasSizeHeader, const void* In, size_t InSize, size_
     if (BufSize < LinIoctlBuffer_Size(HasSizeHeader, InSize, OutSize))
         return -1;
 
-    // Clear everything first. Without a size header the driver takes the structure size
-    // the IOCTL number encodes for both directions, which can be more than the input
-    // given, and must not find garbage there; with one it takes the sizes the header
-    // gives.
+    // Clear everything first: the output part must not carry what an earlier command
+    // left, and a driver that reads more input than was given, as one without a size
+    // header may, finds zeros rather than garbage.
     memset(Buf, 0, BufSize);
 
     if (HasSizeHeader)

@@ -84,7 +84,7 @@ bool SimDtPcie_AddNetInterface(uint32_t Index, const uint8_t* Mac, int VlanId,
 // Takes an interface away with its routes and neighbours.
 void SimDtPcie_RemoveNetInterface(uint32_t Index);
 
-// Makes an interface enabled or not, and connected or not.
+// Makes an interface enabled or not, and, while enabled, connected or not.
 void SimDtPcie_SetNetInterfaceUp(uint32_t Index, bool AdminUp, bool LinkUp);
 
 // Adds an address to an interface; false when Addr is NULL, there is no such interface,

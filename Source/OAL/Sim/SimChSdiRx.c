@@ -33,10 +33,6 @@
 // The faults SimRxFault numbers.
 #define SIM_RX_FAULT_COUNT 4
 
-// Symbols in the longest line the source writes: a raw 2160p50 line, which is four
-// 1080p50 lines. Without 4K the longest is 720p at 23.98 Hz, of 8250.
-#define SIM_RX_MAX_LINE_SYMBOLS 21120
-
 // The format events one read of the write offset delivers at most, on the clock: two
 // frames. A receiver that falls further behind drops the rest, and goes on from then.
 #define SIM_RX_MAX_DUE_EVENTS 8
@@ -574,7 +570,7 @@ static void NextEvent(SimRxChannel* Channel,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The sizes a command needs, as the driver's I/O stub checks them.
+// The sizes the driver checks a command against before carrying it out.
 static bool Fits(size_t InSize, size_t InNeeded, const void* Out, const size_t* OutSize,
                  size_t OutNeeded)
 {

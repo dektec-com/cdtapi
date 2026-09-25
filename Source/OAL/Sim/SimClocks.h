@@ -30,8 +30,8 @@
 void SimClocks_Reset(void);
 
 // Sets the genlock state, a DT_GENLOCKCTRL_STATE_ value, and the reference's configured
-// and detected video standards, DT_VIDSTD_ values. The top of frame is valid in any state
-// but no reference and an invalid one.
+// and detected video standards, DT_VIDSTD_ values. The top of frame is valid in every
+// state except no reference and an invalid one.
 void SimClocks_SetGenlock(int State, int RefVidStd, int DetVidStd);
 
 // Sets the time-of-day clock control's state, a DT_TODCLOCKCTRL_STATE_ value, its

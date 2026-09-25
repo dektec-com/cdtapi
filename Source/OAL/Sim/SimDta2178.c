@@ -209,8 +209,8 @@ static bool HasInstanceOn(const SimApiFunction* Api, int PortIndex)
 //
 // The emulator numbers the objects of one API function for all its instances, then those
 // of the next, and flags each UUID as the driver does. The numbers are its own; a real
-// card's depend on its whole layout. The device's functions come last, so that adding
-// them moved no port's numbers.
+// card's depend on its whole layout. The device's functions come last, so that the
+// ports' numbers do not depend on them.
 //
 static int FunctionUuid(int ApiIndex, int PortIndex, int Index)
 {

@@ -52,7 +52,7 @@ typedef struct SimAsiRx
 
 typedef struct SimAsiTx
 {
-    bool Running; // At the last drain
+    bool Running; // At the last SimAsi_SendFromBuffer
     bool HasSent; // Something went out since ASITXG started
     uint64_t LastMs;
     int Rd;
@@ -91,7 +91,8 @@ static struct
     bool TablesBuilt;
     int16_t DecodeTable[2][1024]; // Per running disparity; SIM_ASI_NO_CODE for none
     uint8_t NextRdTable[2][1024];
-    uint8_t Scratch[65536]; // What a drain takes from the card at a time
+    uint8_t Scratch
+        [65536]; // What SimAsi_SendFromBuffer takes from the transmit buffer at a time
 } g_Asi;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureAsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

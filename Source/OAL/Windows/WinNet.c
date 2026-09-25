@@ -32,7 +32,7 @@
 // interface has VLAN ID 0.
 //
 
-// The flags of GetAdaptersAddresses: nothing that is not read. The prefix length comes
+// The flags of GetAdaptersAddresses skip what is not read. The prefix length comes
 // with each unicast address, the gateway from the routing table.
 #define WIN_NET_ADAPTER_FLAGS                                                            \
     (GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER |        \
@@ -206,7 +206,8 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetGateway -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The default route through the interface with the lowest metric.
+// Of the default routes through the interface that have a next hop, the one with the
+// lowest metric.
 //
 static int GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
 {

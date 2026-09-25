@@ -24,9 +24,6 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The largest buffer the DMA controller takes.
-#define SIM_TX_MAX_BUFFER (256 * 1024 * 1024)
-
 // What the card takes from the buffer while nothing goes out: the burst FIFO and 16 KB,
 // as a DTA-2178's read offset showed.
 #define SIM_TX_PIPELINE (SIM_TX_BURST_FIFO_SIZE + 16384)
@@ -155,7 +152,8 @@ static void ClearFrame(SimTxPort* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StopPipeline -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The DMA controller goes idle: the pipeline empties and the read offset returns to 0.
+// The DMA controller goes idle: the pipeline empties, the read offset returns to 0, a
+// receive buffer's write offset too, and the sink forgets the frame it was receiving.
 //
 static void StopPipeline(SimTxPort* Port)
 {
@@ -595,7 +593,8 @@ static bool NextEvent(SimTxPort* Port, DtIoctlSdiTxFCmdWaitForFmtEventOutput* Ev
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// What the driver's I/O stub knows of a command: its sizes, whether it needs exclusive
+// The sizes the driver checks a command against before carrying it out, whether it needs
+// exclusive
 // access, and whether the block must be enabled.
 typedef struct SimTxCmdProps
 {
@@ -729,7 +728,8 @@ static uint32_t AllocateBuffer(SimTxPort* Port, void* Handle, const void* In, vo
     }
     else
     {
-        // The output grows by the buffer's size, as the driver's answer does.
+        // As on Windows the output buffer is the DMA buffer itself, so it must hold at
+        // least the size the request names.
         if (Request->m_BufferSize <= 0 || *OutSize < (size_t)Request->m_BufferSize)
             return DT_STATUS_INVALID_PARAMETER;
         Buffer = (uint8_t*)Out;

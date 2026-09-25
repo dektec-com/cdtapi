@@ -83,10 +83,15 @@
 //
 // A fault makes the emulated driver refuse or mangle commands of one function code, the
 // DT_FUNC_CODE_ number of an IOCTL, from then until the next reset. It is how the
-// failure paths of the layers above are exercised without a card. Faults for up to four
-// function codes can be active together; a second fault for the same code replaces the
-// first.
+// failure paths of the layers above are exercised without a card. Faults for up to
+// SIM_MAX_FAULTS function codes can be active together; a second fault for the same code
+// replaces the first.
 //
+
+// Faults for this many function codes, and overrides for this many properties, can be
+// active at once.
+#define SIM_MAX_FAULTS 4
+#define SIM_MAX_OVERRIDES 8
 
 // Restores the power-on state of the whole emulator: the default I/O configuration, the
 // index, firmware status and driver version above, and no signals, overrides, exclusive
@@ -100,8 +105,8 @@ void SimDtPcie_SetFirmwareStatus(int Status);
 void SimDtPcie_SetDriverVersion(int Major, int Minor, int Micro, int Build);
 
 // Replaces a property of the card: absent when Present is false, otherwise with Value.
-// Up to eight properties can be overridden together; overriding one again replaces the
-// earlier override.
+// Up to SIM_MAX_OVERRIDES properties can be overridden together; overriding one again
+// replaces the earlier override.
 void SimDtPcie_OverrideProperty(const char* Name, int PortIndex, bool Present,
                                 uint64_t Value);
 

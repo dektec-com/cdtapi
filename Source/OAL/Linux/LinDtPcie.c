@@ -111,8 +111,8 @@ static int IoctlThroughBlock(LinDevice* Dev, uint32_t Code, bool HasSizeHeader,
         return OS_IOCTL_COMMUNICATION;
     }
 
-    // The Linux driver does not report how much it wrote, so *OutSize is left as the
-    // caller set it. See the OsDrv_Ioctl contract.
+    // The Linux driver does not report how much it wrote, so Ioctl leaves the caller's
+    // *OutSize as it was. See the OsDrv_Ioctl contract.
     return OS_IOCTL_OK;
 }
 

@@ -21,10 +21,12 @@
 //   EMAC        the MAC address and the PHY speed are answered; the other commands are
 //               refused as not supported
 //   NW          opening and closing pipes are answered, the other commands refused. The
-//               driver keeps pipes 1 to 4 for its own queues, which opening their types
-//               finds in use; pipes 5 to 7 are the hardware transmit pipes and 8 to 10
-//               the hardware receive pipes, opened first free first; software pipes are
-//               created from 11 up to 2,047. Only IN_USE tries the fallback type. Closing
+//               driver keeps the pipes below SIM_NW_FIRST_TX_HWP for its own queues,
+//               which opening their types finds in use; the hardware transmit pipes run
+//               from SIM_NW_FIRST_TX_HWP and the hardware receive pipes from
+//               SIM_NW_FIRST_RX_HWP, opened first free first; software pipes are created
+//               from SIM_NW_FIRST_SWP up to SIM_NW_MAX_PIPES. Only IN_USE tries the
+//               fallback type. Closing
 //               checks the pipe exists, is in use and was opened by the handle, and a
 //               closing handle closes its pipes
 //   PIPE        every command except the events and the driver's own buffer, which are
@@ -41,9 +43,10 @@
 //
 //   transmit    a hardware transmit pipe in RUN hands its packets to the scheduler at
 //               once; a software transmit pipe in RUN only at the periodic interval,
-//               every 10 ms, and then only the packets whose time lies before the
-//               interval plus 15 ms, earliest first over all software pipes. A packet
-//               more than 10 s from the time sets invalid time and stops the pipe until
+//               every SIM_NW_INTERVAL_NS, and then only the packets whose time lies
+//               before SIM_NW_LOOKAHEAD_NS from now, earliest first over all software
+//               pipes. A packet more than SIM_NW_MAX_DELAY_NS from the card's time of
+//               day sets invalid time and stops the pipe until
 //               it is flushed. The scheduler sends each packet at its time, or at once
 //               when that has passed
 //   wire        the last SIM_NW_KEPT_PACKETS sent packets are kept for the tests, and,
@@ -68,7 +71,7 @@
 #define SIM_NW_INTERVAL_NS 10000000ull
 #define SIM_NW_LOOKAHEAD_NS (SIM_NW_INTERVAL_NS + SIM_NW_INTERVAL_NS / 2)
 
-// How far from the time a transmitted packet may be.
+// How far a transmitted packet's time may lie from the card's time of day.
 #define SIM_NW_MAX_DELAY_NS 10000000000ull
 
 // Pipe numbers: the first hardware transmit, hardware receive and software pipe, and the

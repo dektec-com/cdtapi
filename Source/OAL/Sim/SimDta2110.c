@@ -98,7 +98,8 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDta2110_GetString -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// AF_NW#1 gives its role, AF_NW#1.1 its object, and DF_NW#1 the object's role.
+// BC_IPSECG#1 gives its role at the device; AF_NW#1 gives its role, AF_NW#1.1 its object,
+// and DF_NW#1 the object's role.
 //
 bool SimDta2110_GetString(const char* Name, int PortIndex, const char** Str)
 {

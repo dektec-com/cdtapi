@@ -662,7 +662,7 @@ DT_TEST(BufferIsRegisteredBothWays)
 }
 
 // A buffer must start on a page, be a whole number of prefetch units, and be at most
-// 256 MB; one registered for receiving takes no transmit write offset.
+// SIM_TX_MAX_BUFFER; one registered for receiving takes no transmit write offset.
 DT_TEST(BufferRules)
 {
     Fixture Fix;

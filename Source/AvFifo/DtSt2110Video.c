@@ -351,7 +351,7 @@ DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
 
         int UdpPayload =
             DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE + NumHeaders * DT_AV_SRD_SIZE + Used;
-        uint64_t TodNs = (uint64_t)FirstTodNs + Offset / PS_PER_NS;
+        uint64_t TodNs = (uint64_t)FirstTodNs + Offset / DT_AV_PS_PER_NS;
         Sink->CommitPacket(Sink->Context, DtAvNet_WriteHeaders(&Stream->Net, Packet,
                                                                UdpPayload, 0, TodNs));
         Offset += Tx->PacketSpacingPs;

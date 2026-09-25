@@ -123,7 +123,7 @@ static uint8_t* Run(Fixture* Fix, int VidStd, int RingSize, int* Size, int* MaxL
 static bool LineAt(const uint8_t* Ring, size_t Offset, const DtSdiFrameLayout* Layout,
                    uint32_t Frame, int Line)
 {
-    uint16_t Symbols[8250];
+    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
     int Count = SimChSdiRx_Line(Layout->VidStd, Frame, Line, Symbols);
     int i;
 
@@ -586,7 +586,7 @@ DT_TEST(RefusesAndReportsStatus)
 // SD's timing references on the first and last line, as a frame check expects them.
 DT_TEST(SdTimingReferences)
 {
-    uint16_t Symbols[8250];
+    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
 
     int Count = SimChSdiRx_Line(DTAPI_VIDSTD_625I50, 3, 1, Symbols);
     DT_ASSERT_EQ(Count, 1728);
@@ -612,11 +612,11 @@ DT_TEST(SdTimingReferences)
 // HD's timing references carry the line number and a CRC per channel.
 DT_TEST(HdTimingReferences)
 {
-    uint16_t Line1[8250];
+    uint16_t Line1[SIM_RX_MAX_LINE_SYMBOLS];
 
     int Count = SimChSdiRx_Line(DTAPI_VIDSTD_1080I50, 9, 1, Line1);
     DT_ASSERT_EQ(Count, 5280);
-    uint16_t Again[8250];
+    uint16_t Again[SIM_RX_MAX_LINE_SYMBOLS];
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_1080I50, 9, 1, Again), Count);
     DT_ASSERT_MEM(Line1, Again, sizeof(uint16_t) * (size_t)Count);
     for (int c = 0; c < 2; c++)
@@ -634,7 +634,7 @@ DT_TEST(HdTimingReferences)
     }
     // The two channels' CRCs differ, and a line number above 127 uses LN1.
     DT_ASSERT(Line1[12] != Line1[13] || Line1[14] != Line1[15]);
-    uint16_t Line2[8250];
+    uint16_t Line2[SIM_RX_MAX_LINE_SYMBOLS];
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_1080I50, 9, 200, Line2), Count);
     DT_ASSERT_EQ(Line2[8], 0x120);
     DT_ASSERT_EQ(Line2[10], 0x204);
@@ -645,7 +645,7 @@ DT_TEST(HdTimingReferences)
 DT_TEST(FourKLine)
 {
     static uint16_t Raw[21120];
-    static uint16_t Links[4][8250];
+    static uint16_t Links[4][SIM_RX_MAX_LINE_SYMBOLS];
     static const int Order[4] = {3, 1, 2, 0};
 
     int Count = SimChSdiRx_Line(DTAPI_VIDSTD_2160P50, 7, 42, Raw);
@@ -670,7 +670,7 @@ DT_TEST(FourKLine)
 
 DT_TEST(LineRefusesWhatIsNot)
 {
-    uint16_t Symbols[8250];
+    uint16_t Symbols[SIM_RX_MAX_LINE_SYMBOLS];
 
     Symbols[0] = 0x123;
     DT_ASSERT_EQ(SimChSdiRx_Line(DTAPI_VIDSTD_2160P50B, 0, 1, Symbols), 0);

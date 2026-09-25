@@ -23,7 +23,8 @@
 //   ring         configuring allocates it, rounded up to whole multiples of the prefetch
 //                size in pages, from that size up to 256 MB; a size outside that range
 //                is refused and leaves the channel unconfigured; the last data word is
-//                kept free, so the load reaches the size less 32 bytes at most
+//                kept free, so the load reaches the size less one data word,
+//                SIM_RX_PCIE_DATA_WIDTH bits, at most
 //   mapping      as on Windows the command returns the ring's address; as on Linux it
 //                returns 0 until the handle has mapped the ring from its port's segment
 //   events       while a user runs, each wait for a format event is the next quarter of
@@ -41,6 +42,10 @@
 // command on another do not interleave. The rest of the emulator is meant to be driven
 // by one test at a time.
 //
+
+// Symbols in the longest line the source writes: a raw 2160p50 line, which is four
+// 1080p50 lines.
+#define SIM_RX_MAX_LINE_SYMBOLS 21120
 
 // The properties every channel reports, as the DTA-2178's did with driver 3.6.4.
 #define SIM_RX_PREFETCH_PAGES 16
@@ -82,7 +87,8 @@ void SimChSdiRx_Reset(void);
 //
 
 // Fills Symbols with line Line, from 1, of frame FrameNumber of VidStd, from the first
-// symbol of the EAV to the last of the active part. Symbols holds the line's symbols. Of
+// symbol of the EAV to the last of the active part. Symbols holds SIM_RX_MAX_LINE_SYMBOLS
+// symbols, enough for the longest line. Of
 // a 4K standard it is the raw line of the four links, each carrying the line of a frame
 // number of its own, FrameNumber for link 1 up to FrameNumber + 3 for link 4, so that a
 // test sees which link a symbol came from. Returns the number of symbols, or 0, writing

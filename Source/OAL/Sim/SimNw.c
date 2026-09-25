@@ -122,8 +122,8 @@ static SimQueuedFrame* QueueFront(const SimQueue* Queue)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- QueuePop -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Takes the front item out; its data becomes the caller's. The storage in front of the
-// head is given back once it is most of the vector.
+// Takes the front item out; its data becomes the caller's. The items are moved down over
+// the popped ones once those are most of the vector.
 //
 static SimQueuedFrame QueuePop(SimQueue* Queue)
 {
@@ -908,7 +908,8 @@ static void MovePackets(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// What the driver's I/O stub knows of a command: its sizes. None of the modelled commands
+// The sizes the driver checks a command against before carrying it out. None of the
+// modelled commands
 // needs exclusive access.
 typedef struct SimNwCmdProps
 {

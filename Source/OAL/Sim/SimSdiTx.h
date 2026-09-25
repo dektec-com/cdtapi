@@ -19,7 +19,7 @@
 // that a transmit channel drives, and they behave as the driver's blocks and as a
 // DTA-2178 was seen to:
 //
-//   commands    refused as the driver's I/O stubs do, in its order: a command the block
+//   commands    refused as the driver refuses them, in its order: a command the block
 //               does not have, the sizes, exclusive access for the commands that need
 //               it, and a block that is not enabled; the blocks of the transmitter are
 //               enabled while the port is an SDI output, and SDITXPHY on an ASI output
@@ -29,10 +29,10 @@
 //   buffer      CDMAC registers a buffer of the process for transmit or receive, as on
 //               Windows from the output or as on Linux from the address in the input; it
 //               must start on a page, be a multiple of the prefetch size in pages, and be
-//               at most 256 MB
-//   pipeline    while CDMAC and the burst FIFO run, the card takes what lies between the
-//               read and write offsets into its pipeline, in whole 32-byte words, up to
-//               the burst FIFO and 16 KB more, and advances the read offset
+//               at most SIM_TX_MAX_BUFFER
+//   pipeline    while neither CDMAC nor the burst FIFO is idle, the card takes what lies
+//               between the read and write offsets into its pipeline, in whole 32-byte
+//               words, up to the burst FIFO and 16 KB more, and advances the read offset
 //   output      while the formatter, the switches in their single-link position, the
 //               encoder and the PHY run and the demultiplexer is idle, each wait for a
 //               format event sends the next part of a frame, reading on from the buffer
@@ -54,6 +54,9 @@
 // The commands are called with the emulator's lock held, as the receive channels are; the
 // test controls take the lock themselves.
 //
+
+// The largest buffer the DMA controller takes.
+#define SIM_TX_MAX_BUFFER (256 * 1024 * 1024)
 
 // The properties the blocks report, as the DTA-2178's did with driver 3.6.4.
 #define SIM_TX_PREFETCH_PAGES 16
@@ -107,7 +110,9 @@ size_t SimSdiTx_RxFreeBytes(int PortIndex);
 // they do not fit.
 void SimSdiTx_RxWrite(int PortIndex, const uint8_t* Data, size_t Size);
 
-// Counts an overflow of the burst FIFO, as data the card could not write.
+// Counts on the burst FIFO's overflow/underflow count: data the card could not write
+// into the receive buffer, or, for the ASI sender, did not find in the transmit buffer in
+// time.
 void SimSdiTx_CountOverflow(int PortIndex);
 
 // Takes up to Max bytes of what the card has read from the transmit buffer, in the order

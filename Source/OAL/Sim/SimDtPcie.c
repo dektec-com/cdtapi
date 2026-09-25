@@ -62,12 +62,6 @@ typedef struct SimFault
     uint32_t Status;   // The status to refuse with
 } SimFault;
 
-// Faults for this many function codes can be active at once.
-#define SIM_MAX_FAULTS 4
-
-// Overrides for this many properties can be active at once.
-#define SIM_MAX_OVERRIDES 8
-
 // Room for the exclusive access of every object the card has.
 #define SIM_MAX_OBJECTS 256
 
@@ -1188,7 +1182,7 @@ static bool LockedSignalFor(int VidStd, SimSdiSignal* Signal)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplySdiSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SimDtPcie_SetSdiSource without taking the lock, for the reset, which may hold it.
+// SimDtPcie_SetSdiSource without the lock, which the reset does not take.
 //
 static bool ApplySdiSource(const char* Source)
 {
