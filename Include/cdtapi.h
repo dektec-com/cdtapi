@@ -463,86 +463,95 @@ CDTAPI_API DtapiResult DtDevice_WaitForSignalTimeout(DtDevice* Device, int Port,
 //
 // Some of a channel's work divides into pieces that do not depend on one another, so it
 // can run on more than one thread: converting a frame between the raw frame a program
-// holds and the coded lines the card carries is the first. A DtWorkPool is where those
+// holds and the coded lines the card carries is the first. A DtWorkerPool is where those
 // pieces run, and any number of channels may share one.
 //
-// A pool runs the pieces on threads of the library's own, which DtWorkPool_StartThreads
+// A pool runs the pieces on threads of the library's own, which DtWorkerPool_StartThreads
 // asks for; hands them to a program that has a pool of threads of its own, through
-// DtWorkPool_SetDispatch; or takes the program's own threads that join it, which
-// DtWorkPool_ExpectThreads sets up. A channel given no pool does all its work in the
+// DtWorkerPool_SetDispatch; or takes the program's own threads that join it, which
+// DtWorkerPool_ExpectThreads sets up. A channel given no pool does all its work in the
 // thread that calls it, which is the default and what costs nothing.
 //
 // Whichever it is, the bytes are the same.
 //
 
 // Does piece PieceIndex of NumPieces pieces of a job. The pieces are independent and may
-// run in any order, on any thread. The library gives this to a DtWorkDispatchFunc, which
+// run in any order, on any thread. The library gives this to a DtJobDispatchFunc, which
 // calls it; a program has no other use for it.
-typedef void (*DtWorkFunc)(void* Context, int PieceIndex, int NumPieces);
+typedef void (*DtJobFunc)(void* Context, int PieceIndex, int NumPieces);
 
-// Runs Work(Context, PieceIndex, NumPieces) for every PieceIndex below NumPieces, on
+// Runs Job(Context, PieceIndex, NumPieces) for every PieceIndex below NumPieces, on
 // whatever threads the program has, and returns only when every one of them has
 // finished. Running them one after another in the calling thread is a correct
 // implementation, only not a fast one.
 //
 // Nothing the library passes outlives the return, so Context may be held on the stack
-// and there is nothing to free. Work must not be called after the return. A pool shared
+// and there is nothing to free. Job must not be called after the return. A pool shared
 // by more than one channel calls this from more than one thread at once.
-typedef void (*DtWorkDispatchFunc)(void* User, DtWorkFunc Work, void* Context,
-                                   int NumPieces);
+typedef void (*DtJobDispatchFunc)(void* User, DtJobFunc Job, void* Context,
+                                  int NumPieces);
 
 // The threads a channel's work runs on. A pool is reference counted: the program holds
-// it from DtWorkPool_Alloc until DtWorkPool_Free, every channel given it holds it too,
-// and it goes when the last of them lets go. So a program may free its pool as soon as
-// it has given it to its channels.
-typedef struct DtWorkPool DtWorkPool;
+// it from DtWorkerPool_Alloc until DtWorkerPool_Free, every channel given it holds it
+// too, and it goes when the last of them lets go. So a program may free its pool as soon
+// as it has given it to its channels.
+typedef struct DtWorkerPool DtWorkerPool;
 
 // One thread of the program's in a pool it joins, which the program allocates before the
-// thread joins and frees once its DtWorkPool_Join has returned. A member may join again
-// after it has been sent back. DtWorkPoolMember_Alloc returns NULL when out of resources;
+// thread joins and frees once its DtWorkerPool_Join has returned. A worker may join again
+// after it has been sent back. DtWorker_Alloc returns NULL when out of resources;
 // freeing NULL does nothing.
-typedef struct DtWorkPoolMember DtWorkPoolMember;
+typedef struct DtWorker DtWorker;
+
+// Allocates a worker for a thread to join a pool with. Returns NULL when memory runs out.
+CDTAPI_API DtWorker* DtWorker_Alloc(void);
+
+// Frees a worker that is not joined. NULL is allowed.
+CDTAPI_API void DtWorker_Free(DtWorker* Worker);
+
+// Frees *Worker as DtWorker_Free does and sets *Worker to NULL. NULL is allowed.
+CDTAPI_API void DtWorker_Freep(DtWorker** Worker);
 
 // Allocates a pool with neither threads nor a dispatch function, which runs every piece
 // in the thread that asks for it. Returns NULL when memory runs out.
-CDTAPI_API DtWorkPool* DtWorkPool_Alloc(void);
+CDTAPI_API DtWorkerPool* DtWorkerPool_Alloc(void);
 
-// Sends Member back from DtWorkPool_Join, once it has finished the piece it is on, or
-// makes its next Join return at once. Called from another thread than Member's, which
+// Sends Worker back from DtWorkerPool_Join, once it has finished the piece it is on, or
+// makes its next Join return at once. Called from another thread than Worker's, which
 // is in the Join. NULL is allowed.
-CDTAPI_API void DtWorkPool_Dismiss(DtWorkPool* Pool, DtWorkPoolMember* Member);
+CDTAPI_API void DtWorkerPool_Dismiss(DtWorkerPool* Pool, DtWorker* Worker);
 
-// Sends every thread in DtWorkPool_Join on Pool back. NULL is allowed.
-CDTAPI_API void DtWorkPool_DismissAll(DtWorkPool* Pool);
+// Sends every thread in DtWorkerPool_Join on Pool back. NULL is allowed.
+CDTAPI_API void DtWorkerPool_DismissAll(DtWorkerPool* Pool);
 
 // Runs the pieces on threads of the program's that join the pool, NumThreads of them at
-// most: each calls DtWorkPool_Join with a DtWorkPoolMember of its own, and takes pieces
+// most: each calls DtWorkerPool_Join with a DtWorker of its own, and takes pieces
 // there until the program sends it back. The program keeps its threads' priority,
 // affinity and names, and needs no pool of its own that runs a job and waits for it. A
 // job asked for while no thread is joined runs in the thread that asks for it, so none
 // waits for a thread that is not coming.
 //
 // Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 2, and
-// DTAPI_E_IN_USE as DtWorkPool_StartThreads does, or while a thread is joined.
-CDTAPI_API DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads);
+// DTAPI_E_IN_USE as DtWorkerPool_StartThreads does, or while a thread is joined.
+CDTAPI_API DtapiResult DtWorkerPool_ExpectThreads(DtWorkerPool* Pool, int NumThreads);
 
 // Lets go of the program's hold on the pool; it goes when no channel and no joined thread
 // holds it either. NULL is allowed.
-CDTAPI_API void DtWorkPool_Free(DtWorkPool* Pool);
+CDTAPI_API void DtWorkerPool_Free(DtWorkerPool* Pool);
 
-// DtWorkPool_Free, and sets *Pool to NULL.
-CDTAPI_API void DtWorkPool_Freep(DtWorkPool** Pool);
+// DtWorkerPool_Free, and sets *Pool to NULL.
+CDTAPI_API void DtWorkerPool_Freep(DtWorkerPool** Pool);
 
-// Takes pieces in the calling thread until DtWorkPool_Dismiss sends Member back, or
-// DtWorkPool_DismissAll every member, and then returns DTAPI_OK. A Dismiss that comes
+// Takes pieces in the calling thread until DtWorkerPool_Dismiss sends Worker back, or
+// DtWorkerPool_DismissAll every worker, and then returns DTAPI_OK. A Dismiss that comes
 // before the Join makes it return at once. The last thread to be sent back first finishes
 // the pieces still queued. A joined thread holds the pool, so a program that lets go of
 // its pool sends its threads back as well.
 //
-// Returns DTAPI_E_INVALID_ARG for a null pool or member; DTAPI_E_NOT_SUPPORTED on a pool
-// that DtWorkPool_ExpectThreads did not set up; and DTAPI_E_IN_USE when the member is
+// Returns DTAPI_E_INVALID_ARG for a null pool or worker; DTAPI_E_NOT_SUPPORTED on a pool
+// that DtWorkerPool_ExpectThreads did not set up; and DTAPI_E_IN_USE when the worker is
 // already joined, or as many threads as expected are.
-CDTAPI_API DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Member);
+CDTAPI_API DtapiResult DtWorkerPool_Join(DtWorkerPool* Pool, DtWorker* Worker);
 
 // Runs the pieces on the program's own threads, by giving every job to Dispatch in at
 // most NumThreads pieces: as many as the program's threads run at once for this pool.
@@ -551,51 +560,42 @@ CDTAPI_API DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Membe
 //
 // With OpenMP the whole of it is:
 //
-//     static void Dispatch(void* User, DtWorkFunc Work, void* Context, int NumPieces)
+//     static void Dispatch(void* User, DtJobFunc Job, void* Context, int NumPieces)
 //     {
 //         (void)User;
 //     #pragma omp parallel for
 //         for (int i = 0; i < NumPieces; i++)
-//             Work(Context, i, NumPieces);
+//             Job(Context, i, NumPieces);
 //     }
 //
-//     DtWorkPool_SetDispatch(Pool, Dispatch, NULL, 4);
+//     DtWorkerPool_SetDispatch(Pool, Dispatch, NULL, 4);
 //
 // With a pool of the program's own it is the call that pool already has for running a job
 // and waiting for it, with User whatever the program wants to find there.
 //
 // Returns DTAPI_E_INVALID_ARG for a null pool, or a NumThreads below 2 with a Dispatch,
-// and DTAPI_E_IN_USE as DtWorkPool_StartThreads does.
-CDTAPI_API DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool,
-                                              DtWorkDispatchFunc Dispatch, void* User,
-                                              int NumThreads);
+// and DTAPI_E_IN_USE as DtWorkerPool_StartThreads does.
+CDTAPI_API DtapiResult DtWorkerPool_SetDispatch(DtWorkerPool* Pool,
+                                                DtJobDispatchFunc Dispatch, void* User,
+                                                int NumThreads);
 
-// Runs the pieces on NumThreads threads of the pool's own, named DtWork.1, DtWork.2 and
-// so on; the thread that calls into a channel waits for its pieces and takes none. The
-// threads live until the pool goes or is set again.
+// Runs the pieces on NumThreads threads of the pool's own, named DtWorker.1, DtWorker.2
+// and so on; the thread that calls into a channel waits for its pieces and takes none.
+// The threads live until the pool goes or is set again.
 //
 // How many to start: as many pieces as the channels that share the pool run at once,
-// which DtInpChannel_SetWorkPool says for one channel, and no more than the cores the
+// which DtInpChannel_SetWorkerPool says for one channel, and no more than the cores the
 // rest of the program can spare. More threads than that add nothing: past four on one
 // frame the conversion waits on memory rather than on the processor. Fewer than two
 // divide nothing, so a pool refuses them: a job of one piece runs in the thread that
 // asks for it, which waits for it anyway, and a single thread of the pool's would never
-// be woken. The same holds for DtWorkPool_SetDispatch and DtWorkPool_ExpectThreads.
+// be woken. The same holds for DtWorkerPool_SetDispatch and DtWorkerPool_ExpectThreads.
 //
 // Returns DTAPI_E_INVALID_ARG for a null pool or a NumThreads below 2; DTAPI_E_IN_USE
 // while a channel with a signal to divide holds the pool, as it has sized its buffers
 // by it; and DTAPI_E_OUT_OF_MEM when a thread cannot be created, leaving the pool with
 // neither threads nor a dispatch function.
-CDTAPI_API DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads);
-
-// Allocates a member for a thread to join a pool with. Returns NULL when memory runs out.
-CDTAPI_API DtWorkPoolMember* DtWorkPoolMember_Alloc(void);
-
-// Frees a member that is not joined. NULL is allowed.
-CDTAPI_API void DtWorkPoolMember_Free(DtWorkPoolMember* Member);
-
-// Frees *Member as DtWorkPoolMember_Free does and sets *Member to NULL. NULL is allowed.
-CDTAPI_API void DtWorkPoolMember_Freep(DtWorkPoolMember** Member);
+CDTAPI_API DtapiResult DtWorkerPool_StartThreads(DtWorkerPool* Pool, int NumThreads);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtInpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -814,8 +814,8 @@ CDTAPI_API DtapiResult DtInpChannel_SetRxMode(DtInpChannel* InpChannel, int RxMo
 // not returned, as the buffers must not change under one; and DTAPI_E_OUT_OF_MEM when
 // the buffers for those pieces cannot be allocated, after which the channel converts in
 // the reading thread until its standard changes or the pool is set again.
-CDTAPI_API DtapiResult DtInpChannel_SetWorkPool(DtInpChannel* InpChannel,
-                                                DtWorkPool* Pool, int NumThreads);
+CDTAPI_API DtapiResult DtInpChannel_SetWorkerPool(DtInpChannel* InpChannel,
+                                                  DtWorkerPool* Pool, int NumThreads);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtOutpChannel +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -992,7 +992,7 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
                                                    int TxPolarity);
 
 // Divides the channel's work over Pool, NULL for the writing thread alone, which is the
-// default. It is DtInpChannel_SetWorkPool for an output channel, and what that one says
+// default. It is DtInpChannel_SetWorkerPool for an output channel, and what that one says
 // holds here, the number of pieces included.
 //
 // A channel can only divide the lines it has been given. DtOutpChannel_WriteFrame is
@@ -1006,8 +1006,8 @@ CDTAPI_API DtapiResult DtOutpChannel_SetTxPolarity(DtOutpChannel* OutpChannel,
 // has not returned; and DTAPI_E_OUT_OF_MEM when the buffers for those pieces cannot be
 // allocated, after which the channel codes in the writing thread until its standard
 // changes or the pool is set again.
-CDTAPI_API DtapiResult DtOutpChannel_SetWorkPool(DtOutpChannel* OutpChannel,
-                                                 DtWorkPool* Pool, int NumThreads);
+CDTAPI_API DtapiResult DtOutpChannel_SetWorkerPool(DtOutpChannel* OutpChannel,
+                                                   DtWorkerPool* Pool, int NumThreads);
 
 // Writes NumBytesToWrite bytes from Buffer. On SDI they are raw frames, and the stream is
 // aligned on frames: at the start of each frame, bytes are skipped four at a time until

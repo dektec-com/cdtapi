@@ -389,7 +389,7 @@ DT_TEST(SourceFollowsTheClock)
 // matters here.
 typedef struct Piece
 {
-    DtWorkFunc Work;
+    DtJobFunc Work;
     void* Context;
     int Index;
     int Count;
@@ -407,7 +407,7 @@ typedef struct Dispatcher
     int Calls; // How often the channel asked for the dispatch
 } Dispatcher;
 
-static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
+static void Dispatch(void* User, DtJobFunc Work, void* Context, int Count)
 {
     OsThread* Thread[8];
     Piece Pieces[8];
@@ -437,23 +437,23 @@ static void Dispatch(void* User, DtWorkFunc Work, void* Context, int Count)
 }
 
 // A pool of NumThreads threads of the library's own; NULL when it cannot be had.
-static DtWorkPool* ThreadPool(int NumThreads)
+static DtWorkerPool* ThreadPool(int NumThreads)
 {
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
 
-    if (Pool != NULL && DtWorkPool_StartThreads(Pool, NumThreads) != DTAPI_OK)
-        DtWorkPool_Freep(&Pool);
+    if (Pool != NULL && DtWorkerPool_StartThreads(Pool, NumThreads) != DTAPI_OK)
+        DtWorkerPool_Freep(&Pool);
     return Pool;
 }
 
 // A pool that hands its jobs to Dispatch above, which counts them in Me.
-static DtWorkPool* DispatchPool(Dispatcher* Me, int NumThreads)
+static DtWorkerPool* DispatchPool(Dispatcher* Me, int NumThreads)
 {
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
 
     if (Pool != NULL &&
-        DtWorkPool_SetDispatch(Pool, Dispatch, Me, NumThreads) != DTAPI_OK)
-        DtWorkPool_Freep(&Pool);
+        DtWorkerPool_SetDispatch(Pool, Dispatch, Me, NumThreads) != DTAPI_OK)
+        DtWorkerPool_Freep(&Pool);
     return Pool;
 }
 
@@ -529,14 +529,14 @@ static void ThreadsGiveOneThreadsBytes(int VidStd, const char* Name, int* DtFail
     char* Buffer = (char*)malloc(Size);
     DtInpChannel* In = DtInpChannel_Alloc();
     DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkPool* Pool = ThreadPool(4);
+    DtWorkerPool* Pool = ThreadPool(4);
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
     DT_ASSERT(Pool != NULL);
 
     // Four pieces asked for, where the library would take one for a standard up to 3G.
     DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 4));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
     DT_ASSERT_OK(
         DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
@@ -548,8 +548,8 @@ static void ThreadsGiveOneThreadsBytes(int VidStd, const char* Name, int* DtFail
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Out, Pool, 4));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 4));
+    DtWorkerPool_Freep(&Pool);
     DT_ASSERT_OK(
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
@@ -673,15 +673,15 @@ DT_TEST(FourKOverThreads)
     char* Buffer = (char*)malloc(Size);
     DtInpChannel* In = DtInpChannel_Alloc();
     DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkPool* Pool = ThreadPool(4);
+    DtWorkerPool* Pool = ThreadPool(4);
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
     DT_ASSERT(Pool != NULL);
 
     // With 0 the library takes four pieces for 2160p50.
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_EQ(DtInpChannel_SetWorkPool(In, Pool, -1), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 0));
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, Pool, -1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 0));
     DT_ASSERT_OK(
         DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
@@ -691,7 +691,7 @@ DT_TEST(FourKOverThreads)
     DT_ASSERT_MEM(Buffer, Expected, Size);
 
     // Setting the pool again, with the layout in place, reallocates the working buffers.
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 3));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 3));
 
     // A 2160p50 frame takes 28.4 MB of the 256 MB ring, so the tenth frame is the first
     // whose coded lines run across the end of it: those lines are copied into a band's
@@ -707,8 +707,8 @@ DT_TEST(FourKOverThreads)
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Out, Pool, 0));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 0));
+    DtWorkerPool_Freep(&Pool);
     DT_ASSERT_OK(
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
@@ -765,15 +765,15 @@ DT_TEST(FourKThroughDispatch)
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_EQ(DtWorkPool_SetDispatch(Pool, Dispatch, &Reading, 0),
+    DT_ASSERT_EQ(DtWorkerPool_SetDispatch(Pool, Dispatch, &Reading, 0),
                  DTAPI_E_INVALID_ARG);
-    DtWorkPool_Freep(&Pool);
+    DtWorkerPool_Freep(&Pool);
     Pool = DispatchPool(&Reading, 4);
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 0));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 0));
+    DtWorkerPool_Freep(&Pool);
     DT_ASSERT_OK(
         DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
@@ -784,7 +784,7 @@ DT_TEST(FourKThroughDispatch)
     DT_ASSERT_EQ(Reading.Calls, 1);
 
     // No pool converts in the reading thread again, and the frame is still right.
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, NULL, 0));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, NULL, 0));
     FrameSize = (int)Size;
     DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
     DT_ASSERT_MEM(Buffer, Expected, Size);
@@ -795,8 +795,8 @@ DT_TEST(FourKThroughDispatch)
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
     Pool = DispatchPool(&Writing, 4);
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Out, Pool, 0));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 0));
+    DtWorkerPool_Freep(&Pool);
     DT_ASSERT_OK(
         DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
@@ -866,7 +866,7 @@ DT_TEST(TwoChannelsShareAPoolOfEight)
     char* Buffer = (char*)malloc(Size);
     DtInpChannel* In = DtInpChannel_Alloc();
     DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkPool* Pool = ThreadPool(8);
+    DtWorkerPool* Pool = ThreadPool(8);
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
     DT_ASSERT(Pool != NULL);
 
@@ -874,9 +874,9 @@ DT_TEST(TwoChannelsShareAPoolOfEight)
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
     DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 4));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Out, Pool, 4));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 4));
+    DtWorkerPool_Freep(&Pool);
     DT_ASSERT_OK(
         DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(
@@ -928,14 +928,14 @@ static void ReadOne(DtInpChannel* In, char* Buffer, const uint8_t* Expected, siz
 
 // Switches In to ASI, gives it the pool Between if not NULL, and switches it back to
 // 1080i50.
-static void ThroughAsi(DtInpChannel* In, DtWorkPool* Between, int* DtFailures)
+static void ThroughAsi(DtInpChannel* In, DtWorkerPool* Between, int* DtFailures)
 {
     int Value = 0, SubValue = 0;
 
     DT_ASSERT_OK(DtInpChannel_SetIoConfig(In, DTAPI_IOCONFIG_IOSTD, DTAPI_IOCONFIG_ASI,
                                           -1, -1, -1));
     if (Between != NULL)
-        DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Between, 4));
+        DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Between, 4));
     DT_ASSERT_OK(DtapiVidStd2IoStd(DTAPI_VIDSTD_1080I50, -1, &Value, &SubValue));
     DT_ASSERT_OK(
         DtInpChannel_SetIoConfig(In, DTAPI_IOCONFIG_IOSTD, Value, SubValue, -1, -1));
@@ -960,14 +960,14 @@ DT_TEST(PoolStaysThroughAsiAndBack)
     DtInpChannel* In = DtInpChannel_Alloc();
     Dispatcher First = {0};
     Dispatcher Second = {0};
-    DtWorkPool* Pool = DispatchPool(&First, 4);
+    DtWorkerPool* Pool = DispatchPool(&First, 4);
     DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Pool != NULL);
 
-    DT_ASSERT_EQ(DtInpChannel_SetWorkPool(In, Pool, 4), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, Pool, 4), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_1080I50));
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(In, Pool, 4));
-    DtWorkPool_Freep(&Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
+    DtWorkerPool_Freep(&Pool);
     ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 1);
 
@@ -978,14 +978,14 @@ DT_TEST(PoolStaysThroughAsiAndBack)
     Pool = DispatchPool(&Second, 4);
     DT_ASSERT(Pool != NULL);
     ThroughAsi(In, Pool, DtFailures);
-    DtWorkPool_Freep(&Pool);
+    DtWorkerPool_Freep(&Pool);
     ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 2);
     DT_ASSERT_EQ(Second.Calls, 1);
 
     // A detach lets go of the pool: attached again, the channel reads in its own thread.
     DT_ASSERT_OK(DtInpChannel_Detach(In, DTAPI_INSTANT_DETACH));
-    DT_ASSERT_EQ(DtInpChannel_SetWorkPool(In, NULL, 0), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, NULL, 0), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
     ReadOne(In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(Second.Calls, 1);

@@ -14,10 +14,10 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "Core/DtWork.h"     // The pool a frame's lines are converted over.
-#include "Device/DtDevice.h" // The device and its port capabilities.
-#include "DtPcieCmd.h"       // DtIoConfig and DtDrvObject.
-#include "cdtapi.h"          // Results and DtTimeOfDay.
+#include "Core/DtWorkerPool.h" // The pool a frame's lines are converted over.
+#include "Device/DtDevice.h"   // The device and its port capabilities.
+#include "DtPcieCmd.h"         // DtIoConfig and DtDrvObject.
+#include "cdtapi.h"            // Results and DtTimeOfDay.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -92,7 +92,7 @@ struct DtRxBackend
     // DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces, after
     // which the side works in the reading thread. NULL where the side has nothing to
     // divide.
-    DtapiResult (*SetWorkPool)(DtRx* Rx, DtWorkPool* Pool, int NumThreads);
+    DtapiResult (*SetWorkerPool)(DtRx* Rx, DtWorkerPool* Pool, int NumThreads);
 
     // ReadFrame: CheckFrame checks a buffer of FrameSize bytes and gives the size of a
     // frame, DeliverFrame delivers one when there is one. NULL gives

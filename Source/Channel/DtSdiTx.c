@@ -12,7 +12,7 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
-#include "Core/DtWork.h"        // The threads a batch of lines is coded over.
+#include "Core/DtWorkerPool.h"  // The threads a batch of lines is coded over.
 #include "Device/DtFunc.h"      // Finding the transmit blocks.
 #include "DtPcieAbi.h"          // Operational modes and types.
 #include "DtSdiTx.h"            // Interface being implemented.
@@ -109,17 +109,18 @@ typedef struct DtSdiTx
     uint8_t* BlackLines;     // The coded lines of a black frame, line headers included
     uint8_t* WrapLineBuffer; // A raw line's coded lines when they run across the end
     uint8_t* PartialLine;    // The raw bytes of a line not yet complete
-    uint16_t* WorkSymbols;   // The working symbols of a 4K line, one set a band
+    uint16_t* BandSymbols;   // The working symbols of a 4K line, one set a band
 
     // The pool the channel gave, and the pieces it asked for: 0 for as many as the
     // standard calls for. The channel holds the pool.
-    DtWorkPool* WorkPool;
-    int WorkThreads;
+    DtWorkerPool* WorkerPool;
+    int WorkerThreads;
 
-    // The pieces a batch of lines is encoded in. WorkSymbols holds DtWork_Pieces(&Work)
-    // sets of WorkSymbolsPerBand symbols, so that a band uses its own.
-    DtWork Work;
-    size_t WorkSymbolsPerBand;
+    // The pieces a batch of lines is encoded in. BandSymbols holds
+    // DtJobRunner_NumPieces(&JobRunner) sets of SymbolsPerBand symbols, so that a
+    // band uses its own.
+    DtJobRunner JobRunner;
+    size_t SymbolsPerBand;
 
     // The buffer while holding or sending.
     size_t WriteOffset; // Where the next frame's header goes, and the driver's offset
@@ -646,41 +647,42 @@ static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
     return (Size + Unit - 1) / Unit * Unit;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocWorkSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocBandSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The conversion's working symbols, one set for every band a batch of lines divides into.
 // NULL for a standard that has none, which is every standard except 4K.
 //
-static uint16_t* AllocWorkSymbols(DtSdiTx* Sdi)
+static uint16_t* AllocBandSymbols(DtSdiTx* Sdi)
 {
-    if (Sdi->WorkSymbolsPerBand == 0)
+    if (Sdi->SymbolsPerBand == 0)
         return NULL;
-    return (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
-                                     Sdi->WorkSymbolsPerBand * sizeof(uint16_t));
+    return (uint16_t*)DtAlloc_Malloc((size_t)DtJobRunner_NumPieces(&Sdi->JobRunner) *
+                                     Sdi->SymbolsPerBand * sizeof(uint16_t));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DivideWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureJobRunner -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working symbols by them. Symbols that
 // cannot be had for those pieces are taken for one, so that the side encodes in the
-// writing thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; WorkSymbols is
+// writing thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; BandSymbols is
 // NULL for a standard that needs it when not even those can be had.
 //
-static DtapiResult DivideWork(DtSdiTx* Sdi)
+static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
 {
-    const int Pieces = Sdi->WorkThreads > 0 ? Sdi->WorkThreads
-                                            : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
+    const int Pieces = Sdi->WorkerThreads > 0
+                           ? Sdi->WorkerThreads
+                           : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
 
-    DtapiResult Result = DtWork_SetPool(&Sdi->Work, Sdi->WorkPool, Pieces);
-    DtAlloc_Free(Sdi->WorkSymbols);
-    Sdi->WorkSymbols = Result == DTAPI_OK ? AllocWorkSymbols(Sdi) : NULL;
-    if (Result == DTAPI_OK && Sdi->WorkSymbolsPerBand != 0 && Sdi->WorkSymbols == NULL)
+    DtapiResult Result = DtJobRunner_SetPool(&Sdi->JobRunner, Sdi->WorkerPool, Pieces);
+    DtAlloc_Free(Sdi->BandSymbols);
+    Sdi->BandSymbols = Result == DTAPI_OK ? AllocBandSymbols(Sdi) : NULL;
+    if (Result == DTAPI_OK && Sdi->SymbolsPerBand != 0 && Sdi->BandSymbols == NULL)
         Result = DTAPI_E_OUT_OF_MEM;
     if (Result != DTAPI_OK)
     {
-        DtWork_SetPool(&Sdi->Work, NULL, 0);
-        Sdi->WorkSymbols = AllocWorkSymbols(Sdi);
+        DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
+        Sdi->BandSymbols = AllocBandSymbols(Sdi);
     }
     return Result;
 }
@@ -702,9 +704,9 @@ static void FreeStandardBuffers(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->BlackLines);
     DtAlloc_Free(Sdi->WrapLineBuffer);
     DtAlloc_Free(Sdi->PartialLine);
-    DtAlloc_Free(Sdi->WorkSymbols);
+    DtAlloc_Free(Sdi->BandSymbols);
     Sdi->BlackLines = Sdi->WrapLineBuffer = Sdi->PartialLine = NULL;
-    Sdi->WorkSymbols = NULL;
+    Sdi->BandSymbols = NULL;
     memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
     Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     Sdi->CodedFrameSize = Sdi->RawFrameSize = 0;
@@ -789,16 +791,16 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->BlackLines);
     DtAlloc_Free(Sdi->WrapLineBuffer);
     DtAlloc_Free(Sdi->PartialLine);
-    DtAlloc_Free(Sdi->WorkSymbols);
-    Sdi->WorkSymbols = NULL;
+    DtAlloc_Free(Sdi->BandSymbols);
+    Sdi->BandSymbols = NULL;
     Sdi->BlackLines =
         (uint8_t*)DtAlloc_Malloc((size_t)Layout.NumCodedLines * (size_t)Layout.TxStride);
     Sdi->WrapLineBuffer = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
     Sdi->PartialLine = (uint8_t*)DtAlloc_Malloc(Line);
-    Sdi->WorkSymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Layout);
-    DivideWork(Sdi);
+    Sdi->SymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Layout);
+    ConfigureJobRunner(Sdi);
     if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
-        Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->WorkSymbols == NULL) ||
+        Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->BandSymbols == NULL) ||
         !DtSdiFrame_BlackLines(&Layout, Sdi->BlackLines))
     {
         FreeStandardBuffers(Sdi);
@@ -1103,7 +1105,7 @@ static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Byt
         DtSdiFrame_EncodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesEncoded,
                                 Dst + Layout->TxLineHeaderNumBytes,
                                 Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
-                                Sdi->WorkSymbols);
+                                Sdi->BandSymbols);
     }
     else
         DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->LineStartBit, Dst);
@@ -1151,14 +1153,13 @@ static void EncodeLines(void* Context, int Index, int Count)
     const EncodeBand* Band = (const EncodeBand*)Context;
     DtSdiTx* Sdi = Band->Sdi;
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
-    uint16_t* WorkSymbols =
-        Sdi->WorkSymbols == NULL
-            ? NULL
-            : Sdi->WorkSymbols + (size_t)Index * Sdi->WorkSymbolsPerBand;
+    uint16_t* BandSymbols = Sdi->BandSymbols == NULL
+                                ? NULL
+                                : Sdi->BandSymbols + (size_t)Index * Sdi->SymbolsPerBand;
     int First;
     int Last;
 
-    DtWork_Split(Band->Lines, Index, Count, 1, &First, &Last);
+    DtJobRunner_Split(Band->Lines, Index, Count, 1, &First, &Last);
     for (int i = First; i < Last; i++)
     {
         // Where line i begins in the raw frame. With 10-bit symbols a line that is not 4K
@@ -1177,7 +1178,7 @@ static void EncodeLines(void* Context, int Index, int Count)
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
         DtSdiFrame_EncodeLine4k(
             Layout, Sdi->BitsPerSymbol, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
-            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, WorkSymbols);
+            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, BandSymbols);
     }
 }
 
@@ -1207,7 +1208,7 @@ static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft
 {
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
 
-    if (DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->FrameRoomReserved ||
+    if (DtJobRunner_NumPieces(&Sdi->JobRunner) < 2 || !Sdi->FrameRoomReserved ||
         Sdi->WriteStage != DT_SDITX_STAGE_LINES || Sdi->PartialLineBytes != 0)
     {
         return 0;
@@ -1243,7 +1244,7 @@ static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft
     Band.Offset = Offset;
     Band.FirstLine = Sdi->LinesEncoded;
     Band.Lines = (int)Lines;
-    DtWork_Run(&Sdi->Work, EncodeLines, &Band);
+    DtJobRunner_Run(&Sdi->JobRunner, EncodeLines, &Band);
 
     // The bytes the batch used up are those it has no more bits left in; a byte the next
     // line begins in is left where it is, as it is for a single line.
@@ -1489,7 +1490,7 @@ static void Release(DtTx* Tx)
     DtFunc_Release(&Sdi->TxFunction);
     DtFunc_Release(&Sdi->DmaFunction);
     OsEvent_Destroy(Sdi->RoomEvent);
-    DtWork_Free(&Sdi->Work);
+    DtJobRunner_Free(&Sdi->JobRunner);
     DtAlloc_Free(Sdi);
 }
 
@@ -1726,24 +1727,25 @@ static void WaitUntilSent(DtTx* Tx)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A side with no standard yet keeps the pool for ConfigureChannel, which sizes the work.
+// A side with no standard yet keeps the pool for ConfigureChannel, which sets the job
+// runner up.
 //
-static DtapiResult SetWorkPool(DtTx* Tx, DtWorkPool* Pool, int NumThreads)
+static DtapiResult SetWorkerPool(DtTx* Tx, DtWorkerPool* Pool, int NumThreads)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    Sdi->WorkPool = Pool;
-    Sdi->WorkThreads = NumThreads;
+    Sdi->WorkerPool = Pool;
+    Sdi->WorkerThreads = NumThreads;
     if (Sdi->FrameLayout.VidStd == DTAPI_VIDSTD_UNKNOWN)
-        return DtWork_SetPool(&Sdi->Work, NULL, 0);
-    return DivideWork(Sdi);
+        return DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
+    return ConfigureJobRunner(Sdi);
 }
 
 static const DtTxBackend g_SdiTxBackend = {
     .Release = Release,
-    .SetWorkPool = SetWorkPool,
+    .SetWorkerPool = SetWorkerPool,
     .SetTxControl = SetTxControl,
     .ClearFifo = ClearFifo,
     .GetFifoLoad = GetFifoLoad,
@@ -1772,7 +1774,7 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     Sdi->Tx.Backend = &g_SdiTxBackend;
     Sdi->Tx.Port = *Port;
     Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
-    DtWork_Init(&Sdi->Work);
+    DtJobRunner_Init(&Sdi->JobRunner);
     DtVec_Init(&Sdi->TxFunction.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Sdi->DmaFunction.Objects, sizeof(DtFuncObject));
     Sdi->RoomEvent = OsEvent_Create();

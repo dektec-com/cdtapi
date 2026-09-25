@@ -14,11 +14,11 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "Core/DtWork.h"     // The pool a frame's lines are coded over.
-#include "Device/DtDevice.h" // The device and its port capabilities.
-#include "DtPcieCmd.h"       // DtIoConfig.
-#include "OAL/OsThread.h"    // The channel's lock.
-#include "cdtapi.h"          // Results.
+#include "Core/DtWorkerPool.h" // The pool a frame's lines are coded over.
+#include "Device/DtDevice.h"   // The device and its port capabilities.
+#include "DtPcieCmd.h"         // DtIoConfig.
+#include "OAL/OsThread.h"      // The channel's lock.
+#include "cdtapi.h"            // Results.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtTxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -102,7 +102,7 @@ struct DtTxBackend
     // on. DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces,
     // after which the side works in the writing thread. NULL where the side has nothing
     // to divide.
-    DtapiResult (*SetWorkPool)(DtTx* Tx, DtWorkPool* Pool, int NumThreads);
+    DtapiResult (*SetWorkerPool)(DtTx* Tx, DtWorkerPool* Pool, int NumThreads);
 
     // Write, while not idle and with no other write going on.
     DtapiResult (*Write)(DtTx* Tx, const uint8_t* Data, size_t Size);

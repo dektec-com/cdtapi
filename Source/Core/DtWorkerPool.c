@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* DtWork.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtWorkerPool.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDTAPI - A job in independent pieces, over a pool of threads that channels share
 //
@@ -12,14 +12,14 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "DtAlloc.h"  // The library's allocator.
-#include "DtAtomic.h" // The references to a pool, and the pieces of a job finished.
-#include "DtWork.h"   // Interface being implemented.
+#include "DtAlloc.h"      // The library's allocator.
+#include "DtAtomic.h"     // The references to a pool, and the pieces of a job finished.
+#include "DtWorkerPool.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A pool of its own threads keeps a queue of the jobs whose pieces are not all taken yet,
-// one job from each DtWork that is running one. A thread takes the next piece of the
+// one job from each DtJobRunner that is running one. A thread takes the next piece of the
 // first job in the queue, so the jobs of several channels run at the same time when the
 // pool has threads enough, and a piece that takes longer than the others holds up no one.
 //
@@ -36,51 +36,51 @@
 
 typedef struct Job
 {
-    DtWorkFunc Func;
+    DtJobFunc Func;
     void* Context;
     int NumPieces;
     int NextPiece; // Under the pool's lock
     DtAtomicInt NumFinished;
-    OsEvent* Done;    // The DtWork's, set by the piece that finishes the job
+    OsEvent* Done;    // The DtJobRunner's, set by the piece that finishes the job
     struct Job* Next; // Under the pool's lock
 } Job;
 
-typedef struct Worker
+typedef struct PoolThread
 {
-    DtWorkPool* Pool;
+    DtWorkerPool* Pool;
     OsEvent* Go; // Set for every job queued, and once more to stop
     OsThread* Thread;
     char Name[32]; // What a process viewer shows beside the thread, before cutting
-} Worker;
+} PoolThread;
 
-struct DtWorkPoolMember
+struct DtWorker
 {
-    OsEvent* Go;            // Set for every job queued while joined, and to send it back
-    bool Joined;            // Under the lock of the pool it joins
-    bool Dismissed;         // Under the lock of the pool it joins or is to join
-    DtWorkPoolMember* Next; // The next joined thread, under the pool's lock
+    OsEvent* Go;    // Set for every job queued while joined, and to send it back
+    bool Joined;    // Under the lock of the pool it joins
+    bool Dismissed; // Under the lock of the pool it joins or is to join
+    DtWorker* Next; // The next joined thread, under the pool's lock
 };
 
-struct DtWorkPool
+struct DtWorkerPool
 {
-    DtAtomicInt NumRefs;    // The program's hold, if it has not let go, and the holders
-    DtAtomicInt NumHolders; // The DtWorks holding the pool
+    DtAtomicInt NumRefs; // The program's hold, if it has not let go, and the holders
+    DtAtomicInt NumRunnersSized; // The DtJobRunners that sized buffers by the pool
 
     // A dispatch function of the program's, threads of the pool's own, the program's
     // threads joining, or none of them.
-    DtWorkDispatchFunc Dispatch;
+    DtJobDispatchFunc Dispatch;
     void* User;
-    int NumThreads; // 0 with none; the most that join, for joining threads
-    Worker* Worker; // NumThreads of them with threads of its own
-    int NumStarted; // How many of them are running
+    int NumThreads;      // 0 with none; the most that join, for joining threads
+    PoolThread* Workers; // NumThreads of them with threads of its own
+    int NumStarted;      // How many of them are running
 
-    OsMutex* Lock;            // Guards what follows
-    Job* Head;                // The jobs with pieces not taken yet, oldest first
-    Job* Tail;                //
-    bool Stop;                // Set to end the threads
-    bool Joinable;            // The program's threads join it
-    DtWorkPoolMember* Joined; // Those in DtWorkPool_Join
-    int NumJoined;            //
+    OsMutex* Lock;         // Guards what follows
+    Job* Head;             // The jobs with pieces not taken yet, oldest first
+    Job* Tail;             //
+    bool Stop;             // Set to end the threads
+    bool Joinable;         // The program's threads join it
+    DtWorker* FirstJoined; // Those in DtWorkerPool_Join
+    int NumJoined;         //
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TakePiece -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -88,7 +88,7 @@ struct DtWorkPool
 // The first queued job and the number of the piece taken from it, or NULL with the queue
 // empty. A job leaves the queue with its last piece taken. Called under the pool's lock.
 //
-static Job* TakePiece(DtWorkPool* Pool, int* Piece)
+static Job* TakePiece(DtWorkerPool* Pool, int* Piece)
 {
     Job* Taken = Pool->Head;
 
@@ -119,16 +119,16 @@ static void RunPiece(Job* Taken, int Piece)
         OsEvent_Set(Done);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WorkerThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PoolThreadMain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Waits to be woken, then does pieces until the queue is empty. A wake-up that comes
 // while the thread is busy leaves its event set, so the next wait returns at once and a
 // job queued meanwhile is not missed.
 //
-static void WorkerThread(void* Context)
+static void PoolThreadMain(void* Context)
 {
-    Worker* Self = (Worker*)Context;
-    DtWorkPool* Pool = Self->Pool;
+    PoolThread* Self = (PoolThread*)Context;
+    DtWorkerPool* Pool = Self->Pool;
 
     OsThread_SetName(Self->Name);
     for (;;)
@@ -157,20 +157,20 @@ static void WorkerThread(void* Context)
 // Ends and releases the pool's threads and forgets a dispatch function and joining
 // threads, leaving it with none of them. Called with no job running and no thread joined.
 //
-static void StopThreads(DtWorkPool* Pool)
+static void StopThreads(DtWorkerPool* Pool)
 {
     OsMutex_Lock(Pool->Lock);
     Pool->Stop = true;
     OsMutex_Unlock(Pool->Lock);
     for (int i = 0; i < Pool->NumStarted; i++)
     {
-        OsEvent_Set(Pool->Worker[i].Go);
-        OsThread_Join(Pool->Worker[i].Thread);
+        OsEvent_Set(Pool->Workers[i].Go);
+        OsThread_Join(Pool->Workers[i].Thread);
     }
-    for (int i = 0; Pool->Worker != NULL && i < Pool->NumThreads; i++)
-        OsEvent_Destroy(Pool->Worker[i].Go);
-    DtAlloc_Free(Pool->Worker);
-    Pool->Worker = NULL;
+    for (int i = 0; Pool->Workers != NULL && i < Pool->NumThreads; i++)
+        OsEvent_Destroy(Pool->Workers[i].Go);
+    DtAlloc_Free(Pool->Workers);
+    Pool->Workers = NULL;
     Pool->NumStarted = 0;
     Pool->NumThreads = 0;
     Pool->Dispatch = NULL;
@@ -179,24 +179,24 @@ static void StopThreads(DtWorkPool* Pool)
     Pool->Joinable = false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSetUp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsInUse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// True while the pool may not be set again: a DtWork holds it and has sized its buffers
-// by it, or a thread of the program's is joined.
+// True while the pool may not be set again: a DtJobRunner holds it and has sized its
+// buffers by it, or a thread of the program's is joined.
 //
-static bool IsSetUp(DtWorkPool* Pool)
+static bool IsInUse(DtWorkerPool* Pool)
 {
     OsMutex_Lock(Pool->Lock);
     const int NumJoined = Pool->NumJoined;
     OsMutex_Unlock(Pool->Lock);
-    return DtAtomic_Load(&Pool->NumHolders) != 0 || NumJoined != 0;
+    return DtAtomic_Load(&Pool->NumRunnersSized) != 0 || NumJoined != 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropRef -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Drops one reference, and the pool with the last.
 //
-static void Release(DtWorkPool* Pool)
+static void DropRef(DtWorkerPool* Pool)
 {
     if (DtAtomic_Decrement(&Pool->NumRefs) != 0)
         return;
@@ -212,7 +212,7 @@ static void Release(DtWorkPool* Pool)
 // pool that no thread of the program's has joined has no one to run it, so the calling
 // thread does.
 //
-static void RunQueued(DtWorkPool* Pool, OsEvent* Done, DtWorkFunc Func, void* Context,
+static void RunQueued(DtWorkerPool* Pool, OsEvent* Done, DtJobFunc Func, void* Context,
                       int NumPieces)
 {
     Job Queued;
@@ -226,20 +226,19 @@ static void RunQueued(DtWorkPool* Pool, OsEvent* Done, DtWorkFunc Func, void* Co
     Queued.Next = NULL;
 
     OsMutex_Lock(Pool->Lock);
-    const bool NoOne = Pool->Joinable && Pool->NumJoined == 0;
-    if (!NoOne)
+    const bool NoThreadJoined = Pool->Joinable && Pool->NumJoined == 0;
+    if (!NoThreadJoined)
     {
         if (Pool->Tail != NULL)
             Pool->Tail->Next = &Queued;
         else
             Pool->Head = &Queued;
         Pool->Tail = &Queued;
-        for (DtWorkPoolMember* Member = Pool->Joined; Member != NULL;
-             Member = Member->Next)
-            OsEvent_Set(Member->Go);
+        for (DtWorker* Worker = Pool->FirstJoined; Worker != NULL; Worker = Worker->Next)
+            OsEvent_Set(Worker->Go);
     }
     OsMutex_Unlock(Pool->Lock);
-    if (NoOne)
+    if (NoThreadJoined)
     {
         for (int i = 0; i < NumPieces; i++)
             Func(Context, i, NumPieces);
@@ -247,23 +246,23 @@ static void RunQueued(DtWorkPool* Pool, OsEvent* Done, DtWorkFunc Func, void* Co
     }
 
     for (int i = 0; i < Pool->NumStarted; i++)
-        OsEvent_Set(Pool->Worker[i].Go);
+        OsEvent_Set(Pool->Workers[i].Go);
     OsEvent_Wait(Done, -1);
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtWorkPool +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtWorkerPool +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtWorkPool* DtWorkPool_Alloc(void)
+DtWorkerPool* DtWorkerPool_Alloc(void)
 {
-    DtWorkPool* Pool = (DtWorkPool*)DtAlloc_Malloc(sizeof(DtWorkPool));
+    DtWorkerPool* Pool = (DtWorkerPool*)DtAlloc_Malloc(sizeof(DtWorkerPool));
 
     if (Pool == NULL)
         return NULL;
     memset(Pool, 0, sizeof(*Pool));
     DtAtomic_Init(&Pool->NumRefs, 1);
-    DtAtomic_Init(&Pool->NumHolders, 0);
+    DtAtomic_Init(&Pool->NumRunnersSized, 0);
     Pool->Lock = OsMutex_Create();
     if (Pool->Lock == NULL)
     {
@@ -273,28 +272,29 @@ DtWorkPool* DtWorkPool_Alloc(void)
     return Pool;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_StartThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_StartThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
+DtapiResult DtWorkerPool_StartThreads(DtWorkerPool* Pool, int NumThreads)
 {
     if (Pool == NULL || NumThreads < 2)
         return DTAPI_E_INVALID_ARG;
-    if (IsSetUp(Pool))
+    if (IsInUse(Pool))
         return DTAPI_E_IN_USE;
 
     StopThreads(Pool);
-    Pool->Worker = (Worker*)DtAlloc_Malloc((size_t)NumThreads * sizeof(Worker));
-    if (Pool->Worker == NULL)
+    Pool->Workers = (PoolThread*)DtAlloc_Malloc((size_t)NumThreads * sizeof(PoolThread));
+    if (Pool->Workers == NULL)
         return DTAPI_E_OUT_OF_MEM;
-    memset(Pool->Worker, 0, (size_t)NumThreads * sizeof(Worker));
+    memset(Pool->Workers, 0, (size_t)NumThreads * sizeof(PoolThread));
     Pool->NumThreads = NumThreads;
 
     for (int i = 0; i < NumThreads; i++)
     {
-        Pool->Worker[i].Pool = Pool;
-        snprintf(Pool->Worker[i].Name, sizeof(Pool->Worker[i].Name), "DtWork.%d", i + 1);
-        Pool->Worker[i].Go = OsEvent_Create();
-        if (Pool->Worker[i].Go == NULL)
+        Pool->Workers[i].Pool = Pool;
+        snprintf(Pool->Workers[i].Name, sizeof(Pool->Workers[i].Name), "DtWorker.%d",
+                 i + 1);
+        Pool->Workers[i].Go = OsEvent_Create();
+        if (Pool->Workers[i].Go == NULL)
         {
             StopThreads(Pool);
             return DTAPI_E_OUT_OF_MEM;
@@ -302,8 +302,8 @@ DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
     }
     for (int i = 0; i < NumThreads; i++)
     {
-        Pool->Worker[i].Thread = OsThread_Start(WorkerThread, &Pool->Worker[i]);
-        if (Pool->Worker[i].Thread == NULL)
+        Pool->Workers[i].Thread = OsThread_Start(PoolThreadMain, &Pool->Workers[i]);
+        if (Pool->Workers[i].Thread == NULL)
         {
             StopThreads(Pool);
             return DTAPI_E_OUT_OF_MEM;
@@ -313,14 +313,14 @@ DtapiResult DtWorkPool_StartThreads(DtWorkPool* Pool, int NumThreads)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_SetDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_SetDispatch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtWorkDispatchFunc Dispatch,
-                                   void* User, int NumThreads)
+DtapiResult DtWorkerPool_SetDispatch(DtWorkerPool* Pool, DtJobDispatchFunc Dispatch,
+                                     void* User, int NumThreads)
 {
     if (Pool == NULL || (Dispatch != NULL && NumThreads < 2))
         return DTAPI_E_INVALID_ARG;
-    if (IsSetUp(Pool))
+    if (IsInUse(Pool))
         return DTAPI_E_IN_USE;
 
     StopThreads(Pool);
@@ -332,13 +332,13 @@ DtapiResult DtWorkPool_SetDispatch(DtWorkPool* Pool, DtWorkDispatchFunc Dispatch
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_ExpectThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_ExpectThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads)
+DtapiResult DtWorkerPool_ExpectThreads(DtWorkerPool* Pool, int NumThreads)
 {
     if (Pool == NULL || NumThreads < 2)
         return DTAPI_E_INVALID_ARG;
-    if (IsSetUp(Pool))
+    if (IsInUse(Pool))
         return DTAPI_E_IN_USE;
 
     StopThreads(Pool);
@@ -351,49 +351,49 @@ DtapiResult DtWorkPool_ExpectThreads(DtWorkPool* Pool, int NumThreads)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Leave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Takes Member out of the pool's joined threads, under the pool's lock.
+// Takes Worker out of the pool's joined threads, under the pool's lock.
 //
-static void Leave(DtWorkPool* Pool, DtWorkPoolMember* Member)
+static void Leave(DtWorkerPool* Pool, DtWorker* Worker)
 {
-    DtWorkPoolMember** Link = &Pool->Joined;
+    DtWorker** Link = &Pool->FirstJoined;
 
-    while (*Link != Member)
+    while (*Link != Worker)
         Link = &(*Link)->Next;
-    *Link = Member->Next;
-    Member->Next = NULL;
-    Member->Joined = false;
-    Member->Dismissed = false;
+    *Link = Worker->Next;
+    Worker->Next = NULL;
+    Worker->Joined = false;
+    Worker->Dismissed = false;
     Pool->NumJoined--;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Join -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_Join -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A thread sent back leaves between pieces, never during one. It stays while the queue
 // holds pieces and it is the last joined thread, since a job was queued on the promise
 // that a thread would take it. It holds the pool while joined.
 //
-DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Member)
+DtapiResult DtWorkerPool_Join(DtWorkerPool* Pool, DtWorker* Worker)
 {
-    if (Pool == NULL || Member == NULL)
+    if (Pool == NULL || Worker == NULL)
         return DTAPI_E_INVALID_ARG;
 
     OsMutex_Lock(Pool->Lock);
     DtapiResult Result = !Pool->Joinable ? DTAPI_E_NOT_SUPPORTED
-                         : Member->Joined || Pool->NumJoined >= Pool->NumThreads
+                         : Worker->Joined || Pool->NumJoined >= Pool->NumThreads
                              ? DTAPI_E_IN_USE
                              : DTAPI_OK;
-    if (Result != DTAPI_OK || Member->Dismissed)
+    if (Result != DTAPI_OK || Worker->Dismissed)
     {
         if (Result == DTAPI_OK)
-            Member->Dismissed = false;
+            Worker->Dismissed = false;
         OsMutex_Unlock(Pool->Lock);
         return Result;
     }
-    Member->Joined = true;
-    Member->Next = Pool->Joined;
-    Pool->Joined = Member;
+    Worker->Joined = true;
+    Worker->Next = Pool->FirstJoined;
+    Pool->FirstJoined = Worker;
     Pool->NumJoined++;
-    DtWorkPool_Hold(Pool);
+    DtWorkerPool_AddRef(Pool);
     OsMutex_Unlock(Pool->Lock);
 
     for (;;)
@@ -401,9 +401,9 @@ DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Member)
         int Piece = 0;
 
         OsMutex_Lock(Pool->Lock);
-        if (Member->Dismissed && (Pool->NumJoined > 1 || Pool->Head == NULL))
+        if (Worker->Dismissed && (Pool->NumJoined > 1 || Pool->Head == NULL))
         {
-            Leave(Pool, Member);
+            Leave(Pool, Worker);
             OsMutex_Unlock(Pool->Lock);
             break;
         }
@@ -413,44 +413,44 @@ DtapiResult DtWorkPool_Join(DtWorkPool* Pool, DtWorkPoolMember* Member)
         if (Taken != NULL)
             RunPiece(Taken, Piece);
         else
-            OsEvent_Wait(Member->Go, -1);
+            OsEvent_Wait(Worker->Go, -1);
     }
-    Release(Pool);
+    DropRef(Pool);
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Dismiss -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_Dismiss -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWorkPool_Dismiss(DtWorkPool* Pool, DtWorkPoolMember* Member)
+void DtWorkerPool_Dismiss(DtWorkerPool* Pool, DtWorker* Worker)
 {
-    if (Pool == NULL || Member == NULL)
+    if (Pool == NULL || Worker == NULL)
         return;
 
     OsMutex_Lock(Pool->Lock);
-    Member->Dismissed = true;
-    OsEvent_Set(Member->Go);
+    Worker->Dismissed = true;
+    OsEvent_Set(Worker->Go);
     OsMutex_Unlock(Pool->Lock);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_DismissAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_DismissAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtWorkPool_DismissAll(DtWorkPool* Pool)
+void DtWorkerPool_DismissAll(DtWorkerPool* Pool)
 {
     if (Pool == NULL)
         return;
 
     OsMutex_Lock(Pool->Lock);
-    for (DtWorkPoolMember* Member = Pool->Joined; Member != NULL; Member = Member->Next)
+    for (DtWorker* Worker = Pool->FirstJoined; Worker != NULL; Worker = Worker->Next)
     {
-        Member->Dismissed = true;
-        OsEvent_Set(Member->Go);
+        Worker->Dismissed = true;
+        OsEvent_Set(Worker->Go);
     }
     OsMutex_Unlock(Pool->Lock);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_NumJoined -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_NumJoined -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtWorkPool_NumJoined(DtWorkPool* Pool)
+int DtWorkerPool_NumJoined(DtWorkerPool* Pool)
 {
     OsMutex_Lock(Pool->Lock);
     const int NumJoined = Pool->NumJoined;
@@ -458,107 +458,106 @@ int DtWorkPool_NumJoined(DtWorkPool* Pool)
     return NumJoined;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPoolMember_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorker_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtWorkPoolMember* DtWorkPoolMember_Alloc(void)
+DtWorker* DtWorker_Alloc(void)
 {
-    DtWorkPoolMember* Member =
-        (DtWorkPoolMember*)DtAlloc_Malloc(sizeof(DtWorkPoolMember));
+    DtWorker* Worker = (DtWorker*)DtAlloc_Malloc(sizeof(DtWorker));
 
-    if (Member == NULL)
+    if (Worker == NULL)
         return NULL;
-    memset(Member, 0, sizeof(*Member));
-    Member->Go = OsEvent_Create();
-    if (Member->Go == NULL)
+    memset(Worker, 0, sizeof(*Worker));
+    Worker->Go = OsEvent_Create();
+    if (Worker->Go == NULL)
     {
-        DtAlloc_Free(Member);
+        DtAlloc_Free(Worker);
         return NULL;
     }
-    return Member;
+    return Worker;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPoolMember_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorker_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtWorkPoolMember_Free(DtWorkPoolMember* Member)
+void DtWorker_Free(DtWorker* Worker)
 {
-    if (Member == NULL)
+    if (Worker == NULL)
         return;
-    OsEvent_Destroy(Member->Go);
-    DtAlloc_Free(Member);
+    OsEvent_Destroy(Worker->Go);
+    DtAlloc_Free(Worker);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPoolMember_Freep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorker_Freep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWorkPoolMember_Freep(DtWorkPoolMember** Member)
+void DtWorker_Freep(DtWorker** Worker)
 {
-    if (Member == NULL)
+    if (Worker == NULL)
         return;
-    DtWorkPoolMember_Free(*Member);
-    *Member = NULL;
+    DtWorker_Free(*Worker);
+    *Worker = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Hold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_AddRef -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtWorkPool_Hold(DtWorkPool* Pool)
+void DtWorkerPool_AddRef(DtWorkerPool* Pool)
 {
     if (Pool != NULL)
         DtAtomic_Increment(&Pool->NumRefs);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtWorkPool_Free(DtWorkPool* Pool)
+void DtWorkerPool_Free(DtWorkerPool* Pool)
 {
     if (Pool != NULL)
-        Release(Pool);
+        DropRef(Pool);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_Freep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_Freep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWorkPool_Freep(DtWorkPool** Pool)
+void DtWorkerPool_Freep(DtWorkerPool** Pool)
 {
     if (Pool == NULL)
         return;
-    DtWorkPool_Free(*Pool);
+    DtWorkerPool_Free(*Pool);
     *Pool = NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkPool_NumThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWorkerPool_NumThreads -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int DtWorkPool_NumThreads(const DtWorkPool* Pool)
+int DtWorkerPool_NumThreads(const DtWorkerPool* Pool)
 {
     return Pool->NumThreads > 0 ? Pool->NumThreads : 1;
 }
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtWork +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtJobRunner +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWork_Init(DtWork* Work)
+void DtJobRunner_Init(DtJobRunner* Runner)
 {
-    memset(Work, 0, sizeof(*Work));
-    Work->Pieces = 1;
+    memset(Runner, 0, sizeof(*Runner));
+    Runner->Pieces = 1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtWork_Free(DtWork* Work)
+void DtJobRunner_Free(DtJobRunner* Runner)
 {
-    if (Work->Pool != NULL)
+    if (Runner->Pool != NULL)
     {
-        DtAtomic_Decrement(&Work->Pool->NumHolders);
-        Release(Work->Pool);
+        DtAtomic_Decrement(&Runner->Pool->NumRunnersSized);
+        DropRef(Runner->Pool);
     }
-    OsEvent_Destroy(Work->Done);
-    DtWork_Init(Work);
+    OsEvent_Destroy(Runner->Done);
+    DtJobRunner_Init(Runner);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_SetPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_SetPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The new pool is held before the old one is let go, so that setting the pool a DtWork
-// already holds does not drop it on the way.
+// The new pool is held before the old one is let go, so that setting the pool a
+// DtJobRunner already holds does not drop it on the way.
 //
-DtapiResult DtWork_SetPool(DtWork* Work, DtWorkPool* Pool, int NumThreads)
+DtapiResult DtJobRunner_SetPool(DtJobRunner* Runner, DtWorkerPool* Pool, int NumThreads)
 {
     if (NumThreads < 0)
         return DTAPI_E_INVALID_ARG;
@@ -569,46 +568,46 @@ DtapiResult DtWork_SetPool(DtWork* Work, DtWorkPool* Pool, int NumThreads)
         Done = OsEvent_Create();
         if (Done == NULL)
             return DTAPI_E_OUT_OF_MEM;
-        DtAtomic_Increment(&Pool->NumRefs);
-        DtAtomic_Increment(&Pool->NumHolders);
+        DtWorkerPool_AddRef(Pool);
+        DtAtomic_Increment(&Pool->NumRunnersSized);
     }
-    DtWork_Free(Work);
+    DtJobRunner_Free(Runner);
     if (Pool == NULL)
         return DTAPI_OK;
 
-    const int Cap = DtWorkPool_NumThreads(Pool);
-    Work->Pool = Pool;
-    Work->Done = Done;
-    Work->Pieces = NumThreads > 0 && NumThreads < Cap ? NumThreads : Cap;
+    const int MaxPieces = DtWorkerPool_NumThreads(Pool);
+    Runner->Pool = Pool;
+    Runner->Done = Done;
+    Runner->Pieces = NumThreads > 0 && NumThreads < MaxPieces ? NumThreads : MaxPieces;
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A job of one piece runs in the calling thread whatever the pool, since handing it on
 // would cost more than the piece.
 //
-void DtWork_Run(const DtWork* Work, DtWorkFunc Func, void* Context)
+void DtJobRunner_Run(const DtJobRunner* Runner, DtJobFunc Func, void* Context)
 {
-    const DtWorkPool* Pool = Work->Pool;
+    const DtWorkerPool* Pool = Runner->Pool;
 
-    if (Pool == NULL || Work->Pieces == 1 || Pool->NumThreads == 0)
+    if (Pool == NULL || Runner->Pieces == 1 || Pool->NumThreads == 0)
     {
-        for (int i = 0; i < Work->Pieces; i++)
-            Func(Context, i, Work->Pieces);
+        for (int i = 0; i < Runner->Pieces; i++)
+            Func(Context, i, Runner->Pieces);
         return;
     }
     if (Pool->Dispatch != NULL)
     {
-        Pool->Dispatch(Pool->User, Func, Context, Work->Pieces);
+        Pool->Dispatch(Pool->User, Func, Context, Runner->Pieces);
         return;
     }
-    RunQueued(Work->Pool, Work->Done, Func, Context, Work->Pieces);
+    RunQueued(Runner->Pool, Runner->Done, Func, Context, Runner->Pieces);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtWork_Split -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtJobRunner_Split -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void DtWork_Split(int Total, int Index, int Count, int Unit, int* First, int* Last)
+void DtJobRunner_Split(int Total, int Index, int Count, int Unit, int* First, int* Last)
 {
     // Counted in whole units, of which the last may be short.
     const int Units = (Total + Unit - 1) / Unit;

@@ -14,7 +14,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"       // Allocation seam.
 #include "Core/DtRing.h"        // Reading the ring.
-#include "Core/DtWork.h"        // The threads a frame's lines are converted over.
+#include "Core/DtWorkerPool.h"  // The threads a frame's lines are converted over.
 #include "Device/DtAvInput.h"   // Detecting the signal's standard.
 #include "Device/DtFunc.h"      // Finding the receive channel.
 #include "DtPcieAbi.h"          // DT_FUNC_OPMODE_ and SDI rate values.
@@ -68,12 +68,12 @@ typedef struct DtSdiRx
 
     // The pool the channel gave, and the pieces it asked for: 0 for as many as the
     // standard calls for. The channel holds the pool.
-    DtWorkPool* WorkPool;
-    int WorkThreads;
+    DtWorkerPool* WorkerPool;
+    int WorkerThreads;
 
     // The pieces a frame's lines are converted in, and what one band of them needs. The
-    // buffers above hold DtWork_Pieces(&Work) sets, so a band uses its own.
-    DtWork Work;
+    // buffers above hold DtJobRunner_NumPieces(&Work) sets, so a band uses its own.
+    DtJobRunner JobRunner;
     size_t LineBufNumBytes;
     size_t ScratchSymbols;
 
@@ -166,7 +166,7 @@ static void ReleaseChannel(DtSdiRx* Sdi)
 //
 static DtapiResult AllocBands(DtSdiRx* Sdi)
 {
-    const size_t Bands = (size_t)DtWork_Pieces(&Sdi->Work);
+    const size_t Bands = (size_t)DtJobRunner_NumPieces(&Sdi->JobRunner);
 
     DtAlloc_Free(Sdi->LineBuf);
     DtAlloc_Free(Sdi->Scratch);
@@ -192,15 +192,15 @@ static DtapiResult AllocBands(DtSdiRx* Sdi)
 //
 static DtapiResult SizeWork(DtSdiRx* Sdi)
 {
-    const int Pieces =
-        Sdi->WorkThreads > 0 ? Sdi->WorkThreads : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
+    const int Pieces = Sdi->WorkerThreads > 0 ? Sdi->WorkerThreads
+                                              : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
 
-    DtapiResult Result = DtWork_SetPool(&Sdi->Work, Sdi->WorkPool, Pieces);
+    DtapiResult Result = DtJobRunner_SetPool(&Sdi->JobRunner, Sdi->WorkerPool, Pieces);
     if (Result == DTAPI_OK)
         Result = AllocBands(Sdi);
     if (Result != DTAPI_OK)
     {
-        DtWork_SetPool(&Sdi->Work, NULL, 0);
+        DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
         AllocBands(Sdi);
     }
     return Result;
@@ -476,7 +476,7 @@ static void Release(DtRx* Rx)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
     ReleaseChannel(Sdi);
-    DtWork_Free(&Sdi->Work);
+    DtJobRunner_Free(&Sdi->JobRunner);
     DtAlloc_Free(Sdi);
 }
 
@@ -669,8 +669,8 @@ static void DecodeLines(void* Context, int Index, int Count)
     int First;
     int Last;
 
-    DtWork_Split(Layout->NumLines, Index, Count,
-                 DtSdiFrame_BandLineStep(Layout, Sdi->BitsPerSymbol), &First, &Last);
+    DtJobRunner_Split(Layout->NumLines, Index, Count,
+                      DtSdiFrame_BandLineStep(Layout, Sdi->BitsPerSymbol), &First, &Last);
     for (int Line = First; Line < Last; Line++)
     {
         size_t Offset =
@@ -772,7 +772,7 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     Band.CodedBytesPerLine = CodedBytesPerLine;
     Band.RawLineNumBytes = RawLineNumBytes;
 
-    DtWork_Run(&Sdi->Work, DecodeLines, &Band);
+    DtJobRunner_Run(&Sdi->JobRunner, DecodeLines, &Band);
 
     Result = Advance(Sdi, Frame);
     if (Result != DTAPI_OK)
@@ -828,18 +828,18 @@ static DtapiResult AfterWait(DtRx* Rx, const DtRxWait* Wait)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A side with no layout yet keeps the pool for ConfigureChannel, which sizes the work.
 //
-static DtapiResult SetWorkPool(DtRx* Rx, DtWorkPool* Pool, int NumThreads)
+static DtapiResult SetWorkerPool(DtRx* Rx, DtWorkerPool* Pool, int NumThreads)
 {
     DtSdiRx* Sdi = (DtSdiRx*)Rx;
 
-    Sdi->WorkPool = Pool;
-    Sdi->WorkThreads = NumThreads;
+    Sdi->WorkerPool = Pool;
+    Sdi->WorkerThreads = NumThreads;
     if (Sdi->LineBuf == NULL)
-        return DtWork_SetPool(&Sdi->Work, NULL, 0);
+        return DtJobRunner_SetPool(&Sdi->JobRunner, NULL, 0);
     return SizeWork(Sdi);
 }
 
@@ -854,7 +854,7 @@ static const DtRxBackend g_SdiRxBackend = {
     .GetMaxFifoSize = GetMaxFifoSize,
     .ApplyIoConfig = ApplyIoConfig,
     .DetectIoStd = DetectIoStd,
-    .SetWorkPool = SetWorkPool,
+    .SetWorkerPool = SetWorkerPool,
     .CheckFrame = CheckFrame,
     .DeliverFrame = DeliverFrame,
     .PrepareWait = PrepareWait,
@@ -878,7 +878,7 @@ DtapiResult DtSdiRx_Attach(const DtRxPort* Port, const DtIoConfig* IoStd, DtRx**
     Sdi->IoStdValue = IoStd->Value;
     Sdi->IoStdSubValue = IoStd->SubValue;
     Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
-    DtWork_Init(&Sdi->Work);
+    DtJobRunner_Init(&Sdi->JobRunner);
 
     // The receiver and the receive channel, in the port's AF_ASISDIRX.
     DtFuncInstance Instance;

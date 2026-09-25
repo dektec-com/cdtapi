@@ -146,11 +146,11 @@ CDTAPI declares 41 functions besides those of the wrapper:
 | `DtDevice_GetGenlockState`, `DtDevice_GetTimeOfDayState` | The state of the device's genlock and of its time-of-day clock |
 | `DtDevice_GetTxClockProperties`, `DtDevice_GetTxClockCount` | The device's transmit clocks, and a count of one's periods |
 | `DtDevice_GetTxClockOffset`, `DtDevice_SetTxClockOffset` | Read or set a transmit clock's offset from its centre frequency |
-| `DtWorkPool_Alloc`, `DtWorkPool_Free`, `DtWorkPool_Freep` | A pool of threads that channels share, for the work they divide |
-| `DtWorkPool_StartThreads`, `DtWorkPool_SetDispatch` | Run a pool's work on threads of the library's own, or on the program's pool |
-| `DtWorkPool_ExpectThreads`, `DtWorkPool_Join`, `DtWorkPool_Dismiss`, `DtWorkPool_DismissAll` | Let the program's own threads join a pool, and send them back one by one or all at once |
-| `DtWorkPoolMember_Alloc`, `DtWorkPoolMember_Free`, `DtWorkPoolMember_Freep` | One thread of the program's in a pool it joins |
-| `DtInpChannel_SetWorkPool`, `DtOutpChannel_SetWorkPool` | Divide a channel's work, such as converting a frame's lines, over a pool |
+| `DtWorkerPool_Alloc`, `DtWorkerPool_Free`, `DtWorkerPool_Freep` | A pool of threads that channels share, for the work they divide |
+| `DtWorkerPool_StartThreads`, `DtWorkerPool_SetDispatch` | Run a pool's work on threads of the library's own, or on the program's pool |
+| `DtWorkerPool_ExpectThreads`, `DtWorkerPool_Join`, `DtWorkerPool_Dismiss`, `DtWorkerPool_DismissAll` | Let the program's own threads join a pool, and send them back one by one or all at once |
+| `DtWorker_Alloc`, `DtWorker_Free`, `DtWorker_Freep` | One thread of the program's in a pool it joins |
+| `DtInpChannel_SetWorkerPool`, `DtOutpChannel_SetWorkerPool` | Divide a channel's work, such as converting a frame's lines, over a pool |
 | `DtInpChannel_Read`, `DtInpChannel_GetStatus`, `DtInpChannel_GetTsRateBps`, `DtInpChannel_GetViolCount`, `DtInpChannel_PolarityControl` | Receive DVB-ASI |
 | `DtOutpChannel_GetTsRateBps`, `DtOutpChannel_SetTsRateBps`, `DtOutpChannel_SetTxPolarity`, `DtOutpChannel_ClearFlags` | Transmit DVB-ASI, and clear a transmit channel's latched flags |
 | `AvFifo_RxFifo_Attach2`, `AvFifo_TxFifo_Attach2` | Attach with a choice between a hardware and a software pipe |

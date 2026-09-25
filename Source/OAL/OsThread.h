@@ -36,8 +36,8 @@ OsThread* OsThread_Start(OsThreadFunc Func, void* Context);
 void OsThread_Join(OsThread* Thread);
 
 // Gives the calling thread a name, which is what a debugger and a process viewer show
-// beside it: "DtWork.1" rather than the program's own name for every one of them, so that
-// the cost of a thread of the library's can be told from the cost of the program's.
+// beside it: "DtWorker.1" rather than the program's own name for every one of them, so
+// that the cost of a thread of the library's can be told from the cost of the program's.
 //
 // Linux takes fifteen characters and a terminator, which is the shorter of the two
 // limits, so a name is kept within that; a longer one is cut. A name is a convenience and

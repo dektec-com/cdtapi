@@ -16,15 +16,15 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h"    // Allocation seam.
-#include "Core/DtWork.h"     // The pool the channel's work is divided over.
-#include "Device/DtDevice.h" // The device and its port capabilities.
-#include "DtAsiRx.h"         // The ASI side.
-#include "DtIoConfig.h"      // Validating I/O configurations.
-#include "DtPcieAbi.h"       // DT_FWSTATUS_ values.
-#include "DtSdiRx.h"         // The SDI side.
-#include "OAL/OsThread.h"    // The lock, sleeping, the clock.
-#include "cdtapi.h"          // Interface being implemented.
+#include "Core/DtAlloc.h"      // Allocation seam.
+#include "Core/DtWorkerPool.h" // The pool the channel's work is divided over.
+#include "Device/DtDevice.h"   // The device and its port capabilities.
+#include "DtAsiRx.h"           // The ASI side.
+#include "DtIoConfig.h"        // Validating I/O configurations.
+#include "DtPcieAbi.h"         // DT_FWSTATUS_ values.
+#include "DtSdiRx.h"           // The SDI side.
+#include "OAL/OsThread.h"      // The lock, sleeping, the clock.
+#include "cdtapi.h"            // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -69,8 +69,8 @@ struct DtInpChannel
     // The pool the channel's work is divided over, NULL for none, and the pieces asked
     // for, 0 for as many as the signal calls for. Held from the setting until the next
     // one or the detach, across a change of side, and given to every side attached.
-    DtWorkPool* WorkPool;
-    int WorkThreads;
+    DtWorkerPool* WorkerPool;
+    int WorkerThreads;
 };
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -107,8 +107,8 @@ static void ReleaseSide(DtInpChannel* Chan)
 //
 static void GiveWork(DtInpChannel* Chan)
 {
-    if (Chan->Rx->Backend->SetWorkPool != NULL)
-        Chan->Rx->Backend->SetWorkPool(Chan->Rx, Chan->WorkPool, Chan->WorkThreads);
+    if (Chan->Rx->Backend->SetWorkerPool != NULL)
+        Chan->Rx->Backend->SetWorkerPool(Chan->Rx, Chan->WorkerPool, Chan->WorkerThreads);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -117,26 +117,26 @@ static void GiveWork(DtInpChannel* Chan)
 //
 static void DropWork(DtInpChannel* Chan)
 {
-    DtWorkPool_Freep(&Chan->WorkPool);
-    Chan->WorkThreads = 0;
+    DtWorkerPool_Freep(&Chan->WorkerPool);
+    Chan->WorkerThreads = 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Holds Pool for the channel and gives it to the side, with the lock taken, attached,
 // and no call between its start and its return. The pool is kept when the side is short
 // of memory, so that the next standard tries again.
 //
-static DtapiResult SetWorkPool(DtInpChannel* Chan, DtWorkPool* Pool, int NumThreads)
+static DtapiResult SetWorkerPool(DtInpChannel* Chan, DtWorkerPool* Pool, int NumThreads)
 {
     DtapiResult Result = DTAPI_OK;
-    if (Chan->Rx->Backend->SetWorkPool != NULL)
-        Result = Chan->Rx->Backend->SetWorkPool(Chan->Rx, Pool, NumThreads);
+    if (Chan->Rx->Backend->SetWorkerPool != NULL)
+        Result = Chan->Rx->Backend->SetWorkerPool(Chan->Rx, Pool, NumThreads);
 
-    DtWorkPool_Hold(Pool);
-    DtWorkPool_Free(Chan->WorkPool);
-    Chan->WorkPool = Pool;
-    Chan->WorkThreads = NumThreads;
+    DtWorkerPool_AddRef(Pool);
+    DtWorkerPool_Free(Chan->WorkerPool);
+    Chan->WorkerPool = Pool;
+    Chan->WorkerThreads = NumThreads;
     return Result;
 }
 
@@ -389,10 +389,10 @@ DtapiResult DtInpChannel_ClearFifo(DtInpChannel* InpChannel)
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_SetWorkPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtInpChannel_SetWorkPool(DtInpChannel* InpChannel, DtWorkPool* Pool,
-                                     int NumThreads)
+DtapiResult DtInpChannel_SetWorkerPool(DtInpChannel* InpChannel, DtWorkerPool* Pool,
+                                       int NumThreads)
 {
     if (InpChannel == NULL || NumThreads < 0)
         return DTAPI_E_INVALID_ARG;
@@ -401,8 +401,9 @@ DtapiResult DtInpChannel_SetWorkPool(DtInpChannel* InpChannel, DtWorkPool* Pool,
 
     // The side sizes its working buffers here, so a read between its start and its
     // return would find them changing under it.
-    DtapiResult Result =
-        InpChannel->Reading ? DTAPI_E_IN_USE : SetWorkPool(InpChannel, Pool, NumThreads);
+    DtapiResult Result = InpChannel->Reading
+                             ? DTAPI_E_IN_USE
+                             : SetWorkerPool(InpChannel, Pool, NumThreads);
     OsMutex_Unlock(InpChannel->Lock);
     return Result;
 }

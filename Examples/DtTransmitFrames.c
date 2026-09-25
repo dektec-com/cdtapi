@@ -586,13 +586,13 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
 //
 static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
 {
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
     unsigned int Result =
-        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, NumThreads);
+        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkerPool_StartThreads(Pool, NumThreads);
 
     if (Result == DTAPI_OK)
-        Result = DtOutpChannel_SetWorkPool(Channel, Pool, 0);
-    DtWorkPool_Freep(&Pool);
+        Result = DtOutpChannel_SetWorkerPool(Channel, Pool, 0);
+    DtWorkerPool_Freep(&Pool);
     return Result;
 }
 
@@ -618,7 +618,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
         return Example_Failed("DtOutpChannel_AttachToPort", Result);
     }
 
-    const char* What = "DtOutpChannel_SetWorkPool";
+    const char* What = "DtOutpChannel_SetWorkerPool";
     Result = Threads > 0 ? GivePool(Channel, (int)Threads) : DTAPI_OK;
     if (Result == DTAPI_OK && VidStd != DTAPI_VIDSTD_UNKNOWN)
     {

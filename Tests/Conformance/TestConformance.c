@@ -281,28 +281,28 @@ DT_TEST(InputChannelCalls)
     // The work over a pool of two threads of the library's own, freed by the program at
     // once and held by the channel, then back to the reading thread alone. A pool set to
     // no dispatch function is one with neither, which threads may follow.
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtWorkPool_SetDispatch(Pool, NULL, NULL, 0));
-    DT_ASSERT_OK(DtWorkPool_StartThreads(Pool, 2));
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, Pool, 0));
-    DtWorkPool_Freep(&Pool);
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, NULL, 0));
+    DT_ASSERT_OK(DtWorkerPool_SetDispatch(Pool, NULL, NULL, 0));
+    DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 2));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Channel, Pool, 0));
+    DtWorkerPool_Freep(&Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Channel, NULL, 0));
 
-    // A pool the program's threads join: a member sent back before it joins returns from
+    // A pool the program's threads join: a worker sent back before it joins returns from
     // its Join at once, and a channel takes such a pool as it takes any other.
-    Pool = DtWorkPool_Alloc();
-    DtWorkPoolMember* Member = DtWorkPoolMember_Alloc();
-    DT_ASSERT(Pool != NULL && Member != NULL);
-    DT_ASSERT_OK(DtWorkPool_ExpectThreads(Pool, 2));
-    DtWorkPool_Dismiss(Pool, Member);
-    DT_ASSERT_OK(DtWorkPool_Join(Pool, Member));
-    DtWorkPool_DismissAll(Pool);
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, Pool, 0));
-    DT_ASSERT_OK(DtInpChannel_SetWorkPool(Channel, NULL, 0));
-    DtWorkPoolMember_Freep(&Member);
-    DtWorkPoolMember_Free(Member);
-    DtWorkPool_Freep(&Pool);
+    Pool = DtWorkerPool_Alloc();
+    DtWorker* Worker = DtWorker_Alloc();
+    DT_ASSERT(Pool != NULL && Worker != NULL);
+    DT_ASSERT_OK(DtWorkerPool_ExpectThreads(Pool, 2));
+    DtWorkerPool_Dismiss(Pool, Worker);
+    DT_ASSERT_OK(DtWorkerPool_Join(Pool, Worker));
+    DtWorkerPool_DismissAll(Pool);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Channel, Pool, 0));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Channel, NULL, 0));
+    DtWorker_Freep(&Worker);
+    DtWorker_Free(Worker);
+    DtWorkerPool_Freep(&Pool);
 
     // The functions of ASI, which an SDI channel does not have.
     int NumInv = 0, ClkDet = 0, AsiLock = 0, RateOk = 0, AsiInv = 0, Count = 0;
@@ -392,12 +392,12 @@ DT_TEST(OutputChannelCalls)
 
     // The work over a pool of two threads of the library's own, freed by the program at
     // once and held by the channel, then back to the writing thread alone.
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
     DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtWorkPool_StartThreads(Pool, 2));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Channel, Pool, 0));
-    DtWorkPool_Free(Pool);
-    DT_ASSERT_OK(DtOutpChannel_SetWorkPool(Channel, NULL, 0));
+    DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 2));
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Channel, Pool, 0));
+    DtWorkerPool_Free(Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Channel, NULL, 0));
 
     // The functions of ASI: SDI takes the normal polarity and has no rate.
     DT_ASSERT_OK(DtOutpChannel_SetTxPolarity(Channel, DTAPI_TXPOL_NORMAL));

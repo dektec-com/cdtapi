@@ -160,13 +160,13 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
 //
 static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
 {
-    DtWorkPool* Pool = DtWorkPool_Alloc();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
     unsigned int Result =
-        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkPool_StartThreads(Pool, NumThreads);
+        Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkerPool_StartThreads(Pool, NumThreads);
 
     if (Result == DTAPI_OK)
-        Result = DtInpChannel_SetWorkPool(Channel, Pool, 0);
-    DtWorkPool_Freep(&Pool);
+        Result = DtInpChannel_SetWorkerPool(Channel, Pool, 0);
+    DtWorkerPool_Freep(&Pool);
     return Result;
 }
 
@@ -192,7 +192,7 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
     if (Result != DTAPI_OK)
     {
         printf("%s  ", Port->DeviceName);
-        Example_Failed("DtInpChannel_SetWorkPool", Result);
+        Example_Failed("DtInpChannel_SetWorkerPool", Result);
         DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
         return EXAMPLE_FAILED;
     }
