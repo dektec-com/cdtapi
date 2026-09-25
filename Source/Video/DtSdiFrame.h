@@ -111,10 +111,11 @@ size_t DtSdiFrame_RxCodedSize(const DtSdiFrameLayout* Layout);
 size_t DtSdiFrame_TxCodedSize(const DtSdiFrameLayout* Layout);
 
 // The pieces a channel divides a frame's lines into when the program leaves the number to
-// the library: 4 for a 4K standard on a port whose I/O standard is 12G-SDI, 2 for a 4K
-// standard on any other port, 6G-SDI or four 3G links, and 1 for everything up to 3G,
-// where dividing costs more than it saves, SD on a 12G port included. Each piece then
-// gets about the work of one 3G link.
+// the library. It follows the video standard of the layout, whatever the port carries: 4
+// for the 2160p standards from 2160p50 up, which 12G-SDI carries; 2 for 2160p23.98 to
+// 2160p30, which 6G-SDI carries; and 1 for everything up to 3G, where dividing costs more
+// than it saves, SD on a 12G port included. Each piece then gets about the work of one 3G
+// link.
 int DtSdiFrame_NumJobPieces(const DtSdiFrameLayout* Layout);
 
 // The coded lines one raw line is made of, and the bytes all of them together take as
