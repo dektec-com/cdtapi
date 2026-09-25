@@ -80,7 +80,7 @@ DT_TEST(RefusesBadArguments)
     DT_ASSERT_EQ(DtapiDeviceScan(-1, &Count, &Desc), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtapiDeviceScan(1, &Count, NULL), DTAPI_E_INVALID_BUF);
     DT_ASSERT_EQ(Count, 7);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // Asking with no array returns the count and says the array is too small.
@@ -94,7 +94,7 @@ DT_TEST(CountsWithoutAnArray)
 
     DT_ASSERT_EQ(DtapiDeviceScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, 1);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
@@ -140,7 +140,7 @@ DT_TEST(NothingFoundIsNoError)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcie_SetIndex(DT_MAX_DEVICES);
+    SimDtPcie_SetDta2178Index(DT_MAX_DEVICES);
     DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
@@ -150,7 +150,7 @@ DT_TEST(NothingFoundIsNoError)
     Count = -1;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // The device is found past the indices before it.
@@ -159,7 +159,7 @@ DT_TEST(FindsTheDeviceAtALaterIndex)
     if (!StartSim(DtFailures))
         return;
 
-    SimDtPcie_SetIndex(DT_MAX_DEVICES - 1);
+    SimDtPcie_SetDta2178Index(DT_MAX_DEVICES - 1);
     DtDeviceDesc Desc;
     if (!ScanOne(&Desc, DtFailures))
         return;
@@ -213,7 +213,7 @@ DT_TEST(DescribesTheCard)
     DT_ASSERT_EQ(Desc.PcieMaxPayloadSize, SIM_PCIE_MAX_PAYLOAD_SIZE);
     DT_ASSERT_EQ(Desc.PcieMaxReadRequestSize, SIM_PCIE_MAX_READ_REQUEST_SIZE);
     DT_ASSERT_EQ(Desc.PcieMaxSlotPower, SIM_PCIE_MAX_SLOT_POWER);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
@@ -328,7 +328,7 @@ DT_TEST(StopsCountingWhenADirectionFails)
     DT_ASSERT_EQ(Desc.NumDtInpChan, 1);
     DT_ASSERT_EQ(Desc.NumDtOutpChan, 0);
     DT_ASSERT_EQ(Desc.Serial, SIM_SERIAL);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // A device whose identity cannot be read is left out.
@@ -344,7 +344,7 @@ DT_TEST(LeavesOutADeviceThatCannotBeRead)
     DtDeviceDesc Desc;
     DT_ASSERT_OK(DtapiDeviceScan(1, &Count, &Desc));
     DT_ASSERT_EQ(Count, 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Types +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

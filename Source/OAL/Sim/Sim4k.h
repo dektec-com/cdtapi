@@ -24,16 +24,17 @@
 // emulator's own reading of plan 0014, written from the layout rather than from the
 // library's conversion, so that the suites check one against the other.
 //
-// Hanc is the symbols of one HANC section, Act those of one link's active part, half the
-// video section's; Raw holds 4*Hanc + 4*Act symbols and each coded line 2*Hanc + 2*Act.
+// HancSyms is the symbols of one HANC section, ActiveSyms those of one link's active
+// part, half the video section's; Raw holds 4*HancSyms + 4*ActiveSyms symbols and each
+// coded line 2*HancSyms + 2*ActiveSyms.
 
 // Where symbol Index of the line of link Link, both from 0, lies in the raw line.
 size_t Sim4k_RawAt(int Link, int Index);
 
 // Splits a raw line into the two coded lines of the ring.
-void Sim4k_Split(int Hanc, int Act, bool Blanking, const uint16_t* Raw, uint16_t* CodedA,
-                 uint16_t* CodedB);
+void Sim4k_Split(int HancSyms, int ActiveSyms, bool Blanking, const uint16_t* Raw,
+                 uint16_t* CodedA, uint16_t* CodedB);
 
 // Puts the two coded lines of the ring back together into a raw line.
-void Sim4k_Merge(int Hanc, int Act, bool Blanking, const uint16_t* CodedA,
+void Sim4k_Merge(int HancSyms, int ActiveSyms, bool Blanking, const uint16_t* CodedA,
                  const uint16_t* CodedB, uint16_t* Raw);

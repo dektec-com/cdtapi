@@ -71,7 +71,7 @@ static DtDevice* Attach(int* DtFailures)
     do                                                                                   \
     {                                                                                    \
         DtDevice_Free(Device);                                                           \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 

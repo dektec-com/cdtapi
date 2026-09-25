@@ -45,7 +45,7 @@ static void* ThreadEntry(void* Arg)
     return NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // pthread_setname_np refuses a name of more than fifteen characters rather than cutting
 // it, so it is cut here.
@@ -121,7 +121,7 @@ struct OsEvent
 {
     pthread_mutex_t Mutex;
     pthread_cond_t Cond;
-    int Signalled;
+    bool IsSet;
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsEvent_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -139,21 +139,21 @@ OsEvent* OsEvent_Create(void)
 
     // The condition times its waits on the monotonic clock.
     pthread_condattr_t Attr;
-    int Made = pthread_condattr_init(&Attr) == 0;
-    if (Made)
+    int CondReady = pthread_condattr_init(&Attr) == 0;
+    if (CondReady)
     {
-        Made = pthread_condattr_setclock(&Attr, CLOCK_MONOTONIC) == 0 &&
-               pthread_cond_init(&Event->Cond, &Attr) == 0;
+        CondReady = pthread_condattr_setclock(&Attr, CLOCK_MONOTONIC) == 0 &&
+                    pthread_cond_init(&Event->Cond, &Attr) == 0;
         pthread_condattr_destroy(&Attr);
     }
-    if (!Made)
+    if (!CondReady)
     {
         pthread_mutex_destroy(&Event->Mutex);
         DtAlloc_Free(Event);
         return NULL;
     }
 
-    Event->Signalled = 0;
+    Event->IsSet = 0;
     return Event;
 }
 
@@ -177,7 +177,7 @@ void OsEvent_Set(OsEvent* Event)
         return;
 
     pthread_mutex_lock(&Event->Mutex);
-    Event->Signalled = 1;
+    Event->IsSet = 1;
     // One waiter, to match the auto-reset semantics: it consumes the flag.
     pthread_cond_signal(&Event->Cond);
     pthread_mutex_unlock(&Event->Mutex);
@@ -210,7 +210,7 @@ int OsEvent_Wait(OsEvent* Event, int TimeoutMs)
     pthread_mutex_lock(&Event->Mutex);
 
     // A loop, because a condition variable may wake without having been signalled.
-    while (!Event->Signalled)
+    while (!Event->IsSet)
     {
         int Rc = TimeoutMs < 0
                      ? pthread_cond_wait(&Event->Cond, &Event->Mutex)
@@ -229,7 +229,7 @@ int OsEvent_Wait(OsEvent* Event, int TimeoutMs)
 
     // Consuming the flag is what makes the event auto-reset.
     if (Result == OS_WAIT_SIGNALLED)
-        Event->Signalled = 0;
+        Event->IsSet = 0;
 
     pthread_mutex_unlock(&Event->Mutex);
     return Result;
@@ -239,7 +239,7 @@ int OsEvent_Wait(OsEvent* Event, int TimeoutMs)
 
 struct OsMutex
 {
-    pthread_mutex_t Handle;
+    pthread_mutex_t Lock;
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Create -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -251,7 +251,7 @@ OsMutex* OsMutex_Create(void)
     if (Mutex == NULL)
         return NULL;
 
-    if (pthread_mutex_init(&Mutex->Handle, NULL) != 0)
+    if (pthread_mutex_init(&Mutex->Lock, NULL) != 0)
     {
         DtAlloc_Free(Mutex);
         return NULL;
@@ -267,7 +267,7 @@ void OsMutex_Destroy(OsMutex* Mutex)
     if (Mutex == NULL)
         return;
 
-    pthread_mutex_destroy(&Mutex->Handle);
+    pthread_mutex_destroy(&Mutex->Lock);
     DtAlloc_Free(Mutex);
 }
 
@@ -275,14 +275,14 @@ void OsMutex_Destroy(OsMutex* Mutex)
 //
 void OsMutex_Lock(OsMutex* Mutex)
 {
-    pthread_mutex_lock(&Mutex->Handle);
+    pthread_mutex_lock(&Mutex->Lock);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsMutex_Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void OsMutex_Unlock(OsMutex* Mutex)
 {
-    pthread_mutex_unlock(&Mutex->Handle);
+    pthread_mutex_unlock(&Mutex->Lock);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

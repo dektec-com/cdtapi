@@ -132,7 +132,7 @@ DT_TEST(OpenBufferClose)
         DtAvPipe_Close(&Hw[i]);
 
     OsDrv_Close(Drv);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     SimDtPcie_Reset();
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
@@ -260,7 +260,7 @@ DT_TEST(FramesAroundTheBuffers)
     DT_ASSERT(Frame != NULL);
     memcpy(Frame->Frame.Data, Image, HEIGHT * ROW);
     Frame->Frame.NumValidBytes = HEIGHT * ROW;
-    Frame->Frame.ToD = DtAvTime_FromNs(SimNw_Now() + 50 * MS);
+    Frame->Frame.ToD = DtAvTime_FromNs(SimDtPcie_Now() + 50 * MS);
     DT_ASSERT_OK(DtSt2110VideoTx_Packetize(&Video, &S, &Frame->Frame, &Writer.Sink));
     DT_ASSERT_OK(DtAvWriter_Flush(&Writer));
     DtAvFramePool_Return(&Pool, &Frame->Frame);
@@ -282,7 +282,7 @@ DT_TEST(FramesAroundTheBuffers)
     free(Image);
     DtAvFramePool_Destroy(&Pool);
     OsDrv_Close(Drv);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     SimDtPcie_Reset();
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }

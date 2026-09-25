@@ -91,7 +91,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     {                                                                                    \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)

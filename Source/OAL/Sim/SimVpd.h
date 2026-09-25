@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimVpd.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* SimVpd.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The emulated card's Vital Product Data
 //
@@ -13,7 +13,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= EEPROM +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= EEPROM +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // An EEPROM of SIM_VPD_EEPROM_SIZE bytes: a read-only section, a read-write section, and
 // behind them the bytes that belong to no section, where the data a card is activated
@@ -39,7 +39,7 @@ void SimVpd_Reset(void);
 void SimVpd_SetTailBlank(bool Blank);
 
 // True for the function code the EEPROM answers.
-bool SimVpd_Takes(int FunctionCode);
+bool SimVpd_Handles(int FunctionCode);
 
 // Handles one command, and gives its DT_STATUS_ outcome.
 uint32_t SimVpd_Cmd(int Cmd, const void* In, size_t InSize, void* Out, size_t* OutSize);

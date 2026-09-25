@@ -87,7 +87,7 @@ static int RawSdiRx(OsDrv* Drv, int Uuid, int PortIndex, int Cmd, size_t InSize,
     In.m_Cmd = Cmd;
     In.m_CmdEx = DT_IOCTL_CMD_NOP;
     DtIoctlSdiRxCmdGetSdiStatusOutput2 Out;
-    return OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_SDIRX_CMD), &In, InSize, &Out,
+    return OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_SDIRX_CMD), &In, InSize, &Out,
                        &Returned, Status);
 }
 
@@ -442,13 +442,13 @@ DT_TEST(DeviceCommandsNeedTheDevicePortIndex)
     DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = 0;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
                              sizeof(In), &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
                              sizeof(In), &Out, &OutSize, &Status),
                  OS_IOCTL_OK);
 
@@ -536,7 +536,7 @@ DT_TEST(OnlyTheReceiverTakesItsCommand)
         In.m_Uuid = UuidOf(Drv, "DF_SDIRX#1", 0);
         In.m_PortIndex = 0;
         In.m_Cmd = DT_SDIRX_CMD_GET_SDI_STATUS2;
-        DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+        DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
                                  sizeof(In), &Out, &OutSize, &Status),
                      OS_IOCTL_DRIVER_STATUS);
         DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);

@@ -29,12 +29,12 @@ typedef struct WinDevice
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Discovery +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenListedInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenListedDeviceInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Opens the Index-th interface of the list DevInfo. Returns INVALID_HANDLE_VALUE when
 // there is no interface at that index or it cannot be opened.
 //
-static HANDLE OpenListedInterface(HDEVINFO DevInfo, int Index)
+static HANDLE OpenListedDeviceInterface(HDEVINFO DevInfo, int Index)
 {
     SP_DEVICE_INTERFACE_DATA InterfaceData;
     InterfaceData.cbSize = sizeof(InterfaceData);
@@ -76,32 +76,32 @@ static HANDLE OpenListedInterface(HDEVINFO DevInfo, int Index)
     return Handle;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenDeviceInterface -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Opens the Index-th present DtPcie device interface. Index counts interfaces that
 // SetupAPI reports as present, in its own order; it is not a fixed slot number.
 //
 // Returns INVALID_HANDLE_VALUE when there is no interface at that index.
 //
-static HANDLE OpenInterface(int Index)
+static HANDLE OpenDeviceInterface(int Index)
 {
     HDEVINFO DevInfo = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_DTPCIE, NULL, NULL,
                                             DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (DevInfo == INVALID_HANDLE_VALUE)
         return INVALID_HANDLE_VALUE;
 
-    HANDLE Handle = OpenListedInterface(DevInfo, Index);
+    HANDLE Handle = OpenListedDeviceInterface(DevInfo, Index);
     SetupDiDestroyDeviceInfoList(DevInfo);
     return Handle;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void* WinOpen(int Index)
+static void* Open(int Index)
 {
-    HANDLE Handle = OpenInterface(Index);
+    HANDLE Handle = OpenDeviceInterface(Index);
 
     if (Handle == INVALID_HANDLE_VALUE)
         return NULL;
@@ -118,9 +118,9 @@ static void* WinOpen(int Index)
     return Dev;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinClose -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Close -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void WinClose(void* State)
+static void Close(void* State)
 {
     WinDevice* Dev = (WinDevice*)State;
 
@@ -128,7 +128,7 @@ static void WinClose(void* State)
     DtAlloc_Free(Dev);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Ioctl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The driver defines its IOCTLs as METHOD_OUT_DIRECT, so the output buffer is a separate
 // argument that the I/O manager locks for the duration of the call.
@@ -137,8 +137,8 @@ static void WinClose(void* State)
 // set. OsIoctlOutcome_ClassifyWindows separates it from errors of Windows itself;
 // translating it into a DTAPI result is the DtPcie command layer's job, not this one's.
 //
-static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
-                    size_t* OutSize, uint32_t* DrvStatus)
+static int Ioctl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                 size_t* OutSize, uint32_t* DrvStatus)
 {
     WinDevice* Dev = (WinDevice*)State;
     DWORD Returned = 0;
@@ -157,9 +157,9 @@ static int WinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
     return OS_IOCTL_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WinLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static uint32_t WinLastError(const void* State)
+static uint32_t LastError(const void* State)
 {
     return ((const WinDevice*)State)->LastError;
 }
@@ -168,7 +168,6 @@ static uint32_t WinLastError(const void* State)
 //
 const OsBackend* OsPlatform_Backend(void)
 {
-    static const OsBackend Backend = {WinOpen,      WinClose, WinIoCtl,
-                                      WinLastError, NULL,     NULL};
+    static const OsBackend Backend = {Open, Close, Ioctl, LastError, NULL, NULL};
     return &Backend;
 }

@@ -67,8 +67,8 @@ typedef struct SimRxChannel
     uint32_t NextFrame;
 
     // Frames from a file in place of the ones SimChSdiRx_Line makes; NULL for none.
-    uint8_t* File;
-    size_t FileFrames;
+    uint8_t* FileData;
+    size_t FileFrameCount;
     size_t FileFrameBytes; // A frame in the file, with its padding
     int FileLineSyms;      // The symbols of a line, from its EAV on
     bool Faults[SIM_RX_FAULT_COUNT];
@@ -76,10 +76,10 @@ typedef struct SimRxChannel
     // The frame being written.
     bool InFrame;
     uint32_t FrameNumber;
-    int SeqNumber;    // The quarter the next event reports
-    bool FrameInSync; // The source matches the configuration
-    bool Dropped;     // Part of the frame did not fit
-    int LinesWritten; // Lines of the frame in the ring
+    int SeqNumber;     // The quarter the next event reports
+    bool FrameInSync;  // The source matches the configuration
+    bool FrameDropped; // Part of the frame did not fit
+    int LinesWritten;  // Lines of the frame in the ring
     DtSdiFrameLayout Layout;
 
     // On the clock, when the next format event is due; 0 for at once.
@@ -92,7 +92,7 @@ static struct
     SimRxChannel Channels[SIM_SDI_PORT_COUNT];
     size_t RingLimit;
     bool RealTime;
-    int Alignment;
+    int StreamAlignment;
     bool MapAsLinux;
     int FailCmd;
     uint32_t FailStatus;
@@ -240,8 +240,8 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
         return 0;
 
     int NumLines = DtFrameProps_NumLines(&Props);
-    int Blank = DtFrameProps_LineNumSymHancInclTiming(&Props);
-    int Total = Blank + Props.LineNumSymActive;
+    int HancSyms = DtFrameProps_LineNumSymHancInclTiming(&Props);
+    int Total = HancSyms + Props.LineNumSymActive;
     if (Line < 1 || Line > NumLines || Total > SIM_RX_MAX_LINE_SYMBOLS)
         return 0;
 
@@ -257,7 +257,7 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
         for (i = 0; i < 4; i++)
         {
             Symbols[i] = (uint16_t)Eav[i];
-            Symbols[Blank - 4 + i] = (uint16_t)Sav[i];
+            Symbols[HancSyms - 4 + i] = (uint16_t)Sav[i];
         }
         return Total;
     }
@@ -282,7 +282,7 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
             int j;
 
             for (j = Channel; j < Props.LineNumSymActive; j += 2)
-                Crc = Crc18(Crc, DataSymbol(PrevFrame, PrevLine, Blank + j));
+                Crc = Crc18(Crc, DataSymbol(PrevFrame, PrevLine, HancSyms + j));
             for (j = 0; j < 6; j++)
                 Crc = Crc18(Crc, Words[j]);
 
@@ -293,23 +293,23 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
             for (j = 0; j < 4; j++)
             {
                 uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
-                Symbols[Blank - 8 + 2 * j + Channel] = (uint16_t)Sav[j];
+                Symbols[HancSyms - 8 + 2 * j + Channel] = (uint16_t)Sav[j];
             }
         }
     }
     return Total;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FileLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineFromFile -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Fills Symbols with line Line, from 1, of frame FrameNumber of the channel's file, the
 // first frame again after the last.
 //
-static void FileLine(const SimRxChannel* Channel, uint32_t FrameNumber, int Line,
-                     uint16_t* Symbols)
+static void LineFromFile(const SimRxChannel* Channel, uint32_t FrameNumber, int Line,
+                         uint16_t* Symbols)
 {
-    const uint8_t* Frame =
-        Channel->File + (FrameNumber % Channel->FileFrames) * Channel->FileFrameBytes;
+    const uint8_t* Frame = Channel->FileData + (FrameNumber % Channel->FileFrameCount) *
+                                                   Channel->FileFrameBytes;
     size_t Bit = (size_t)(Line - 1) * (size_t)Channel->FileLineSyms * 10;
     const uint8_t* In = Frame + Bit / 8;
     uint32_t Accu = (uint32_t)(*In++ >> (Bit % 8));
@@ -354,12 +354,12 @@ static void PackSection(const uint16_t* Symbols, int Count, uint8_t* Out, int By
         Out[Byte] = (uint8_t)Accu;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingFreeBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // What can still be written: the ring less the data word kept free, less the load of the
 // running user that is furthest behind.
 //
-static size_t RingFree(const SimRxChannel* Channel)
+static size_t RingFreeBytes(const SimRxChannel* Channel)
 {
     size_t Load = 0;
 
@@ -388,7 +388,7 @@ static bool RingWrite(SimRxChannel* Channel, const uint8_t* Data, size_t Size)
     size_t Offset = Channel->WriteOffset;
     size_t First = Channel->RingSize - Offset;
 
-    if (Size > RingFree(Channel))
+    if (Size > RingFreeBytes(Channel))
         return false;
 
     if (First > Size)
@@ -418,12 +418,12 @@ static void StartFrame(SimRxChannel* Channel)
     Channel->NextFrame = Channel->FrameNumber + 1;
     Channel->InFrame = true;
     Channel->SeqNumber = 0;
-    Channel->Dropped = false;
+    Channel->FrameDropped = false;
     Channel->LinesWritten = 0;
 
     uint8_t Header[64];
     Channel->FrameInSync =
-        DtSdiFrame_LayoutInit(Layout, Channel->SourceVidStd, g_Rx.Alignment) &&
+        DtSdiFrame_LayoutInit(Layout, Channel->SourceVidStd, g_Rx.StreamAlignment) &&
         Layout->NumLines == Config->m_FrameProps.m_NumLines &&
         Layout->LineNumSymsHanc == Config->m_FrameProps.m_NumSymsHanc &&
         Layout->LineNumSymsActive == Config->m_FrameProps.m_NumSymsVidVanc &&
@@ -458,7 +458,7 @@ static void StartFrame(SimRxChannel* Channel)
         memset(Header, 0, sizeof(Header));
         DtSdiFrame_EncodeRxHeader(&Fields, Header);
         if (!RingWrite(Channel, Header, (size_t)Layout->RxHeaderNumBytes))
-            Channel->Dropped = true;
+            Channel->FrameDropped = true;
     }
 }
 
@@ -498,7 +498,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
 {
     const DtSdiFrameLayout* Layout = &Channel->Layout;
 
-    if (!Channel->FrameInSync || Channel->Dropped || Channel->LinesWritten >= Upto)
+    if (!Channel->FrameInSync || Channel->FrameDropped || Channel->LinesWritten >= Upto)
         return;
 
     const int PerLine = Layout->NumCodedLines / Layout->NumLines;
@@ -516,7 +516,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         DtAlloc_Free(Coded);
         DtAlloc_Free(Symbols);
         DtAlloc_Free(Sections);
-        Channel->Dropped = true;
+        Channel->FrameDropped = true;
         return;
     }
 
@@ -524,8 +524,8 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
     {
         int Line = Channel->LinesWritten + 1;
 
-        if (Channel->File != NULL)
-            FileLine(Channel, Channel->FrameNumber, Line, Symbols);
+        if (Channel->FileData != NULL)
+            LineFromFile(Channel, Channel->FrameNumber, Line, Symbols);
         else
             SimChSdiRx_Line(Layout->VidStd, Channel->FrameNumber, Line, Symbols);
         if (Layout->Is4k)
@@ -539,7 +539,7 @@ static void WriteLines(SimRxChannel* Channel, int Upto)
         }
         if (!RingWrite(Channel, Coded, (size_t)PerLine * (size_t)Layout->RxStride))
         {
-            Channel->Dropped = true;
+            Channel->FrameDropped = true;
             break;
         }
         Channel->LinesWritten++;
@@ -565,7 +565,7 @@ static void NextEvent(SimRxChannel* Channel,
 
     Event->m_FrameId = (Int)(Channel->FrameNumber & 0xFFFF);
     Event->m_SeqNumber = Quarter;
-    Event->m_InSync = Channel->FrameInSync && !Channel->Dropped ? 1 : 0;
+    Event->m_InSync = Channel->FrameInSync && !Channel->FrameDropped ? 1 : 0;
 
     Channel->SeqNumber++;
     if (Channel->SeqNumber == 4)
@@ -744,13 +744,13 @@ static double EventPeriodMs(const SimRxChannel* Channel)
     return 1000.0 * Props.FpsDen / Props.FpsNum / 4;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DueEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteDueEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // On the clock, the format events whose time has come, as a card's receiver writes its
 // frames whether or not anyone waits: a program that only looks at the write offset sees
 // the frames arrive.
 //
-static void DueEvents(SimRxChannel* Channel)
+static void WriteDueEvents(SimRxChannel* Channel)
 {
     double PeriodMs = EventPeriodMs(Channel);
     if (PeriodMs <= 0 || !Channel->Running)
@@ -768,12 +768,12 @@ static void DueEvents(SimRxChannel* Channel)
         Channel->NextEventMs = NowMs + PeriodMs;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RunCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DispatchCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // One command of a channel; SimChSdiRx_Cmd without the slowing down.
 //
-static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
-                       size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
+static uint32_t DispatchCmd(void* Handle, int PortIndex, int Cmd, const void* In,
+                            size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
 {
     EnsureRx();
     *SleepMs = 0;
@@ -813,7 +813,7 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
         Props->m_Dma.m_PrefetchSize = SIM_RX_PREFETCH_PAGES;
         Props->m_Dma.m_PcieDataWidth = SIM_RX_PCIE_DATA_WIDTH;
         Props->m_Dma.m_ReorderBufSize = SIM_RX_REORDER_BUF_SIZE;
-        Props->m_StreamAlignment = g_Rx.Alignment;
+        Props->m_StreamAlignment = g_Rx.StreamAlignment;
         *OutSize = sizeof(*Props);
         return DT_STATUS_OK;
     }
@@ -904,7 +904,7 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
         }
         if (!Channel->Configured)
             return DT_STATUS_NOT_INITIALISED;
-        DueEvents(Channel);
+        WriteDueEvents(Channel);
         ((DtIoctlChSdiRxCmdGetWrOffsetOutput*)Out)->m_WriteOffset = Channel->WriteOffset;
         *OutSize = sizeof(DtIoctlChSdiRxCmdGetWrOffsetOutput);
         return DT_STATUS_OK;
@@ -945,7 +945,8 @@ static uint32_t RunCmd(void* Handle, int PortIndex, int Cmd, const void* In,
 uint32_t SimChSdiRx_Cmd(void* Handle, int PortIndex, int Cmd, const void* In,
                         size_t InSize, void* Out, size_t* OutSize, int* SleepMs)
 {
-    uint32_t Status = RunCmd(Handle, PortIndex, Cmd, In, InSize, Out, OutSize, SleepMs);
+    uint32_t Status =
+        DispatchCmd(Handle, PortIndex, Cmd, In, InSize, Out, OutSize, SleepMs);
 
     if (g_Rx.SlowCmd == Cmd)
         *SleepMs += g_Rx.SlowMs;
@@ -1003,14 +1004,14 @@ void SimChSdiRx_Reset(void)
         if (g_Rx.Initialised)
         {
             DtAlloc_Free(Channel->Ring);
-            DtAlloc_Free(Channel->File);
+            DtAlloc_Free(Channel->FileData);
         }
         memset(Channel, 0, sizeof(*Channel));
         Channel->SourceVidStd = DTAPI_VIDSTD_UNKNOWN;
     }
     g_Rx.RingLimit = 0;
     g_Rx.RealTime = false;
-    g_Rx.Alignment = SIM_RX_STREAM_ALIGNMENT;
+    g_Rx.StreamAlignment = SIM_RX_STREAM_ALIGNMENT;
     g_Rx.MapAsLinux = false;
     g_Rx.FailCmd = -1;
     g_Rx.FailStatus = 0;
@@ -1030,8 +1031,8 @@ void SimDtPcie_SetRxSource(int PortIndex, int VidStd)
         return;
     SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
     Channel->SourceVidStd = VidStd;
-    DtAlloc_Free(Channel->File);
-    Channel->File = NULL;
+    DtAlloc_Free(Channel->FileData);
+    Channel->FileData = NULL;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetRxRealTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1052,7 +1053,7 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
 
     EnsureRx();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Path == NULL ||
-        !DtSdiFrame_LayoutInit(&Layout, VidStd, g_Rx.Alignment))
+        !DtSdiFrame_LayoutInit(&Layout, VidStd, g_Rx.StreamAlignment))
     {
         return false;
     }
@@ -1091,9 +1092,9 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     }
 
     SimRxChannel* Channel = &g_Rx.Channels[PortIndex];
-    DtAlloc_Free(Channel->File);
-    Channel->File = Data;
-    Channel->FileFrames = Size / FrameNumBytes;
+    DtAlloc_Free(Channel->FileData);
+    Channel->FileData = Data;
+    Channel->FileFrameCount = Size / FrameNumBytes;
     Channel->FileFrameBytes = FrameNumBytes;
     Channel->FileLineSyms = LineSyms;
     Channel->SourceVidStd = VidStd;
@@ -1137,7 +1138,7 @@ void SimDtPcie_LimitRxRing(size_t Size)
 void SimDtPcie_SetRxAlignment(int AlignmentInBits)
 {
     EnsureRx();
-    g_Rx.Alignment = AlignmentInBits;
+    g_Rx.StreamAlignment = AlignmentInBits;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_MapRxRingAsLinux -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

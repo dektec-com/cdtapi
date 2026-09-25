@@ -70,7 +70,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     do                                                                                   \
     {                                                                                    \
         OsDrv_Close((Fix).Drv);                                                          \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 

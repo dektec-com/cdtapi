@@ -63,14 +63,14 @@
 #define SIM_TX_STREAM_ALIGNMENT 128
 
 // Whether the emulated blocks take commands with this DT_FUNC_CODE_.
-bool SimSdiTx_Takes(int FunctionCode);
+bool SimSdiTx_Handles(int FunctionCode);
 
 // Handles a command from Handle for the block of type Type, with role Role, of the port
-// at PortIndex. Access is what SimDtPcie_CheckAccess answers for Handle and the block,
-// Enabled whether the block is enabled, and VidStd the video standard of the port's I/O
-// standard, which paces the output. Returns the DtStatus the driver would, and fills Out
-// and *OutSize for a command that answers. *SleepMs receives how long the caller sleeps
-// after releasing the emulator's lock.
+// at PortIndex. Access is what SimDtPcie_CheckExclAccess answers for Handle and the
+// block, Enabled whether the block is enabled, and VidStd the video standard of the
+// port's I/O standard, which paces the output. Returns the DtStatus the driver would, and
+// fills Out and *OutSize for a command that answers. *SleepMs receives how long the
+// caller sleeps after releasing the emulator's lock.
 uint32_t SimSdiTx_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type,
                       const char* Role, int Cmd, uint32_t Access, bool Enabled,
                       int VidStd, const void* In, size_t InSize, void* Out,
@@ -97,11 +97,11 @@ bool SimSdiTx_SetFileSink(int PortIndex, const char* Path);
 
 // Whether the port's DMA receives: a buffer registered for receiving, CDMAC and the burst
 // FIFO running.
-bool SimSdiTx_RxOpen(int PortIndex);
+bool SimSdiTx_RxRuns(int PortIndex);
 
 // The bytes the card may still write into the receive buffer, 0 when it does not
 // receive.
-size_t SimSdiTx_RxFree(int PortIndex);
+size_t SimSdiTx_RxFreeBytes(int PortIndex);
 
 // Writes Size bytes at the receive buffer's write offset and moves it on; nothing when
 // they do not fit.
@@ -112,13 +112,13 @@ void SimSdiTx_CountOverflow(int PortIndex);
 
 // Takes up to Max bytes of what the card has read from the transmit buffer, in the order
 // it read them.
-size_t SimSdiTx_TxTake(int PortIndex, uint8_t* Out, size_t Max);
+size_t SimSdiTx_TakeTxBytes(int PortIndex, uint8_t* Out, size_t Max);
 
 // Whether the port's SDITXPHY runs, which an ASI output needs as an SDI output does.
 bool SimSdiTx_PhyRuns(int PortIndex);
 
 // Whether output follows the clock, as SimDtPcie_SetTxRealTime sets it.
-bool SimSdiTx_RealTime(void);
+bool SimSdiTx_IsRealTime(void);
 
 // The parts a frame of VidStd goes out in on the clock: its coded lines in parts of
 // NumLinesPerEvent, or in four parts for 0. 0 for a standard that is not known.
@@ -167,10 +167,11 @@ void SimDtPcie_FailTxCmd(int FunctionCode, int Cmd, uint32_t Status);
 typedef struct SimTxState
 {
     int CdmacMode, BurstMode, TxfMode, SwitchInMode, SwitchOutMode, DmxMode, TxpMode;
-    int PhyMode;                      // DT_FUNC_OPMODE_ value
-    int SwitchIn[2];                  // Input and output index of SDI_DEMUX_IN
-    int SwitchOut[2];                 // The same of SDI_DEMUX_OUT
-    bool Clamp, AdpChecksum, LineCrc; // The encoder's generation mode
+    int PhyMode;      // DT_FUNC_OPMODE_ value
+    int SwitchIn[2];  // Input and output index of SDI_DEMUX_IN
+    int SwitchOut[2]; // The same of SDI_DEMUX_OUT
+    bool ClampEnabled, AdpChecksumEnabled,
+        LineCrcEnabled; // The encoder's generation mode
     bool BufferRegistered;
     size_t BufferSize;
     uint32_t ReadOffset, WriteOffset;
@@ -178,7 +179,7 @@ typedef struct SimTxState
     int NumLinesPerEvent, NumSofsBetweenTod;
     int TestMode;
     int StartOfFrameOffsetNs;
-    bool PhyUnderflow;
+    bool PhyUfl;
     uint32_t BurstOvfUflCount;
     int FramesSent;   // Whole frames the sink received
     int HeaderErrors; // Headers that did not check

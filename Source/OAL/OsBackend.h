@@ -21,14 +21,14 @@
 // A backend owns an opaque state pointer of its own. Open returns NULL when there is no
 // device at that index, which is not an error, and when the device cannot be opened.
 //
-// IoCtl follows the OsDrv_IoCtl contract, except that DrvStatus is never NULL.
+// Ioctl follows the OsDrv_Ioctl contract, except that DrvStatus is never NULL.
 //
 
 typedef struct OsBackend
 {
     void* (*Open)(int Index);
     void (*Close)(void* State);
-    int (*IoCtl)(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+    int (*Ioctl)(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
                  size_t* OutSize, uint32_t* DrvStatus);
     uint32_t (*LastError)(const void* State);
 

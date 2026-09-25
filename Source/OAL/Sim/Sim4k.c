@@ -16,52 +16,54 @@
 
 // Where the links lie in a raw line's eight streams: link 4 first, then 2, 3 and 1. The
 // permutation is its own inverse, so it also says where link L's symbols go.
-static const int g_LinkAt[4] = {3, 1, 2, 0};
+static const int g_LinkStreamSlot[4] = {3, 1, 2, 0};
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Sim4k_RawAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 size_t Sim4k_RawAt(int Link, int Index)
 {
-    return (size_t)(8 * (Index / 2) + 4 * (Index % 2) + g_LinkAt[Link]);
+    return (size_t)(8 * (Index / 2) + 4 * (Index % 2) + g_LinkStreamSlot[Link]);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Where -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SymbolPositions -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Where symbol Index of the line of link Link, from 0, lies in the raw line and in the
 // coded line of its pair, links 1 and 2 taking the first coded line and 3 and 4 the
 // second.
 //
-static void Where(int Link, int Index, int Hanc, int Act, bool Blanking, size_t* RawAt,
-                  size_t* CodedAt)
+static void SymbolPositions(int Link, int Index, int HancSyms, int ActiveSyms,
+                            bool Blanking, size_t* RawAt, size_t* CodedAt)
 {
     int Half = Link % 2;
 
     *RawAt = Sim4k_RawAt(Link, Index);
-    if (Index < Hanc)
-        *CodedAt = (size_t)(Half * Hanc + Index);
+    if (Index < HancSyms)
+        *CodedAt = (size_t)(Half * HancSyms + Index);
     else
     {
-        int i = Index - Hanc;
+        int i = Index - HancSyms;
 
-        *CodedAt = (size_t)(2 * Hanc) +
-                   (size_t)(Blanking ? Half * Act + i : (2 * (i / 4) + Half) * 4 + i % 4);
+        *CodedAt =
+            (size_t)(2 * HancSyms) +
+            (size_t)(Blanking ? Half * ActiveSyms + i : (2 * (i / 4) + Half) * 4 + i % 4);
     }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Sim4k_Split -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void Sim4k_Split(int Hanc, int Act, bool Blanking, const uint16_t* Raw, uint16_t* CodedA,
-                 uint16_t* CodedB)
+void Sim4k_Split(int HancSyms, int ActiveSyms, bool Blanking, const uint16_t* Raw,
+                 uint16_t* CodedA, uint16_t* CodedB)
 {
     for (int Link = 0; Link < 4; Link++)
     {
         uint16_t* Coded = Link < 2 ? CodedA : CodedB;
 
-        for (int Index = 0; Index < Hanc + Act; Index++)
+        for (int Index = 0; Index < HancSyms + ActiveSyms; Index++)
         {
             size_t RawAt, CodedAt;
 
-            Where(Link, Index, Hanc, Act, Blanking, &RawAt, &CodedAt);
+            SymbolPositions(Link, Index, HancSyms, ActiveSyms, Blanking, &RawAt,
+                            &CodedAt);
             Coded[CodedAt] = Raw[RawAt];
         }
     }
@@ -69,18 +71,19 @@ void Sim4k_Split(int Hanc, int Act, bool Blanking, const uint16_t* Raw, uint16_t
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Sim4k_Merge -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void Sim4k_Merge(int Hanc, int Act, bool Blanking, const uint16_t* CodedA,
+void Sim4k_Merge(int HancSyms, int ActiveSyms, bool Blanking, const uint16_t* CodedA,
                  const uint16_t* CodedB, uint16_t* Raw)
 {
     for (int Link = 0; Link < 4; Link++)
     {
         const uint16_t* Coded = Link < 2 ? CodedA : CodedB;
 
-        for (int Index = 0; Index < Hanc + Act; Index++)
+        for (int Index = 0; Index < HancSyms + ActiveSyms; Index++)
         {
             size_t RawAt, CodedAt;
 
-            Where(Link, Index, Hanc, Act, Blanking, &RawAt, &CodedAt);
+            SymbolPositions(Link, Index, HancSyms, ActiveSyms, Blanking, &RawAt,
+                            &CodedAt);
             Raw[RawAt] = Coded[CodedAt];
         }
     }

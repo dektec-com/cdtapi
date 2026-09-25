@@ -41,19 +41,19 @@ typedef struct SimAsiRx
 {
     bool HasSource;
     SimAsiSource Source;
-    uint32_t Number;   // Of the next packet
-    int Unsynced;      // Pieces without sync still to come
-    double Due;        // Packets due in real time, not yet received
-    uint64_t LastMs;   // When the packets due were last counted
-    bool Receiving;    // At the last count
-    uint16_t Sequence; // Of the next transparent packet
-    int Fault;         // SIM_ASI_FAULT_ for the next packet
+    uint32_t NextPacketNumber; // Of the next packet
+    int UnsyncedLeft;          // Pieces without sync still to come
+    double PacketsDue;         // Packets due in real time, not yet received
+    uint64_t LastMs;           // When the packets due were last counted
+    bool WasReceiving;         // At the last count
+    uint16_t NextSequence;     // Of the next transparent packet
+    int Fault;                 // SIM_ASI_FAULT_ for the next packet
 } SimAsiRx;
 
 typedef struct SimAsiTx
 {
     bool Running; // At the last drain
-    bool Sent;    // Something went out since ASITXG started
+    bool HasSent; // Something went out since ASITXG started
     uint64_t LastMs;
     int Rd;
     bool RdKnown;
@@ -65,7 +65,7 @@ typedef struct SimAsiTx
 
 typedef struct SimAsiPort
 {
-    SimAsiState State;
+    SimAsiState Settings;
     SimAsiSignal Signal;
     SimAsiRx Rx;
     SimAsiTx Tx;
@@ -88,9 +88,9 @@ static struct
     int FailFunctionCode;
     int FailCmd;
     uint32_t FailStatus;
-    bool HaveTables;
-    int16_t Decode[2][1024]; // Per running disparity; SIM_ASI_NO_CODE for none
-    uint8_t NextRd[2][1024];
+    bool TablesBuilt;
+    int16_t DecodeTable[2][1024]; // Per running disparity; SIM_ASI_NO_CODE for none
+    uint8_t NextRdTable[2][1024];
     uint8_t Scratch[65536]; // What a drain takes from the card at a time
 } g_Asi;
 
@@ -102,9 +102,9 @@ static void EnsureAsi(void)
         SimAsi_Reset();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void NoSignal(SimAsiSignal* Signal)
+static void ClearSignal(SimAsiSignal* Signal)
 {
     memset(Signal, 0, sizeof(*Signal));
     Signal->PacketSize = DT_ASIRX_PCKSIZE_UNKNOWN;
@@ -188,21 +188,21 @@ static uint32_t Answer(int Value, void* Out, size_t* OutSize)
 static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
                          size_t* OutSize)
 {
-    SimAsiState* S = &Port->State;
+    SimAsiState* Settings = &Port->Settings;
     const int Value = Cmd >= DT_ASIRX_CMD_SET_OPERATIONAL_MODE ? ValueOf(In) : 0;
 
     switch (Cmd)
     {
     case DT_ASIRX_CMD_GET_OPERATIONAL_STATUS:
         // Running only while there is something to receive, as on a DTA-2178.
-        return Answer(S->RxMode == DT_FUNC_OPMODE_RUN && Port->Signal.CarrierDetect
+        return Answer(Settings->RxMode == DT_FUNC_OPMODE_RUN && Port->Signal.CarrierDetect
                           ? DT_FUNC_OPSTATUS_RUN
                           : DT_FUNC_OPSTATUS_IDLE,
                       Out, OutSize);
     case DT_ASIRX_CMD_GET_PACKET_MODE:
-        return Answer(S->RxPacketMode, Out, OutSize);
+        return Answer(Settings->RxPacketMode, Out, OutSize);
     case DT_ASIRX_CMD_GET_POLARITY_CTRL:
-        return Answer(S->RxPolarityCtrl, Out, OutSize);
+        return Answer(Settings->RxPolarityCtrl, Out, OutSize);
     case DT_ASIRX_CMD_GET_STATUS:
     {
         DtIoctlAsiRxCmdGetStatusOutput* Status = (DtIoctlAsiRxCmdGetStatusOutput*)Out;
@@ -214,7 +214,7 @@ static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
         return DT_STATUS_OK;
     }
     case DT_ASIRX_CMD_GET_SYNC_MODE:
-        return Answer(S->RxSyncMode, Out, OutSize);
+        return Answer(Settings->RxSyncMode, Out, OutSize);
     case DT_ASIRX_CMD_GET_TS_BITRATE:
         return Answer(Port->Signal.TsBitrate, Out, OutSize);
     case DT_ASIRX_CMD_GET_VIOL_COUNT:
@@ -222,12 +222,12 @@ static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
     case DT_ASIRX_CMD_SET_OPERATIONAL_MODE:
         if (Value != DT_FUNC_OPMODE_IDLE && Value != DT_FUNC_OPMODE_RUN)
             return DT_STATUS_INVALID_PARAMETER;
-        S->RxMode = Value;
+        Settings->RxMode = Value;
         return DT_STATUS_OK;
     case DT_ASIRX_CMD_SET_PACKET_MODE:
         if (Value != DT_ASIRX_PCKMODE_AUTO && Value != DT_ASIRX_PCKMODE_RAW)
             return DT_STATUS_INVALID_PARAMETER;
-        S->RxPacketMode = Value;
+        Settings->RxPacketMode = Value;
         return DT_STATUS_OK;
     case DT_ASIRX_CMD_SET_POLARITY_CTRL:
         if (Value != DT_ASIRX_POLARITY_AUTO && Value != DT_ASIRX_POLARITY_NORMAL &&
@@ -235,7 +235,7 @@ static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
         {
             return DT_STATUS_INVALID_PARAMETER;
         }
-        S->RxPolarityCtrl = Value;
+        Settings->RxPolarityCtrl = Value;
         return DT_STATUS_OK;
     default: // DT_ASIRX_CMD_SET_SYNC_MODE
         if (Value != DT_ASIRX_SYNCMODE_AUTO && Value != DT_ASIRX_SYNCMODE_188 &&
@@ -243,7 +243,7 @@ static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
         {
             return DT_STATUS_INVALID_PARAMETER;
         }
-        S->RxSyncMode = Value;
+        Settings->RxSyncMode = Value;
         return DT_STATUS_OK;
     }
 }
@@ -253,23 +253,23 @@ static uint32_t AsiRxCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
 static uint32_t AsiTxGCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
                           size_t* OutSize)
 {
-    SimAsiState* S = &Port->State;
+    SimAsiState* Settings = &Port->Settings;
 
     switch (Cmd)
     {
     case DT_ASITXG_CMD_CLEAR_INPUT_STATE:
-        S->TxgInputClears++;
+        Settings->TxgInputClears++;
         return DT_STATUS_OK;
     case DT_ASITXG_CMD_GET_ASI_POLARITY:
-        return Answer(S->TxgPolarity, Out, OutSize);
+        return Answer(Settings->TxgPolarity, Out, OutSize);
     case DT_ASITXG_CMD_GET_OPERATIONAL_MODE:
-        return Answer(S->TxgMode, Out, OutSize);
+        return Answer(Settings->TxgMode, Out, OutSize);
     case DT_ASITXG_CMD_SET_ASI_POLARITY:
     {
         int Polarity = ValueOf(In);
         if (Polarity != DT_ASITXG_POL_NORMAL && Polarity != DT_ASITXG_POL_INVERT)
             return DT_STATUS_INVALID_PARAMETER;
-        S->TxgPolarity = Polarity;
+        Settings->TxgPolarity = Polarity;
         return DT_STATUS_OK;
     }
     default: // DT_ASITXG_CMD_SET_OPERATIONAL_MODE
@@ -280,15 +280,15 @@ static uint32_t AsiTxGCmd(SimAsiPort* Port, int Cmd, const void* In, void* Out,
         {
             return DT_STATUS_INVALID_PARAMETER;
         }
-        S->TxgMode = OpMode;
+        Settings->TxgMode = OpMode;
         return DT_STATUS_OK;
     }
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Takes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Handles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool SimAsi_Takes(int FunctionCode)
+bool SimAsi_Handles(int FunctionCode)
 {
     return FunctionCode == DT_FUNC_CODE_ASIRX_CMD ||
            FunctionCode == DT_FUNC_CODE_ASITXG_CMD;
@@ -331,18 +331,18 @@ uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int
     }
     if (!Enabled)
     {
-        SimAsiState* S = &Port->State;
+        SimAsiState* Settings = &Port->Settings;
         if (IsRx)
         {
-            S->RxMode = DT_FUNC_OPMODE_IDLE;
-            S->RxPacketMode = DT_ASIRX_PCKMODE_AUTO;
-            S->RxPolarityCtrl = DT_ASIRX_POLARITY_AUTO;
-            S->RxSyncMode = DT_ASIRX_SYNCMODE_AUTO;
+            Settings->RxMode = DT_FUNC_OPMODE_IDLE;
+            Settings->RxPacketMode = DT_ASIRX_PCKMODE_AUTO;
+            Settings->RxPolarityCtrl = DT_ASIRX_POLARITY_AUTO;
+            Settings->RxSyncMode = DT_ASIRX_SYNCMODE_AUTO;
         }
         else
         {
-            S->TxgMode = DT_BLOCK_OPMODE_IDLE;
-            S->TxgPolarity = DT_ASITXG_POL_NORMAL;
+            Settings->TxgMode = DT_BLOCK_OPMODE_IDLE;
+            Settings->TxgPolarity = DT_ASITXG_POL_NORMAL;
         }
         return DT_STATUS_NOT_ENABLED;
     }
@@ -358,66 +358,66 @@ uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int
 static bool IsReceiving(int PortIndex)
 {
     const SimAsiPort* Port = &g_Asi.Ports[PortIndex];
-    return Port->State.RxMode == DT_FUNC_OPMODE_RUN && Port->Signal.CarrierDetect &&
-           SimSdiTx_RxOpen(PortIndex);
+    return Port->Settings.RxMode == DT_FUNC_OPMODE_RUN && Port->Signal.CarrierDetect &&
+           SimSdiTx_RxRuns(PortIndex);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceivePacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The card receives Valid bytes of Payload, zeros for NULL, with Sync the first byte of
 // the trailer, OffsetNs after the time of day now. A packet it has no room for is an
 // overflow.
 //
-static void Receive(int PortIndex, const uint8_t* Payload, int Valid, uint8_t Sync,
-                    uint64_t OffsetNs)
+static void ReceivePacket(int PortIndex, const uint8_t* Payload, int Valid, uint8_t Sync,
+                          uint64_t OffsetNs)
 {
     SimAsiRx* Rx = &g_Asi.Ports[PortIndex].Rx;
-    uint8_t P[DT_TRP_SIZE];
-    const uint64_t Tod = SimNw_Now() + OffsetNs;
+    uint8_t Packet[DT_TRP_SIZE];
+    const uint64_t Tod = SimDtPcie_Now() + OffsetNs;
     const uint32_t Seconds = (uint32_t)(Tod / 1000000000u);
     const uint32_t Nanoseconds = (uint32_t)(Tod % 1000000000u);
 
-    memset(P, 0, sizeof(P));
+    memset(Packet, 0, sizeof(Packet));
     for (int i = 0; i < 4; i++)
     {
-        P[i] = (uint8_t)(Seconds >> (8 * i));
-        P[4 + i] = (uint8_t)(Nanoseconds >> (8 * i));
+        Packet[i] = (uint8_t)(Seconds >> (8 * i));
+        Packet[4 + i] = (uint8_t)(Nanoseconds >> (8 * i));
     }
     if (Payload != NULL)
-        memcpy(P + 8, Payload, (size_t)Valid);
-    P[212] = Sync;
-    P[213] = (uint8_t)Valid;
-    P[214] = (uint8_t)Rx->Sequence;
-    P[215] = (uint8_t)(Rx->Sequence >> 8);
-    Rx->Sequence++;
+        memcpy(Packet + 8, Payload, (size_t)Valid);
+    Packet[212] = Sync;
+    Packet[213] = (uint8_t)Valid;
+    Packet[214] = (uint8_t)Rx->NextSequence;
+    Packet[215] = (uint8_t)(Rx->NextSequence >> 8);
+    Rx->NextSequence++;
 
-    if (SimSdiTx_RxFree(PortIndex) < DT_TRP_SIZE)
+    if (SimSdiTx_RxFreeBytes(PortIndex) < DT_TRP_SIZE)
         SimSdiTx_CountOverflow(PortIndex);
     else
-        SimSdiTx_RxWrite(PortIndex, P, DT_TRP_SIZE);
+        SimSdiTx_RxWrite(PortIndex, Packet, DT_TRP_SIZE);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendFromSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveFromSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The next piece or packet of a port's source, OffsetNs from now.
 //
-static void SendFromSource(int PortIndex, uint64_t OffsetNs)
+static void ReceiveFromSource(int PortIndex, uint64_t OffsetNs)
 {
     SimAsiRx* Rx = &g_Asi.Ports[PortIndex].Rx;
     uint8_t Packet[204];
 
-    if (Rx->Unsynced > 0)
+    if (Rx->UnsyncedLeft > 0)
     {
         // What a DTA-2178 wrote first: 204 bytes and no packet sync.
-        Rx->Unsynced--;
-        Receive(PortIndex, NULL, 204, 0x50, OffsetNs);
+        Rx->UnsyncedLeft--;
+        ReceivePacket(PortIndex, NULL, 204, 0x50, OffsetNs);
         return;
     }
 
     const int Size = Rx->Source.PacketSize;
     uint8_t Sync = 0x58;
     int Valid = Size;
-    SimAsi_MakePacket(Rx->Number++, Size, Packet);
+    SimAsi_MakePacket(Rx->NextPacketNumber++, Size, Packet);
     switch (Rx->Fault)
     {
     case SIM_ASI_FAULT_NIBBLE:
@@ -427,7 +427,7 @@ static void SendFromSource(int PortIndex, uint64_t OffsetNs)
         Valid = 100;
         break;
     case SIM_ASI_FAULT_SEQUENCE:
-        Rx->Sequence++;
+        Rx->NextSequence++;
         break;
     case SIM_ASI_FAULT_NOSYNC:
         Sync = 0x50;
@@ -436,15 +436,15 @@ static void SendFromSource(int PortIndex, uint64_t OffsetNs)
         break;
     }
     Rx->Fault = 0;
-    Receive(PortIndex, Packet, Valid, Sync, OffsetNs);
+    ReceivePacket(PortIndex, Packet, Valid, Sync, OffsetNs);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Produce -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_ReceiveIntoBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A receiver that starts receiving begins with the source's pieces without sync, and in
 // real time with no packets due.
 //
-void SimAsi_Produce(int PortIndex)
+void SimAsi_ReceiveIntoBuffer(int PortIndex)
 {
     EnsureAsi();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
@@ -456,40 +456,40 @@ void SimAsi_Produce(int PortIndex)
     const uint64_t NowMs = OsTime_MonotonicMs();
     if (!IsReceiving(PortIndex))
     {
-        Rx->Receiving = false;
+        Rx->WasReceiving = false;
         return;
     }
-    if (!Rx->Receiving)
+    if (!Rx->WasReceiving)
     {
-        Rx->Receiving = true;
-        Rx->Unsynced = Rx->Source.UnsyncedAtStart;
-        Rx->Due = 0;
+        Rx->WasReceiving = true;
+        Rx->UnsyncedLeft = Rx->Source.UnsyncedAtStart;
+        Rx->PacketsDue = 0;
         Rx->LastMs = NowMs;
     }
 
     const double PacketNs =
         (double)Rx->Source.PacketSize * 8 * 1e9 / (double)Rx->Source.Rate;
     int64_t Count;
-    if (SimSdiTx_RealTime())
+    if (SimSdiTx_IsRealTime())
     {
-        Rx->Due += (double)(NowMs - Rx->LastMs) * 1e6 / PacketNs;
+        Rx->PacketsDue += (double)(NowMs - Rx->LastMs) * 1e6 / PacketNs;
         Rx->LastMs = NowMs;
-        Count = (int64_t)Rx->Due;
-        Rx->Due -= (double)Count;
+        Count = (int64_t)Rx->PacketsDue;
+        Rx->PacketsDue -= (double)Count;
     }
     else
     {
         Count = Rx->Source.PacketsPerRead;
     }
     for (int64_t i = 0; i < Count; i++)
-        SendFromSource(PortIndex, (uint64_t)((double)i * PacketNs));
+        ReceiveFromSource(PortIndex, (uint64_t)((double)i * PacketNs));
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Loop +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Dropped -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DropBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void Dropped(SimAsiLoop* Loop, size_t Count)
+static void DropBytes(SimAsiLoop* Loop, size_t Count)
 {
     memmove(Loop->Buf, Loop->Buf + Count, Loop->Len - Count);
     Loop->Len -= Count;
@@ -515,7 +515,7 @@ static void FindPackets(SimAsiLoop* Loop)
             else if (B[0] == 0x47 && B[204] == 0x47 && B[408] == 0x47)
                 Loop->PacketSize = 204;
             else
-                Dropped(Loop, 1);
+                DropBytes(Loop, 1);
             continue;
         }
         if (Loop->Len < (size_t)Loop->PacketSize)
@@ -526,34 +526,34 @@ static void FindPackets(SimAsiLoop* Loop)
             continue;
         }
         if (Receiving)
-            Receive(Loop->RxIndex, Loop->Buf, Loop->PacketSize, 0x58, 0);
-        Dropped(Loop, (size_t)Loop->PacketSize);
+            ReceivePacket(Loop->RxIndex, Loop->Buf, Loop->PacketSize, 0x58, 0);
+        DropBytes(Loop, (size_t)Loop->PacketSize);
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoopByte -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoopBackByte -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void LoopByte(uint8_t Byte)
+static void LoopBackByte(uint8_t Byte)
 {
     SimAsiLoop* Loop = &g_Asi.Loop;
     if (Loop->Len == SIM_ASI_LOOP_BUFFER)
         FindPackets(Loop);
     if (Loop->Len == SIM_ASI_LOOP_BUFFER)
-        Dropped(Loop, 1);
+        DropBytes(Loop, 1);
     Loop->Buf[Loop->Len++] = Byte;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoopSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateLoopSignal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // What the input of the loop sees of the output.
 //
-static void LoopSignal(void)
+static void UpdateLoopSignal(void)
 {
     const SimAsiLoop* Loop = &g_Asi.Loop;
     const SimAsiPort* Tx = &g_Asi.Ports[Loop->TxIndex];
     SimAsiSignal* Signal = &g_Asi.Ports[Loop->RxIndex].Signal;
 
-    NoSignal(Signal);
+    ClearSignal(Signal);
     if (!Tx->Tx.Running)
         return;
     Signal->CarrierDetect = true;
@@ -561,7 +561,7 @@ static void LoopSignal(void)
     Signal->PacketSize = Loop->PacketSize == 188   ? DT_ASIRX_PCKSIZE_188
                          : Loop->PacketSize == 204 ? DT_ASIRX_PCKSIZE_204
                                                    : DT_ASIRX_PCKSIZE_UNKNOWN;
-    Signal->Polarity = Tx->State.TxgPolarity == DT_ASITXG_POL_INVERT
+    Signal->Polarity = Tx->Settings.TxgPolarity == DT_ASITXG_POL_INVERT
                            ? DT_ASIRX_POLARITY_INVERT
                            : DT_ASIRX_POLARITY_NORMAL;
     Signal->TsBitrate = (int)Tx->Tx.Stats.TsBitrate;
@@ -569,31 +569,31 @@ static void LoopSignal(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sending +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureTables -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildTables -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The decoder, from the encoder's code.
 //
-static void EnsureTables(void)
+static void BuildTables(void)
 {
-    if (g_Asi.HaveTables)
+    if (g_Asi.TablesBuilt)
         return;
     for (int Rd = 0; Rd < 2; Rd++)
     {
         for (int s = 0; s < 1024; s++)
-            g_Asi.Decode[Rd][s] = SIM_ASI_NO_CODE;
+            g_Asi.DecodeTable[Rd][s] = SIM_ASI_NO_CODE;
         for (int b = 0; b < 256; b++)
         {
             int Next;
             uint16_t Code = DtAsiEnc_EncodeByte((uint8_t)b, Rd, &Next);
-            g_Asi.Decode[Rd][Code] = (int16_t)b;
-            g_Asi.NextRd[Rd][Code] = (uint8_t)Next;
+            g_Asi.DecodeTable[Rd][Code] = (int16_t)b;
+            g_Asi.NextRdTable[Rd][Code] = (uint8_t)Next;
         }
     }
-    g_Asi.Decode[0][DT_ASI_K28_5_RDNEG] = SIM_ASI_K28_5;
-    g_Asi.NextRd[0][DT_ASI_K28_5_RDNEG] = 1;
-    g_Asi.Decode[1][DT_ASI_K28_5_RDPOS] = SIM_ASI_K28_5;
-    g_Asi.NextRd[1][DT_ASI_K28_5_RDPOS] = 0;
-    g_Asi.HaveTables = true;
+    g_Asi.DecodeTable[0][DT_ASI_K28_5_RDNEG] = SIM_ASI_K28_5;
+    g_Asi.NextRdTable[0][DT_ASI_K28_5_RDNEG] = 1;
+    g_Asi.DecodeTable[1][DT_ASI_K28_5_RDPOS] = SIM_ASI_K28_5;
+    g_Asi.NextRdTable[1][DT_ASI_K28_5_RDPOS] = 0;
+    g_Asi.TablesBuilt = true;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Keep -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -621,14 +621,14 @@ static void Keep(SimAsiTx* Tx, uint8_t Byte)
 static void DecodeSym(SimAsiTx* Tx, uint16_t Sym, bool Looped)
 {
     int Rd = Tx->Rd;
-    int Value = g_Asi.Decode[Rd][Sym];
+    int Value = g_Asi.DecodeTable[Rd][Sym];
 
     Tx->Stats.Symbols++;
     Tx->WindowSyms++;
     if (Value == SIM_ASI_NO_CODE)
     {
         Rd = 1 - Rd;
-        Value = g_Asi.Decode[Rd][Sym];
+        Value = g_Asi.DecodeTable[Rd][Sym];
         if (Value == SIM_ASI_NO_CODE)
         {
             Tx->Stats.CodeErrors++;
@@ -637,7 +637,7 @@ static void DecodeSym(SimAsiTx* Tx, uint16_t Sym, bool Looped)
         if (Tx->RdKnown)
             Tx->Stats.DisparityErrors++;
     }
-    Tx->Rd = g_Asi.NextRd[Rd][Sym];
+    Tx->Rd = g_Asi.NextRdTable[Rd][Sym];
     Tx->RdKnown = true;
 
     if (Value == SIM_ASI_K28_5)
@@ -649,12 +649,12 @@ static void DecodeSym(SimAsiTx* Tx, uint16_t Sym, bool Looped)
     Tx->WindowData++;
     Keep(Tx, (uint8_t)Value);
     if (Looped)
-        LoopByte((uint8_t)Value);
+        LoopBackByte((uint8_t)Value);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_Drain -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimAsi_SendFromBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void SimAsi_Drain(int PortIndex)
+void SimAsi_SendFromBuffer(int PortIndex)
 {
     EnsureAsi();
     if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT)
@@ -665,12 +665,12 @@ void SimAsi_Drain(int PortIndex)
     const uint64_t NowMs = OsTime_MonotonicMs();
 
     const bool Running =
-        Port->State.TxgMode == DT_BLOCK_OPMODE_RUN && SimSdiTx_PhyRuns(PortIndex);
+        Port->Settings.TxgMode == DT_BLOCK_OPMODE_RUN && SimSdiTx_PhyRuns(PortIndex);
     if (!Running)
     {
-        Tx->Running = Tx->Sent = Tx->RdKnown = false;
+        Tx->Running = Tx->HasSent = Tx->RdKnown = false;
         if (Looped)
-            LoopSignal();
+            UpdateLoopSignal();
         return;
     }
     if (!Tx->Running)
@@ -679,10 +679,10 @@ void SimAsi_Drain(int PortIndex)
         Tx->LastMs = NowMs;
     }
     if (Looped)
-        LoopSignal(); // The carrier comes before the first byte
+        UpdateLoopSignal(); // The carrier comes before the first byte
 
-    EnsureTables();
-    const bool RealTime = SimSdiTx_RealTime();
+    BuildTables();
+    const bool RealTime = SimSdiTx_IsRealTime();
     uint64_t Allowed =
         RealTime ? (NowMs - Tx->LastMs) * SIM_ASI_BYTES_PER_MS : UINT64_MAX;
     Tx->LastMs = NowMs;
@@ -693,7 +693,7 @@ void SimAsi_Drain(int PortIndex)
             Chunk = (size_t)Allowed & ~(size_t)1;
         if (Chunk == 0)
             break;
-        const size_t Taken = SimSdiTx_TxTake(PortIndex, g_Asi.Scratch, Chunk);
+        const size_t Taken = SimSdiTx_TakeTxBytes(PortIndex, g_Asi.Scratch, Chunk);
         for (size_t i = 0; i + 1 < Taken; i += 2)
         {
             DecodeSym(Tx,
@@ -702,10 +702,10 @@ void SimAsi_Drain(int PortIndex)
         }
         Allowed -= Taken;
         if (Taken > 0)
-            Tx->Sent = true;
+            Tx->HasSent = true;
         if (Taken < Chunk)
         {
-            if (RealTime && Tx->Sent)
+            if (RealTime && Tx->HasSent)
                 SimSdiTx_CountOverflow(PortIndex); // An underflow, on the same count
             break;
         }
@@ -719,7 +719,7 @@ void SimAsi_Drain(int PortIndex)
     if (Looped)
     {
         FindPackets(&g_Asi.Loop);
-        LoopSignal();
+        UpdateLoopSignal();
     }
 }
 
@@ -747,13 +747,13 @@ void SimAsi_Reset(void)
         if (g_Asi.Initialised)
             DtAlloc_Free(Port->Tx.Kept);
         memset(Port, 0, sizeof(*Port));
-        Port->State.RxMode = DT_FUNC_OPMODE_IDLE;
-        Port->State.RxPacketMode = DT_ASIRX_PCKMODE_AUTO;
-        Port->State.RxPolarityCtrl = DT_ASIRX_POLARITY_AUTO;
-        Port->State.RxSyncMode = DT_ASIRX_SYNCMODE_AUTO;
-        Port->State.TxgMode = DT_BLOCK_OPMODE_IDLE;
-        Port->State.TxgPolarity = DT_ASITXG_POL_NORMAL;
-        NoSignal(&Port->Signal);
+        Port->Settings.RxMode = DT_FUNC_OPMODE_IDLE;
+        Port->Settings.RxPacketMode = DT_ASIRX_PCKMODE_AUTO;
+        Port->Settings.RxPolarityCtrl = DT_ASIRX_POLARITY_AUTO;
+        Port->Settings.RxSyncMode = DT_ASIRX_SYNCMODE_AUTO;
+        Port->Settings.TxgMode = DT_BLOCK_OPMODE_IDLE;
+        Port->Settings.TxgPolarity = DT_ASITXG_POL_NORMAL;
+        ClearSignal(&Port->Signal);
     }
     memset(&g_Asi.Loop, 0, sizeof(g_Asi.Loop));
     g_Asi.Loop.TxIndex = g_Asi.Loop.RxIndex = -1;
@@ -776,7 +776,7 @@ void SimDtPcie_SetAsiSignal(int PortIndex, const SimAsiSignal* Signal)
         if (Signal != NULL)
             g_Asi.Ports[PortIndex].Signal = *Signal;
         else
-            NoSignal(&g_Asi.Ports[PortIndex].Signal);
+            ClearSignal(&g_Asi.Ports[PortIndex].Signal);
     }
     SimDtPcie_Unlock();
 }
@@ -788,7 +788,7 @@ void SimDtPcie_GetAsiState(int PortIndex, SimAsiState* State)
     SimDtPcie_Lock();
     EnsureAsi();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
-        *State = g_Asi.Ports[PortIndex].State;
+        *State = g_Asi.Ports[PortIndex].Settings;
     else
         memset(State, 0, sizeof(*State));
     SimDtPcie_Unlock();
@@ -826,7 +826,7 @@ void SimDtPcie_SetAsiSource(int PortIndex, const SimAsiSource* Source)
     {
         SimAsiPort* Port = &g_Asi.Ports[PortIndex];
         memset(&Port->Rx, 0, sizeof(Port->Rx));
-        NoSignal(&Port->Signal);
+        ClearSignal(&Port->Signal);
         if (Source != NULL && (Source->PacketSize == 188 || Source->PacketSize == 204) &&
             Source->Rate > 0)
         {
@@ -843,9 +843,9 @@ void SimDtPcie_SetAsiSource(int PortIndex, const SimAsiSource* Source)
     SimDtPcie_Unlock();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_AsiRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_InjectAsiRxFault -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimDtPcie_AsiRxFault(int PortIndex, int Fault)
+void SimDtPcie_InjectAsiRxFault(int PortIndex, int Fault)
 {
     SimDtPcie_Lock();
     EnsureAsi();
@@ -862,7 +862,7 @@ void SimDtPcie_SetAsiLoopback(int TxIndex, int RxIndex)
     EnsureAsi();
     SimAsiLoop* Loop = &g_Asi.Loop;
     if (Loop->RxIndex >= 0)
-        NoSignal(&g_Asi.Ports[Loop->RxIndex].Signal);
+        ClearSignal(&g_Asi.Ports[Loop->RxIndex].Signal);
     memset(Loop, 0, sizeof(*Loop));
     Loop->TxIndex = Loop->RxIndex = -1;
     if (TxIndex >= 0 && TxIndex < SIM_SDI_PORT_COUNT && RxIndex >= 0 &&
@@ -871,7 +871,7 @@ void SimDtPcie_SetAsiLoopback(int TxIndex, int RxIndex)
         Loop->TxIndex = TxIndex;
         Loop->RxIndex = RxIndex;
         memset(&g_Asi.Ports[RxIndex].Rx, 0, sizeof(g_Asi.Ports[RxIndex].Rx));
-        LoopSignal();
+        UpdateLoopSignal();
     }
     SimDtPcie_Unlock();
 }

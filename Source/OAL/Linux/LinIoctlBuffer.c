@@ -16,20 +16,20 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoctlBuffer_Size -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-size_t LinIoctlBuffer_Size(bool SizeHeader, size_t InSize, size_t OutSize)
+size_t LinIoctlBuffer_Size(bool HasSizeHeader, size_t InSize, size_t OutSize)
 {
-    size_t Reserve = SizeHeader ? LIN_IOCTL_SIZE_HEADER_BYTES : 0;
-    size_t ForInput = Reserve + InSize;
+    size_t HeaderBytes = HasSizeHeader ? LIN_IOCTL_SIZE_HEADER_BYTES : 0;
+    size_t ForInput = HeaderBytes + InSize;
 
     return ForInput > OutSize ? ForInput : OutSize;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoctlBuffer_Pack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t OutSize,
+int LinIoctlBuffer_Pack(bool HasSizeHeader, const void* In, size_t InSize, size_t OutSize,
                         uint8_t* Buf, size_t BufSize)
 {
-    size_t Reserve = SizeHeader ? LIN_IOCTL_SIZE_HEADER_BYTES : 0;
+    size_t HeaderBytes = HasSizeHeader ? LIN_IOCTL_SIZE_HEADER_BYTES : 0;
 
     // Everything is validated before anything is written. BufSize is the caller's claim
     // about the buffer; if a check could still fail after the memset below, a bad claim
@@ -37,10 +37,10 @@ int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t O
     if (Buf == NULL || (In == NULL && InSize != 0))
         return -1;
 
-    if (SizeHeader && (InSize > UINT32_MAX || OutSize > UINT32_MAX))
+    if (HasSizeHeader && (InSize > UINT32_MAX || OutSize > UINT32_MAX))
         return -1;
 
-    if (BufSize < LinIoctlBuffer_Size(SizeHeader, InSize, OutSize))
+    if (BufSize < LinIoctlBuffer_Size(HasSizeHeader, InSize, OutSize))
         return -1;
 
     // Clear everything first. Without a size header the driver takes the structure size
@@ -49,7 +49,7 @@ int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t O
     // gives.
     memset(Buf, 0, BufSize);
 
-    if (SizeHeader)
+    if (HasSizeHeader)
     {
         uint32_t Sizes[2];
 
@@ -59,7 +59,7 @@ int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t O
     }
 
     if (InSize != 0)
-        memcpy(Buf + Reserve, In, InSize);
+        memcpy(Buf + HeaderBytes, In, InSize);
 
     return 0;
 }

@@ -80,10 +80,10 @@ DT_TEST(NullHandleIsAccepted)
     DT_ASSERT(!OsDrv_IsEmulated(NULL));
     DT_ASSERT_EQ(OsDrv_LastError(NULL), 0);
     uint8_t In[16];
-    DT_ASSERT_EQ(OsDrv_IoCtl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
+    DT_ASSERT_EQ(OsDrv_Ioctl(NULL, 0, In, sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
-    DT_ASSERT_EQ(OsDrv_IoCtl(NULL, 0, In, sizeof(In), NULL, NULL, NULL),
+    DT_ASSERT_EQ(OsDrv_Ioctl(NULL, 0, In, sizeof(In), NULL, NULL, NULL),
                  OS_IOCTL_COMMUNICATION);
 }
 
@@ -97,11 +97,11 @@ DT_TEST(RequestWithoutInputIsRefused)
         return;
 
     uint8_t In[16];
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), NULL,
                              sizeof(In), NULL, NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), In, 0, NULL,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), In, 0, NULL,
                              NULL, &Status),
                  OS_IOCTL_COMMUNICATION);
     DT_ASSERT_EQ(Status, 0);
@@ -186,7 +186,7 @@ DT_TEST(OutputBufferTooSmallIsRefused)
     DtIoctlGetDriverVersionInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DRIVER_VERSION), &In,
                              sizeof(In), Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -208,7 +208,7 @@ DT_TEST(InputShorterThanHeaderIsRefused)
 
     uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -229,7 +229,7 @@ DT_TEST(ShortInputIsRefusedBeforeTheCommand)
 
     uint8_t In[sizeof(DtIoctlInputDataHdr) - 1];
     memset(In, 0, sizeof(In));
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In), NULL,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), In, sizeof(In), NULL,
                              NULL, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -250,7 +250,7 @@ DT_TEST(DeviceInfoOutputTooSmallIsRefused)
     DtIoctlGetDevInfoInput In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_GET_DEV_INFO2), &In, sizeof(In),
                              Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -275,13 +275,13 @@ DT_TEST(UnmodelledCommandIsRefused)
     DtIoctlInputDataHdr In;
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In), Out,
                              &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
     DT_ASSERT_EQ(OsDrv_LastError(Drv), DT_STATUS_NOT_SUPPORTED);
 
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), &In, sizeof(In),
                              NULL, NULL, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);

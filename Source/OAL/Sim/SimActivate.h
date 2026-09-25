@@ -32,7 +32,7 @@ bool SimActivate_IsReady(void);
 void SimActivate_SetBusyCount(int Count);
 
 // True for the function code the object answers.
-bool SimActivate_Takes(int FunctionCode);
+bool SimActivate_Handles(int FunctionCode);
 
 // Handles one command, and gives its DT_STATUS_ outcome.
 uint32_t SimActivate_Cmd(int Cmd, const void* In, size_t InSize, void* Out,

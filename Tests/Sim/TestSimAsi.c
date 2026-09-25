@@ -122,7 +122,7 @@ static bool Acquire(Fixture* Fix)
         DtFunc_Release(&(Fix).Tx);                                                       \
         DtFunc_Release(&(Fix).TxDma);                                                    \
         OsDrv_Close((Fix).Drv);                                                          \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
@@ -550,15 +550,15 @@ DT_TEST(SourceWritesTransparentPackets)
     const uint8_t* P = Buf.Data + 216 * 3;
     const uint64_t Seconds = (uint64_t)P[0] | (uint64_t)P[1] << 8 | (uint64_t)P[2] << 16 |
                              (uint64_t)P[3] << 24;
-    DT_ASSERT(Seconds > 0 && Seconds <= SimNw_Now() / 1000000000u);
+    DT_ASSERT(Seconds > 0 && Seconds <= SimDtPcie_Now() / 1000000000u);
 
     // A fault in the next packet.
-    SimDtPcie_AsiRxFault(RX, SIM_ASI_FAULT_SEQUENCE);
+    SimDtPcie_InjectAsiRxFault(RX, SIM_ASI_FAULT_SEQUENCE);
     DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, &Offset));
     DT_ASSERT_EQ(Offset, 16u * 216);
     DT_ASSERT(IsPacket(Buf.Data + 216 * 8, 5, 188, 9));
     DT_ASSERT(IsPacket(Buf.Data + 216 * 9, 6, 188, 10));
-    SimDtPcie_AsiRxFault(RX, SIM_ASI_FAULT_NOSYNC);
+    SimDtPcie_InjectAsiRxFault(RX, SIM_ASI_FAULT_NOSYNC);
     DT_ASSERT_OK(DtPcieCmd_CdmacGetRxWriteOffset(Fix.Drv, Fix.RxCdmac, &Offset));
     DT_ASSERT_EQ(Buf.Data[216 * 16 + 212], 0x50);
     DT_ASSERT_EQ(Buf.Data[216 * 17 + 212], 0x58);

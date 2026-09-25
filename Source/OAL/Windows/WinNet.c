@@ -38,12 +38,12 @@
     (GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER |        \
      GAA_FLAG_SKIP_FRIENDLY_NAME)
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Adapters -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ListAdapters -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The adapters of Family, in an allocation the caller frees; NULL after a failure, with
 // *Outcome saying why.
 //
-static IP_ADAPTER_ADDRESSES* Adapters(ULONG Family, int* Outcome)
+static IP_ADAPTER_ADDRESSES* ListAdapters(ULONG Family, int* Outcome)
 {
     ULONG Size = 32 * 1024;
 
@@ -70,9 +70,9 @@ static IP_ADAPTER_ADDRESSES* Adapters(ULONG Family, int* Outcome)
     return NULL;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IndexOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AdapterIfIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static uint32_t IndexOf(const IP_ADAPTER_ADDRESSES* Adapter)
+static uint32_t AdapterIfIndex(const IP_ADAPTER_ADDRESSES* Adapter)
 {
     return Adapter->IfIndex != 0 ? Adapter->IfIndex : Adapter->Ipv6IfIndex;
 }
@@ -115,7 +115,7 @@ static void FromSockAddr(const SOCKADDR_INET* Addr, uint8_t* Ip)
 static int ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs)
 {
     int Outcome;
-    IP_ADAPTER_ADDRESSES* List = Adapters(AF_UNSPEC, &Outcome);
+    IP_ADAPTER_ADDRESSES* List = ListAdapters(AF_UNSPEC, &Outcome);
     if (List == NULL)
         return Outcome;
 
@@ -130,7 +130,7 @@ static int ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs)
             MIB_IF_ROW2 Row;
 
             memset(Itf, 0, sizeof(*Itf));
-            Itf->Index = IndexOf(Adapter);
+            Itf->Index = AdapterIfIndex(Adapter);
             memcpy(Itf->Mac, Adapter->PhysicalAddress, 6);
             memset(&Row, 0, sizeof(Row));
             Row.InterfaceIndex = Itf->Index;
@@ -155,7 +155,7 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
                         int* NumAddrs)
 {
     int Outcome;
-    IP_ADAPTER_ADDRESSES* List = Adapters(IpV6 ? AF_INET6 : AF_INET, &Outcome);
+    IP_ADAPTER_ADDRESSES* List = ListAdapters(IpV6 ? AF_INET6 : AF_INET, &Outcome);
     if (List == NULL)
         return Outcome;
 
@@ -163,7 +163,7 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
     Outcome = OS_NET_NOT_FOUND;
     for (IP_ADAPTER_ADDRESSES* Adapter = List; Adapter != NULL; Adapter = Adapter->Next)
     {
-        if (Adapter->PhysicalAddressLength != 6 || IndexOf(Adapter) != IfIndex)
+        if (Adapter->PhysicalAddressLength != 6 || AdapterIfIndex(Adapter) != IfIndex)
             continue;
         Outcome = OS_NET_OK;
         for (IP_ADAPTER_UNICAST_ADDRESS* Unicast = Adapter->FirstUnicastAddress;
@@ -339,11 +339,11 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
     }
 
     const int On = 1;
-    int Bound = AddrSize;
+    int AddrLen = AddrSize;
     if (setsockopt(New->Socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&On, sizeof(On)) !=
             0 ||
         bind(New->Socket, (SOCKADDR*)&Addr, AddrSize) != 0 ||
-        getsockname(New->Socket, (SOCKADDR*)&Addr, &Bound) != 0)
+        getsockname(New->Socket, (SOCKADDR*)&Addr, &AddrLen) != 0)
     {
         closesocket(New->Socket);
         DtAlloc_Free(New);
@@ -356,12 +356,12 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
     return OS_NET_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Membership -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinOrLeave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The protocol-independent multicast options, by interface index, for both families.
 //
-static int Membership(void* State, bool Join, bool IpV6, uint32_t IfIndex,
-                      const uint8_t* Group, const uint8_t* Source)
+static int JoinOrLeave(void* State, bool Join, bool IpV6, uint32_t IfIndex,
+                       const uint8_t* Group, const uint8_t* Source)
 {
     const WinSocket* Socket = (const WinSocket*)State;
     int Level = IpV6 ? IPPROTO_IPV6 : IPPROTO_IP;
@@ -412,7 +412,7 @@ static void Close(void* State)
 const OsNetBackend* OsPlatform_NetBackend(void)
 {
     static const OsNetBackend Backend = {
-        ListInterfaces,   GetAddresses, GetGateway, FindBestRoute,
-        ResolveNeighbour, Bind,         Membership, Close};
+        ListInterfaces,   GetAddresses, GetGateway,  FindBestRoute,
+        ResolveNeighbour, Bind,         JoinOrLeave, Close};
     return &Backend;
 }

@@ -43,7 +43,7 @@ void SimClocks_SetTod(int State, int Reference, int DeviationPpm);
 void SimClocks_SetClockType(int ClockIndex, int Type);
 
 // True for the function codes these objects answer.
-bool SimClocks_Takes(int FunctionCode);
+bool SimClocks_Handles(int FunctionCode);
 
 // Handles one command for an object of type Type, a DT_FUNC_TYPE_ for a driver function
 // and a DT_BLOCK_TYPE_ otherwise, with role Role, and gives its DT_STATUS_ outcome. An

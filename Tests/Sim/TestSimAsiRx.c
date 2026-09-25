@@ -83,7 +83,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DtInpChannel_Free((Fix).Channel);                                                \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
@@ -308,7 +308,7 @@ DT_TEST(RecoversFromFaults)
     {
         int Flags, Latched;
         DT_ASSERT_OK(DtInpChannel_ClearFlags(Fix.Channel, DTAPI_RX_SYNC_ERR));
-        SimDtPcie_AsiRxFault(PORT - 1, Faults[f]);
+        SimDtPcie_InjectAsiRxFault(PORT - 1, Faults[f]);
         DT_ASSERT_OK(DtInpChannel_Read(Fix.Channel, Fix.Buffer, 40 * 188, 1000));
         int Lost = 0;
         for (int i = 0; i < 40; i++)

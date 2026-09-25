@@ -79,10 +79,10 @@ bool OsDrv_IsEmulated(const OsDrv* Drv);
 // Returns one of the OS_IOCTL_ outcomes below. DrvStatus may be NULL; otherwise it
 // receives the driver's DtStatus when the outcome is OS_IOCTL_DRIVER_STATUS, and
 // DT_STATUS_OK, which is zero, for every other outcome.
-int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
+int OsDrv_Ioctl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
                 size_t* OutSize, uint32_t* DrvStatus);
 
-// Outcomes of OsDrv_IoCtl.
+// Outcomes of OsDrv_Ioctl.
 //
 // A driver refuses a command with a DtStatus, and the two platforms deliver it in
 // different ways: on Windows as a GetLastError value with the customer bit (bit 29) set,

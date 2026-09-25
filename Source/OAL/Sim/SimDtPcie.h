@@ -162,7 +162,7 @@ bool SimDtPcie_SetSdiSink(const char* Sink);
 
 // Moves the device to another driver index, so that it is found only by looking past the
 // indices before it.
-void SimDtPcie_SetIndex(int Index);
+void SimDtPcie_SetDta2178Index(int Index);
 
 // Adds a DTA-2110, SimDta2110.h, at driver index Index, a different one from the
 // DTA-2178's, or takes it away for a negative Index. A reset puts it at the index
@@ -175,7 +175,7 @@ void SimDtPcie_SetDta2110Index(int Index);
 
 // The number of handles to the emulated device that are open, so that a test can check
 // that a layer above closes what it opens.
-int SimDtPcie_OpenHandles(void);
+int SimDtPcie_OpenHandleCount(void);
 
 // Refuses every command with FunctionCode with the driver status Status.
 void SimDtPcie_FailWithStatus(int FunctionCode, uint32_t Status);
@@ -205,7 +205,7 @@ FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 // as the driver answers it: DT_STATUS_OK when it does, DT_STATUS_EXCL_ACCESS_REQD when
 // nobody does, DT_STATUS_IN_USE when another handle does. Called with the emulator's
 // lock held.
-uint32_t SimDtPcie_CheckAccess(void* Handle, int ObjectIndex);
+uint32_t SimDtPcie_CheckExclAccess(void* Handle, int ObjectIndex);
 
 // Takes and releases the emulator's lock, for a test control that reads or changes state
 // a command on another thread may be using. Not recursive.

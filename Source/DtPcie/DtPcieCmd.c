@@ -70,7 +70,7 @@ DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t In
 {
     size_t BytesReturned = OutSize;
     uint32_t Status;
-    int Outcome = OsDrv_IoCtl(Drv, Code, In, InSize, Out, &BytesReturned, &Status);
+    int Outcome = OsDrv_Ioctl(Drv, Code, In, InSize, Out, &BytesReturned, &Status);
 
     if (Outcome != OS_IOCTL_OK)
         return DtPcieStatus_OutcomeToResult(Outcome, Status);

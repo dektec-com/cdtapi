@@ -95,7 +95,7 @@ DT_TEST(FreeEmptiesTheBufferAndCanRepeat)
     OsDmaBuffer_Free(&Buf);
 
     DT_ASSERT(Buf.Data == NULL);
-    DT_ASSERT(Buf.Block == NULL);
+    DT_ASSERT(Buf.RawAllocation == NULL);
     DT_ASSERT_EQ(Buf.Size, 0);
 
     OsDmaBuffer_Free(&Buf);
@@ -127,7 +127,7 @@ DT_TEST(AllocationFailureLeavesTheBufferEmpty)
     OsDmaBuffer Buf;
     DT_ASSERT_EQ(OsDmaBuffer_Alloc(100, &Buf), -1);
     DT_ASSERT(Buf.Data == NULL);
-    DT_ASSERT(Buf.Block == NULL);
+    DT_ASSERT(Buf.RawAllocation == NULL);
     DT_ASSERT_EQ(Buf.Size, 0);
 
     DtAlloc_ResetCount();

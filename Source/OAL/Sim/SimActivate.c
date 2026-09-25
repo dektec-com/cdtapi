@@ -28,11 +28,11 @@ static bool g_Ready;
 static int g_BusyCount;
 static int g_BusyLeft;
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Expected -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TailWord -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The word at Index of the EEPROM's tail, in the order the object is given it.
 //
-static uint32_t Expected(int Index)
+static uint32_t TailWord(int Index)
 {
     const uint8_t* Tail = SimVpd_Tail() + (size_t)Index * sizeof(uint32_t);
 
@@ -50,7 +50,7 @@ static bool IsBlank(void)
 
     for (int i = 1; i < Words; i++)
     {
-        if (Expected(i) != Expected(0))
+        if (TailWord(i) != TailWord(0))
             return false;
     }
     return true;
@@ -58,7 +58,7 @@ static bool IsBlank(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Interface +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void SimActivate_Reset(void)
 {
@@ -67,28 +67,28 @@ void SimActivate_Reset(void)
     g_BusyLeft = 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. SimActivate_IsReady -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_IsReady -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 bool SimActivate_IsReady(void)
 {
     return g_Ready && g_BusyLeft == 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_SetBusyCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_SetBusyCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void SimActivate_SetBusyCount(int Count)
 {
     g_BusyCount = Count > 0 ? Count : 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. SimActivate_Takes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_Handles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool SimActivate_Takes(int FunctionCode)
+bool SimActivate_Handles(int FunctionCode)
 {
     return FunctionCode == DT_FUNC_CODE_IPSECG_CMD;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. SimActivate_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimActivate_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 uint32_t SimActivate_Cmd(int Cmd, const void* In, size_t InSize, void* Out,
                          size_t* OutSize)
@@ -127,7 +127,7 @@ uint32_t SimActivate_Cmd(int Cmd, const void* In, size_t InSize, void* Out,
 
         bool Matches = Check->m_NumWords == Words && !IsBlank();
         for (int i = 0; i < Check->m_NumWords && Matches; i++)
-            Matches = Check->m_Data[i] == Expected(i);
+            Matches = Check->m_Data[i] == TailWord(i);
 
         g_Ready = Matches;
         g_BusyLeft = Matches ? g_BusyCount : 0;

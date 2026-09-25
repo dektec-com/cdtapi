@@ -72,7 +72,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
         DtFunc_Release(&(Fix).Tx);                                                       \
         DtFunc_Release(&(Fix).Dma);                                                      \
         OsDrv_Close((Fix).Drv);                                                          \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
@@ -550,7 +550,8 @@ DT_TEST(RequestsCarryTheirFields)
                   In.m_LineCrcEnable == 1);
         SimTxState State;
         SimDtPcie_GetTxState(PORT, &State);
-        DT_ASSERT(State.Clamp && !State.AdpChecksum && State.LineCrc);
+        DT_ASSERT(State.ClampEnabled && !State.AdpChecksumEnabled &&
+                  State.LineCrcEnabled);
     }
 
     DT_ASSERT_EQ(DtPcieCmd_SdiTxPhySetOpMode(Fix.Drv, P.Phy, DT_FUNC_OPMODE_STANDBY),

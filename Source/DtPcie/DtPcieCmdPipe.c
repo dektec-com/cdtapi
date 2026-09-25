@@ -226,7 +226,7 @@ DtapiResult DtPcieCmd_PipeSetSharedBufferAs(OsDrv* Drv, DtDrvObject Pipe,
     In.m_BufferAddr = HandOff.BufferAddr;
 
     size_t BytesReturned = HandOff.OutSize;
-    int Outcome = OsDrv_IoCtl(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), &In, sizeof(In),
+    int Outcome = OsDrv_Ioctl(Drv, DT_IOCTL(DT_IOCTL_PIPE_CMD), &In, sizeof(In),
                               HandOff.Out, &BytesReturned, &Status);
     if (Outcome != OS_IOCTL_OK)
         return DtPcieStatus_OutcomeToResult(Outcome, Status);

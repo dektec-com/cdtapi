@@ -46,7 +46,7 @@ void DtPcieCmd_InitDeviceHeader(DtIoctlInputDataHdr* Hdr, int Cmd);
 // failure: the fields it did not write would otherwise be read as zeroes and trusted.
 //
 // That check only has teeth on Windows and against the emulator. The Linux driver does
-// not report how much it wrote, so there OsDrv_IoCtl leaves the size as it was and a
+// not report how much it wrote, so there OsDrv_Ioctl leaves the size as it was and a
 // short answer cannot be detected here.
 DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                             void* Out, size_t OutSize);

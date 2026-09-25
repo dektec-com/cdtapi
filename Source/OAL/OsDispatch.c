@@ -80,9 +80,9 @@ bool OsDrv_IsEmulated(const OsDrv* Drv)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Control +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_IoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDrv_Ioctl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
+int OsDrv_Ioctl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
                 size_t* OutSize, uint32_t* DrvStatus)
 {
     uint32_t Ignored;
@@ -97,7 +97,7 @@ int OsDrv_IoCtl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* 
     if (Drv == NULL || In == NULL || InSize == 0)
         return OS_IOCTL_COMMUNICATION;
 
-    return Drv->Backend->IoCtl(Drv->State, Code, In, InSize, Out, OutSize, DrvStatus);
+    return Drv->Backend->Ioctl(Drv->State, Code, In, InSize, Out, OutSize, DrvStatus);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Memory +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

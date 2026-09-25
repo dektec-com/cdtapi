@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#*# SimVpd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*#* SimVpd.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The emulated card's Vital Product Data
 //
@@ -61,14 +61,14 @@ const uint8_t* SimVpd_Tail(void)
     return &g_Eeprom[SIM_VPD_TAIL_OFFSET];
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimVpd_Takes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimVpd_Handles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-bool SimVpd_Takes(int FunctionCode)
+bool SimVpd_Handles(int FunctionCode)
 {
     return FunctionCode == DT_FUNC_CODE_VPD_CMD;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. SimVpd_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimVpd_Cmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 uint32_t SimVpd_Cmd(int Cmd, const void* In, size_t InSize, void* Out, size_t* OutSize)
 {

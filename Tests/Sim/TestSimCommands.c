@@ -84,7 +84,7 @@ static int RawGet(OsDrv* Drv, int PortIndex, const char* Group, RawGetOut* Out)
     In.m_IoCfgId.m_PortIndex = PortIndex;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", Group);
     memset(Out, 0, sizeof(*Out));
-    return OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), Out,
+    return OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In), Out,
                        &OutSize, NULL);
 }
 
@@ -800,7 +800,7 @@ DT_TEST(RecordingOfInputs)
     uint8_t Big[SIM_MAX_RECORDED_INPUT + 8];
     memset(Big, 0x5A, sizeof(Big));
     uint32_t Status;
-    OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), Big, sizeof(Big), NULL, NULL,
+    OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_DEBUG_CMD), Big, sizeof(Big), NULL, NULL,
                 &Status);
     DT_ASSERT_EQ(SimDtPcie_LastInput(&FunctionCode, Back, sizeof(Back)), sizeof(Big));
     DT_ASSERT_EQ(FunctionCode, DT_FUNC_CODE_DEBUG_CMD);
@@ -826,13 +826,13 @@ DT_TEST(PropertyRequestSizesAreChecked)
     snprintf(In.m_Name, sizeof(In.m_Name), "%s", "PORT_COUNT");
     In.m_PortIndex = -1;
 
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In,
                              sizeof(In) - 1, &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(Out) - 1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -840,7 +840,7 @@ DT_TEST(PropertyRequestSizesAreChecked)
     // Unmodelled commands of a modelled IOCTL are unknown commands.
     OutSize = sizeof(Out);
     In.m_CmdHdr.m_Cmd = DT_PROP_CMD_GET_TABLE;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_PROPERTY_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
@@ -866,25 +866,25 @@ DT_TEST(IoConfigRequestSizesFollowTheCount)
     In.m_IoConfigCount = 2;
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "IODIR");
 
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoConfigCount = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoConfigCount = 0;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_OK);
     DT_ASSERT_EQ(OutSize, sizeof(DtIoctlIoConfigCmdGetIoConfigOutput));
 
     In.m_CmdHdr.m_Cmd = 99;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);
@@ -911,7 +911,7 @@ static uint32_t RawSet(OsDrv* Drv, const RawSetIn* In, size_t InSize)
 {
     uint32_t Status = 0xDEAD;
 
-    if (OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, NULL, NULL,
+    if (OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), In, InSize, NULL, NULL,
                     &Status) == OS_IOCTL_OK)
     {
         return DT_STATUS_OK;
@@ -981,27 +981,27 @@ DT_TEST(GetRequestsAreChecked)
 
     RawGetOut Out;
     size_t OutSize = sizeof(Out);
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     snprintf(In.m_IoCfgId.m_Group, sizeof(In.m_IoCfgId.m_Group), "%s", "IODIR");
     In.m_IoCfgId.m_PortIndex = -1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     In.m_IoCfgId.m_PortIndex = 0;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In,
                              sizeof(DtIoctlIoConfigCmdGetIoConfigInput) - 1, &Out,
                              &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(DtIoctlIoConfigCmdGetIoConfigOutput) - 1;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_IOCONFIG_CMD), &In, sizeof(In),
                              &Out, &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
@@ -1043,14 +1043,14 @@ DT_TEST(TodRequestSizesAreChecked)
     memset(&In, 0, sizeof(In));
     In.m_PortIndex = -1;
     In.m_Cmd = DT_TOD_CMD_GET_TIME;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
                              &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_INVALID_PARAMETER);
 
     OutSize = sizeof(Out);
     In.m_Cmd = DT_TOD_CMD_SET_TIME;
-    DT_ASSERT_EQ(OsDrv_IoCtl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
+    DT_ASSERT_EQ(OsDrv_Ioctl(Drv, DT_TEST_IOCTL(DT_IOCTL_TOD_CMD), &In, sizeof(In), &Out,
                              &OutSize, &Status),
                  OS_IOCTL_DRIVER_STATUS);
     DT_ASSERT_EQ(Status, DT_STATUS_NOT_SUPPORTED);

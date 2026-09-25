@@ -70,8 +70,8 @@ static bool Open(Fixture* Fix, int* DtFailures)
     do                                                                                   \
     {                                                                                    \
         DtDevice_Free((Fix).Device);                                                     \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
-        DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);                                     \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
+        DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);                                 \
         DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);                                 \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
@@ -239,7 +239,7 @@ DT_TEST(SdiPortIsRefused)
     DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Device, 1), DTAPI_E_NOT_SUPPORTED);
     AvFifo_RxFifo_Free(Rx);
     DtDevice_Free(Device);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     SimDtPcie_Reset();
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
@@ -297,7 +297,7 @@ DT_TEST(StartFailures)
     SimDtPcie_FailNetJoin(false);
     DT_ASSERT(strstr(GetLastException(), "multicast") != NULL);
     DT_ASSERT_EQ(PipeInUse(SIM_NW_FIRST_RX_HWP, SIM_NW_FIRST_SWP + 8, &State), 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);
     int UsesHw = -1;
     DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
@@ -374,7 +374,7 @@ DT_TEST(StartedAndStopped)
     SimDtPcie_GetNwPipeState(Id, &State);
     DT_ASSERT(!State.InUse && !State.BufferRegistered);
     DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);
     DT_ASSERT_OK(AvFifo_RxFifo_Stop(Rx));
 
     // It starts again.
@@ -760,7 +760,7 @@ DT_TEST(FullFifos)
     DT_ASSERT_EQ(Stats.DroppedFrames, 5);
 
     DtapiResult Result = DTAPI_OK;
-    uint64_t Later = SimNw_Now() + 5000 * MS;
+    uint64_t Later = SimDtPcie_Now() + 5000 * MS;
     for (int f = 0; f < 200 && Result == DTAPI_OK; f++)
     {
         AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, 1440);

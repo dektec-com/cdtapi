@@ -26,9 +26,9 @@
 
 typedef struct OsDmaBuffer
 {
-    uint8_t* Data; // Page-aligned; NULL when not allocated
-    size_t Size;   // Rounded up to whole pages
-    void* Block;   // The allocation Data was carved from; private
+    uint8_t* Data;       // Page-aligned; NULL when not allocated
+    size_t Size;         // Rounded up to whole pages
+    void* RawAllocation; // The allocation Data was carved from; private
 } OsDmaBuffer;
 
 // The operating system's page size.
@@ -60,20 +60,22 @@ void OsDmaBuffer_Free(OsDmaBuffer* Buf);
 typedef struct OsDmaHandOff
 {
     uint64_t BufferAddr; // Value for the command's m_BufferAddr field
-    void* Out;           // Output buffer to pass to OsDrv_IoCtl
+    void* Out;           // Output buffer to pass to OsDrv_Ioctl
     size_t OutSize;      // Its size
 } OsDmaHandOff;
 
-// Describes the hand-off for this platform's driver. Fixed is the command's own output
-// structure and FixedSize its size, used where the buffer does not travel as the output.
-void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
-                                 OsDmaHandOff* HandOff);
+// Describes the hand-off for this platform's driver. FixedOut is the command's own
+// output structure and FixedOutSize its size, used where the buffer does not travel as
+// the output.
+void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* FixedOut,
+                                 size_t FixedOutSize, OsDmaHandOff* HandOff);
 
 // The same, with the convention chosen explicitly: true for Windows, false for Linux.
 // The command layer calls this one, so that both conventions are tested on every
 // platform.
 void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
-                                   void* Fixed, size_t FixedSize, OsDmaHandOff* HandOff);
+                                   void* FixedOut, size_t FixedOutSize,
+                                   OsDmaHandOff* HandOff);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Platform part +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //

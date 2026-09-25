@@ -39,7 +39,7 @@ static unsigned __stdcall ThreadEntry(void* Arg)
     return 0;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-. OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_SetName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // SetThreadDescription is what a debugger and Task Manager read, and it arrived in
 // Windows 10 1607. It is looked up rather than linked, so that the library still loads on
@@ -48,30 +48,30 @@ static unsigned __stdcall ThreadEntry(void* Arg)
 //
 void OsThread_SetName(const char* Name)
 {
-    typedef HRESULT(WINAPI * SetDescription)(HANDLE, PCWSTR);
-    static SetDescription Set = NULL;
-    static bool Looked = false;
+    typedef HRESULT(WINAPI * SetThreadDescriptionFn)(HANDLE, PCWSTR);
+    static SetThreadDescriptionFn SetDescription = NULL;
+    static bool LookedUp = false;
     WCHAR Wide[16];
     size_t i;
 
     if (Name == NULL)
         return;
-    if (!Looked)
+    if (!LookedUp)
     {
         HMODULE Kernel = GetModuleHandleW(L"kernel32.dll");
 
-        Set = Kernel == NULL
-                  ? NULL
-                  : (SetDescription)(void*)GetProcAddress(Kernel, "SetThreadDescription");
-        Looked = true;
+        SetDescription = Kernel == NULL ? NULL
+                                        : (SetThreadDescriptionFn)(void*)GetProcAddress(
+                                              Kernel, "SetThreadDescription");
+        LookedUp = true;
     }
-    if (Set == NULL)
+    if (SetDescription == NULL)
         return;
 
     for (i = 0; i + 1 < sizeof(Wide) / sizeof(Wide[0]) && Name[i] != '\0'; i++)
         Wide[i] = (WCHAR)(unsigned char)Name[i];
     Wide[i] = L'\0';
-    Set(GetCurrentThread(), Wide);
+    SetDescription(GetCurrentThread(), Wide);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

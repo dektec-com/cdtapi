@@ -78,7 +78,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     do                                                                                   \
     {                                                                                    \
         OsDrv_Close((Fix).Drv);                                                          \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
@@ -223,7 +223,7 @@ DT_TEST(Dta2110IsThereWhenAdded)
 
     SimDtPcie_Reset();
     DT_ASSERT(OsDrv_Open(INDEX) == NULL);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // The port's capabilities, its one function, and no I/O configuration.

@@ -25,7 +25,7 @@ typedef struct SimRoute
     uint8_t Gateway[16];
 } SimRoute;
 
-typedef struct SimItf
+typedef struct SimItfEntry
 {
     bool Used;
     OsNetItf Itf;
@@ -35,7 +35,7 @@ typedef struct SimItf
     uint8_t Gateway[2][16];
     SimRoute Routes[SIM_NET_MAX_ROUTES];
     int NumRoutes;
-} SimItf;
+} SimItfEntry;
 
 typedef struct SimNeighbour
 {
@@ -51,20 +51,20 @@ typedef struct SimSocket
     uint16_t Port;
 } SimSocket;
 
-typedef struct SimJoined
+typedef struct SimMembership
 {
     SimSocket* Socket;
     SimNetMembership Membership;
-} SimJoined;
+} SimMembership;
 
 static struct
 {
-    SimItf Itfs[SIM_NET_MAX_INTERFACES];
+    SimItfEntry Itfs[SIM_NET_MAX_INTERFACES];
     SimNeighbour Neighbours[SIM_NET_MAX_NEIGHBOURS];
     int NumNeighbours;
-    SimJoined Joined[SIM_NET_MAX_MEMBERSHIPS];
+    SimMembership Joined[SIM_NET_MAX_MEMBERSHIPS];
     int NumJoined;
-    int OpenSockets;
+    int NumOpenSockets;
     uint16_t NextPort;
     bool FailBind;
     bool FailJoin;
@@ -72,7 +72,7 @@ static struct
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindItf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static SimItf* FindItf(uint32_t Index)
+static SimItfEntry* FindItf(uint32_t Index)
 {
     for (int i = 0; i < SIM_NET_MAX_INTERFACES; i++)
     {
@@ -156,7 +156,7 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
     int Count = 0;
 
     SimDtPcie_Lock();
-    const SimItf* Itf = FindItf(IfIndex);
+    const SimItfEntry* Itf = FindItf(IfIndex);
     for (int i = 0; Itf != NULL && i < Itf->NumAddrs; i++)
     {
         if (Itf->Addrs[i].IpV6 != IpV6)
@@ -179,7 +179,7 @@ static int GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
     int Outcome = OS_NET_NOT_FOUND;
 
     SimDtPcie_Lock();
-    const SimItf* Itf = FindItf(IfIndex);
+    const SimItfEntry* Itf = FindItf(IfIndex);
     if (Itf != NULL && Itf->HasGateway[IpV6 ? 1 : 0])
     {
         memcpy(Gateway, Itf->Gateway[IpV6 ? 1 : 0], 16);
@@ -196,7 +196,7 @@ static int GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
 {
     (void)Src;
     SimDtPcie_Lock();
-    const SimItf* Itf = FindItf(IfIndex);
+    const SimItfEntry* Itf = FindItf(IfIndex);
     if (Itf == NULL)
     {
         SimDtPcie_Unlock();
@@ -269,7 +269,7 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
     bool Found = IsEmpty(Address);
     for (int i = 0; i < SIM_NET_MAX_INTERFACES && !Found; i++)
     {
-        const SimItf* Itf = &g_Net.Itfs[i];
+        const SimItfEntry* Itf = &g_Net.Itfs[i];
         bool LinkLocal = IpV6 && Address[0] == 0xFE && (Address[1] & 0xC0) == 0x80;
         for (int k = 0; Itf->Used && k < Itf->NumAddrs && !Found; k++)
         {
@@ -287,7 +287,7 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
         New->IpV6 = IpV6;
         New->Port = Port != 0 ? Port : g_Net.NextPort++;
         *BoundPort = New->Port;
-        g_Net.OpenSockets++;
+        g_Net.NumOpenSockets++;
     }
     SimDtPcie_Unlock();
     *Socket = New;
@@ -323,10 +323,10 @@ static void RemoveJoined(int Index)
     g_Net.NumJoined--;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Membership -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinOrLeave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static int Membership(void* State, bool Join, bool IpV6, uint32_t IfIndex,
-                      const uint8_t* Group, const uint8_t* Source)
+static int JoinOrLeave(void* State, bool Join, bool IpV6, uint32_t IfIndex,
+                       const uint8_t* Group, const uint8_t* Source)
 {
     SimSocket* Socket = (SimSocket*)State;
     SimNetMembership Membership;
@@ -371,7 +371,7 @@ static void Close(void* State)
         if (g_Net.Joined[i].Socket == (SimSocket*)State)
             RemoveJoined(i);
     }
-    g_Net.OpenSockets--;
+    g_Net.NumOpenSockets--;
     SimDtPcie_Unlock();
     DtAlloc_Free(State);
 }
@@ -381,8 +381,8 @@ static void Close(void* State)
 const OsNetBackend* OsSim_NetBackend(void)
 {
     static const OsNetBackend Backend = {
-        ListInterfaces,   GetAddresses, GetGateway, GetBestRoute,
-        ResolveNeighbour, Bind,         Membership, Close};
+        ListInterfaces,   GetAddresses, GetGateway,  GetBestRoute,
+        ResolveNeighbour, Bind,         JoinOrLeave, Close};
     return &Backend;
 }
 
@@ -397,7 +397,7 @@ static bool AddItf(uint32_t Index, const uint8_t* Mac, int VlanId, uint32_t Pare
         return false;
     for (int i = 0; i < SIM_NET_MAX_INTERFACES; i++)
     {
-        SimItf* Itf = &g_Net.Itfs[i];
+        SimItfEntry* Itf = &g_Net.Itfs[i];
         if (Itf->Used)
             continue;
         memset(Itf, 0, sizeof(*Itf));
@@ -418,7 +418,7 @@ static bool AddItf(uint32_t Index, const uint8_t* Mac, int VlanId, uint32_t Pare
 //
 static bool AddAddr(uint32_t Index, bool IpV6, const uint8_t* Ip, int PrefixLength)
 {
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Itf == NULL || Itf->NumAddrs == SIM_NET_MAX_ADDRESSES)
         return false;
     OsNetAddr* Addr = &Itf->Addrs[Itf->NumAddrs++];
@@ -448,7 +448,7 @@ static bool AddNeighbour(uint32_t Index, bool IpV6, const uint8_t* Ip, const uin
 //
 static void RemoveItf(uint32_t Index)
 {
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Itf != NULL)
         memset(Itf, 0, sizeof(*Itf));
     for (int i = g_Net.NumNeighbours - 1; i >= 0; i--)
@@ -468,10 +468,10 @@ static void RemoveItf(uint32_t Index)
 //
 void SimNet_Reset(void)
 {
-    int OpenSockets = g_Net.OpenSockets;
+    int OpenSockets = g_Net.NumOpenSockets;
 
     memset(&g_Net, 0, sizeof(g_Net));
-    g_Net.OpenSockets = OpenSockets;
+    g_Net.NumOpenSockets = OpenSockets;
     g_Net.NextPort = 49152;
 }
 
@@ -493,7 +493,7 @@ void SimNet_SetDta2110Interface(bool Present, const uint8_t* Mac)
     AddAddr(SIM_NET_DTA2110_INDEX, true, LinkLocal, SIM_NET_DTA2110_IPV6_PREFIX);
     AddAddr(SIM_NET_DTA2110_INDEX, true, Global, SIM_NET_DTA2110_IPV6_PREFIX);
 
-    SimItf* Itf = FindItf(SIM_NET_DTA2110_INDEX);
+    SimItfEntry* Itf = FindItf(SIM_NET_DTA2110_INDEX);
     Itf->HasGateway[0] = true;
     Copy16(false, GatewayV4, Itf->Gateway[0]);
     Itf->HasGateway[1] = true;
@@ -529,7 +529,7 @@ void SimDtPcie_RemoveNetInterface(uint32_t Index)
 void SimDtPcie_SetNetInterfaceUp(uint32_t Index, bool AdminUp, bool LinkUp)
 {
     SimDtPcie_Lock();
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Itf != NULL)
     {
         Itf->Itf.AdminUp = AdminUp;
@@ -546,7 +546,7 @@ bool SimDtPcie_AddNetAddress(uint32_t Index, const OsNetAddr* Addr)
         return false;
     SimDtPcie_Lock();
     bool Added = AddAddr(Index, Addr->IpV6, Addr->Ip, Addr->PrefixLength);
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Added)
         Itf->Addrs[Itf->NumAddrs - 1].State = Addr->State;
     SimDtPcie_Unlock();
@@ -558,7 +558,7 @@ bool SimDtPcie_AddNetAddress(uint32_t Index, const OsNetAddr* Addr)
 void SimDtPcie_ClearNetAddresses(uint32_t Index, bool IpV6)
 {
     SimDtPcie_Lock();
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     int Kept = 0;
     for (int i = 0; Itf != NULL && i < Itf->NumAddrs; i++)
     {
@@ -575,7 +575,7 @@ void SimDtPcie_ClearNetAddresses(uint32_t Index, bool IpV6)
 void SimDtPcie_SetNetGateway(uint32_t Index, bool IpV6, const uint8_t* Gateway)
 {
     SimDtPcie_Lock();
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Itf != NULL)
     {
         Itf->HasGateway[IpV6 ? 1 : 0] = Gateway != NULL;
@@ -593,7 +593,7 @@ bool SimDtPcie_AddNetRoute(uint32_t Index, bool IpV6, const uint8_t* Dst,
     bool Added = false;
 
     SimDtPcie_Lock();
-    SimItf* Itf = FindItf(Index);
+    SimItfEntry* Itf = FindItf(Index);
     if (Itf != NULL && Itf->NumRoutes < SIM_NET_MAX_ROUTES && Dst != NULL &&
         Gateway != NULL)
     {
@@ -660,12 +660,12 @@ bool SimDtPcie_GetNetMembership(int Index, SimNetMembership* Membership)
     return Found;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenNetSockets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_OpenNetSocketCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int SimDtPcie_OpenNetSockets(void)
+int SimDtPcie_OpenNetSocketCount(void)
 {
     SimDtPcie_Lock();
-    int Count = g_Net.OpenSockets;
+    int Count = g_Net.NumOpenSockets;
     SimDtPcie_Unlock();
     return Count;
 }

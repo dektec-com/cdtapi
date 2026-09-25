@@ -79,7 +79,7 @@ int OsDmaBuffer_Alloc(size_t Size, OsDmaBuffer* Buf)
 
     Buf->Data = Data;
     Buf->Size = Rounded;
-    Buf->Block = Block;
+    Buf->RawAllocation = Block;
     return 0;
 }
 
@@ -87,11 +87,11 @@ int OsDmaBuffer_Alloc(size_t Size, OsDmaBuffer* Buf)
 //
 void OsDmaBuffer_Free(OsDmaBuffer* Buf)
 {
-    if (Buf == NULL || Buf->Block == NULL)
+    if (Buf == NULL || Buf->RawAllocation == NULL)
         return;
 
     OsPlatform_DoFork(Buf->Data, Buf->Size);
-    DtAlloc_Free(Buf->Block);
+    DtAlloc_Free(Buf->RawAllocation);
     memset(Buf, 0, sizeof(*Buf));
 }
 
@@ -100,7 +100,8 @@ void OsDmaBuffer_Free(OsDmaBuffer* Buf)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_DescribeHandOffAs -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
-                                   void* Fixed, size_t FixedSize, OsDmaHandOff* HandOff)
+                                   void* FixedOut, size_t FixedOutSize,
+                                   OsDmaHandOff* HandOff)
 {
     if (HandOff == NULL)
         return;
@@ -122,18 +123,18 @@ void OsDmaBuffer_DescribeHandOffAs(bool BufferIsOutput, const OsDmaBuffer* Buf,
     // zero-extended into the 64-bit field. That makes a mask over the upper half on
     // 32-bit Linux unnecessary.
     HandOff->BufferAddr = (uint64_t)(uintptr_t)Buf->Data;
-    HandOff->Out = Fixed;
-    HandOff->OutSize = FixedSize;
+    HandOff->Out = FixedOut;
+    HandOff->OutSize = FixedOutSize;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- OsDmaBuffer_DescribeHandOff -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* Fixed, size_t FixedSize,
-                                 OsDmaHandOff* HandOff)
+void OsDmaBuffer_DescribeHandOff(const OsDmaBuffer* Buf, void* FixedOut,
+                                 size_t FixedOutSize, OsDmaHandOff* HandOff)
 {
 #if defined(_WIN32) || defined(_WIN64)
-    OsDmaBuffer_DescribeHandOffAs(true, Buf, Fixed, FixedSize, HandOff);
+    OsDmaBuffer_DescribeHandOffAs(true, Buf, FixedOut, FixedOutSize, HandOff);
 #else
-    OsDmaBuffer_DescribeHandOffAs(false, Buf, Fixed, FixedSize, HandOff);
+    OsDmaBuffer_DescribeHandOffAs(false, Buf, FixedOut, FixedOutSize, HandOff);
 #endif
 }

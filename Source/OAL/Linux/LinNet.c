@@ -39,7 +39,7 @@
 //
 
 // The bytes of one receive from the kernel.
-#define LIN_NET_BUFFER 32768
+#define LIN_NET_RECV_BYTES 32768
 
 // How often and how long to wait for a neighbour to answer.
 #define LIN_NET_RESOLVE_TRIES 10
@@ -49,7 +49,7 @@
 // A UDP socket, and the functions that open and close one.
 typedef struct LinSocket
 {
-    int Handle;
+    int Fd;
 } LinSocket;
 
 static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
@@ -57,7 +57,7 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
 static void Close(void* State);
 
 // Handles one message; returns false to stop.
-typedef bool (*LinNetHandler)(const struct nlmsghdr* Msg, void* Context);
+typedef bool (*LinNetMsgHandler)(const struct nlmsghdr* Msg, void* Context);
 
 // The neighbour states whose link-layer address is known, as the kernel's NUD_VALID,
 // which it does not export.
@@ -101,14 +101,15 @@ static const struct rtattr* NextAttr(const struct rtattr* Attr, int* Left)
     return (const struct rtattr*)((const char*)Attr + Step);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transact -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NetlinkRequest -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Sends Request, of the length its header gives, and hands every answer to Handler
 // until the kernel is done. OS_NET_NOT_FOUND when the kernel answers with an error, such
 // as for a route that does not exist; OS_NET_ERROR when the next answer does not come
 // within 2 s.
 //
-static int Transact(struct nlmsghdr* Request, LinNetHandler Handler, void* Context)
+static int NetlinkRequest(struct nlmsghdr* Request, LinNetMsgHandler Handler,
+                          void* Context)
 {
     int Socket = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
     if (Socket < 0)
@@ -123,7 +124,7 @@ static int Transact(struct nlmsghdr* Request, LinNetHandler Handler, void* Conte
         return OS_NET_ERROR;
     }
 
-    char* Buffer = (char*)DtAlloc_Malloc(LIN_NET_BUFFER);
+    char* Buffer = (char*)DtAlloc_Malloc(LIN_NET_RECV_BYTES);
     if (Buffer == NULL)
     {
         close(Socket);
@@ -134,7 +135,7 @@ static int Transact(struct nlmsghdr* Request, LinNetHandler Handler, void* Conte
     bool Done = false;
     while (!Done)
     {
-        ssize_t Length = recv(Socket, Buffer, LIN_NET_BUFFER, 0);
+        ssize_t Length = recv(Socket, Buffer, LIN_NET_RECV_BYTES, 0);
         if (Length <= 0)
         {
             Outcome = OS_NET_ERROR;
@@ -283,7 +284,7 @@ static int ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs)
     Request.Hdr.nlmsg_type = RTM_GETLINK;
     Request.Hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
     Request.Info.ifi_family = AF_UNSPEC;
-    int Outcome = Transact(&Request.Hdr, OnLink, &List);
+    int Outcome = NetlinkRequest(&Request.Hdr, OnLink, &List);
     *NumItfs = List.Count;
     if (Outcome != OS_NET_OK)
         return Outcome;
@@ -371,7 +372,7 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
     Request.Hdr.nlmsg_type = RTM_GETADDR;
     Request.Hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
     Request.Info.ifa_family = IpV6 ? AF_INET6 : AF_INET;
-    int Outcome = Transact(&Request.Hdr, OnAddress, &List);
+    int Outcome = NetlinkRequest(&Request.Hdr, OnAddress, &List);
     *NumAddrs = List.Count;
     if (Outcome != OS_NET_OK)
         return Outcome;
@@ -380,7 +381,7 @@ static int GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAd
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Routes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-typedef struct LinRoute
+typedef struct LinRouteSearch
 {
     uint32_t IfIndex; // 0 for any
     bool IpV6;
@@ -388,7 +389,7 @@ typedef struct LinRoute
     bool Found;
     uint32_t Priority;
     uint8_t Gateway[16];
-} LinRoute;
+} LinRouteSearch;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OnRoute -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -397,7 +398,7 @@ typedef struct LinRoute
 //
 static bool OnRoute(const struct nlmsghdr* Msg, void* Context)
 {
-    LinRoute* Route = (LinRoute*)Context;
+    LinRouteSearch* Route = (LinRouteSearch*)Context;
     const struct rtmsg* Info = (const struct rtmsg*)NLMSG_DATA(Msg);
     uint32_t Table = Info->rtm_table;
     uint32_t OutIndex = 0;
@@ -446,7 +447,7 @@ static int GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
         struct nlmsghdr Hdr;
         struct rtmsg Info;
     } Request;
-    LinRoute Route;
+    LinRouteSearch Route;
 
     memset(&Route, 0, sizeof(Route));
     Route.IfIndex = IfIndex;
@@ -457,7 +458,7 @@ static int GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
     Request.Hdr.nlmsg_type = RTM_GETROUTE;
     Request.Hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
     Request.Info.rtm_family = IpV6 ? AF_INET6 : AF_INET;
-    int Outcome = Transact(&Request.Hdr, OnRoute, &Route);
+    int Outcome = NetlinkRequest(&Request.Hdr, OnRoute, &Route);
     if (Outcome != OS_NET_OK)
         return Outcome;
     if (!Route.Found)
@@ -480,7 +481,7 @@ static int GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
         struct rtmsg Info;
         char Attrs[128];
     } Request;
-    LinRoute Route;
+    LinRouteSearch Route;
     int Size = IpV6 ? 16 : 4;
 
     memset(&Route, 0, sizeof(Route));
@@ -495,7 +496,7 @@ static int GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
     AddAttr((uint8_t*)&Request, sizeof(Request), RTA_DST, Dst, Size);
     AddAttr((uint8_t*)&Request, sizeof(Request), RTA_SRC, Src, Size);
     AddAttr((uint8_t*)&Request, sizeof(Request), RTA_OIF, &IfIndex, sizeof(IfIndex));
-    int Outcome = Transact(&Request.Hdr, OnRoute, &Route);
+    int Outcome = NetlinkRequest(&Request.Hdr, OnRoute, &Route);
     if (Outcome != OS_NET_OK)
         return Outcome;
     if (!Route.Found)
@@ -504,14 +505,14 @@ static int GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
     return OS_NET_OK;
 }
 
-typedef struct LinNeighbour
+typedef struct LinNeighbourSearch
 {
     uint32_t IfIndex;
     bool IpV6;
     const uint8_t* Dst;
     bool Found;
     uint8_t Mac[6];
-} LinNeighbour;
+} LinNeighbourSearch;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OnNeighbour -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -520,7 +521,7 @@ typedef struct LinNeighbour
 //
 static bool OnNeighbour(const struct nlmsghdr* Msg, void* Context)
 {
-    LinNeighbour* Neighbour = (LinNeighbour*)Context;
+    LinNeighbourSearch* Neighbour = (LinNeighbourSearch*)Context;
     const struct ndmsg* Info = (const struct ndmsg*)NLMSG_DATA(Msg);
     const uint8_t* Address = NULL;
     const uint8_t* Mac = NULL;
@@ -550,12 +551,13 @@ static bool OnNeighbour(const struct nlmsghdr* Msg, void* Context)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Prod -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ProvokeNeighbourLookup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Sends a datagram to port 4 of Dst from Src, which makes the kernel ask the network for
 // its link-layer address.
 //
-static void Prod(uint32_t IfIndex, bool IpV6, const uint8_t* Src, const uint8_t* Dst)
+static void ProvokeNeighbourLookup(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
+                                   const uint8_t* Dst)
 {
     static const char Data[10] = "DektecArp";
     void* State = NULL;
@@ -563,7 +565,7 @@ static void Prod(uint32_t IfIndex, bool IpV6, const uint8_t* Src, const uint8_t*
 
     if (Bind(IpV6, Src, 0, IfIndex, &State, &Port) != OS_NET_OK)
         return;
-    int Handle = ((LinSocket*)State)->Handle;
+    int Handle = ((LinSocket*)State)->Fd;
     if (IpV6)
     {
         struct sockaddr_in6 Addr;
@@ -596,7 +598,7 @@ static int ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
         struct nlmsghdr Hdr;
         struct ndmsg Info;
     } Request;
-    LinNeighbour Neighbour;
+    LinNeighbourSearch Neighbour;
 
     memset(&Neighbour, 0, sizeof(Neighbour));
     Neighbour.IfIndex = IfIndex;
@@ -610,12 +612,12 @@ static int ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
         Request.Hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
         Request.Info.ndm_family = IpV6 ? AF_INET6 : AF_INET;
         Request.Info.ndm_ifindex = (int)IfIndex;
-        int Outcome = Transact(&Request.Hdr, OnNeighbour, &Neighbour);
+        int Outcome = NetlinkRequest(&Request.Hdr, OnNeighbour, &Neighbour);
         if (Outcome != OS_NET_OK && !Neighbour.Found)
             return Outcome;
         if (Neighbour.Found || Try == LIN_NET_RESOLVE_TRIES)
             break;
-        Prod(IfIndex, IpV6, Src, Dst);
+        ProvokeNeighbourLookup(IfIndex, IpV6, Src, Dst);
         OsTime_SleepMs(IpV6 ? LIN_NET_RESOLVE_WAIT_V6_MS : LIN_NET_RESOLVE_WAIT_V4_MS);
     }
     if (!Neighbour.Found)
@@ -660,20 +662,19 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
     LinSocket* New = (LinSocket*)DtAlloc_Malloc(sizeof(LinSocket));
     if (New == NULL)
         return OS_NET_NO_MEMORY;
-    New->Handle =
-        socket(IpV6 ? AF_INET6 : AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
-    if (New->Handle < 0)
+    New->Fd = socket(IpV6 ? AF_INET6 : AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+    if (New->Fd < 0)
     {
         DtAlloc_Free(New);
         return OS_NET_ERROR;
     }
     const int On = 1;
-    socklen_t Bound = sizeof(Addr);
-    if (setsockopt(New->Handle, SOL_SOCKET, SO_REUSEADDR, &On, sizeof(On)) != 0 ||
-        bind(New->Handle, (struct sockaddr*)&Addr, AddrSize) != 0 ||
-        getsockname(New->Handle, (struct sockaddr*)&Addr, &Bound) != 0)
+    socklen_t AddrLen = sizeof(Addr);
+    if (setsockopt(New->Fd, SOL_SOCKET, SO_REUSEADDR, &On, sizeof(On)) != 0 ||
+        bind(New->Fd, (struct sockaddr*)&Addr, AddrSize) != 0 ||
+        getsockname(New->Fd, (struct sockaddr*)&Addr, &AddrLen) != 0)
     {
-        close(New->Handle);
+        close(New->Fd);
         DtAlloc_Free(New);
         return OS_NET_BIND;
     }
@@ -683,9 +684,9 @@ static int Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
     return OS_NET_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToStorage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToSockAddr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static void ToStorage(bool IpV6, const uint8_t* Ip, struct sockaddr_storage* Storage)
+static void ToSockAddr(bool IpV6, const uint8_t* Ip, struct sockaddr_storage* Storage)
 {
     memset(Storage, 0, sizeof(*Storage));
     if (IpV6)
@@ -702,12 +703,12 @@ static void ToStorage(bool IpV6, const uint8_t* Ip, struct sockaddr_storage* Sto
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Membership -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinOrLeave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The protocol-independent multicast options, by interface index, for both families.
 //
-static int Membership(void* State, bool Join, bool IpV6, uint32_t IfIndex,
-                      const uint8_t* Group, const uint8_t* Source)
+static int JoinOrLeave(void* State, bool Join, bool IpV6, uint32_t IfIndex,
+                       const uint8_t* Group, const uint8_t* Source)
 {
     const LinSocket* Socket = (const LinSocket*)State;
     int Level = IpV6 ? IPPROTO_IPV6 : IPPROTO_IP;
@@ -718,9 +719,9 @@ static int Membership(void* State, bool Join, bool IpV6, uint32_t IfIndex,
         struct group_req Request;
         memset(&Request, 0, sizeof(Request));
         Request.gr_interface = IfIndex;
-        ToStorage(IpV6, Group, &Request.gr_group);
+        ToSockAddr(IpV6, Group, &Request.gr_group);
         Result =
-            setsockopt(Socket->Handle, Level, Join ? MCAST_JOIN_GROUP : MCAST_LEAVE_GROUP,
+            setsockopt(Socket->Fd, Level, Join ? MCAST_JOIN_GROUP : MCAST_LEAVE_GROUP,
                        &Request, sizeof(Request));
     }
     else
@@ -728,9 +729,9 @@ static int Membership(void* State, bool Join, bool IpV6, uint32_t IfIndex,
         struct group_source_req Request;
         memset(&Request, 0, sizeof(Request));
         Request.gsr_interface = IfIndex;
-        ToStorage(IpV6, Group, &Request.gsr_group);
-        ToStorage(IpV6, Source, &Request.gsr_source);
-        Result = setsockopt(Socket->Handle, Level,
+        ToSockAddr(IpV6, Group, &Request.gsr_group);
+        ToSockAddr(IpV6, Source, &Request.gsr_source);
+        Result = setsockopt(Socket->Fd, Level,
                             Join ? MCAST_JOIN_SOURCE_GROUP : MCAST_LEAVE_SOURCE_GROUP,
                             &Request, sizeof(Request));
     }
@@ -743,7 +744,7 @@ static void Close(void* State)
 {
     LinSocket* Socket = (LinSocket*)State;
 
-    close(Socket->Handle);
+    close(Socket->Fd);
     DtAlloc_Free(Socket);
 }
 
@@ -752,7 +753,7 @@ static void Close(void* State)
 const OsNetBackend* OsPlatform_NetBackend(void)
 {
     static const OsNetBackend Backend = {
-        ListInterfaces,   GetAddresses, GetGateway, GetBestRoute,
-        ResolveNeighbour, Bind,         Membership, Close};
+        ListInterfaces,   GetAddresses, GetGateway,  GetBestRoute,
+        ResolveNeighbour, Bind,         JoinOrLeave, Close};
     return &Backend;
 }

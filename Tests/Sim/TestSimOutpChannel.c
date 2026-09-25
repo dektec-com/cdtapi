@@ -96,7 +96,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     {                                                                                    \
         DtOutpChannel_Free((Fix).Channel);                                               \
         DtDevice_Free((Fix).Device);                                                     \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
@@ -446,7 +446,7 @@ DT_TEST(AttachChecks)
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_ATTACHED);
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Second, Fix.Device, PORT), DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 2);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 2);
 
     // The blocks as an attach leaves them for 1080i50: idle, the encoder's corrections
     // on, the bypass of the demultiplexer, and a buffer of 128 MB.
@@ -455,7 +455,7 @@ DT_TEST(AttachChecks)
     DT_ASSERT(State.CdmacMode == DT_BLOCK_OPMODE_IDLE &&
               State.TxfMode == DT_BLOCK_OPMODE_IDLE &&
               State.PhyMode == DT_FUNC_OPMODE_IDLE);
-    DT_ASSERT(State.Clamp && State.AdpChecksum && State.LineCrc);
+    DT_ASSERT(State.ClampEnabled && State.AdpChecksumEnabled && State.LineCrcEnabled);
     DT_ASSERT(State.SwitchIn[0] == 0 && State.SwitchIn[1] == 0 &&
               State.SwitchOut[0] == 0 && State.SwitchOut[1] == 0);
     DT_ASSERT(State.BufferRegistered);
@@ -501,7 +501,7 @@ DT_TEST(AttachRefusals)
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_OUT_OF_MEM);
     SimDtPcie_FailTxCmd(DT_FUNC_CODE_CDMAC_CMD, DT_CDMAC_CMD_ALLOCATE_BUFFER, 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 1);
 
     // The exclusive access was released: another attach succeeds. 2160p over one 12G link
     // sends (plan 0014), but a 4K standard of level-B links holds no buffer and does not

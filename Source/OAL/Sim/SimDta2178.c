@@ -32,7 +32,7 @@
 // down-scale configuration is there either way.
 //
 
-static const char* const SdiPortCaps[] = {
+static const char* const g_SdiPortCaps[] = {
     "CAP_1080I50",
     "CAP_1080I59_94",
     "CAP_1080I60",
@@ -85,13 +85,13 @@ static const char* const SdiPortCaps[] = {
 // What ports 1 and 5 have on top of that: 2160p over one link, which a variant 2 card
 // carries on its two 12G ports. The emulator gives them to the same two ports, so that
 // the library's 4K can be exercised without a card.
-static const char* const Sdi4kPortCaps[] = {
+static const char* const g_Sdi4kPortCaps[] = {
     "CAP_12GSDI",  "CAP_2160P23_98", "CAP_2160P24",  "CAP_2160P25",    "CAP_2160P29_97",
     "CAP_2160P30", "CAP_2160P50",    "CAP_2160P50B", "CAP_2160P59_94", "CAP_2160P59_94B",
     "CAP_2160P60", "CAP_2160P60B",   "CAP_6GSDI",
 };
 
-static const char* const GenRefPortCaps[] = {
+static const char* const g_GenRefPortCaps[] = {
     "CAP_1080I50",   "CAP_1080I59_94", "CAP_1080I60",      "CAP_1080P23_98",
     "CAP_1080P24",   "CAP_1080P25",    "CAP_1080P29_97",   "CAP_1080P30",
     "CAP_1080P50",   "CAP_1080P59_94", "CAP_1080P60",      "CAP_1080PSF23_98",
@@ -112,15 +112,15 @@ static const char* const GenRefPortCaps[] = {
 // of its eight ports.
 //
 
-typedef struct SimFunction
+typedef struct SimObject
 {
     const char* Name;
     const char* Role;
     int Type; // DT_FUNC_TYPE_ or DT_BLOCK_TYPE_
     bool IsDriverFunction;
-} SimFunction;
+} SimObject;
 
-static const SimFunction g_AsiSdiRxObjects[] = {
+static const SimObject g_AsiSdiRxObjects[] = {
     {"BC_SWITCH#2", "SDI_MUX_IN", DT_BLOCK_TYPE_SWITCH, false},
     {"BC_ST425LR#1", "", DT_BLOCK_TYPE_ST425LR, false},
     {"BC_SDIMUX12G#1", "", DT_BLOCK_TYPE_SDIMUX12G, false},
@@ -131,7 +131,7 @@ static const SimFunction g_AsiSdiRxObjects[] = {
     {"DF_CHSDIRX#1", "", DT_FUNC_TYPE_CHSDIRX, true},
 };
 
-static const SimFunction g_AsiSdiTxObjects[] = {
+static const SimObject g_AsiSdiTxObjects[] = {
     {"BC_ASITXG#1", "", DT_BLOCK_TYPE_ASITXG, false},
     {"BC_SDITXF#1", "", DT_BLOCK_TYPE_SDITXF, false},
     {"BC_SWITCH#6", "SDI_DEMUX_IN", DT_BLOCK_TYPE_SWITCH, false},
@@ -141,7 +141,7 @@ static const SimFunction g_AsiSdiTxObjects[] = {
     {"DF_SDITXPHY#1", "", DT_FUNC_TYPE_SDITXPHY, true},
 };
 
-static const SimFunction g_DmaObjects[] = {
+static const SimObject g_DmaObjects[] = {
     {"BC_CDMAC#1", "", DT_BLOCK_TYPE_CDMAC, false},
     {"BC_BURSTFIFO#1", "", DT_BLOCK_TYPE_BURSTFIFO, false},
     {"BC_CONSTSOURCE#1", "", DT_BLOCK_TYPE_CONSTSOURCE, false},
@@ -150,15 +150,15 @@ static const SimFunction g_DmaObjects[] = {
 
 // The API functions of the device rather than of a port, at port index -1, with the
 // names, roles and types a DTA-2178 with driver 3.6.4 reported.
-static const SimFunction g_GenlockObjects[] = {
+static const SimObject g_GenlockObjects[] = {
     {"DF_GENLOCKCTRL#1", "", DT_FUNC_TYPE_GENLOCKCTRL, true},
 };
 
-static const SimFunction g_TodClkCtrlObjects[] = {
+static const SimObject g_TodClkCtrlObjects[] = {
     {"DF_TODCLKCTRL#1", "", DT_FUNC_TYPE_TODCLKCTRL, true},
 };
 
-static const SimFunction g_TxClkCntObjects[] = {
+static const SimObject g_TxClkCntObjects[] = {
     {"BC_CLKCNT#1", "NON_FRAC_CLK", DT_BLOCK_TYPE_CLKCNT, false},
     {"BC_CLKCNT#2", "FRAC_CLK", DT_BLOCK_TYPE_CLKCNT, false},
 };
@@ -168,7 +168,7 @@ static const SimFunction g_TxClkCntObjects[] = {
 typedef struct SimApiFunction
 {
     const char* Name; // The first instance, with the empty role
-    const SimFunction* Objects;
+    const SimObject* Objects;
     int NumObjects;
     bool OfDevice; // Once, at port index -1, rather than once per SDI port
 } SimApiFunction;
@@ -184,21 +184,21 @@ static const SimApiFunction g_ApiFunctions[] = {
 
 #define API_FUNCTION_COUNT ((int)COUNT_OF(g_ApiFunctions))
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Instances -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InstanceCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // How many times the card has an API function: once for the device, or once per SDI
 // port.
 //
-static int Instances(const SimApiFunction* Api)
+static int InstanceCount(const SimApiFunction* Api)
 {
     return Api->OfDevice ? 1 : SIM_SDI_PORT_COUNT;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Serves -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasInstanceOn -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Whether the port at PortIndex, -1 for the device, has an instance of the API function.
 //
-static bool Serves(const SimApiFunction* Api, int PortIndex)
+static bool HasInstanceOn(const SimApiFunction* Api, int PortIndex)
 {
     if (Api->OfDevice)
         return PortIndex == -1;
@@ -212,30 +212,30 @@ static bool Serves(const SimApiFunction* Api, int PortIndex)
 // card's depend on its whole layout. The device's functions come last, so that adding
 // them moved no port's numbers.
 //
-static int FunctionUuid(int Af, int PortIndex, int Index)
+static int FunctionUuid(int ApiIndex, int PortIndex, int Index)
 {
-    const SimApiFunction* Api = &g_ApiFunctions[Af];
+    const SimApiFunction* Api = &g_ApiFunctions[ApiIndex];
     int Base = 0;
     int i;
 
-    for (i = 0; i < Af; i++)
-        Base += g_ApiFunctions[i].NumObjects * Instances(&g_ApiFunctions[i]);
+    for (i = 0; i < ApiIndex; i++)
+        Base += g_ApiFunctions[i].NumObjects * InstanceCount(&g_ApiFunctions[i]);
     int Instance = Api->OfDevice ? 0 : PortIndex;
     return (Api->Objects[Index].IsDriverFunction ? DT_UUID_DF_FLAG : DT_UUID_BC_FLAG) |
            (Base + Instance * Api->NumObjects + Index + 1);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFunction -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjectByName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The object of an API function the port at PortIndex has whose name, followed by
-// Suffix, is Name: true with its API function in *Af and its index in *Index.
+// Suffix, is Name: true with its API function in *ApiIndex and its index in *Index.
 //
-static bool FindFunction(const char* Name, const char* Suffix, int PortIndex, int* Af,
-                         int* Index)
+static bool FindObjectByName(const char* Name, const char* Suffix, int PortIndex,
+                             int* ApiIndex, int* Index)
 {
     for (int a = 0; a < API_FUNCTION_COUNT; a++)
     {
-        if (!Serves(&g_ApiFunctions[a], PortIndex))
+        if (!HasInstanceOn(&g_ApiFunctions[a], PortIndex))
             continue;
         for (int i = 0; i < g_ApiFunctions[a].NumObjects; i++)
         {
@@ -245,7 +245,7 @@ static bool FindFunction(const char* Name, const char* Suffix, int PortIndex, in
             if (strncmp(Name, ObjectName, Length) == 0 &&
                 strcmp(Name + Length, Suffix) == 0)
             {
-                *Af = a;
+                *ApiIndex = a;
                 *Index = i;
                 return true;
             }
@@ -281,15 +281,15 @@ static bool HasCapability(const char* Name, int PortIndex)
 {
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
     {
-        if (InList(SdiPortCaps, COUNT_OF(SdiPortCaps), Name))
+        if (InList(g_SdiPortCaps, COUNT_OF(g_SdiPortCaps), Name))
             return true;
         return (PortIndex == 0 || PortIndex == 4) &&
-               InList(Sdi4kPortCaps, COUNT_OF(Sdi4kPortCaps), Name);
+               InList(g_Sdi4kPortCaps, COUNT_OF(g_Sdi4kPortCaps), Name);
     }
 
     if (PortIndex == SIM_SDI_PORT_COUNT || PortIndex == SIM_SDI_PORT_COUNT + 1)
     {
-        if (InList(GenRefPortCaps, COUNT_OF(GenRefPortCaps), Name))
+        if (InList(g_GenRefPortCaps, COUNT_OF(g_GenRefPortCaps), Name))
             return true;
         return PortIndex == SIM_SDI_PORT_COUNT + 1 && strcmp(Name, "CAP_VIRTUAL") == 0;
     }
@@ -320,20 +320,20 @@ bool SimDta2178_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
 
     if (HasFunctions(PortIndex))
     {
-        int Af;
+        int ApiIndex;
         int Index;
 
-        if (FindFunction(Name, "_TYPE", PortIndex, &Af, &Index))
+        if (FindObjectByName(Name, "_TYPE", PortIndex, &ApiIndex, &Index))
         {
             *Type = PROPERTY_VALUE_TYPE_INT;
-            *Value = (uint64_t)g_ApiFunctions[Af].Objects[Index].Type;
+            *Value = (uint64_t)g_ApiFunctions[ApiIndex].Objects[Index].Type;
             return true;
         }
 
-        if (FindFunction(Name, "_UUID", PortIndex, &Af, &Index))
+        if (FindObjectByName(Name, "_UUID", PortIndex, &ApiIndex, &Index))
         {
             *Type = PROPERTY_VALUE_TYPE_INT;
-            *Value = (uint64_t)FunctionUuid(Af, PortIndex, Index);
+            *Value = (uint64_t)FunctionUuid(ApiIndex, PortIndex, Index);
             return true;
         }
     }
@@ -357,7 +357,7 @@ bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
         const SimApiFunction* Api = &g_ApiFunctions[a];
         size_t PrefixLength = strlen(Api->Name);
 
-        if (!Serves(Api, PortIndex))
+        if (!HasInstanceOn(Api, PortIndex))
             continue;
         const char* Digits = Name + PrefixLength;
         int Number = 0;
@@ -385,7 +385,7 @@ bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
     }
 
     int Index;
-    if (!FindFunction(Name, "", PortIndex, &a, &Index))
+    if (!FindObjectByName(Name, "", PortIndex, &a, &Index))
         return false;
     *Str = g_ApiFunctions[a].Objects[Index].Role;
     return true;
@@ -395,17 +395,17 @@ bool SimDta2178_GetString(const char* Name, int PortIndex, const char** Str)
 //
 bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** Role)
 {
-    int Flat = (Uuid & DT_UUID_INDEX_MASK) - 1;
+    int FlatIndex = (Uuid & DT_UUID_INDEX_MASK) - 1;
 
-    for (int a = 0; a < API_FUNCTION_COUNT && Flat >= 0; a++)
+    for (int a = 0; a < API_FUNCTION_COUNT && FlatIndex >= 0; a++)
     {
         const SimApiFunction* Api = &g_ApiFunctions[a];
-        int Count = Api->NumObjects * Instances(Api);
+        int Count = Api->NumObjects * InstanceCount(Api);
 
-        if (Flat < Count)
+        if (FlatIndex < Count)
         {
-            int Port = Api->OfDevice ? -1 : Flat / Api->NumObjects;
-            int Index = Flat % Api->NumObjects;
+            int Port = Api->OfDevice ? -1 : FlatIndex / Api->NumObjects;
+            int Index = FlatIndex % Api->NumObjects;
 
             if (FunctionUuid(a, Port, Index) != Uuid)
                 return false;
@@ -414,7 +414,7 @@ bool SimDta2178_FindFunction(int Uuid, int* PortIndex, int* Type, const char** R
             *Role = Api->Objects[Index].Role;
             return true;
         }
-        Flat -= Count;
+        FlatIndex -= Count;
     }
     return false;
 }
@@ -426,7 +426,7 @@ int SimDta2178_ObjectCount(void)
     int Count = 0;
 
     for (int a = 0; a < API_FUNCTION_COUNT; a++)
-        Count += g_ApiFunctions[a].NumObjects * Instances(&g_ApiFunctions[a]);
+        Count += g_ApiFunctions[a].NumObjects * InstanceCount(&g_ApiFunctions[a]);
     return Count;
 }
 

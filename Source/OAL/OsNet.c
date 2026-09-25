@@ -24,9 +24,9 @@ struct OsNetSocket
     uint16_t Port;
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Backend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChosenNetBackend -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static const OsNetBackend* Backend(void)
+static const OsNetBackend* ChosenNetBackend(void)
 {
     return OsSim_IsRequested() ? OsSim_NetBackend() : OsPlatform_NetBackend();
 }
@@ -37,7 +37,7 @@ static const OsNetBackend* Backend(void)
 //
 int OsNet_ListInterfaces(OsNetItf* Itfs, int MaxItfs, int* NumItfs)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (NumItfs != NULL)
         *NumItfs = 0;
@@ -79,16 +79,16 @@ int OsNet_FindInterface(const uint8_t* Mac, int VlanId, OsNetItf* Itf)
         return Outcome;
     }
 
-    const OsNetItf* Main = NULL;
-    for (int i = 0; i < Count && Main == NULL; i++)
+    const OsNetItf* BaseItf = NULL;
+    for (int i = 0; i < Count && BaseItf == NULL; i++)
     {
         if (Itfs[i].VlanId == 0 && memcmp(Itfs[i].Mac, Mac, 6) == 0)
-            Main = &Itfs[i];
+            BaseItf = &Itfs[i];
     }
-    const OsNetItf* Found = VlanId == 0 ? Main : NULL;
-    for (int i = 0; i < Count && Main != NULL && Found == NULL; i++)
+    const OsNetItf* Found = VlanId == 0 ? BaseItf : NULL;
+    for (int i = 0; i < Count && BaseItf != NULL && Found == NULL; i++)
     {
-        if (Itfs[i].VlanId == VlanId && Itfs[i].ParentIndex == Main->Index)
+        if (Itfs[i].VlanId == VlanId && Itfs[i].ParentIndex == BaseItf->Index)
             Found = &Itfs[i];
     }
     if (Found != NULL)
@@ -102,7 +102,7 @@ int OsNet_FindInterface(const uint8_t* Mac, int VlanId, OsNetItf* Itf)
 int OsNet_GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAddrs,
                        int* NumAddrs)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (NumAddrs != NULL)
         *NumAddrs = 0;
@@ -118,7 +118,7 @@ int OsNet_GetAddresses(uint32_t IfIndex, bool IpV6, OsNetAddr* Addrs, int MaxAdd
 //
 int OsNet_GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (Gateway != NULL)
         memset(Gateway, 0, 16);
@@ -132,7 +132,7 @@ int OsNet_GetGateway(uint32_t IfIndex, bool IpV6, uint8_t* Gateway)
 int OsNet_GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
                        const uint8_t* Dst, uint8_t* Gateway)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (Gateway != NULL)
         memset(Gateway, 0, 16);
@@ -146,7 +146,7 @@ int OsNet_GetBestRoute(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
 int OsNet_ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
                            const uint8_t* Dst, uint8_t* Mac)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (Mac != NULL)
         memset(Mac, 0, 6);
@@ -162,7 +162,7 @@ int OsNet_ResolveNeighbour(uint32_t IfIndex, bool IpV6, const uint8_t* Src,
 int OsNetSocket_Bind(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
                      OsNetSocket** Socket)
 {
-    const OsNetBackend* Net = Backend();
+    const OsNetBackend* Net = ChosenNetBackend();
 
     if (Socket != NULL)
         *Socket = NULL;
@@ -199,8 +199,8 @@ int OsNetSocket_Join(OsNetSocket* Socket, uint32_t IfIndex, const uint8_t* Group
 {
     if (Socket == NULL || Group == NULL)
         return OS_NET_ERROR;
-    return Socket->Backend->Membership(Socket->State, true, Socket->IpV6, IfIndex, Group,
-                                       Source);
+    return Socket->Backend->JoinOrLeave(Socket->State, true, Socket->IpV6, IfIndex, Group,
+                                        Source);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsNetSocket_Leave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -210,8 +210,8 @@ int OsNetSocket_Leave(OsNetSocket* Socket, uint32_t IfIndex, const uint8_t* Grou
 {
     if (Socket == NULL || Group == NULL)
         return OS_NET_ERROR;
-    return Socket->Backend->Membership(Socket->State, false, Socket->IpV6, IfIndex, Group,
-                                       Source);
+    return Socket->Backend->JoinOrLeave(Socket->State, false, Socket->IpV6, IfIndex,
+                                        Group, Source);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsNetSocket_Close -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

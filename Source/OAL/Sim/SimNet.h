@@ -128,4 +128,4 @@ int SimDtPcie_NetMembershipCount(void);
 bool SimDtPcie_GetNetMembership(int Index, SimNetMembership* Membership);
 
 // The number of open sockets.
-int SimDtPcie_OpenNetSockets(void);
+int SimDtPcie_OpenNetSocketCount(void);

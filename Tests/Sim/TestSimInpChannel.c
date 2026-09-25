@@ -97,7 +97,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         DtInpChannel_Free((Fix).Channel);                                                \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
     } while (0)
 
@@ -308,7 +308,7 @@ DT_TEST(AttachChecks)
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_ATTACHED);
     DT_ASSERT_EQ(DtInpChannel_AttachToPort(Second, Fix.Device, PORT), DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 2);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 2);
 
     // Another port works alongside.
     DT_ASSERT_OK(DtDevice_SetToInput(Fix.Device, PORT_OUTPUT));
@@ -426,7 +426,7 @@ DT_TEST(AttachRefusals)
                      DTAPI_E_NOT_SDI_MODE);
     }
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 1);
     FINISH(Fix);
 }
 
@@ -450,7 +450,7 @@ DT_TEST(AttachCleansUpAfterFailures)
                      DTAPI_E_NOT_SUPPORTED);
         SimDtPcie_GetRxState(PORT - 1, &State);
         DT_ASSERT_EQ(State.NumUsers, 0);
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 1);
     }
     SimDtPcie_FailRxCmd(-1, 0);
 
@@ -464,7 +464,7 @@ DT_TEST(AttachCleansUpAfterFailures)
             break;
         SimDtPcie_GetRxState(PORT - 1, &State);
         DT_ASSERT_EQ(State.NumUsers, 0);
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 1);
     }
     DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
     FINISH(Fix);

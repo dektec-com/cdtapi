@@ -50,7 +50,7 @@ static int Start(void)
 #define FINISH(Live)                                                                     \
     do                                                                                   \
     {                                                                                    \
-        DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 0);                                     \
+        DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);                                 \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Live));                                         \
         SimDtPcie_Reset();                                                               \
     } while (0)
@@ -231,7 +231,7 @@ DT_TEST(BindingRules)
     DT_ASSERT_EQ(OsNetSocket_Port(A), 49152);
     DT_ASSERT_OK(OsNetSocket_Bind(false, IpV4, 5004, ITF, &B));
     DT_ASSERT_EQ(OsNetSocket_Port(B), 5004);
-    DT_ASSERT_EQ(SimDtPcie_OpenNetSockets(), 2);
+    DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 2);
     DT_ASSERT_EQ(OsNetSocket_Bind(false, Foreign, 0, 0, &C), OS_NET_BIND);
     DT_ASSERT(C == NULL);
     DT_ASSERT_EQ(OsNetSocket_Bind(true, LinkLocal, 0, 0, &C), OS_NET_BIND);

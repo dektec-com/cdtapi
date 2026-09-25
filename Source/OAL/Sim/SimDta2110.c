@@ -30,9 +30,9 @@ static const char* const g_PortCaps[] = {
 #define SIM_DTA2110_ACTIVATE_TYPE_NAME "BC_IPSECG#1_TYPE"
 #define SIM_DTA2110_ACTIVATE_UUID_NAME "BC_IPSECG#1_UUID"
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsPortIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static bool IsPort(int PortIndex)
+static bool IsPortIndex(int PortIndex)
 {
     return PortIndex >= 0 && PortIndex < SIM_DTA2110_PORT_COUNT;
 }
@@ -56,7 +56,8 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
         bool Has = false;
 
         for (size_t i = 0;
-             IsPort(PortIndex) && i < sizeof(g_PortCaps) / sizeof(g_PortCaps[0]); i++)
+             IsPortIndex(PortIndex) && i < sizeof(g_PortCaps) / sizeof(g_PortCaps[0]);
+             i++)
         {
             Has = Has || strcmp(g_PortCaps[i], Name) == 0;
         }
@@ -78,7 +79,7 @@ bool SimDta2110_GetProperty(const char* Name, int PortIndex, int* Type, uint64_t
         return true;
     }
 
-    if (!IsPort(PortIndex))
+    if (!IsPortIndex(PortIndex))
         return false;
     if (strcmp(Name, "DF_NW#1_TYPE") == 0)
     {
@@ -107,7 +108,7 @@ bool SimDta2110_GetString(const char* Name, int PortIndex, const char** Str)
         return true;
     }
 
-    if (!IsPort(PortIndex))
+    if (!IsPortIndex(PortIndex))
         return false;
 
     if (strcmp(Name, "AF_NW#1") == 0 || strcmp(Name, "DF_NW#1") == 0)

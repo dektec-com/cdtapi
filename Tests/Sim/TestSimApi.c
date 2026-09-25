@@ -109,7 +109,7 @@ DT_TEST(ScanCountsThePorts)
 
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
@@ -144,7 +144,7 @@ DT_TEST(ScanDescribesEveryPort)
         DT_ASSERT_EQ(Func->IsOutput, Sdi);
         DT_ASSERT_EQ(Func->IsAsi, Sdi);
     }
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 // Descriptors beyond the last port are filled as a descriptor of no port is: all zeros,
@@ -210,22 +210,22 @@ DT_TEST(DevicesAreFoundAtAnyIndex)
         return;
 
     DtDevice* Device = DtDevice_Alloc();
-    SimDtPcie_SetIndex(7);
+    SimDtPcie_SetDta2178Index(7);
     DT_ASSERT_EQ(DtapiHwFuncScan(0, &Count, NULL), DTAPI_E_BUF_TOO_SMALL);
     DT_ASSERT_EQ(Count, SIM_PORT_COUNT);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Detach(Device);
 
-    SimDtPcie_SetIndex(49);
+    SimDtPcie_SetDta2178Index(49);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Detach(Device);
 
-    SimDtPcie_SetIndex(50);
+    SimDtPcie_SetDta2178Index(50);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_E_NO_SUCH_DEVICE);
     DT_ASSERT_OK(DtapiHwFuncScan(0, &Count, NULL));
     DT_ASSERT_EQ(Count, 0);
 
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DtDevice_Free(Device);
 }
 
@@ -247,7 +247,7 @@ DT_TEST(ScanLeavesOutDevicesItCannotAttach)
     SimDtPcie_OverrideProperty("PORT_COUNT", -1, false, 0);
     DT_ASSERT_OK(DtapiHwFuncScan(0, &Count, NULL));
     DT_ASSERT_EQ(Count, 0);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 DT_TEST(ScanSurvivesAllocationFailure)
@@ -278,7 +278,7 @@ DT_TEST(ScanSurvivesAllocationFailure)
             DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
         if (Result == DTAPI_OK && Count != 0 && Count != SIM_PORT_COUNT)
             DT_FAIL("allocation %d failing gave %d ports", Fail, Count);
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     }
 }
@@ -293,16 +293,16 @@ DT_TEST(AttachAndDetach)
     if (Device == NULL)
         return;
 
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 1);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 1);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_E_ATTACHED);
     DT_ASSERT_OK(DtDevice_Detach(Device));
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
 
     // A detached object attaches again, and freeing it attached releases everything.
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
     DtDevice_Free(Device);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
@@ -315,7 +315,7 @@ DT_TEST(FreepDetachesAndClears)
 
     DtDevice_Freep(&Device);
     DT_ASSERT(Device == NULL);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 }
 
 DT_TEST(UnknownSerialIsNoSuchDevice)
@@ -326,7 +326,7 @@ DT_TEST(UnknownSerialIsNoSuchDevice)
     DtDevice* Device = DtDevice_Alloc();
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL + 1), DTAPI_E_NO_SUCH_DEVICE);
     DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DtDevice_Free(Device);
 }
 
@@ -341,7 +341,7 @@ DT_TEST(OldDriverIsIncompatible)
     SimDtPcie_SetDriverVersion(1, 3, 0, 0);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL + 1), DTAPI_E_DRIVER_INCOMP);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
 
     SimDtPcie_SetDriverVersion(1, 3, 1, 0);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, SIM_SERIAL));
@@ -409,7 +409,7 @@ DT_TEST(UnreadableDeviceIsNoSuchDevice)
     DtDevice_Detach(Device);
 
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DtDevice_Free(Device);
 }
 
@@ -549,7 +549,7 @@ DT_TEST(AttachSurvivesAllocationFailure)
         // port capabilities and looking for the clocks as memory.
         if (Result != DTAPI_E_NO_SUCH_DEVICE && Result != DTAPI_E_OUT_OF_MEM)
             DT_FAIL("allocation %d failing gave 0x%X", Fail, Result);
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
         DT_ASSERT_EQ(DtDevice_Detach(Device), DTAPI_E_NOT_ATTACHED);
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
     }

@@ -21,7 +21,7 @@
 //
 //   offset 0        UInt InSize     only for an IOCTL built with DT_IOCTL_MAGIC_SIZE
 //   offset 4        UInt OutSize    only for an IOCTL built with DT_IOCTL_MAGIC_SIZE
-//   offset Reserve  input structure
+//   offset HeaderBytes  input structure
 //
 // The driver writes its answer starting at offset 0, over the size header. The block
 // has to be large enough for whichever is bigger: the header plus the input, or the
@@ -42,12 +42,12 @@
 #define LIN_IOCTL_SIZE_HEADER_BYTES (2 * sizeof(uint32_t))
 
 // The number of bytes the shared block needs.
-size_t LinIoctlBuffer_Size(bool SizeHeader, size_t InSize, size_t OutSize);
+size_t LinIoctlBuffer_Size(bool HasSizeHeader, size_t InSize, size_t OutSize);
 
 // Writes the optional size header and the input into Buf. Returns 0 on success, -1 when
 // Buf is too small, when In is NULL with a non-zero InSize, or when a size does not fit
 // the header's 32 bits.
-int LinIoctlBuffer_Pack(bool SizeHeader, const void* In, size_t InSize, size_t OutSize,
+int LinIoctlBuffer_Pack(bool HasSizeHeader, const void* In, size_t InSize, size_t OutSize,
                         uint8_t* Buf, size_t BufSize);
 
 // Copies the driver's answer, OutSize bytes from the start of Buf, to Out. Returns 0 on

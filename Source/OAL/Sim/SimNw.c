@@ -39,8 +39,8 @@ typedef struct SimPipe
 {
     int Id;
     int Type;
-    bool Hw;
-    bool Rx;
+    bool IsHw;
+    bool IsRx;
     bool InUse;
     void* Owner; // The handle that opened it
     int OpMode;
@@ -57,17 +57,17 @@ typedef struct SimPipe
 
 // A packet in one of the queues: a whole packet of a pipe's buffer in the scheduler, or
 // an Ethernet frame arriving at or waiting at the receive side.
-typedef struct SimItem
+typedef struct SimQueuedFrame
 {
     uint64_t TimeNs; // When it is sent or arrives
     int PipeId;      // The pipe it came from, 0 for none
     uint8_t* Data;
     size_t Size;
-} SimItem;
+} SimQueuedFrame;
 
 typedef struct SimQueue
 {
-    DtVec Items; // SimItem, ordered by time from Head
+    DtVec Items; // SimQueuedFrame, ordered by time from Head
     size_t Head;
     size_t Bytes;
 } SimQueue;
@@ -76,23 +76,23 @@ static struct
 {
     bool Initialised;
     SimPipe HwPipes[SIM_NW_HW_PIPES];
-    SimPipe* SwPipes[SIM_NW_MAX_PIPES + 1]; // By pipe number
-    int LastSwPipe;                         // The highest number a software pipe had
-    SimPipe* Candidates[SIM_NW_MAX_PIPES];  // Software transmit pipes in an interval
+    SimPipe* SwPipes[SIM_NW_MAX_PIPES + 1];  // By pipe number
+    int LastSwPipe;                          // The highest number a software pipe had
+    SimPipe* DueSwTxPipes[SIM_NW_MAX_PIPES]; // Software transmit pipes in an interval
     SimQueue Scheduler;
     SimQueue Arriving;
     SimQueue Received;
-    SimItem Kept[SIM_NW_KEPT_PACKETS]; // A ring of the frames sent last
+    SimQueuedFrame Kept[SIM_NW_KEPT_PACKETS]; // A ring of the frames sent last
     int KeptFirst;
     int NumKept;
-    int Sent;
+    int NumSent;
     SimNwCounters Counters;
-    bool AsLinux;
+    bool RegisterAsLinux;
     bool LinkUp;
     bool Loopback;
-    bool ManualTime;
-    uint64_t TimeNs;
-    uint64_t DoneNs; // How far packets have moved
+    bool TimeHeld;
+    uint64_t HeldTimeNs;
+    uint64_t MovedUpToNs; // How far packets have moved
 } g_Nw;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnsureNw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -114,9 +114,10 @@ static size_t QueueCount(const SimQueue* Queue)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- QueueFront -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static SimItem* QueueFront(const SimQueue* Queue)
+static SimQueuedFrame* QueueFront(const SimQueue* Queue)
 {
-    return QueueCount(Queue) > 0 ? (SimItem*)DtVec_At(&Queue->Items, Queue->Head) : NULL;
+    return QueueCount(Queue) > 0 ? (SimQueuedFrame*)DtVec_At(&Queue->Items, Queue->Head)
+                                 : NULL;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- QueuePop -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -124,9 +125,9 @@ static SimItem* QueueFront(const SimQueue* Queue)
 // Takes the front item out; its data becomes the caller's. The storage in front of the
 // head is given back once it is most of the vector.
 //
-static SimItem QueuePop(SimQueue* Queue)
+static SimQueuedFrame QueuePop(SimQueue* Queue)
 {
-    SimItem Item = *QueueFront(Queue);
+    SimQueuedFrame Item = *QueueFront(Queue);
 
     Queue->Head++;
     Queue->Bytes -= Item.Size;
@@ -139,7 +140,7 @@ static SimItem QueuePop(SimQueue* Queue)
     else if (Queue->Head > 1024 && Queue->Head > Count / 2)
     {
         memmove(Queue->Items.Data, (uint8_t*)DtVec_At(&Queue->Items, Queue->Head),
-                (Count - Queue->Head) * sizeof(SimItem));
+                (Count - Queue->Head) * sizeof(SimQueuedFrame));
         DtVec_Resize(&Queue->Items, Count - Queue->Head);
         Queue->Head = 0;
     }
@@ -151,7 +152,7 @@ static SimItem QueuePop(SimQueue* Queue)
 // Puts Item behind every item that is not later, and takes over its data. False, freeing
 // nothing, when there is no memory.
 //
-static bool QueueAdd(SimQueue* Queue, const SimItem* Item)
+static bool QueueAdd(SimQueue* Queue, const SimQueuedFrame* Item)
 {
     if (DtVec_Push(&Queue->Items, Item) != 0)
         return false;
@@ -159,14 +160,14 @@ static bool QueueAdd(SimQueue* Queue, const SimItem* Item)
     size_t Last = DtVec_Count(&Queue->Items) - 1;
     size_t To = Last;
     while (To > Queue->Head &&
-           ((SimItem*)DtVec_At(&Queue->Items, To - 1))->TimeNs > Item->TimeNs)
+           ((SimQueuedFrame*)DtVec_At(&Queue->Items, To - 1))->TimeNs > Item->TimeNs)
     {
         To--;
     }
     if (To != Last)
     {
-        SimItem* Items = (SimItem*)Queue->Items.Data;
-        memmove(&Items[To + 1], &Items[To], (Last - To) * sizeof(SimItem));
+        SimQueuedFrame* Items = (SimQueuedFrame*)Queue->Items.Data;
+        memmove(&Items[To + 1], &Items[To], (Last - To) * sizeof(SimQueuedFrame));
         Items[To] = *Item;
     }
     Queue->Bytes += Item->Size;
@@ -180,7 +181,7 @@ static void QueueFree(SimQueue* Queue)
     while (QueueCount(Queue) > 0)
         DtAlloc_Free(QueuePop(Queue).Data);
     DtVec_Free(&Queue->Items);
-    DtVec_Init(&Queue->Items, sizeof(SimItem));
+    DtVec_Init(&Queue->Items, sizeof(SimQueuedFrame));
     Queue->Head = 0;
     Queue->Bytes = 0;
 }
@@ -205,7 +206,7 @@ static SimPipe* FindPipe(int Id)
 //
 static bool IsTx(const SimPipe* Pipe)
 {
-    return !Pipe->Rx;
+    return !Pipe->IsRx;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Load -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -278,7 +279,7 @@ static void DropScheduled(int Id);
 static void ClosePipe(SimPipe* Pipe)
 {
     DropScheduled(Pipe->Id);
-    if (!Pipe->Hw)
+    if (!Pipe->IsHw)
     {
         g_Nw.SwPipes[Pipe->Id] = NULL;
         DtAlloc_Free(Pipe);
@@ -426,13 +427,13 @@ static bool IpMatches(const DtIoctlPipeCmdSetIpFilterInput* Filter,
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortIndex -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MatchingFilterPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Which of the filter's three ports, enabled by FirstFlag and the two flags after it,
 // equals Port: its index; -1 when no enabled one does, 3 when none is enabled.
 //
-static int PortIndex(uint32_t Flags, uint32_t FirstFlag, const UInt16* Ports,
-                     uint16_t Port)
+static int MatchingFilterPort(uint32_t Flags, uint32_t FirstFlag, const UInt16* Ports,
+                              uint16_t Port)
 {
     bool Enabled = false;
 
@@ -463,10 +464,10 @@ static bool HwPipeTakes(const SimPipe* Pipe, const SimFrameInfo* Info, int* SubS
     {
         return false;
     }
-    int Src = PortIndex(Flags, DT_PIPE_IPFLT_FLAG_EN_SRCPORT0, Filter->m_SrcPort,
-                        Info->SrcPort);
-    int Dst = PortIndex(Flags, DT_PIPE_IPFLT_FLAG_EN_DSTPORT0, Filter->m_DstPort,
-                        Info->DstPort);
+    int Src = MatchingFilterPort(Flags, DT_PIPE_IPFLT_FLAG_EN_SRCPORT0, Filter->m_SrcPort,
+                                 Info->SrcPort);
+    int Dst = MatchingFilterPort(Flags, DT_PIPE_IPFLT_FLAG_EN_DSTPORT0, Filter->m_DstPort,
+                                 Info->DstPort);
     if (Src < 0 || Dst < 0)
         return false;
     *SubStream = Dst < 3 ? Dst : Src < 3 ? Src : 0;
@@ -485,8 +486,8 @@ static bool SwPipeTakes(const SimPipe* Pipe, const SimFrameInfo* Info)
 
     if (!Pipe->FilterSet || Pipe->OpMode != DT_PIPE_OPMODE_RUN ||
         (Flags & DT_PIPE_IPFLT_FLAG_EN_FILT) == 0 || Info->PortOffset == 0 ||
-        PortIndex(Flags, DT_PIPE_IPFLT_FLAG_EN_DSTPORT0, Filter->m_DstPort,
-                  Info->DstPort) < 0 ||
+        MatchingFilterPort(Flags, DT_PIPE_IPFLT_FLAG_EN_DSTPORT0, Filter->m_DstPort,
+                           Info->DstPort) < 0 ||
         (Flags & (DT_PIPE_IPFLT_FLAG_EN_DSTPORT0 | DT_PIPE_IPFLT_FLAG_EN_DSTPORT1 |
                   DT_PIPE_IPFLT_FLAG_EN_DSTPORT2)) == 0 ||
         !IpMatches(Filter, Info))
@@ -543,7 +544,7 @@ static uint8_t* BuildPacket(const uint8_t* Frame, size_t Size, const SimFrameInf
 //
 // Keeps a sent frame, whose data becomes the ring's, dropping the oldest when full.
 //
-static void Keep(const SimItem* Frame)
+static void Keep(const SimQueuedFrame* Frame)
 {
     int Slot = (g_Nw.KeptFirst + g_Nw.NumKept) % SIM_NW_KEPT_PACKETS;
 
@@ -563,7 +564,7 @@ static void Keep(const SimItem* Frame)
 // the common receive queue for the next interval, or it is lost when that is full. The
 // frame's data is freed unless the queue takes it over.
 //
-static void Arrive(SimItem* Frame)
+static void Arrive(SimQueuedFrame* Frame)
 {
     SimFrameInfo Info;
 
@@ -602,15 +603,16 @@ static void Arrive(SimItem* Frame)
 // The scheduler sends a packet of a pipe's buffer: its frame is kept and, with the
 // loopback on, arrives at the receive side. Frees the packet.
 //
-static void Send(SimItem* Packet)
+static void Send(SimQueuedFrame* Packet)
 {
     DtEthIpFields Header;
 
     DtEthIp_Read(Packet->Data, &Header);
     int HeaderSize = DtEthIp_HeaderSize(Header.PacketType);
-    SimItem Frame = {Packet->TimeNs, Packet->PipeId, NULL, (size_t)Header.FrameSize};
+    SimQueuedFrame Frame = {Packet->TimeNs, Packet->PipeId, NULL,
+                            (size_t)Header.FrameSize};
 
-    g_Nw.Sent++;
+    g_Nw.NumSent++;
     Frame.Data = (uint8_t*)DtAlloc_Malloc(Frame.Size > 0 ? Frame.Size : 1);
     if (Frame.Data != NULL)
     {
@@ -618,7 +620,7 @@ static void Send(SimItem* Packet)
         Keep(&Frame);
         if (g_Nw.Loopback)
         {
-            SimItem Copy = Frame;
+            SimQueuedFrame Copy = Frame;
             Copy.Data = (uint8_t*)DtAlloc_Malloc(Frame.Size > 0 ? Frame.Size : 1);
             if (Copy.Data != NULL)
             {
@@ -638,13 +640,13 @@ static uint64_t TodOf(const DtEthIpFields* Header)
     return (uint64_t)Header->Seconds * 1000000000u + Header->Nanoseconds;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HeadPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadHeadPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Reads the header of the packet at a transmit pipe's read offset. False when the pipe
 // holds no whole packet; a header that does not check is counted, and the pipe's data
 // skipped.
 //
-static bool HeadPacket(SimPipe* Pipe, DtEthIpFields* Header)
+static bool ReadHeadPacket(SimPipe* Pipe, DtEthIpFields* Header)
 {
     uint8_t Bytes[DT_ETHIP_HEADER_SIZE];
     size_t Available = Load(Pipe);
@@ -677,7 +679,7 @@ static bool Schedule(SimPipe* Pipe, const DtEthIpFields* Header, uint64_t NowNs)
 {
     size_t Size = (size_t)Header->NumWords * DT_ETHIP_WORD_SIZE;
     uint64_t Tod = TodOf(Header);
-    SimItem Item = {Tod > NowNs ? Tod : NowNs, Pipe->Id, NULL, Size};
+    SimQueuedFrame Item = {Tod > NowNs ? Tod : NowNs, Pipe->Id, NULL, Size};
 
     if (g_Nw.Scheduler.Bytes + Size > SIM_NW_QUEUE_BYTES)
         return false;
@@ -713,7 +715,7 @@ static void TakeHwPackets(uint64_t NowNs)
         SimPipe* Pipe = &g_Nw.HwPipes[i];
         DtEthIpFields Header;
 
-        while (CanTransmit(Pipe) && HeadPacket(Pipe, &Header))
+        while (CanTransmit(Pipe) && ReadHeadPacket(Pipe, &Header))
         {
             if (IsFarFrom(TodOf(&Header), NowNs))
             {
@@ -735,22 +737,22 @@ static void Deliver(uint64_t NowNs)
     while (QueueCount(&g_Nw.Scheduler) > 0 &&
            QueueFront(&g_Nw.Scheduler)->TimeNs <= NowNs)
     {
-        SimItem Packet = QueuePop(&g_Nw.Scheduler);
+        SimQueuedFrame Packet = QueuePop(&g_Nw.Scheduler);
         Send(&Packet);
     }
     while (QueueCount(&g_Nw.Arriving) > 0 && QueueFront(&g_Nw.Arriving)->TimeNs <= NowNs)
     {
-        SimItem Frame = QueuePop(&g_Nw.Arriving);
+        SimQueuedFrame Frame = QueuePop(&g_Nw.Arriving);
         Arrive(&Frame);
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interval -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RunInterval -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The periodic interval at TickNs: the software transmit pipes first, then the common
 // receive queue.
 //
-static void Interval(uint64_t TickNs)
+static void RunInterval(uint64_t TickNs)
 {
     uint64_t EndNs = TickNs + SIM_NW_LOOKAHEAD_NS;
     int NumCandidates = 0;
@@ -758,7 +760,7 @@ static void Interval(uint64_t TickNs)
     for (int Id = SIM_NW_FIRST_SWP; Id <= g_Nw.LastSwPipe; Id++)
     {
         if (CanTransmit(g_Nw.SwPipes[Id]))
-            g_Nw.Candidates[NumCandidates++] = g_Nw.SwPipes[Id];
+            g_Nw.DueSwTxPipes[NumCandidates++] = g_Nw.SwPipes[Id];
     }
     for (;;)
     {
@@ -768,10 +770,10 @@ static void Interval(uint64_t TickNs)
 
         for (int i = 0; i < NumCandidates; i++)
         {
-            SimPipe* Pipe = g_Nw.Candidates[i];
+            SimPipe* Pipe = g_Nw.DueSwTxPipes[i];
             DtEthIpFields Header = {0};
             uint64_t Tod = 0;
-            bool Due = CanTransmit(Pipe) && HeadPacket(Pipe, &Header);
+            bool Due = CanTransmit(Pipe) && ReadHeadPacket(Pipe, &Header);
 
             if (Due)
             {
@@ -782,7 +784,7 @@ static void Interval(uint64_t TickNs)
             }
             if (!Due)
             {
-                g_Nw.Candidates[i--] = g_Nw.Candidates[--NumCandidates];
+                g_Nw.DueSwTxPipes[i--] = g_Nw.DueSwTxPipes[--NumCandidates];
                 continue;
             }
             if (Earliest < 0 || Tod < EarliestTod)
@@ -792,13 +794,14 @@ static void Interval(uint64_t TickNs)
                 EarliestHeader = Header;
             }
         }
-        if (Earliest < 0 || !Schedule(g_Nw.Candidates[Earliest], &EarliestHeader, TickNs))
+        if (Earliest < 0 ||
+            !Schedule(g_Nw.DueSwTxPipes[Earliest], &EarliestHeader, TickNs))
             break;
     }
 
     while (QueueCount(&g_Nw.Received) > 0)
     {
-        SimItem Frame = QueuePop(&g_Nw.Received);
+        SimQueuedFrame Frame = QueuePop(&g_Nw.Received);
         SimFrameInfo Info;
         bool Taken = false;
 
@@ -807,7 +810,7 @@ static void Interval(uint64_t TickNs)
         {
             SimPipe* Pipe = g_Nw.SwPipes[Id];
 
-            if (Pipe == NULL || !Pipe->Rx || !SwPipeTakes(Pipe, &Info))
+            if (Pipe == NULL || !Pipe->IsRx || !SwPipeTakes(Pipe, &Info))
                 continue;
             Taken = true;
             size_t Size = 0;
@@ -866,21 +869,21 @@ static uint64_t NextWorkNs(uint64_t TickNs)
     return Next;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MovePackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Moves packets from where they were left up to now. The intervals before the first at
 // which anything can move are skipped.
 //
-static void Run(void)
+static void MovePackets(void)
 {
-    uint64_t NowNs = SimNw_Now();
+    uint64_t NowNs = SimDtPcie_Now();
 
-    if (NowNs < g_Nw.DoneNs)
-        g_Nw.DoneNs = NowNs;
+    if (NowNs < g_Nw.MovedUpToNs)
+        g_Nw.MovedUpToNs = NowNs;
     TakeHwPackets(NowNs);
     for (;;)
     {
-        uint64_t Tick = (g_Nw.DoneNs / SIM_NW_INTERVAL_NS + 1) * SIM_NW_INTERVAL_NS;
+        uint64_t Tick = (g_Nw.MovedUpToNs / SIM_NW_INTERVAL_NS + 1) * SIM_NW_INTERVAL_NS;
         if (Tick > NowNs)
             break;
         uint64_t Work = NextWorkNs(Tick);
@@ -892,15 +895,15 @@ static void Run(void)
                 (Work + SIM_NW_INTERVAL_NS - 1) / SIM_NW_INTERVAL_NS * SIM_NW_INTERVAL_NS;
             if (First > NowNs)
                 break;
-            g_Nw.DoneNs = First - SIM_NW_INTERVAL_NS;
+            g_Nw.MovedUpToNs = First - SIM_NW_INTERVAL_NS;
             continue;
         }
         Deliver(Tick);
-        Interval(Tick);
-        g_Nw.DoneNs = Tick;
+        RunInterval(Tick);
+        g_Nw.MovedUpToNs = Tick;
     }
     Deliver(NowNs);
-    g_Nw.DoneNs = NowNs;
+    g_Nw.MovedUpToNs = NowNs;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -1000,26 +1003,26 @@ static uint32_t OpenPipe(void* Handle, int Type, int* Id)
     case DT_PIPE_RX_RT_SWP:
     case DT_PIPE_TX_RT_SWP:
     {
-        int Free = SIM_NW_FIRST_SWP;
+        int FreeId = SIM_NW_FIRST_SWP;
 
-        while (Free <= SIM_NW_MAX_PIPES && g_Nw.SwPipes[Free] != NULL)
-            Free++;
-        if (Free > SIM_NW_MAX_PIPES)
+        while (FreeId <= SIM_NW_MAX_PIPES && g_Nw.SwPipes[FreeId] != NULL)
+            FreeId++;
+        if (FreeId > SIM_NW_MAX_PIPES)
             return DT_STATUS_OUT_OF_RESOURCES;
         SimPipe* Pipe = (SimPipe*)DtAlloc_Malloc(sizeof(SimPipe));
         if (Pipe == NULL)
             return DT_STATUS_OUT_OF_MEMORY;
         memset(Pipe, 0, sizeof(*Pipe));
-        Pipe->Id = Free;
+        Pipe->Id = FreeId;
         Pipe->Type = Type;
-        Pipe->Rx = Type == DT_PIPE_RX_RT_SWP;
+        Pipe->IsRx = Type == DT_PIPE_RX_RT_SWP;
         Pipe->InUse = true;
         Pipe->Owner = Handle;
         Pipe->OpMode = DT_PIPE_OPMODE_IDLE;
-        g_Nw.SwPipes[Free] = Pipe;
-        if (Free > g_Nw.LastSwPipe)
-            g_Nw.LastSwPipe = Free;
-        *Id = Free;
+        g_Nw.SwPipes[FreeId] = Pipe;
+        if (FreeId > g_Nw.LastSwPipe)
+            g_Nw.LastSwPipe = FreeId;
+        *Id = FreeId;
         return DT_STATUS_OK;
     }
     default:
@@ -1078,7 +1081,7 @@ static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutS
 
     if (Pipe->BufferRegistered)
         return DT_STATUS_IN_USE;
-    if (g_Nw.AsLinux)
+    if (g_Nw.RegisterAsLinux)
     {
         Buffer = (uint8_t*)(uintptr_t)Request->m_BufferAddr;
         Size = Request->m_BufferSize > 0 ? (size_t)Request->m_BufferSize : 0;
@@ -1090,7 +1093,7 @@ static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutS
     }
     if (Buffer == NULL || Size == 0 || Size > 0x7FFFFFFFu)
         return DT_STATUS_INVALID_PARAMETER;
-    if (Pipe->Hw)
+    if (Pipe->IsHw)
     {
         if ((uintptr_t)Buffer % SIM_NW_PAGE_SIZE != 0 ||
             Size % (SIM_NW_PAGE_SIZE * SIM_NW_HWP_PREFETCH_PAGES) != 0)
@@ -1107,7 +1110,7 @@ static uint32_t SetBuffer(SimPipe* Pipe, const void* In, void* Out, size_t* OutS
     Pipe->ReadOffset = 0;
     Pipe->WriteOffset = 0;
     Pipe->CachedWriteOffset = 0;
-    if (g_Nw.AsLinux && OutSize != NULL)
+    if (g_Nw.RegisterAsLinux && OutSize != NULL)
         *OutSize = sizeof(DtIoctlPipeCmdSetSharedBufferOutput);
     return DT_STATUS_OK;
 }
@@ -1123,27 +1126,27 @@ static void DropScheduled(int Id)
 
     for (size_t From = g_Nw.Scheduler.Head; From < Count; From++)
     {
-        SimItem* Item = (SimItem*)DtVec_At(&g_Nw.Scheduler.Items, From);
+        SimQueuedFrame* Item = (SimQueuedFrame*)DtVec_At(&g_Nw.Scheduler.Items, From);
         if (Item->PipeId == Id)
         {
             g_Nw.Scheduler.Bytes -= Item->Size;
             DtAlloc_Free(Item->Data);
             continue;
         }
-        *(SimItem*)DtVec_At(&g_Nw.Scheduler.Items, To++) = *Item;
+        *(SimQueuedFrame*)DtVec_At(&g_Nw.Scheduler.Items, To++) = *Item;
     }
     DtVec_Resize(&g_Nw.Scheduler.Items, To);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Scheduled -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScheduledCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static int Scheduled(int Id)
+static int ScheduledCount(int Id)
 {
     int Count = 0;
 
     for (size_t i = g_Nw.Scheduler.Head; i < DtVec_Count(&g_Nw.Scheduler.Items); i++)
     {
-        if (((SimItem*)DtVec_At(&g_Nw.Scheduler.Items, i))->PipeId == Id)
+        if (((SimQueuedFrame*)DtVec_At(&g_Nw.Scheduler.Items, i))->PipeId == Id)
             Count++;
     }
     return Count;
@@ -1157,7 +1160,7 @@ static int Scheduled(int Id)
 //
 static uint32_t SetOpMode(SimPipe* Pipe, int OpMode)
 {
-    if (Pipe->Hw)
+    if (Pipe->IsHw)
     {
         if (OpMode != DT_PIPE_OPMODE_IDLE && OpMode != DT_PIPE_OPMODE_STANDBY &&
             OpMode != DT_PIPE_OPMODE_RUN)
@@ -1199,10 +1202,10 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
         DtIoctlPipeCmdGetPropertiesOutput* Props =
             (DtIoctlPipeCmdGetPropertiesOutput*)Out;
 
-        Props->m_Capabilities = (Pipe->Rx ? DT_PIPE_CAP_RX : DT_PIPE_CAP_TX) |
-                                (Pipe->Hw ? DT_PIPE_CAP_HWP : DT_PIPE_CAP_SWP) |
+        Props->m_Capabilities = (Pipe->IsRx ? DT_PIPE_CAP_RX : DT_PIPE_CAP_TX) |
+                                (Pipe->IsHw ? DT_PIPE_CAP_HWP : DT_PIPE_CAP_SWP) |
                                 DT_PIPE_CAP_RT | DT_PIPE_CAP_JFRAME;
-        Props->m_PrefetchSize = Pipe->Hw ? SIM_NW_HWP_PREFETCH_PAGES : 1;
+        Props->m_PrefetchSize = Pipe->IsHw ? SIM_NW_HWP_PREFETCH_PAGES : 1;
         Props->m_PipeDataWidth = SIM_DTA2110_PACKET_ALIGNMENT * 8;
         Props->m_PipeType = Pipe->Type;
         *OutSize = sizeof(*Props);
@@ -1228,20 +1231,20 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
             break;
         }
         Status->m_StatusFlags = 0;
-        if (Pipe->Hw && IsTx(Pipe) && Scheduled(Pipe->Id) > 0)
+        if (Pipe->IsHw && IsTx(Pipe) && ScheduledCount(Pipe->Id) > 0)
             Status->m_StatusFlags = DT_PIPE_STATUS_PACKET_WAITING;
         Status->m_ErrorFlags = Pipe->ErrorFlags;
         *OutSize = sizeof(*Status);
         return DT_STATUS_OK;
     }
     case DT_PIPE_CMD_ISSUE_PIPE_FLUSH:
-        if (!Pipe->Hw)
+        if (!Pipe->IsHw)
         {
             Pipe->ReadOffset = 0;
             Pipe->WriteOffset = 0;
             Pipe->ErrorFlags &= ~(uint32_t)DT_PIPE_ERROR_INVALID_TIME;
         }
-        else if (Pipe->Rx)
+        else if (Pipe->IsRx)
             Pipe->ReadOffset = Pipe->WriteOffset;
         else
         {
@@ -1257,15 +1260,15 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
     {
         UInt Offset = ((const DtIoctlPipeCmdSetRxReadOffsetInput*)In)->m_RxReadOffset;
 
-        if (!Pipe->Rx)
+        if (!Pipe->IsRx)
             return DT_STATUS_NOT_SUPPORTED;
-        if (Pipe->Hw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
+        if (Pipe->IsHw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
             return DT_STATUS_INVALID_PARAMETER;
         Pipe->ReadOffset = Offset;
         return DT_STATUS_OK;
     }
     case DT_PIPE_CMD_GET_RX_WRITE_OFFSET:
-        if (!Pipe->Rx)
+        if (!Pipe->IsRx)
             return DT_STATUS_NOT_SUPPORTED;
         ((DtIoctlPipeCmdGetRxWriteOffsetOutput*)Out)->m_RxWriteOffset = Pipe->WriteOffset;
         *OutSize = sizeof(DtIoctlPipeCmdGetRxWriteOffsetOutput);
@@ -1276,12 +1279,12 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
 
         if (!IsTx(Pipe))
             return DT_STATUS_NOT_SUPPORTED;
-        if (Pipe->Hw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
+        if (Pipe->IsHw && (!Pipe->BufferRegistered || Offset >= Pipe->BufferSize))
             return DT_STATUS_INVALID_PARAMETER;
-        if (!Pipe->Hw || Pipe->OpMode != DT_PIPE_OPMODE_STANDBY)
+        if (!Pipe->IsHw || Pipe->OpMode != DT_PIPE_OPMODE_STANDBY)
             Pipe->WriteOffset = Offset;
         Pipe->CachedWriteOffset = Offset;
-        TakeHwPackets(SimNw_Now());
+        TakeHwPackets(SimDtPcie_Now());
         return DT_STATUS_OK;
     }
     case DT_PIPE_CMD_GET_TX_READ_OFFSET:
@@ -1291,7 +1294,7 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
         *OutSize = sizeof(DtIoctlPipeCmdGetTxReadOffsetOutput);
         return DT_STATUS_OK;
     default: // DT_PIPE_CMD_SET_IPFILTER
-        if (!Pipe->Rx)
+        if (!Pipe->IsRx)
             return DT_STATUS_NOT_SUPPORTED;
         memcpy(&Pipe->Filter, In, sizeof(Pipe->Filter));
         Pipe->FilterSet = true;
@@ -1299,9 +1302,9 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimNw_Takes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimNw_Handles -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-bool SimNw_Takes(int FunctionCode)
+bool SimNw_Handles(int FunctionCode)
 {
     return FunctionCode == DT_FUNC_CODE_EMAC_CMD || FunctionCode == DT_FUNC_CODE_NW_CMD ||
            FunctionCode == DT_FUNC_CODE_PIPE_CMD;
@@ -1324,7 +1327,7 @@ uint32_t SimNw_Cmd(void* Handle, int Uuid, int FunctionCode, int Cmd, const void
         return DT_STATUS_INVALID_PARAMETER;
     }
 
-    Run();
+    MovePackets();
     switch (FunctionCode)
     {
     case DT_FUNC_CODE_EMAC_CMD:
@@ -1364,13 +1367,13 @@ void SimNw_CloseHandle(void* Handle)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimNw_Now -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Now -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-uint64_t SimNw_Now(void)
+uint64_t SimDtPcie_Now(void)
 {
     EnsureNw();
-    if (g_Nw.ManualTime)
-        return g_Nw.TimeNs;
+    if (g_Nw.TimeHeld)
+        return g_Nw.HeldTimeNs;
 
     struct timespec Now;
     timespec_get(&Now, TIME_UTC);
@@ -1406,23 +1409,23 @@ void SimNw_Reset(void)
         SimPipe* Pipe = &g_Nw.HwPipes[i];
 
         Pipe->Id = SIM_NW_FIRST_TX_HWP + i;
-        Pipe->Hw = true;
-        Pipe->Rx = i >= SIM_DTA2110_HW_PIPES;
-        Pipe->Type = Pipe->Rx ? DT_PIPE_RX_RT_HWP : DT_PIPE_TX_RT_HWP;
+        Pipe->IsHw = true;
+        Pipe->IsRx = i >= SIM_DTA2110_HW_PIPES;
+        Pipe->Type = Pipe->IsRx ? DT_PIPE_RX_RT_HWP : DT_PIPE_TX_RT_HWP;
         Pipe->OpMode = DT_PIPE_OPMODE_IDLE;
     }
-    DtVec_Init(&g_Nw.Scheduler.Items, sizeof(SimItem));
-    DtVec_Init(&g_Nw.Arriving.Items, sizeof(SimItem));
-    DtVec_Init(&g_Nw.Received.Items, sizeof(SimItem));
+    DtVec_Init(&g_Nw.Scheduler.Items, sizeof(SimQueuedFrame));
+    DtVec_Init(&g_Nw.Arriving.Items, sizeof(SimQueuedFrame));
+    DtVec_Init(&g_Nw.Received.Items, sizeof(SimQueuedFrame));
 #if defined(_WIN32) || defined(_WIN64)
-    g_Nw.AsLinux = false;
+    g_Nw.RegisterAsLinux = false;
 #else
-    g_Nw.AsLinux = true;
+    g_Nw.RegisterAsLinux = true;
 #endif
     g_Nw.LinkUp = true;
     g_Nw.LastSwPipe = SIM_NW_FIRST_SWP - 1;
     g_Nw.Initialised = true;
-    g_Nw.DoneNs = SimNw_Now();
+    g_Nw.MovedUpToNs = SimDtPcie_Now();
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -1433,7 +1436,7 @@ void SimDtPcie_RegisterPipeBufferAsLinux(bool AsLinux)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    g_Nw.AsLinux = AsLinux;
+    g_Nw.RegisterAsLinux = AsLinux;
     SimDtPcie_Unlock();
 }
 
@@ -1455,10 +1458,10 @@ void SimDtPcie_SetNwTime(uint64_t TodNs)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
-    g_Nw.ManualTime = true;
-    g_Nw.TimeNs = TodNs;
-    g_Nw.DoneNs = TodNs;
+    MovePackets();
+    g_Nw.TimeHeld = true;
+    g_Nw.HeldTimeNs = TodNs;
+    g_Nw.MovedUpToNs = TodNs;
     SimDtPcie_Unlock();
 }
 
@@ -1468,10 +1471,10 @@ void SimDtPcie_AdvanceNwTime(uint64_t Ns)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    if (g_Nw.ManualTime)
+    if (g_Nw.TimeHeld)
     {
-        g_Nw.TimeNs += Ns;
-        Run();
+        g_Nw.HeldTimeNs += Ns;
+        MovePackets();
     }
     SimDtPcie_Unlock();
 }
@@ -1490,13 +1493,13 @@ void SimDtPcie_SetNwLoopback(bool Loopback)
 //
 bool SimDtPcie_InjectNwFrame(const uint8_t* Frame, size_t Size, uint64_t TodNs)
 {
-    SimItem Item = {TodNs, 0, NULL, Size};
+    SimQueuedFrame Item = {TodNs, 0, NULL, Size};
 
     if (Frame == NULL || Size == 0 || Size > DT_ETHIP_MAX_FRAME_V2)
         return false;
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
+    MovePackets();
     Item.Data = (uint8_t*)DtAlloc_Malloc(Size);
     bool Kept = Item.Data != NULL;
     if (Kept)
@@ -1507,7 +1510,7 @@ bool SimDtPcie_InjectNwFrame(const uint8_t* Frame, size_t Size, uint64_t TodNs)
             DtAlloc_Free(Item.Data);
     }
     if (Kept)
-        Run();
+        MovePackets();
     SimDtPcie_Unlock();
     return Kept;
 }
@@ -1518,8 +1521,8 @@ int SimDtPcie_NwSentCount(void)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
-    int Sent = g_Nw.Sent;
+    MovePackets();
+    int Sent = g_Nw.NumSent;
     SimDtPcie_Unlock();
     return Sent;
 }
@@ -1530,7 +1533,7 @@ int SimDtPcie_NwKeptCount(void)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
+    MovePackets();
     int Kept = g_Nw.NumKept;
     SimDtPcie_Unlock();
     return Kept;
@@ -1543,11 +1546,12 @@ bool SimDtPcie_GetNwSent(int Index, SimNwPacket* Packet)
     memset(Packet, 0, sizeof(*Packet));
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
+    MovePackets();
     bool Found = Index >= 0 && Index < g_Nw.NumKept;
     if (Found)
     {
-        const SimItem* Kept = &g_Nw.Kept[(g_Nw.KeptFirst + Index) % SIM_NW_KEPT_PACKETS];
+        const SimQueuedFrame* Kept =
+            &g_Nw.Kept[(g_Nw.KeptFirst + Index) % SIM_NW_KEPT_PACKETS];
         Packet->TodNs = Kept->TimeNs;
         Packet->PipeId = Kept->PipeId;
         Packet->Frame = Kept->Data;
@@ -1564,7 +1568,7 @@ void SimDtPcie_GetNwPipeState(int PipeId, SimNwPipeState* State)
     memset(State, 0, sizeof(*State));
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
+    MovePackets();
     const SimPipe* Pipe = FindPipe(PipeId);
     if (Pipe != NULL)
     {
@@ -1579,7 +1583,7 @@ void SimDtPcie_GetNwPipeState(int PipeId, SimNwPipeState* State)
         State->ErrorFlags = Pipe->ErrorFlags;
         State->FilterSet = Pipe->FilterSet;
         State->FilterFlags = (uint32_t)Pipe->Filter.m_Flags;
-        State->Scheduled = Scheduled(PipeId);
+        State->Scheduled = ScheduledCount(PipeId);
     }
     SimDtPcie_Unlock();
 }
@@ -1590,7 +1594,7 @@ void SimDtPcie_GetNwCounters(SimNwCounters* Counters)
 {
     SimDtPcie_Lock();
     EnsureNw();
-    Run();
+    MovePackets();
     *Counters = g_Nw.Counters;
     SimDtPcie_Unlock();
 }

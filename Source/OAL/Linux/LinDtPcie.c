@@ -42,12 +42,12 @@ typedef struct LinDevice
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Backend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinOpen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Opens /dev/DtPcie<Index>. The udev rule shipped with the driver creates these nodes
 // world-readable and writable, so no privilege is needed.
 //
-static void* LinOpen(int Index)
+static void* Open(int Index)
 {
     char Path[32];
     LinDevice* Dev;
@@ -71,9 +71,9 @@ static void* LinOpen(int Index)
     return Dev;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinClose -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Close -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void LinClose(void* State)
+static void Close(void* State)
 {
     LinDevice* Dev = (LinDevice*)State;
 
@@ -81,16 +81,16 @@ static void LinClose(void* State)
     DtAlloc_Free(Dev);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinTransfer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IoctlThroughBlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Packs the input into the block Buf of BufSize bytes, issues the ioctl and unpacks the
 // output. Returns one of the OS_IOCTL_ outcomes; a failure sets the device's last error.
 //
-static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const void* In,
-                       size_t InSize, void* Out, size_t OutBytes, uint8_t* Buf,
-                       size_t BufSize, uint32_t* DrvStatus)
+static int IoctlThroughBlock(LinDevice* Dev, uint32_t Code, bool HasSizeHeader,
+                             const void* In, size_t InSize, void* Out, size_t OutCapacity,
+                             uint8_t* Buf, size_t BufSize, uint32_t* DrvStatus)
 {
-    if (LinIoctlBuffer_Pack(SizeHeader, In, InSize, OutBytes, Buf, BufSize) != 0)
+    if (LinIoctlBuffer_Pack(HasSizeHeader, In, InSize, OutCapacity, Buf, BufSize) != 0)
     {
         Dev->LastError = (uint32_t)EINVAL;
         return OS_IOCTL_COMMUNICATION;
@@ -105,18 +105,18 @@ static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const voi
         return Result;
     }
 
-    if (LinIoctlBuffer_Unpack(Buf, BufSize, Out, OutBytes) != 0)
+    if (LinIoctlBuffer_Unpack(Buf, BufSize, Out, OutCapacity) != 0)
     {
         Dev->LastError = (uint32_t)EINVAL;
         return OS_IOCTL_COMMUNICATION;
     }
 
     // The Linux driver does not report how much it wrote, so *OutSize is left as the
-    // caller set it. See the OsDrv_IoCtl contract.
+    // caller set it. See the OsDrv_Ioctl contract.
     return OS_IOCTL_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinIoCtl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Ioctl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // ioctl takes a single pointer, so input and output share one block laid out by
 // LinIoctlBuffer_Pack. A scratch block is always used, rather than the caller's input
@@ -125,13 +125,13 @@ static int LinTransfer(LinDevice* Dev, uint32_t Code, bool SizeHeader, const voi
 // A command the driver refuses comes back as its DtStatus, negated, in the return value
 // of ioctl rather than in errno. OsIoctlOutcome_ClassifyLinux separates the two.
 //
-static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
-                    size_t* OutSize, uint32_t* DrvStatus)
+static int Ioctl(void* State, uint32_t Code, const void* In, size_t InSize, void* Out,
+                 size_t* OutSize, uint32_t* DrvStatus)
 {
     LinDevice* Dev = (LinDevice*)State;
-    size_t OutBytes = (Out != NULL && OutSize != NULL) ? *OutSize : 0;
-    bool SizeHeader = _IOC_TYPE(Code) == DT_IOCTL_MAGIC_SIZE;
-    size_t BufSize = LinIoctlBuffer_Size(SizeHeader, InSize, OutBytes);
+    size_t OutCapacity = (Out != NULL && OutSize != NULL) ? *OutSize : 0;
+    bool HasSizeHeader = _IOC_TYPE(Code) == DT_IOCTL_MAGIC_SIZE;
+    size_t BufSize = LinIoctlBuffer_Size(HasSizeHeader, InSize, OutCapacity);
 
     uint8_t Stack[LIN_STACK_BUFFER_BYTES];
     uint8_t* Buf = Stack;
@@ -145,26 +145,26 @@ static int LinIoCtl(void* State, uint32_t Code, const void* In, size_t InSize, v
         }
     }
 
-    int Result = LinTransfer(Dev, Code, SizeHeader, In, InSize, Out, OutBytes, Buf,
-                             BufSize, DrvStatus);
+    int Result = IoctlThroughBlock(Dev, Code, HasSizeHeader, In, InSize, Out, OutCapacity,
+                                   Buf, BufSize, DrvStatus);
     if (Buf != Stack)
         DtAlloc_Free(Buf);
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinLastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LastError -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static uint32_t LinLastError(const void* State)
+static uint32_t LastError(const void* State)
 {
     return ((const LinDevice*)State)->LastError;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinMapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Maps the memory shared, readable and writable. The driver tells from Offset which of
 // its memory is meant.
 //
-static void* LinMapMemory(void* State, uint64_t Offset, size_t Size)
+static void* MapMemory(void* State, uint64_t Offset, size_t Size)
 {
     LinDevice* Dev = (LinDevice*)State;
     void* Address =
@@ -178,9 +178,9 @@ static void* LinMapMemory(void* State, uint64_t Offset, size_t Size)
     return Address;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LinUnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UnmapMemory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static void LinUnmapMemory(void* State, void* Address, size_t Size)
+static void UnmapMemory(void* State, void* Address, size_t Size)
 {
     (void)State;
     munmap(Address, Size);
@@ -190,7 +190,7 @@ static void LinUnmapMemory(void* State, void* Address, size_t Size)
 //
 const OsBackend* OsPlatform_Backend(void)
 {
-    static const OsBackend Backend = {LinOpen,      LinClose,     LinIoCtl,
-                                      LinLastError, LinMapMemory, LinUnmapMemory};
+    static const OsBackend Backend = {Open,      Close,     Ioctl,
+                                      LastError, MapMemory, UnmapMemory};
     return &Backend;
 }

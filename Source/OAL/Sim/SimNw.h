@@ -85,7 +85,7 @@
 #define SIM_NW_KEPT_PACKETS 256
 
 // Whether the network function takes commands with this DT_FUNC_CODE_.
-bool SimNw_Takes(int FunctionCode);
+bool SimNw_Handles(int FunctionCode);
 
 // Handles a command from Handle with this function code for the network function, the
 // header's UUID naming the pipe for a PIPE command and for closing one. Returns the
@@ -97,7 +97,7 @@ uint32_t SimNw_Cmd(void* Handle, int Uuid, int FunctionCode, int Cmd, const void
 void SimNw_CloseHandle(void* Handle);
 
 // The card's time of day in nanoseconds.
-uint64_t SimNw_Now(void);
+uint64_t SimDtPcie_Now(void);
 
 // Frees everything and restores the power-on state of the function and the controls.
 void SimNw_Reset(void);

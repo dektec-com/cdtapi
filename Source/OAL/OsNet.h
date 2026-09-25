@@ -139,8 +139,8 @@ typedef struct OsNetBackend
                             const uint8_t* Dst, uint8_t* Mac);
     int (*Bind)(bool IpV6, const uint8_t* Ip, uint16_t Port, uint32_t IfIndex,
                 void** Socket, uint16_t* BoundPort);
-    int (*Membership)(void* Socket, bool Join, bool IpV6, uint32_t IfIndex,
-                      const uint8_t* Group, const uint8_t* Source);
+    int (*JoinOrLeave)(void* Socket, bool Join, bool IpV6, uint32_t IfIndex,
+                       const uint8_t* Group, const uint8_t* Source);
     void (*Close)(void* Socket);
 } OsNetBackend;
 

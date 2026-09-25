@@ -56,7 +56,7 @@ static OsDrv* OpenDta2110(int* DtFailures, int* Live)
     do                                                                                   \
     {                                                                                    \
         OsDrv_Close(Drv);                                                                \
-        DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);                                        \
+        DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
     } while (0)
 
@@ -181,7 +181,7 @@ DT_TEST(AttachActivates)
 
     DT_ASSERT_OK(DtDevice_Detach(Device));
     DtDevice_Free(Device);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 
@@ -202,7 +202,7 @@ DT_TEST(AttachSucceedsWithoutActivation)
 
     DT_ASSERT_OK(DtDevice_Detach(Device));
     DtDevice_Free(Device);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandles(), 0);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
 }
 

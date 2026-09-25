@@ -35,10 +35,10 @@
 //
 
 // Whether the emulated ASI blocks take commands with this DT_FUNC_CODE_.
-bool SimAsi_Takes(int FunctionCode);
+bool SimAsi_Handles(int FunctionCode);
 
 // Handles a command from Handle for the object of type Type of the port at PortIndex.
-// Access is what SimDtPcie_CheckAccess answers for Handle and the object, and Enabled
+// Access is what SimDtPcie_CheckExclAccess answers for Handle and the object, and Enabled
 // whether the object is enabled. Returns the DtStatus the driver would, and fills Out and
 // *OutSize for a command that answers.
 uint32_t SimAsi_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type, int Cmd,
@@ -57,7 +57,7 @@ void SimAsi_Reset(void);
 //   receiving   while ASIRX runs, its input has a carrier and the DMA receives, the
 //               port's source, SimDtPcie_SetAsiSource, or the output looped to it,
 //               SimDtPcie_SetAsiLoopback, writes transparent packets (DtTsTrp.h) into
-//               the receive buffer: the time of day from SimNw_Now, the payload, the
+//               the receive buffer: the time of day from SimDtPcie_Now, the payload, the
 //               sync nibble with the packet-sync bit, the valid count and a sequence
 //               number that counts every packet the card receives, so that one it could
 //               not write for want of room, which counts as a burst-FIFO overflow, is a
@@ -72,11 +72,11 @@ void SimAsi_Reset(void);
 
 // Writes into the receive buffer of the port at PortIndex what it received since the
 // last call; SimSdiTx.c calls it before answering the receive write offset.
-void SimAsi_Produce(int PortIndex);
+void SimAsi_ReceiveIntoBuffer(int PortIndex);
 
 // Sends what the card read from the transmit buffer of the port at PortIndex; SimSdiTx.c
 // calls it before answering the transmit read offset.
-void SimAsi_Drain(int PortIndex);
+void SimAsi_SendFromBuffer(int PortIndex);
 
 // The numbered packet a source sends: 0x47, PID 0x100 with the continuity counter, the
 // number big endian, then bytes counting up from it; Size is 188 or 204.
@@ -142,7 +142,7 @@ void SimDtPcie_SetAsiSource(int PortIndex, const SimAsiSource* Source);
 #define SIM_ASI_FAULT_SEQUENCE 3 // A sequence number skipped before it
 #define SIM_ASI_FAULT_NOSYNC 4   // No packet-sync bit
 
-void SimDtPcie_AsiRxFault(int PortIndex, int Fault);
+void SimDtPcie_InjectAsiRxFault(int PortIndex, int Fault);
 
 // Makes the output at TxIndex send into the input at RxIndex, as a cable does: the
 // input finds 188- or 204-byte packets in the data bytes by their sync bytes, and has a
