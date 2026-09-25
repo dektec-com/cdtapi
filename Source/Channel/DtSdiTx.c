@@ -26,61 +26,67 @@
 
 // The typical and maximum FIFO size, reported for a port without a buffer. The buffer is
 // sized to hold the typical one.
-#define DT_TX_FIFO_SIZE_TYP (48 * 1024 * 1024)
-#define DT_TX_FIFO_SIZE_MAX (64 * 1024 * 1024)
+#define DT_SDITX_FIFO_SIZE_TYP (48 * 1024 * 1024)
+#define DT_SDITX_FIFO_SIZE_MAX (64 * 1024 * 1024)
 
 // The bounds on the DMA buffer, the frames it is sized for, and the fewest it must hold.
-#define DT_BUF_MIN (8 * 1024 * 1024)
-#define DT_BUF_MAX (256 * 1024 * 1024)
-#define DT_BUF_FRAMES 5
-#define DT_BUF_MIN_FRAMES 2
+#define DT_SDITX_BUF_MIN_SIZE (8 * 1024 * 1024)
+#define DT_SDITX_BUF_MAX_SIZE (256 * 1024 * 1024)
+#define DT_SDITX_BUF_ROOM_FRAMES 5
+#define DT_SDITX_BUF_MIN_FRAMES 2
 
 // The format events per frame the channel asks for.
 #define DT_FMT_EVENTS_PER_FRAME 4
 
 // A detach that waits until everything is sent gives up after a second without a format
 // event.
-#define DT_SENT_STALL_MS 1000
+#define DT_SDITX_SENT_STALL_MS 1000
 
 // The burst FIFO's load is read at most five times for 75 % full.
-#define DT_BURST_POLLS 5
+#define DT_SDITX_BURST_POLLS 5
 
 // The format event of the first frame of a run from which the thread may write a black
 // frame after it: the application has until then, half a frame, to write the second
 // frame. The last quarter of a frame goes out only when data follows it.
-#define DT_FIRST_BLACK_SEQ 2
+#define DT_SDITX_FIRST_BLACK_EVENT_SEQ 2
 
 // The PHY's underflow flag is read every so many format events.
-#define DT_PHY_POLL_EVENTS 50
+#define DT_SDITX_PHY_POLL_EVENTS 50
 
 // The largest header with its padding: 20 bytes padded to 512 bits.
-#define DT_MAX_TX_HEADER 64
+#define DT_SDITX_MAX_HEADER_BYTES 64
 
 // The search for the start of line 1 of an SD frame.
-#define DT_SD_IN_SYNC 0
-#define DT_SD_FIND_FIELD2 1
-#define DT_SD_FIND_FRAME_START 2
+typedef enum DtSdiTxSdSearchState
+{
+    DT_SDITX_SD_IN_SYNC,
+    DT_SDITX_SD_FIND_FIELD2,
+    DT_SDITX_SD_FIND_FRAME_START
+} DtSdiTxSdSearchState;
 
 // Where the stream is: looking for a frame, in its lines, or in the padding after them.
-#define DT_STAGE_SEARCH 0
-#define DT_STAGE_LINES 1
-#define DT_STAGE_PADDING 2
+typedef enum DtSdiTxWriteStage
+{
+    DT_SDITX_STAGE_SEARCH,
+    DT_SDITX_STAGE_LINES,
+    DT_SDITX_STAGE_PADDING
+} DtSdiTxWriteStage;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 typedef struct DtSdiTx
 {
-    DtTx Base;
+    DtTx Tx;
 
     // The transmit blocks, held exclusively while attached.
-    DtFuncInstance AfTx, AfDma;
-    DtDrvObject Cdmac, Burst, Txf, Txp, Phy;
+    DtFuncInstance TxFunction, DmaFunction;
+    DtDrvObject Cdmac, BurstFifo, Txf, Txp, Phy;
 
     // The demultiplexer and its switches of a port with DT_CAP_QUADLINK, and the switch
     // from a quad-link master where the port has it; their UUIDs are 0 otherwise.
-    bool QuadLink;
-    DtDrvObject SwitchIn, SwitchOut, Dmx;
-    DtDrvObject FromMaster;
+    bool HasQuadLink;
+    DtDrvObject DemuxInSwitch, DemuxOutSwitch, Dmx;
+    DtDrvObject QuadLinkMasterSwitch;
 
     int IoStdValue; // The port's I/O standard
     int IoStdSubValue;
@@ -91,119 +97,120 @@ typedef struct DtSdiTx
     bool DmaUfl, DmaUflLatched;
 
     // The configured standard; Layout.VidStd is DTAPI_VIDSTD_UNKNOWN without a buffer.
-    DtSdiFrameLayout Layout;
-    size_t CodedSize; // A coded frame with its header
-    size_t RawSize;   // A raw frame in the current transmit mode
-    OsDmaBuffer Buf;
-    bool Registered;
-    size_t MaxLoad;      // The buffer less the data word kept free
-    size_t WordNumBytes; // A PCIe data word, which the card reads the buffer in
-    int BurstFifoSize;   // Bytes
-    int QuarterMs;       // A quarter frame period, at least 1 ms
-    uint8_t* Black;      // The coded lines of a black frame, line headers included
-    uint8_t* LineBuf;    // A raw line's coded lines when they run across the end
-    uint8_t* RawBuf;     // The raw bytes of a line not yet complete
-    uint16_t* Scratch;   // The working symbols of a 4K line, one set a band
+    DtSdiFrameLayout FrameLayout;
+    size_t CodedFrameSize; // A coded frame with its header
+    size_t RawFrameSize;   // A raw frame in the current transmit mode
+    OsDmaBuffer DmaBuffer;
+    bool BufferRegistered;
+    size_t MaxLoad;          // The buffer less the data word kept free
+    size_t PcieWordBytes;    // A PCIe data word, which the card reads the buffer in
+    int BurstFifoSize;       // Bytes
+    int QuarterFrameMs;      // A quarter frame period, at least 1 ms
+    uint8_t* BlackLines;     // The coded lines of a black frame, line headers included
+    uint8_t* WrapLineBuffer; // A raw line's coded lines when they run across the end
+    uint8_t* PartialLine;    // The raw bytes of a line not yet complete
+    uint16_t* WorkSymbols;   // The working symbols of a 4K line, one set a band
 
     // The pool the channel gave, and the pieces it asked for: 0 for as many as the
     // standard calls for. The channel holds the pool.
     DtWorkPool* WorkPool;
     int WorkThreads;
 
-    // The pieces a batch of lines is coded in. Scratch holds DtWork_Pieces(&Work) sets of
-    // ScratchSymbols symbols, so that a band uses its own.
+    // The pieces a batch of lines is encoded in. WorkSymbols holds DtWork_Pieces(&Work)
+    // sets of WorkSymbolsPerBand symbols, so that a band uses its own.
     DtWork Work;
-    size_t ScratchSymbols;
+    size_t WorkSymbolsPerBand;
 
     // The buffer while holding or sending.
     size_t WriteOffset; // Where the next frame's header goes, and the driver's offset
-    uint64_t Committed; // Bytes committed since the DMA controller was set running
+    uint64_t CommittedBytes; // Bytes committed since the DMA controller was set running
     int NextFrameId;
 
     // The frame being written.
-    int Stage;
-    int SdSync;
-    bool Reserved;         // Its header is written and room for it was found
-    int LinesDone;         // Lines coded into the buffer
-    int Phase;             // The bit the next line starts at in its first byte
-    size_t RawHave;        // Bytes in RawBuf
-    size_t FrameBytesLeft; // Raw bytes of the frame, padding included, not yet taken
+    DtSdiTxWriteStage WriteStage;
+    DtSdiTxSdSearchState SdSearchState;
+    bool FrameRoomReserved;  // Its header is written and room for it was found
+    int LinesEncoded;        // Lines coded into the buffer
+    int LineStartBit;        // The bit the next line starts at in its first byte
+    size_t PartialLineBytes; // Bytes in PartialLine
+    size_t FrameBytesLeft;   // Raw bytes of the frame, padding included, not yet taken
 
     // The thread that keeps the signal while sending.
-    OsThread* Thread;
-    bool StopThread;
-    OsEvent* Room; // Set after every wait for a format event, and for a detach
-    int Events;
-    bool Started;  // A format event came since the channel held
-    bool Settled;  // Black frames may follow the first frame: see DT_FIRST_BLACK_SEQ
-    int SendingId; // The frame ID of the last format event
+    OsThread* KeeperThread;
+    bool StopRequested;
+    OsEvent* RoomEvent; // Set after every wait for a format event, and for a detach
+    int NumFormatEvents;
+    bool FirstEventSeen; // A format event came since the channel held
+    bool BlackAllowed;   // Black frames may follow the first frame: see
+                         // DT_SDITX_FIRST_BLACK_EVENT_SEQ
+    int SendingFrameId;  // The frame ID of the last format event
 } DtSdiTx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static OsDrv* DrvOf(const DtSdiTx* Sdi)
 {
-    return Sdi->Base.Port.Device->Drv;
+    return Sdi->Tx.Port.Device->Drv;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wrap -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WrapOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static size_t Wrap(const DtSdiTx* Sdi, size_t Offset)
+static size_t WrapOffset(const DtSdiTx* Sdi, size_t Offset)
 {
-    return Offset % Sdi->Buf.Size;
+    return Offset % Sdi->DmaBuffer.Size;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopyIntoBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Copies Size bytes into the buffer from Offset on, across its end.
 //
-static void PutAt(DtSdiTx* Sdi, size_t Offset, const uint8_t* Data, size_t Size)
+static void CopyIntoBuffer(DtSdiTx* Sdi, size_t Offset, const uint8_t* Data, size_t Size)
 {
-    size_t First = Sdi->Buf.Size - Offset;
+    size_t First = Sdi->DmaBuffer.Size - Offset;
 
     if (First > Size)
         First = Size;
-    memcpy(Sdi->Buf.Data + Offset, Data, First);
-    memcpy(Sdi->Buf.Data, Data + First, Size - First);
+    memcpy(Sdi->DmaBuffer.Data + Offset, Data, First);
+    memcpy(Sdi->DmaBuffer.Data, Data + First, Size - First);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopyWithin -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MoveWithinBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Copies Size bytes of the buffer from offset From to offset To, both across its end.
 // The two ranges do not overlap.
 //
-static void CopyWithin(DtSdiTx* Sdi, size_t From, size_t To, size_t Size)
+static void MoveWithinBuffer(DtSdiTx* Sdi, size_t From, size_t To, size_t Size)
 {
     while (Size > 0)
     {
         size_t Chunk = Size;
 
-        if (Chunk > Sdi->Buf.Size - From)
-            Chunk = Sdi->Buf.Size - From;
-        if (Chunk > Sdi->Buf.Size - To)
-            Chunk = Sdi->Buf.Size - To;
-        memcpy(Sdi->Buf.Data + To, Sdi->Buf.Data + From, Chunk);
-        From = Wrap(Sdi, From + Chunk);
-        To = Wrap(Sdi, To + Chunk);
+        if (Chunk > Sdi->DmaBuffer.Size - From)
+            Chunk = Sdi->DmaBuffer.Size - From;
+        if (Chunk > Sdi->DmaBuffer.Size - To)
+            Chunk = Sdi->DmaBuffer.Size - To;
+        memcpy(Sdi->DmaBuffer.Data + To, Sdi->DmaBuffer.Data + From, Chunk);
+        From = WrapOffset(Sdi, From + Chunk);
+        To = WrapOffset(Sdi, To + Chunk);
         Size -= Chunk;
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteFrameHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Writes the header of a frame with FrameId, padded with zeros, at Offset.
 //
-static void PutHeader(DtSdiTx* Sdi, size_t Offset, int FrameId)
+static void WriteFrameHeader(DtSdiTx* Sdi, size_t Offset, int FrameId)
 {
-    uint8_t Bytes[DT_MAX_TX_HEADER];
+    uint8_t Bytes[DT_SDITX_MAX_HEADER_BYTES];
 
     memset(Bytes, 0, sizeof(Bytes));
     DtSdiFrameTxHeader Header;
-    DtSdiFrame_TxHeaderInit(&Sdi->Layout, FrameId, &Header);
+    DtSdiFrame_TxHeaderInit(&Sdi->FrameLayout, FrameId, &Header);
     DtSdiFrame_EncodeTxHeader(&Header, Bytes);
-    PutAt(Sdi, Offset, Bytes, (size_t)Sdi->Layout.TxHeaderNumBytes);
+    CopyIntoBuffer(Sdi, Offset, Bytes, (size_t)Sdi->FrameLayout.TxHeaderNumBytes);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DmaBufferLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -221,12 +228,12 @@ static DtapiResult DmaBufferLoad(DtSdiTx* Sdi, size_t* Load)
     *Load = 0;
     if (Result != DTAPI_OK)
         return Result;
-    if (ReadOffset >= Sdi->Buf.Size)
+    if (ReadOffset >= Sdi->DmaBuffer.Size)
         return DTAPI_E_DEV_DRIVER;
 
-    *Load = Wrap(Sdi, Sdi->WriteOffset + Sdi->Buf.Size - ReadOffset);
-    if ((uint64_t)*Load > Sdi->Committed)
-        *Load = (size_t)Sdi->Committed;
+    *Load = WrapOffset(Sdi, Sdi->WriteOffset + Sdi->DmaBuffer.Size - ReadOffset);
+    if ((uint64_t)*Load > Sdi->CommittedBytes)
+        *Load = (size_t)Sdi->CommittedBytes;
     if (*Load > Sdi->MaxLoad)
         *Load = Sdi->MaxLoad;
     return DTAPI_OK;
@@ -240,21 +247,21 @@ static DtapiResult DmaBufferLoad(DtSdiTx* Sdi, size_t* Load)
 //
 static int UnsentFrames(const DtSdiTx* Sdi)
 {
-    return (Sdi->NextFrameId - (Sdi->Started ? Sdi->SendingId : 0)) & 0xFFFF;
+    return (Sdi->NextFrameId - (Sdi->FirstEventSeen ? Sdi->SendingFrameId : 0)) & 0xFFFF;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForgetPartialFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Forgets the frame being written, and starts looking for line 1 again.
 //
-static void ResetFrame(DtSdiTx* Sdi)
+static void ForgetPartialFrame(DtSdiTx* Sdi)
 {
-    Sdi->Stage = DT_STAGE_SEARCH;
-    Sdi->SdSync = DT_SD_IN_SYNC;
-    Sdi->Reserved = false;
-    Sdi->LinesDone = 0;
-    Sdi->Phase = 0;
-    Sdi->RawHave = 0;
+    Sdi->WriteStage = DT_SDITX_STAGE_SEARCH;
+    Sdi->SdSearchState = DT_SDITX_SD_IN_SYNC;
+    Sdi->FrameRoomReserved = false;
+    Sdi->LinesEncoded = 0;
+    Sdi->LineStartBit = 0;
+    Sdi->PartialLineBytes = 0;
     Sdi->FrameBytesLeft = 0;
 }
 
@@ -264,14 +271,14 @@ static void ResetFrame(DtSdiTx* Sdi)
 //
 static DtapiResult CommitFrame(DtSdiTx* Sdi)
 {
-    size_t Offset = Wrap(Sdi, Sdi->WriteOffset + Sdi->CodedSize);
+    size_t Offset = WrapOffset(Sdi, Sdi->WriteOffset + Sdi->CodedFrameSize);
     DtapiResult Result =
         DtPcieCmd_CdmacSetTxWriteOffset(DrvOf(Sdi), Sdi->Cdmac, (uint32_t)Offset);
 
     if (Result != DTAPI_OK)
         return Result;
     Sdi->WriteOffset = Offset;
-    Sdi->Committed += Sdi->CodedSize;
+    Sdi->CommittedBytes += Sdi->CodedFrameSize;
     Sdi->NextFrameId = (Sdi->NextFrameId + 1) & 0xFFFF;
     return DTAPI_OK;
 }
@@ -285,33 +292,35 @@ static DtapiResult CommitFrame(DtSdiTx* Sdi)
 //
 static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 {
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    size_t Coded = Sdi->CodedSize;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    size_t Coded = Sdi->CodedFrameSize;
     size_t Free = Sdi->MaxLoad - Load;
     size_t Partial = 0;
 
     if (Free < Coded)
         return DTAPI_OK;
-    if (Sdi->Reserved)
+    if (Sdi->FrameRoomReserved)
     {
         Partial = (size_t)Layout->TxHeaderNumBytes +
-                  (size_t)Sdi->LinesDone * DtSdiFrame_TxBytesPerLine(Layout);
+                  (size_t)Sdi->LinesEncoded * DtSdiFrame_TxBytesPerLine(Layout);
         if (Free < 2 * Coded)
         {
-            ResetFrame(Sdi);
+            ForgetPartialFrame(Sdi);
             Partial = 0;
         }
     }
 
     if (Partial > 0)
     {
-        CopyWithin(Sdi, Sdi->WriteOffset, Wrap(Sdi, Sdi->WriteOffset + Coded), Partial);
-        PutHeader(Sdi, Wrap(Sdi, Sdi->WriteOffset + Coded),
-                  (Sdi->NextFrameId + 1) & 0xFFFF);
+        MoveWithinBuffer(Sdi, Sdi->WriteOffset, WrapOffset(Sdi, Sdi->WriteOffset + Coded),
+                         Partial);
+        WriteFrameHeader(Sdi, WrapOffset(Sdi, Sdi->WriteOffset + Coded),
+                         (Sdi->NextFrameId + 1) & 0xFFFF);
     }
-    PutHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
-    PutAt(Sdi, Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes), Sdi->Black,
-          (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
+    WriteFrameHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
+    CopyIntoBuffer(
+        Sdi, WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes),
+        Sdi->BlackLines, (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
 
     DtapiResult Result = CommitFrame(Sdi);
     if (Result == DTAPI_OK)
@@ -321,27 +330,27 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Thread +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Keeper -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalKeeperThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // While sending: waits for the formatter's format events, the only waiter for them,
 // takes their underflow flag and, now and then, the PHY's, and writes a black frame when
 // the frame going out is the last one written. After the first frame of a run it waits
-// with that until the frame's event DT_FIRST_BLACK_SEQ or a wait that times out, so that
-// an application that wrote only one frame before sending has time to write the next.
-// Wakes a write waiting for room after each wait, whether an event came or not.
+// with that until the frame's event DT_SDITX_FIRST_BLACK_EVENT_SEQ or a wait that times
+// out, so that an application that wrote only one frame before sending has time to write
+// the next. Wakes a write waiting for room after each wait, whether an event came or not.
 //
-static void Keeper(void* Context)
+static void SignalKeeperThread(void* Context)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Context;
 
-    OsThread_SetName("DtSdiTxKeep");
+    OsThread_SetName("DtSdiTxKeeper");
 
     OsThread_RaisePriority();
-    OsMutex_Lock(Sdi->Base.Port.Lock);
+    OsMutex_Lock(Sdi->Tx.Port.Lock);
     OsDrv* Drv = DrvOf(Sdi);
     DtDrvObject Txf = Sdi->Txf;
-    int WaitMs = Sdi->QuarterMs < 1000 ? Sdi->QuarterMs : 1000;
-    OsMutex_Unlock(Sdi->Base.Port.Lock);
+    int WaitMs = Sdi->QuarterFrameMs < 1000 ? Sdi->QuarterFrameMs : 1000;
+    OsMutex_Unlock(Sdi->Tx.Port.Lock);
 
     for (;;)
     {
@@ -350,27 +359,27 @@ static void Keeper(void* Context)
 
         DtapiResult Result = DtPcieCmd_SdiTxFWaitForFmtEvent(Drv, Txf, WaitMs, &Event);
 
-        OsMutex_Lock(Sdi->Base.Port.Lock);
-        if (Sdi->StopThread)
+        OsMutex_Lock(Sdi->Tx.Port.Lock);
+        if (Sdi->StopRequested)
         {
-            OsMutex_Unlock(Sdi->Base.Port.Lock);
+            OsMutex_Unlock(Sdi->Tx.Port.Lock);
             return;
         }
         if (Result == DTAPI_OK)
         {
-            Sdi->Started = true;
-            Sdi->SendingId = Event.FrameId;
-            if (Event.FrameId != 0 || Event.SeqNumber >= DT_FIRST_BLACK_SEQ)
-                Sdi->Settled = true;
+            Sdi->FirstEventSeen = true;
+            Sdi->SendingFrameId = Event.FrameId;
+            if (Event.FrameId != 0 || Event.SeqNumber >= DT_SDITX_FIRST_BLACK_EVENT_SEQ)
+                Sdi->BlackAllowed = true;
             if (Event.Underflow)
                 Sdi->FifoUfl = Sdi->FifoUflLatched = true;
         }
-        else if (Sdi->Started)
-            Sdi->Settled = true;
+        else if (Sdi->FirstEventSeen)
+            Sdi->BlackAllowed = true;
         if (Result != DTAPI_OK && Result != DTAPI_E_TIMEOUT)
             Failed = true;
 
-        if (Result != DTAPI_OK || ++Sdi->Events % DT_PHY_POLL_EVENTS == 0)
+        if (Result != DTAPI_OK || ++Sdi->NumFormatEvents % DT_SDITX_PHY_POLL_EVENTS == 0)
         {
             bool Underflow = false;
 
@@ -387,11 +396,11 @@ static void Keeper(void* Context)
 
         // The frame going out is the last: a black frame follows it.
         size_t Load;
-        if (Sdi->Settled && UnsentFrames(Sdi) <= 1 &&
+        if (Sdi->BlackAllowed && UnsentFrames(Sdi) <= 1 &&
             DmaBufferLoad(Sdi, &Load) == DTAPI_OK)
             InsertBlack(Sdi, Load);
-        OsEvent_Set(Sdi->Room);
-        OsMutex_Unlock(Sdi->Base.Port.Lock);
+        OsEvent_Set(Sdi->RoomEvent);
+        OsMutex_Unlock(Sdi->Tx.Port.Lock);
 
         // A wait that fails at once would otherwise spin.
         if (Failed)
@@ -399,23 +408,23 @@ static void Keeper(void* Context)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StopKeeper -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StopSignalKeeper -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Stops the thread and waits for it, releasing the lock while it does, since the thread
 // takes the lock to see that it must stop.
 //
-static void StopKeeper(DtSdiTx* Sdi)
+static void StopSignalKeeper(DtSdiTx* Sdi)
 {
-    OsThread* Thread = Sdi->Thread;
+    OsThread* Thread = Sdi->KeeperThread;
 
     if (Thread == NULL)
         return;
-    Sdi->StopThread = true;
-    Sdi->Thread = NULL;
-    OsMutex_Unlock(Sdi->Base.Port.Lock);
+    Sdi->StopRequested = true;
+    Sdi->KeeperThread = NULL;
+    OsMutex_Unlock(Sdi->Tx.Port.Lock);
     OsThread_Join(Thread);
-    OsMutex_Lock(Sdi->Base.Port.Lock);
-    Sdi->StopThread = false;
+    OsMutex_Lock(Sdi->Tx.Port.Lock);
+    Sdi->StopRequested = false;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= States +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -434,17 +443,19 @@ static DtapiResult BlocksToIdle(DtSdiTx* Sdi)
 
     Results[0] = DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_IDLE);
     Results[1] = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, DT_BLOCK_OPMODE_IDLE);
-    if (Sdi->FromMaster.Uuid != 0)
-        Results[2] =
-            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, DT_BLOCK_OPMODE_IDLE);
-    if (Sdi->QuadLink)
+    if (Sdi->QuadLinkMasterSwitch.Uuid != 0)
+        Results[2] = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->QuadLinkMasterSwitch,
+                                               DT_BLOCK_OPMODE_IDLE);
+    if (Sdi->HasQuadLink)
     {
-        Results[3] = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, DT_BLOCK_OPMODE_IDLE);
+        Results[3] =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->DemuxOutSwitch, DT_BLOCK_OPMODE_IDLE);
         Results[4] = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, DT_BLOCK_OPMODE_IDLE);
-        Results[5] = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, DT_BLOCK_OPMODE_IDLE);
+        Results[5] =
+            DtPcieCmd_SwitchSetOpMode(Drv, Sdi->DemuxInSwitch, DT_BLOCK_OPMODE_IDLE);
     }
     Results[6] = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, DT_BLOCK_OPMODE_IDLE);
-    Results[7] = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, DT_BLOCK_OPMODE_IDLE);
+    Results[7] = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->BurstFifo, DT_BLOCK_OPMODE_IDLE);
     Results[8] = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
 
     for (size_t i = 0; i < sizeof(Results) / sizeof(Results[0]); i++)
@@ -465,7 +476,7 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
 
-    if (!Sdi->Registered)
+    if (!Sdi->BufferRegistered)
         return DTAPI_E_CONFIG_RAW_SDI;
 
     DtapiResult Result = DtPcieCmd_CdmacIssueChannelFlush(Drv, Sdi->Cdmac);
@@ -474,17 +485,18 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->Burst, DT_BLOCK_OPMODE_RUN);
+        Result = DtPcieCmd_BurstFifoSetOpMode(Drv, Sdi->BurstFifo, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetOpMode(Drv, Sdi->Txf, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK && Sdi->FromMaster.Uuid != 0)
-        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->FromMaster, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchIn, DT_BLOCK_OPMODE_RUN);
-    if (Result == DTAPI_OK && Sdi->QuadLink)
+    if (Result == DTAPI_OK && Sdi->QuadLinkMasterSwitch.Uuid != 0)
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->QuadLinkMasterSwitch,
+                                           DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Sdi->HasQuadLink)
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->DemuxInSwitch, DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Sdi->HasQuadLink)
         Result = DtPcieCmd_SdiDmx12GSetOpMode(Drv, Sdi->Dmx, DT_BLOCK_OPMODE_IDLE);
-    if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->SwitchOut, DT_BLOCK_OPMODE_RUN);
+    if (Result == DTAPI_OK && Sdi->HasQuadLink)
+        Result = DtPcieCmd_SwitchSetOpMode(Drv, Sdi->DemuxOutSwitch, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPSetOpMode(Drv, Sdi->Txp, DT_BLOCK_OPMODE_RUN);
     if (Result == DTAPI_OK)
@@ -496,13 +508,13 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
     }
 
     Sdi->WriteOffset = 0;
-    Sdi->Committed = 0;
+    Sdi->CommittedBytes = 0;
     Sdi->NextFrameId = 0;
-    Sdi->Started = false;
-    Sdi->Settled = false;
-    Sdi->SendingId = 0;
-    ResetFrame(Sdi);
-    Sdi->Base.TxControl = DTAPI_TXCTRL_HOLD;
+    Sdi->FirstEventSeen = false;
+    Sdi->BlackAllowed = false;
+    Sdi->SendingFrameId = 0;
+    ForgetPartialFrame(Sdi);
+    Sdi->Tx.TxControl = DTAPI_TXCTRL_HOLD;
     return DTAPI_OK;
 }
 
@@ -525,9 +537,9 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
         return DTAPI_E_CONFIG_RAW_SDI;
 
     DtapiResult Result;
-    for (int Poll = 0; Poll < DT_BURST_POLLS; Poll++)
+    for (int Poll = 0; Poll < DT_SDITX_BURST_POLLS; Poll++)
     {
-        Result = DtPcieCmd_BurstFifoGetStatus(Drv, Sdi->Burst, &Status);
+        Result = DtPcieCmd_BurstFifoGetStatus(Drv, Sdi->BurstFifo, &Status);
         if (Result != DTAPI_OK)
             return Result;
         if (Status.CurLoad >= Sdi->BurstFifoSize * 3 / 4)
@@ -536,7 +548,7 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
 
     Result = DtPcieCmd_CdmacClearReorderBufMinMax(Drv, Sdi->Cdmac);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoClearMax(Drv, Sdi->Burst, true, true);
+        Result = DtPcieCmd_BurstFifoClearMax(Drv, Sdi->BurstFifo, true, true);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPhyClearUnderflowFlag(Drv, Sdi->Phy);
     if (Result == DTAPI_OK)
@@ -544,15 +556,15 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
     if (Result != DTAPI_OK)
         return Result;
 
-    Sdi->StopThread = false;
-    Sdi->Events = 0;
-    Sdi->Thread = OsThread_Start(Keeper, Sdi);
-    if (Sdi->Thread == NULL)
+    Sdi->StopRequested = false;
+    Sdi->NumFormatEvents = 0;
+    Sdi->KeeperThread = OsThread_Start(SignalKeeperThread, Sdi);
+    if (Sdi->KeeperThread == NULL)
     {
         DtPcieCmd_SdiTxPhySetOpMode(Drv, Sdi->Phy, DT_FUNC_OPMODE_STANDBY);
         return DTAPI_E_OUT_OF_MEM;
     }
-    Sdi->Base.TxControl = DTAPI_TXCTRL_SEND;
+    Sdi->Tx.TxControl = DTAPI_TXCTRL_SEND;
     return DTAPI_OK;
 }
 
@@ -563,11 +575,11 @@ static DtapiResult HoldToSend(DtSdiTx* Sdi)
 //
 static DtapiResult SendToHold(DtSdiTx* Sdi)
 {
-    StopKeeper(Sdi);
+    StopSignalKeeper(Sdi);
     DtapiResult Result =
         DtPcieCmd_SdiTxPhySetOpMode(DrvOf(Sdi), Sdi->Phy, DT_FUNC_OPMODE_STANDBY);
     Sdi->FifoUfl = false;
-    Sdi->Base.TxControl = DTAPI_TXCTRL_HOLD;
+    Sdi->Tx.TxControl = DTAPI_TXCTRL_HOLD;
     return Result;
 }
 
@@ -580,20 +592,20 @@ static DtapiResult HoldToIdle(DtSdiTx* Sdi)
 {
     DtapiResult Result = BlocksToIdle(Sdi);
 
-    ResetFrame(Sdi);
-    Sdi->Base.TxControl = DTAPI_TXCTRL_IDLE;
+    ForgetPartialFrame(Sdi);
+    Sdi->Tx.TxControl = DTAPI_TXCTRL_IDLE;
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChangeTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // IDLE to SEND goes through HOLD, and SEND to IDLE too.
 //
-static DtapiResult SetTxControl(DtSdiTx* Sdi, int TxControl)
+static DtapiResult ChangeTxControl(DtSdiTx* Sdi, int TxControl)
 {
     DtapiResult Result = DTAPI_OK;
 
-    if (Sdi->Base.TxControl == TxControl)
+    if (Sdi->Tx.TxControl == TxControl)
         return DTAPI_OK;
     if (TxControl != DTAPI_TXCTRL_IDLE && TxControl != DTAPI_TXCTRL_HOLD &&
         TxControl != DTAPI_TXCTRL_SEND)
@@ -601,9 +613,9 @@ static DtapiResult SetTxControl(DtSdiTx* Sdi, int TxControl)
         return DTAPI_E_INVALID_ARG;
     }
 
-    if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
+    if (Sdi->Tx.TxControl == DTAPI_TXCTRL_IDLE)
         Result = IdleToHold(Sdi);
-    else if (Sdi->Base.TxControl == DTAPI_TXCTRL_SEND)
+    else if (Sdi->Tx.TxControl == DTAPI_TXCTRL_SEND)
         Result = SendToHold(Sdi);
     if (Result != DTAPI_OK || TxControl == DTAPI_TXCTRL_HOLD)
         return Result;
@@ -611,21 +623,6 @@ static DtapiResult SetTxControl(DtSdiTx* Sdi, int TxControl)
     if (TxControl == DTAPI_TXCTRL_SEND)
         return HoldToSend(Sdi);
     return HoldToIdle(Sdi);
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ResetFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Idle, which forgets what the buffer held, and every flag cleared.
-//
-static DtapiResult ResetFifo(DtSdiTx* Sdi)
-{
-    DtapiResult Result = SetTxControl(Sdi, DTAPI_TXCTRL_IDLE);
-
-    if (Result != DTAPI_OK)
-        return Result;
-    Sdi->FifoUfl = Sdi->FifoUflLatched = false;
-    Sdi->DmaUfl = Sdi->DmaUflLatched = false;
-    return DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -638,78 +635,79 @@ static DtapiResult ResetFifo(DtSdiTx* Sdi)
 //
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
-    size_t Raw = DtSdiFrame_RawSize(&Sdi->Layout, 10);
-    size_t Wanted = (DT_BUF_FRAMES + DT_TX_FIFO_SIZE_TYP / Raw) * Sdi->CodedSize;
+    size_t Raw = DtSdiFrame_RawSize(&Sdi->FrameLayout, 10);
+    size_t DriverBlockSpec =
+        (DT_SDITX_BUF_ROOM_FRAMES + DT_SDITX_FIFO_SIZE_TYP / Raw) * Sdi->CodedFrameSize;
     size_t Unit = 4096 * (size_t)(PrefetchSize > 0 ? PrefetchSize : 1);
-    size_t Size = DT_BUF_MIN;
+    size_t Size = DT_SDITX_BUF_MIN_SIZE;
 
-    while (Size < Wanted && Size < DT_BUF_MAX)
+    while (Size < DriverBlockSpec && Size < DT_SDITX_BUF_MAX_SIZE)
         Size *= 2;
     return (Size + Unit - 1) / Unit * Unit;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocScratch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocWorkSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The conversion's working symbols, one set for every band a batch of lines divides into.
 // NULL for a standard that has none, which is every standard except 4K.
 //
-static uint16_t* AllocScratch(DtSdiTx* Sdi)
+static uint16_t* AllocWorkSymbols(DtSdiTx* Sdi)
 {
-    if (Sdi->ScratchSymbols == 0)
+    if (Sdi->WorkSymbolsPerBand == 0)
         return NULL;
     return (uint16_t*)DtAlloc_Malloc((size_t)DtWork_Pieces(&Sdi->Work) *
-                                     Sdi->ScratchSymbols * sizeof(uint16_t));
+                                     Sdi->WorkSymbolsPerBand * sizeof(uint16_t));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SizeWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DivideWork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Divides the lines over the pool the channel gave, into the pieces it asked for or, with
 // 0, the ones the standard calls for, and sizes the working symbols by them. Symbols that
 // cannot be had for those pieces are taken for one, so that the side encodes in the
-// writing thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; Scratch is NULL
-// for a standard that needs it when not even those can be had.
+// writing thread rather than not at all, and DTAPI_E_OUT_OF_MEM says so; WorkSymbols is
+// NULL for a standard that needs it when not even those can be had.
 //
-static DtapiResult SizeWork(DtSdiTx* Sdi)
+static DtapiResult DivideWork(DtSdiTx* Sdi)
 {
-    const int Pieces =
-        Sdi->WorkThreads > 0 ? Sdi->WorkThreads : DtSdiFrame_NumWorkPieces(&Sdi->Layout);
+    const int Pieces = Sdi->WorkThreads > 0 ? Sdi->WorkThreads
+                                            : DtSdiFrame_NumWorkPieces(&Sdi->FrameLayout);
 
     DtapiResult Result = DtWork_SetPool(&Sdi->Work, Sdi->WorkPool, Pieces);
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Scratch = Result == DTAPI_OK ? AllocScratch(Sdi) : NULL;
-    if (Result == DTAPI_OK && Sdi->ScratchSymbols != 0 && Sdi->Scratch == NULL)
+    DtAlloc_Free(Sdi->WorkSymbols);
+    Sdi->WorkSymbols = Result == DTAPI_OK ? AllocWorkSymbols(Sdi) : NULL;
+    if (Result == DTAPI_OK && Sdi->WorkSymbolsPerBand != 0 && Sdi->WorkSymbols == NULL)
         Result = DTAPI_E_OUT_OF_MEM;
     if (Result != DTAPI_OK)
     {
         DtWork_SetPool(&Sdi->Work, NULL, 0);
-        Sdi->Scratch = AllocScratch(Sdi);
+        Sdi->WorkSymbols = AllocWorkSymbols(Sdi);
     }
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeBuffer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeStandardBuffers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The DMA controller lets go of the buffer, which is then freed, and the standard's
 // buffers go too. Failures are ignored.
 //
-static void FreeBuffer(DtSdiTx* Sdi)
+static void FreeStandardBuffers(DtSdiTx* Sdi)
 {
-    if (Sdi->Registered)
+    if (Sdi->BufferRegistered)
     {
         DtPcieCmd_CdmacSetOpMode(DrvOf(Sdi), Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
         DtPcieCmd_CdmacFreeBuffer(DrvOf(Sdi), Sdi->Cdmac);
     }
-    Sdi->Registered = false;
-    OsDmaBuffer_Free(&Sdi->Buf);
-    DtAlloc_Free(Sdi->Black);
-    DtAlloc_Free(Sdi->LineBuf);
-    DtAlloc_Free(Sdi->RawBuf);
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Black = Sdi->LineBuf = Sdi->RawBuf = NULL;
-    Sdi->Scratch = NULL;
-    memset(&Sdi->Layout, 0, sizeof(Sdi->Layout));
-    Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
-    Sdi->CodedSize = Sdi->RawSize = 0;
+    Sdi->BufferRegistered = false;
+    OsDmaBuffer_Free(&Sdi->DmaBuffer);
+    DtAlloc_Free(Sdi->BlackLines);
+    DtAlloc_Free(Sdi->WrapLineBuffer);
+    DtAlloc_Free(Sdi->PartialLine);
+    DtAlloc_Free(Sdi->WorkSymbols);
+    Sdi->BlackLines = Sdi->WrapLineBuffer = Sdi->PartialLine = NULL;
+    Sdi->WorkSymbols = NULL;
+    memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
+    Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    Sdi->CodedFrameSize = Sdi->RawFrameSize = 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -725,7 +723,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 {
     OsDrv* Drv = DrvOf(Sdi);
     DtCdmacProps Props = {0};
-    DtBurstFifoProps Burst = {0};
+    DtBurstFifoProps BurstProps = {0};
     DtSdiFrameLayout Layout = {0};
     int Alignment = 0;
 
@@ -735,13 +733,13 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if ((OneLink || DtVidStd_Is4k(Sdi->IoStdSubValue)) &&
         (!OneLink || Info == NULL || Info->IsLevelB))
     {
-        FreeBuffer(Sdi);
+        FreeStandardBuffers(Sdi);
         return DTAPI_OK;
     }
     DtFrameProps Frame;
     if (!DtFrameProps_Init(&Frame, Sdi->IoStdSubValue))
     {
-        FreeBuffer(Sdi);
+        FreeStandardBuffers(Sdi);
         return DTAPI_E_INVALID_VIDSTD;
     }
 
@@ -749,7 +747,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     if (Result == DTAPI_OK &&
         !DtSdiFrame_LayoutInit(&Layout, Sdi->IoStdSubValue, Alignment))
         Result = DTAPI_E_INTERNAL;
-    if (Result == DTAPI_OK && Layout.TxHeaderNumBytes > DT_MAX_TX_HEADER)
+    if (Result == DTAPI_OK && Layout.TxHeaderNumBytes > DT_SDITX_MAX_HEADER_BYTES)
         Result = DTAPI_E_INTERNAL;
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxFSetFmtEventSetting(
@@ -760,106 +758,107 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
             1);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_SdiTxPhySetStartOfFrameOffset(Drv, Sdi->Phy, 0);
-    if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchIn, 0, 0);
-    if (Result == DTAPI_OK && Sdi->QuadLink)
-        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->SwitchOut, 0, 0);
+    if (Result == DTAPI_OK && Sdi->HasQuadLink)
+        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->DemuxInSwitch, 0, 0);
+    if (Result == DTAPI_OK && Sdi->HasQuadLink)
+        Result = DtPcieCmd_SwitchSetPosition(Drv, Sdi->DemuxOutSwitch, 0, 0);
     if (Result == DTAPI_OK)
         Result = DtPcieCmd_CdmacGetProps(Drv, Sdi->Cdmac, &Props);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_BurstFifoGetProps(Drv, Sdi->Burst, &Burst);
+        Result = DtPcieCmd_BurstFifoGetProps(Drv, Sdi->BurstFifo, &BurstProps);
     if (Result != DTAPI_OK)
     {
-        FreeBuffer(Sdi);
+        FreeStandardBuffers(Sdi);
         return Result;
     }
 
-    size_t Size = Sdi->Buf.Size;
-    if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
-        Sdi->Layout.TxStride != Layout.TxStride ||
-        Sdi->Layout.NumCodedLines != Layout.NumCodedLines ||
-        Sdi->Layout.TxHeaderNumBytes != Layout.TxHeaderNumBytes)
+    size_t Size = Sdi->DmaBuffer.Size;
+    if (Sdi->FrameLayout.VidStd == DTAPI_VIDSTD_UNKNOWN ||
+        Sdi->FrameLayout.TxStride != Layout.TxStride ||
+        Sdi->FrameLayout.NumCodedLines != Layout.NumCodedLines ||
+        Sdi->FrameLayout.TxHeaderNumBytes != Layout.TxHeaderNumBytes)
     {
         Size = 0;
     }
-    Sdi->Layout = Layout;
-    Sdi->CodedSize = DtSdiFrame_TxCodedSize(&Layout);
-    Sdi->RawSize = DtSdiFrame_RawSize(&Layout, Sdi->BitsPerSymbol);
+    Sdi->FrameLayout = Layout;
+    Sdi->CodedFrameSize = DtSdiFrame_TxCodedSize(&Layout);
+    Sdi->RawFrameSize = DtSdiFrame_RawSize(&Layout, Sdi->BitsPerSymbol);
 
     // The standard's black frame and the buffers of a write.
     size_t Line = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8 + 2;
-    DtAlloc_Free(Sdi->Black);
-    DtAlloc_Free(Sdi->LineBuf);
-    DtAlloc_Free(Sdi->RawBuf);
-    DtAlloc_Free(Sdi->Scratch);
-    Sdi->Scratch = NULL;
-    Sdi->Black =
+    DtAlloc_Free(Sdi->BlackLines);
+    DtAlloc_Free(Sdi->WrapLineBuffer);
+    DtAlloc_Free(Sdi->PartialLine);
+    DtAlloc_Free(Sdi->WorkSymbols);
+    Sdi->WorkSymbols = NULL;
+    Sdi->BlackLines =
         (uint8_t*)DtAlloc_Malloc((size_t)Layout.NumCodedLines * (size_t)Layout.TxStride);
-    Sdi->LineBuf = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
-    Sdi->RawBuf = (uint8_t*)DtAlloc_Malloc(Line);
-    Sdi->ScratchSymbols = DtSdiFrame_NumScratchSymbols(&Layout);
-    SizeWork(Sdi);
-    if (Sdi->Black == NULL || Sdi->LineBuf == NULL || Sdi->RawBuf == NULL ||
-        (Layout.Is4k && Sdi->Scratch == NULL) ||
-        !DtSdiFrame_BlackLines(&Layout, Sdi->Black))
+    Sdi->WrapLineBuffer = (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxBytesPerLine(&Layout));
+    Sdi->PartialLine = (uint8_t*)DtAlloc_Malloc(Line);
+    Sdi->WorkSymbolsPerBand = DtSdiFrame_NumScratchSymbols(&Layout);
+    DivideWork(Sdi);
+    if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
+        Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->WorkSymbols == NULL) ||
+        !DtSdiFrame_BlackLines(&Layout, Sdi->BlackLines))
     {
-        FreeBuffer(Sdi);
+        FreeStandardBuffers(Sdi);
         return DTAPI_E_OUT_OF_MEM;
     }
 
     // A buffer of another size replaces the registered one.
-    if (!Sdi->Registered || Size != BufferSizeFor(Sdi, Props.PrefetchSize))
+    if (!Sdi->BufferRegistered || Size != BufferSizeFor(Sdi, Props.PrefetchSize))
     {
         Size = BufferSizeFor(Sdi, Props.PrefetchSize);
-        if (Sdi->Registered)
+        if (Sdi->BufferRegistered)
         {
             DtPcieCmd_CdmacSetOpMode(Drv, Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
             DtPcieCmd_CdmacFreeBuffer(Drv, Sdi->Cdmac);
-            Sdi->Registered = false;
+            Sdi->BufferRegistered = false;
         }
-        OsDmaBuffer_Free(&Sdi->Buf);
+        OsDmaBuffer_Free(&Sdi->DmaBuffer);
 
-        Result = OsDmaBuffer_Alloc(Size, &Sdi->Buf) == 0 ? DTAPI_OK : DTAPI_E_OUT_OF_MEM;
+        Result =
+            OsDmaBuffer_Alloc(Size, &Sdi->DmaBuffer) == 0 ? DTAPI_OK : DTAPI_E_OUT_OF_MEM;
         if (Result == DTAPI_OK)
             Result = DtPcieCmd_CdmacAllocateBuffer(Drv, Sdi->Cdmac, DT_CDMAC_DIR_TX,
-                                                   &Sdi->Buf);
-        Sdi->Registered = Result == DTAPI_OK;
+                                                   &Sdi->DmaBuffer);
+        Sdi->BufferRegistered = Result == DTAPI_OK;
         if (Result == DTAPI_OK)
             Result =
                 DtPcieCmd_CdmacSetTestMode(Drv, Sdi->Cdmac, DT_CDMAC_TESTMODE_NORMAL);
         if (Result != DTAPI_OK)
         {
-            FreeBuffer(Sdi);
+            FreeStandardBuffers(Sdi);
             return Result;
         }
     }
 
-    Sdi->WordNumBytes = (size_t)Props.PcieDataWidth / 8;
-    Sdi->MaxLoad = Sdi->Buf.Size - Sdi->WordNumBytes;
-    if (Sdi->MaxLoad / Sdi->CodedSize < DT_BUF_MIN_FRAMES)
+    Sdi->PcieWordBytes = (size_t)Props.PcieDataWidth / 8;
+    Sdi->MaxLoad = Sdi->DmaBuffer.Size - Sdi->PcieWordBytes;
+    if (Sdi->MaxLoad / Sdi->CodedFrameSize < DT_SDITX_BUF_MIN_FRAMES)
     {
-        FreeBuffer(Sdi);
+        FreeStandardBuffers(Sdi);
         return DTAPI_E_INTERNAL;
     }
-    Sdi->BurstFifoSize = Burst.FifoSize;
+    Sdi->BurstFifoSize = BurstProps.FifoSize;
 
     int Num;
     int Den;
     DtVidStd_Fps(Sdi->IoStdSubValue, &Num, &Den);
-    Sdi->QuarterMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
-    if (Sdi->QuarterMs < 1)
-        Sdi->QuarterMs = 1;
-    ResetFrame(Sdi);
+    Sdi->QuarterFrameMs = Den * 1000 / Num / DT_FMT_EVENTS_PER_FRAME;
+    if (Sdi->QuarterFrameMs < 1)
+        Sdi->QuarterFrameMs = 1;
+    ForgetPartialFrame(Sdi);
     return DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Writing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SymbolAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Symbol Index of a raw line in the transmit mode, from its first byte.
 //
-static uint32_t StartSymbol(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t Index)
+static uint32_t SymbolAt(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t Index)
 {
     if (Sdi->BitsPerSymbol == 16)
         return ((uint32_t)Bytes[2 * Index] | (uint32_t)Bytes[2 * Index + 1] << 8) & 0x3FF;
@@ -874,16 +873,16 @@ static uint32_t StartSymbol(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t Ind
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FrameStartBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The bytes the start of a frame is recognised by: twelve symbols in HD and 3G, four in
 // SD, and 48 in 2160p, whose eight streams each hold the six words.
 //
-static size_t StartBytes(const DtSdiTx* Sdi)
+static size_t FrameStartBytes(const DtSdiTx* Sdi)
 {
-    size_t Symbols = Sdi->Layout.SdiRate == DT_SDIRATE_SD ? 4
-                     : Sdi->Layout.Is4k                   ? 48
-                                                          : 12;
+    size_t Symbols = Sdi->FrameLayout.SdiRate == DT_SDIRATE_SD ? 4
+                     : Sdi->FrameLayout.Is4k                   ? 48
+                                                               : 12;
 
     return Symbols * (size_t)Sdi->BitsPerSymbol / 8;
 }
@@ -903,46 +902,47 @@ static bool IsFrameStart(DtSdiTx* Sdi, const uint8_t* Bytes)
                                     0x2D8, 0x2D8, 0x204, 0x204, 0x200, 0x200};
     static const uint32_t SdFrameStart[4] = {0x3FF, 0, 0, 0x2D8};
     static const uint32_t SdField2[4] = {0x3FF, 0, 0, 0x368};
-    bool IsSd = Sdi->Layout.SdiRate == DT_SDIRATE_SD;
-    const uint32_t* Symbols = !IsSd                              ? Hd
-                              : Sdi->SdSync == DT_SD_FIND_FIELD2 ? SdField2
-                                                                 : SdFrameStart;
-    size_t Count = IsSd ? 4 : Sdi->Layout.Is4k ? 48 : 12;
+    bool IsSd = Sdi->FrameLayout.SdiRate == DT_SDIRATE_SD;
+    const uint32_t* Symbols = !IsSd ? Hd
+                              : Sdi->SdSearchState == DT_SDITX_SD_FIND_FIELD2
+                                  ? SdField2
+                                  : SdFrameStart;
+    size_t Count = IsSd ? 4 : Sdi->FrameLayout.Is4k ? 48 : 12;
     size_t i;
 
     for (i = 0; i < Count; i++)
     {
-        uint32_t Want = Sdi->Layout.Is4k ? Eav[i / 8] : Symbols[i];
+        uint32_t Want = Sdi->FrameLayout.Is4k ? Eav[i / 8] : Symbols[i];
 
-        if ((StartSymbol(Sdi, Bytes, i) & 0x3FC) != (Want & 0x3FC))
+        if ((SymbolAt(Sdi, Bytes, i) & 0x3FC) != (Want & 0x3FC))
         {
-            if (IsSd && Sdi->SdSync == DT_SD_IN_SYNC)
-                Sdi->SdSync = DT_SD_FIND_FIELD2;
+            if (IsSd && Sdi->SdSearchState == DT_SDITX_SD_IN_SYNC)
+                Sdi->SdSearchState = DT_SDITX_SD_FIND_FIELD2;
             return false;
         }
     }
-    if (IsSd && Sdi->SdSync == DT_SD_FIND_FIELD2)
+    if (IsSd && Sdi->SdSearchState == DT_SDITX_SD_FIND_FIELD2)
     {
-        Sdi->SdSync = DT_SD_FIND_FRAME_START;
+        Sdi->SdSearchState = DT_SDITX_SD_FIND_FRAME_START;
         return false;
     }
     if (IsSd)
-        Sdi->SdSync = DT_SD_IN_SYNC;
+        Sdi->SdSearchState = DT_SDITX_SD_IN_SYNC;
     return true;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Line 1 starts here; Held of its bytes are in RawBuf already.
+// Line 1 starts here; BytesAlreadyHeld of its bytes are in PartialLine already.
 //
-static void StartFrame(DtSdiTx* Sdi, size_t Held)
+static void StartFrame(DtSdiTx* Sdi, size_t BytesAlreadyHeld)
 {
-    Sdi->Stage = DT_STAGE_LINES;
-    Sdi->Reserved = false;
-    Sdi->LinesDone = 0;
-    Sdi->Phase = 0;
-    Sdi->RawHave = Held;
-    Sdi->FrameBytesLeft = Sdi->RawSize - Held;
+    Sdi->WriteStage = DT_SDITX_STAGE_LINES;
+    Sdi->FrameRoomReserved = false;
+    Sdi->LinesEncoded = 0;
+    Sdi->LineStartBit = 0;
+    Sdi->PartialLineBytes = BytesAlreadyHeld;
+    Sdi->FrameBytesLeft = Sdi->RawFrameSize - BytesAlreadyHeld;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrameBoundary -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -950,40 +950,40 @@ static void StartFrame(DtSdiTx* Sdi, size_t Held)
 // Bytes that cannot start a frame are skipped four at a time, and bytes too few to judge
 // are kept for the next write.
 //
-static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
+static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft)
 {
-    size_t Need = StartBytes(Sdi);
+    size_t Need = FrameStartBytes(Sdi);
 
-    while (Sdi->RawHave > 0)
+    while (Sdi->PartialLineBytes > 0)
     {
-        size_t Extra = Need - Sdi->RawHave;
+        size_t Extra = Need - Sdi->PartialLineBytes;
 
-        if (*Left < Extra)
+        if (*BytesLeft < Extra)
         {
-            memcpy(Sdi->RawBuf + Sdi->RawHave, *Data, *Left);
-            Sdi->RawHave += *Left;
-            *Data += *Left;
-            *Left = 0;
+            memcpy(Sdi->PartialLine + Sdi->PartialLineBytes, *Data, *BytesLeft);
+            Sdi->PartialLineBytes += *BytesLeft;
+            *Data += *BytesLeft;
+            *BytesLeft = 0;
             return;
         }
-        memcpy(Sdi->RawBuf + Sdi->RawHave, *Data, Extra);
-        if (IsFrameStart(Sdi, Sdi->RawBuf))
+        memcpy(Sdi->PartialLine + Sdi->PartialLineBytes, *Data, Extra);
+        if (IsFrameStart(Sdi, Sdi->PartialLine))
         {
             *Data += Extra;
-            *Left -= Extra;
+            *BytesLeft -= Extra;
             StartFrame(Sdi, Need);
             return;
         }
-        if (Sdi->RawHave <= 4)
-            Sdi->RawHave = 0;
+        if (Sdi->PartialLineBytes <= 4)
+            Sdi->PartialLineBytes = 0;
         else
         {
-            Sdi->RawHave -= 4;
-            memmove(Sdi->RawBuf, Sdi->RawBuf + 4, Sdi->RawHave);
+            Sdi->PartialLineBytes -= 4;
+            memmove(Sdi->PartialLine, Sdi->PartialLine + 4, Sdi->PartialLineBytes);
         }
     }
 
-    while (*Left >= Need)
+    while (*BytesLeft >= Need)
     {
         if (IsFrameStart(Sdi, *Data))
         {
@@ -991,12 +991,12 @@ static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
             return;
         }
         *Data += 4;
-        *Left -= 4;
+        *BytesLeft -= 4;
     }
-    memcpy(Sdi->RawBuf, *Data, *Left);
-    Sdi->RawHave = *Left;
-    *Data += *Left;
-    *Left = 0;
+    memcpy(Sdi->PartialLine, *Data, *BytesLeft);
+    Sdi->PartialLineBytes = *BytesLeft;
+    *Data += *BytesLeft;
+    *BytesLeft = 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForRoom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1011,30 +1011,30 @@ static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
 {
     for (;;)
     {
-        if (*Sdi->Base.Port.WaitingDetaches > 0)
+        if (*Sdi->Tx.Port.WaitingDetaches > 0)
             return DTAPI_E_CANCELLED;
-        if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
+        if (Sdi->Tx.TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
         size_t Load;
         DtapiResult Result = DmaBufferLoad(Sdi, &Load);
         if (Result != DTAPI_OK)
             return Result;
-        if (Sdi->MaxLoad - Load >= Sdi->CodedSize)
+        if (Sdi->MaxLoad - Load >= Sdi->CodedFrameSize)
             return DTAPI_OK;
 
         uint64_t Now = OsTime_MonotonicMs();
         if (Now >= Deadline)
             return DTAPI_E_TIMEOUT;
-        int Wait = Sdi->QuarterMs;
+        int Wait = Sdi->QuarterFrameMs;
         if (Deadline - Now < (uint64_t)Wait)
             Wait = (int)(Deadline - Now);
 
-        OsMutex_Unlock(Sdi->Base.Port.Lock);
-        if (Sdi->Thread != NULL)
-            OsEvent_Wait(Sdi->Room, Wait);
+        OsMutex_Unlock(Sdi->Tx.Port.Lock);
+        if (Sdi->KeeperThread != NULL)
+            OsEvent_Wait(Sdi->RoomEvent, Wait);
         else
             OsTime_SleepMs(Wait);
-        OsMutex_Lock(Sdi->Base.Port.Lock);
+        OsMutex_Lock(Sdi->Tx.Port.Lock);
     }
 }
 
@@ -1045,84 +1045,85 @@ static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
 // waited for until Deadline. A line whose last byte is shared with the next line leaves
 // that byte for the next.
 //
-static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left,
+static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft,
                                  uint64_t Deadline)
 {
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
     size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
-    size_t Need = ((size_t)Sdi->Phase + Bits + 7) / 8;
-    size_t Used = ((size_t)Sdi->Phase + Bits) / 8;
+    size_t Need = ((size_t)Sdi->LineStartBit + Bits + 7) / 8;
+    size_t Used = ((size_t)Sdi->LineStartBit + Bits) / 8;
 
-    if (!Sdi->Reserved)
+    if (!Sdi->FrameRoomReserved)
     {
         DtapiResult Result = WaitForRoom(Sdi, Deadline);
 
-        if (Result != DTAPI_OK || Sdi->Stage != DT_STAGE_LINES || Sdi->Reserved)
+        if (Result != DTAPI_OK || Sdi->WriteStage != DT_SDITX_STAGE_LINES ||
+            Sdi->FrameRoomReserved)
             return Result;
-        PutHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
-        Sdi->Reserved = true;
+        WriteFrameHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
+        Sdi->FrameRoomReserved = true;
     }
 
     const uint8_t* Src;
-    if (Sdi->RawHave == 0 && *Left >= Need)
+    if (Sdi->PartialLineBytes == 0 && *BytesLeft >= Need)
     {
         Src = *Data;
         *Data += Used;
-        *Left -= Used;
+        *BytesLeft -= Used;
         Sdi->FrameBytesLeft -= Used;
     }
     else
     {
-        size_t Copy = Need - Sdi->RawHave;
+        size_t Copy = Need - Sdi->PartialLineBytes;
 
-        if (Copy > *Left)
-            Copy = *Left;
-        memcpy(Sdi->RawBuf + Sdi->RawHave, *Data, Copy);
-        Sdi->RawHave += Copy;
+        if (Copy > *BytesLeft)
+            Copy = *BytesLeft;
+        memcpy(Sdi->PartialLine + Sdi->PartialLineBytes, *Data, Copy);
+        Sdi->PartialLineBytes += Copy;
         *Data += Copy;
-        *Left -= Copy;
+        *BytesLeft -= Copy;
         Sdi->FrameBytesLeft -= Copy;
-        if (Sdi->RawHave < Need)
+        if (Sdi->PartialLineBytes < Need)
             return DTAPI_OK;
-        Src = Sdi->RawBuf;
+        Src = Sdi->PartialLine;
     }
 
     // A raw line becomes one coded line, or the two coded lines of 4K, each of them
     // preceded by its line header.
     size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
-    size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
-                                  (size_t)Sdi->LinesDone * Coded);
-    uint8_t* Dst =
-        Offset + Coded <= Sdi->Buf.Size ? Sdi->Buf.Data + Offset : Sdi->LineBuf;
+    size_t Offset = WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
+                                        (size_t)Sdi->LinesEncoded * Coded);
+    uint8_t* Dst = Offset + Coded <= Sdi->DmaBuffer.Size ? Sdi->DmaBuffer.Data + Offset
+                                                         : Sdi->WrapLineBuffer;
     if (Layout->Is4k)
     {
-        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone, Dst);
-        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesDone + 1,
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesEncoded, Dst);
+        DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Sdi->LinesEncoded + 1,
                                       Dst + Layout->TxStride);
-        DtSdiFrame_EncodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesDone,
+        DtSdiFrame_EncodeLine4k(Layout, Sdi->BitsPerSymbol, Src, Sdi->LinesEncoded,
                                 Dst + Layout->TxLineHeaderNumBytes,
                                 Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
-                                Sdi->Scratch);
+                                Sdi->WorkSymbols);
     }
     else
-        DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->Phase, Dst);
-    if (Dst == Sdi->LineBuf)
-        PutAt(Sdi, Offset, Sdi->LineBuf, Coded);
+        DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->LineStartBit, Dst);
+    if (Dst == Sdi->WrapLineBuffer)
+        CopyIntoBuffer(Sdi, Offset, Sdi->WrapLineBuffer, Coded);
 
-    if (Src == Sdi->RawBuf)
+    if (Src == Sdi->PartialLine)
     {
-        Sdi->RawHave = Need - Used;
-        if (Sdi->RawHave > 0)
-            Sdi->RawBuf[0] = Sdi->RawBuf[Used];
+        Sdi->PartialLineBytes = Need - Used;
+        if (Sdi->PartialLineBytes > 0)
+            Sdi->PartialLine[0] = Sdi->PartialLine[Used];
     }
-    Sdi->Phase = (int)(((size_t)Sdi->Phase + Bits) % 8);
-    Sdi->LinesDone++;
+    Sdi->LineStartBit = (int)(((size_t)Sdi->LineStartBit + Bits) % 8);
+    Sdi->LinesEncoded++;
 
     // What is left of the last line's byte is padding.
-    if (Sdi->LinesDone == Layout->NumLines)
+    if (Sdi->LinesEncoded == Layout->NumLines)
     {
-        Sdi->RawHave = 0;
-        Sdi->Stage = DT_STAGE_PADDING;
+        Sdi->PartialLineBytes = 0;
+        Sdi->WriteStage = DT_SDITX_STAGE_PADDING;
     }
     return DTAPI_OK;
 }
@@ -1138,7 +1139,7 @@ typedef struct EncodeBand
     DtSdiTx* Sdi;
     const uint8_t* Data; // Where the first of Lines raw lines begins
     size_t Bits;         // Bits one raw line takes
-    size_t Phase;        // Bit of that first byte the first line begins at, 0 to 7
+    size_t LineStartBit; // Bit of that first byte the first line begins at, 0 to 7
     size_t Coded;        // What one raw line takes in the buffer, headers and all
     size_t Offset;       // Where the first of them goes
     int FirstLine;       // Its index in the frame, from 0
@@ -1149,9 +1150,11 @@ static void EncodeLines(void* Context, int Index, int Count)
 {
     const EncodeBand* Band = (const EncodeBand*)Context;
     DtSdiTx* Sdi = Band->Sdi;
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
-    uint16_t* Scratch =
-        Sdi->Scratch == NULL ? NULL : Sdi->Scratch + (size_t)Index * Sdi->ScratchSymbols;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    uint16_t* WorkSymbols =
+        Sdi->WorkSymbols == NULL
+            ? NULL
+            : Sdi->WorkSymbols + (size_t)Index * Sdi->WorkSymbolsPerBand;
     int First;
     int Last;
 
@@ -1160,9 +1163,9 @@ static void EncodeLines(void* Context, int Index, int Count)
     {
         // Where line i begins in the raw frame. With 10-bit symbols a line that is not 4K
         // can begin part way through a byte, and the byte it shares is only read.
-        const size_t At = Band->Phase + (size_t)i * Band->Bits;
+        const size_t At = Band->LineStartBit + (size_t)i * Band->Bits;
         const uint8_t* Src = Band->Data + At / 8;
-        uint8_t* Dst = Sdi->Buf.Data + Band->Offset + (size_t)i * Band->Coded;
+        uint8_t* Dst = Sdi->DmaBuffer.Data + Band->Offset + (size_t)i * Band->Coded;
         const int Line = Band->FirstLine + i;
 
         if (!Layout->Is4k)
@@ -1174,7 +1177,7 @@ static void EncodeLines(void* Context, int Index, int Count)
         DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
         DtSdiFrame_EncodeLine4k(
             Layout, Sdi->BitsPerSymbol, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
-            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Scratch);
+            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, WorkSymbols);
     }
 }
 
@@ -1200,33 +1203,34 @@ static void EncodeLines(void* Context, int Index, int Count)
 // frame: long enough that the threads earn their dispatch, short enough that a detach or
 // a stop does not wait a whole frame's coding for the lock.
 //
-static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
+static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft)
 {
-    const DtSdiFrameLayout* Layout = &Sdi->Layout;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
 
-    if (DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->Reserved || Sdi->Stage != DT_STAGE_LINES ||
-        Sdi->RawHave != 0)
+    if (DtWork_Pieces(&Sdi->Work) < 2 || !Sdi->FrameRoomReserved ||
+        Sdi->WriteStage != DT_SDITX_STAGE_LINES || Sdi->PartialLineBytes != 0)
     {
         return 0;
     }
 
     const size_t Bits = DtSdiFrame_RawLineNumBits(Layout, Sdi->BitsPerSymbol);
-    const size_t Phase = (size_t)Sdi->Phase;
+    const size_t LineStartBit = (size_t)Sdi->LineStartBit;
     const size_t Coded = DtSdiFrame_TxBytesPerLine(Layout);
-    const size_t Offset = Wrap(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
-                                        (size_t)Sdi->LinesDone * Coded);
+    const size_t Offset =
+        WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes +
+                            (size_t)Sdi->LinesEncoded * Coded);
     const int Cap = Layout->NumLines / 4 < 2 ? 2 : Layout->NumLines / 4;
 
     // The lines whose every bit this call brings: the last of them may end part way
     // through the last byte, which the line after it begins in and which stays.
-    size_t Lines = Bits == 0 ? 0 : (8 * *Left - Phase) / Bits;
+    size_t Lines = Bits == 0 ? 0 : (8 * *BytesLeft - LineStartBit) / Bits;
 
-    if (Lines > (size_t)(Layout->NumLines - Sdi->LinesDone))
-        Lines = (size_t)(Layout->NumLines - Sdi->LinesDone);
+    if (Lines > (size_t)(Layout->NumLines - Sdi->LinesEncoded))
+        Lines = (size_t)(Layout->NumLines - Sdi->LinesEncoded);
     if (Lines > (size_t)Cap)
         Lines = (size_t)Cap;
-    if (Offset + Lines * Coded > Sdi->Buf.Size)
-        Lines = (Sdi->Buf.Size - Offset) / Coded;
+    if (Offset + Lines * Coded > Sdi->DmaBuffer.Size)
+        Lines = (Sdi->DmaBuffer.Size - Offset) / Coded;
     if (Lines < 2)
         return 0;
 
@@ -1234,77 +1238,79 @@ static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* Left)
     Band.Sdi = Sdi;
     Band.Data = *Data;
     Band.Bits = Bits;
-    Band.Phase = Phase;
+    Band.LineStartBit = LineStartBit;
     Band.Coded = Coded;
     Band.Offset = Offset;
-    Band.FirstLine = Sdi->LinesDone;
+    Band.FirstLine = Sdi->LinesEncoded;
     Band.Lines = (int)Lines;
     DtWork_Run(&Sdi->Work, EncodeLines, &Band);
 
     // The bytes the batch used up are those it has no more bits left in; a byte the next
     // line begins in is left where it is, as it is for a single line.
-    const size_t End = Phase + Lines * Bits;
+    const size_t End = LineStartBit + Lines * Bits;
     *Data += End / 8;
-    *Left -= End / 8;
+    *BytesLeft -= End / 8;
     Sdi->FrameBytesLeft -= End / 8;
-    Sdi->LinesDone += (int)Lines;
-    Sdi->Phase = (int)(End % 8);
+    Sdi->LinesEncoded += (int)Lines;
+    Sdi->LineStartBit = (int)(End % 8);
 
     // What is left of the last line's byte is padding.
-    if (Sdi->LinesDone == Layout->NumLines)
+    if (Sdi->LinesEncoded == Layout->NumLines)
     {
-        Sdi->RawHave = 0;
-        Sdi->Stage = DT_STAGE_PADDING;
+        Sdi->PartialLineBytes = 0;
+        Sdi->WriteStage = DT_SDITX_STAGE_PADDING;
     }
     return (int)Lines;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Into the buffer: every byte is taken, a frame at a time. The lock is released after
 // every line or batch of lines, so that the thread is not kept waiting, and the state is
 // looked at again after it was.
 //
-static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
+static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t BytesLeft)
 {
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
     DtapiResult Result = DTAPI_OK;
 
     while (Result == DTAPI_OK)
     {
-        if (*Sdi->Base.Port.WaitingDetaches > 0)
+        if (*Sdi->Tx.Port.WaitingDetaches > 0)
             return DTAPI_E_CANCELLED;
-        if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
+        if (Sdi->Tx.TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
 
-        if (Sdi->Stage == DT_STAGE_PADDING)
+        if (Sdi->WriteStage == DT_SDITX_STAGE_PADDING)
         {
-            size_t Skip = Left < Sdi->FrameBytesLeft ? Left : Sdi->FrameBytesLeft;
+            size_t Skip =
+                BytesLeft < Sdi->FrameBytesLeft ? BytesLeft : Sdi->FrameBytesLeft;
 
             Data += Skip;
-            Left -= Skip;
+            BytesLeft -= Skip;
             Sdi->FrameBytesLeft -= Skip;
             if (Sdi->FrameBytesLeft == 0)
             {
                 Result = CommitFrame(Sdi);
                 if (Result == DTAPI_OK)
                     Sdi->FifoUfl = false;
-                Sdi->Stage = DT_STAGE_SEARCH;
-                Sdi->Reserved = false;
-                Sdi->RawHave = 0;
+                Sdi->WriteStage = DT_SDITX_STAGE_SEARCH;
+                Sdi->FrameRoomReserved = false;
+                Sdi->PartialLineBytes = 0;
             }
             continue;
         }
-        if (Left == 0)
+        if (BytesLeft == 0)
             break;
 
-        if (Sdi->Stage == DT_STAGE_SEARCH)
-            FindFrameBoundary(Sdi, &Data, &Left);
+        if (Sdi->WriteStage == DT_SDITX_STAGE_SEARCH)
+            FindFrameBoundary(Sdi, &Data, &BytesLeft);
         else
         {
-            if (EncodeLineBatch(Sdi, &Data, &Left) == 0)
-                Result = EncodeOneLine(Sdi, &Data, &Left, DT_TX_NO_DEADLINE);
-            OsMutex_Unlock(Sdi->Base.Port.Lock);
-            OsMutex_Lock(Sdi->Base.Port.Lock);
+            if (EncodeLineBatch(Sdi, &Data, &BytesLeft) == 0)
+                Result = EncodeOneLine(Sdi, &Data, &BytesLeft, DT_TX_NO_DEADLINE);
+            OsMutex_Unlock(Sdi->Tx.Port.Lock);
+            OsMutex_Lock(Sdi->Tx.Port.Lock);
         }
     }
     return Result;
@@ -1319,49 +1325,49 @@ static DtapiResult WriteSdi(DtSdiTx* Sdi, const uint8_t* Data, size_t Left)
 //
 static DtapiResult CheckFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize)
 {
-    if ((size_t)FrameSize != Sdi->RawSize)
+    if ((size_t)FrameSize != Sdi->RawFrameSize)
         return DTAPI_E_INVALID_SIZE;
 
-    Sdi->SdSync = DT_SD_IN_SYNC;
+    Sdi->SdSearchState = DT_SDITX_SD_IN_SYNC;
     return IsFrameStart(Sdi, Frame) ? DTAPI_OK : DTAPI_E_INVALID_FRAME;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteWhole -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteOneFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Encodes a frame into the buffer as WriteSdi does, and commits it, waiting for room
+// Encodes a frame into the buffer as Write does, and commits it, waiting for room
 // until Deadline. The lock is released after every line or batch of lines. When the
 // thread writes a black frame in the place of the lines written, or the channel was set
 // idle and holding again meanwhile, the frame is checked again and written from its
 // start. On a failure nothing of the frame is committed. Write then looks for a frame
 // again.
 //
-static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
-                              uint64_t Deadline)
+static DtapiResult WriteOneFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
+                                 uint64_t Deadline)
 {
     const uint8_t* Data = Frame;
-    size_t Left = 0;
+    size_t BytesLeft = 0;
     DtapiResult Result = DTAPI_OK;
 
-    while (Result == DTAPI_OK && Sdi->Stage != DT_STAGE_PADDING)
+    while (Result == DTAPI_OK && Sdi->WriteStage != DT_SDITX_STAGE_PADDING)
     {
-        if (*Sdi->Base.Port.WaitingDetaches > 0)
+        if (*Sdi->Tx.Port.WaitingDetaches > 0)
             Result = DTAPI_E_CANCELLED;
-        else if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
+        else if (Sdi->Tx.TxControl == DTAPI_TXCTRL_IDLE)
             Result = DTAPI_E_IDLE;
-        else if (Sdi->Stage == DT_STAGE_SEARCH)
+        else if (Sdi->WriteStage == DT_SDITX_STAGE_SEARCH)
         {
             Result = CheckFrame(Sdi, Frame, FrameSize);
             Data = Frame;
-            Left = (size_t)FrameSize;
+            BytesLeft = (size_t)FrameSize;
             if (Result == DTAPI_OK)
                 StartFrame(Sdi, 0);
         }
         else
         {
-            if (EncodeLineBatch(Sdi, &Data, &Left) == 0)
-                Result = EncodeOneLine(Sdi, &Data, &Left, Deadline);
-            OsMutex_Unlock(Sdi->Base.Port.Lock);
-            OsMutex_Lock(Sdi->Base.Port.Lock);
+            if (EncodeLineBatch(Sdi, &Data, &BytesLeft) == 0)
+                Result = EncodeOneLine(Sdi, &Data, &BytesLeft, Deadline);
+            OsMutex_Unlock(Sdi->Tx.Port.Lock);
+            OsMutex_Lock(Sdi->Tx.Port.Lock);
         }
     }
 
@@ -1371,21 +1377,21 @@ static DtapiResult WriteWhole(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
         if (Result == DTAPI_OK)
             Sdi->FifoUfl = false;
     }
-    ResetFrame(Sdi);
+    ForgetPartialFrame(Sdi);
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PadToWord -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PadToPcieWord -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Commits zero bytes up to the next whole data word. The card reads the buffer in whole
 // words, so without them the last bytes of the last frame would wait for more data.
 //
-static void PadToWord(DtSdiTx* Sdi)
+static void PadToPcieWord(DtSdiTx* Sdi)
 {
     static const uint8_t Zeros[64] = {0};
-    size_t Pad =
-        (Sdi->WordNumBytes - Sdi->Committed % Sdi->WordNumBytes) % Sdi->WordNumBytes;
-    size_t Offset = Wrap(Sdi, Sdi->WriteOffset + Pad);
+    size_t Pad = (Sdi->PcieWordBytes - Sdi->CommittedBytes % Sdi->PcieWordBytes) %
+                 Sdi->PcieWordBytes;
+    size_t Offset = WrapOffset(Sdi, Sdi->WriteOffset + Pad);
     size_t Load;
 
     if (Pad == 0 || Pad > sizeof(Zeros) || DmaBufferLoad(Sdi, &Load) != DTAPI_OK ||
@@ -1393,73 +1399,75 @@ static void PadToWord(DtSdiTx* Sdi)
     {
         return;
     }
-    PutAt(Sdi, Sdi->WriteOffset, Zeros, Pad);
+    CopyIntoBuffer(Sdi, Sdi->WriteOffset, Zeros, Pad);
     if (DtPcieCmd_CdmacSetTxWriteOffset(DrvOf(Sdi), Sdi->Cdmac, (uint32_t)Offset) ==
         DTAPI_OK)
     {
         Sdi->WriteOffset = Offset;
-        Sdi->Committed += Pad;
+        Sdi->CommittedBytes += Pad;
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindObjects -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindDriverBlocks -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The objects of AF_ASISDITX and AF_DMA the channel drives, and whether the driver is new
 // enough for each: always the DMA controller, the burst FIFO, the formatter, the encoder
 // and the PHY; the demultiplexer and its two switches on a port with DT_CAP_QUADLINK; and
 // the switch from a quad-link master when the port has it.
 //
-static DtapiResult FindObjects(DtSdiTx* Sdi)
+static DtapiResult FindDriverBlocks(DtSdiTx* Sdi)
 {
     typedef struct
     {
         DtFuncInstance* Instance;
-        bool IsDf;
+        bool IsDriverFunction;
         int Type;
         const char* Role;
-        DtDrvObject* Ref;
+        DtDrvObject* Object;
         bool Needed;
-    } Wanted;
-    const bool QuadLink = (Sdi->Base.Port.Caps & DT_CAP_QUADLINK) != 0;
-    const Wanted Objects[] = {
-        {&Sdi->AfDma, false, DT_BLOCK_TYPE_CDMAC, "", &Sdi->Cdmac, true},
-        {&Sdi->AfDma, false, DT_BLOCK_TYPE_BURSTFIFO, "", &Sdi->Burst, true},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXF, "", &Sdi->Txf, true},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "FROM_QUAD_LINK_MASTER",
-         &Sdi->FromMaster, false},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDITXP, "", &Sdi->Txp, true},
-        {&Sdi->AfTx, true, DT_FUNC_TYPE_SDITXPHY, "", &Sdi->Phy, true},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN", &Sdi->SwitchIn,
-         QuadLink},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SDIDMX12G, "", &Sdi->Dmx, QuadLink},
-        {&Sdi->AfTx, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT", &Sdi->SwitchOut,
-         QuadLink},
+    } DriverBlockSpec;
+    const bool HasQuadLink = (Sdi->Tx.Port.Caps & DT_CAP_QUADLINK) != 0;
+    const DriverBlockSpec Objects[] = {
+        {&Sdi->DmaFunction, false, DT_BLOCK_TYPE_CDMAC, "", &Sdi->Cdmac, true},
+        {&Sdi->DmaFunction, false, DT_BLOCK_TYPE_BURSTFIFO, "", &Sdi->BurstFifo, true},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SDITXF, "", &Sdi->Txf, true},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SWITCH, "FROM_QUAD_LINK_MASTER",
+         &Sdi->QuadLinkMasterSwitch, false},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SDITXP, "", &Sdi->Txp, true},
+        {&Sdi->TxFunction, true, DT_FUNC_TYPE_SDITXPHY, "", &Sdi->Phy, true},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_IN",
+         &Sdi->DemuxInSwitch, HasQuadLink},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SDIDMX12G, "", &Sdi->Dmx, HasQuadLink},
+        {&Sdi->TxFunction, false, DT_BLOCK_TYPE_SWITCH, "SDI_DEMUX_OUT",
+         &Sdi->DemuxOutSwitch, HasQuadLink},
     };
 
-    DtapiResult Result =
-        DtFunc_Find(DrvOf(Sdi), Sdi->Base.Port.PortIndex, "AF_ASISDITX", "", &Sdi->AfTx);
+    DtapiResult Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.PortIndex, "AF_ASISDITX",
+                                     "", &Sdi->TxFunction);
     if (Result == DTAPI_OK)
-        Result =
-            DtFunc_Find(DrvOf(Sdi), Sdi->Base.Port.PortIndex, "AF_DMA", "", &Sdi->AfDma);
+        Result = DtFunc_Find(DrvOf(Sdi), Sdi->Tx.Port.PortIndex, "AF_DMA", "",
+                             &Sdi->DmaFunction);
     for (size_t i = 0; i < sizeof(Objects) / sizeof(Objects[0]) && Result == DTAPI_OK;
          i++)
     {
-        const bool Optional = Objects[i].Ref == &Sdi->FromMaster;
+        const bool Optional = Objects[i].Object == &Sdi->QuadLinkMasterSwitch;
         if (!Objects[i].Needed && !Optional)
             continue;
-        const DtFuncObject* Object = DtFunc_Get(Objects[i].Instance, Objects[i].IsDf,
-                                                Objects[i].Type, Objects[i].Role);
+        const DtFuncObject* Object =
+            DtFunc_Get(Objects[i].Instance, Objects[i].IsDriverFunction, Objects[i].Type,
+                       Objects[i].Role);
 
         if (Object == NULL && !Optional)
             Result = DTAPI_E_NOT_FOUND;
         else if (Object != NULL)
         {
-            *Objects[i].Ref = Object->Ref;
-            Result = DtFunc_CheckDriverVersion(&Sdi->Base.Port.Device->DriverVersion,
-                                               Objects[i].IsDf, Objects[i].Type);
+            *Objects[i].Object = Object->Ref;
+            Result =
+                DtFunc_CheckDriverVersion(&Sdi->Tx.Port.Device->DriverVersion,
+                                          Objects[i].IsDriverFunction, Objects[i].Type);
         }
     }
-    Sdi->QuadLink = QuadLink;
+    Sdi->HasQuadLink = HasQuadLink;
     return Result;
 }
 
@@ -1474,29 +1482,38 @@ static void Release(DtTx* Tx)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    StopKeeper(Sdi);
-    FreeBuffer(Sdi);
-    DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfTx, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
-    DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfDma, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
-    DtFunc_Release(&Sdi->AfTx);
-    DtFunc_Release(&Sdi->AfDma);
-    OsEvent_Destroy(Sdi->Room);
+    StopSignalKeeper(Sdi);
+    FreeStandardBuffers(Sdi);
+    DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->TxFunction, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+    DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->DmaFunction, DT_EXCLUSIVE_ACCESS_CMD_RELEASE);
+    DtFunc_Release(&Sdi->TxFunction);
+    DtFunc_Release(&Sdi->DmaFunction);
+    OsEvent_Destroy(Sdi->RoomEvent);
     DtWork_Free(&Sdi->Work);
     DtAlloc_Free(Sdi);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxControlSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetTxControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-static DtapiResult SetTxControlSdi(DtTx* Tx, int TxControl)
+static DtapiResult SetTxControl(DtTx* Tx, int TxControl)
 {
-    return SetTxControl((DtSdiTx*)Tx, TxControl);
+    return ChangeTxControl((DtSdiTx*)Tx, TxControl);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Idle, which forgets what the buffer held, and every flag cleared.
+//
 static DtapiResult ClearFifo(DtTx* Tx)
 {
-    return ResetFifo((DtSdiTx*)Tx);
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+    DtapiResult Result = ChangeTxControl(Sdi, DTAPI_TXCTRL_IDLE);
+
+    if (Result != DTAPI_OK)
+        return Result;
+    Sdi->FifoUfl = Sdi->FifoUflLatched = false;
+    Sdi->DmaUfl = Sdi->DmaUflLatched = false;
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFifoLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1511,35 +1528,35 @@ static DtapiResult GetFifoLoad(DtTx* Tx, int* FifoLoad)
     *FifoLoad = 0;
     if (Tx->TxControl != DTAPI_TXCTRL_IDLE)
     {
-        int Frames = UnsentFrames(Sdi) - (Sdi->Started ? 1 : 0);
-        size_t Size = Sdi->MaxLoad / Sdi->CodedSize * Sdi->RawSize;
-        size_t Bytes = (size_t)(Frames > 0 ? Frames : 0) * Sdi->RawSize;
+        int Frames = UnsentFrames(Sdi) - (Sdi->FirstEventSeen ? 1 : 0);
+        size_t Size = Sdi->MaxLoad / Sdi->CodedFrameSize * Sdi->RawFrameSize;
+        size_t Bytes = (size_t)(Frames > 0 ? Frames : 0) * Sdi->RawFrameSize;
 
-        if (Sdi->Stage != DT_STAGE_SEARCH)
-            Bytes += Sdi->RawSize - Sdi->FrameBytesLeft;
+        if (Sdi->WriteStage != DT_SDITX_STAGE_SEARCH)
+            Bytes += Sdi->RawFrameSize - Sdi->FrameBytesLeft;
         *FifoLoad = (int)(Bytes < Size ? Bytes : Size);
     }
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoSizeOr -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FifoSizeInRawBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The load GetFifoLoad reports for a full buffer. A channel without a buffer gives the
 // typical FIFO size, and the maximum size for GetMaxFifoSize.
 //
-static int FifoSizeOr(const DtSdiTx* Sdi, int NoBuffer)
+static int FifoSizeInRawBytes(const DtSdiTx* Sdi, int SizeWithoutBuffer)
 {
-    if (!Sdi->Registered)
-        return NoBuffer;
-    return (int)(Sdi->MaxLoad / Sdi->CodedSize *
-                 DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol));
+    if (!Sdi->BufferRegistered)
+        return SizeWithoutBuffer;
+    return (int)(Sdi->MaxLoad / Sdi->CodedFrameSize *
+                 DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFifoSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 static DtapiResult GetFifoSize(DtTx* Tx, int* FifoSize)
 {
-    *FifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_TX_FIFO_SIZE_TYP);
+    *FifoSize = FifoSizeInRawBytes((const DtSdiTx*)Tx, DT_SDITX_FIFO_SIZE_TYP);
     return DTAPI_OK;
 }
 
@@ -1547,7 +1564,7 @@ static DtapiResult GetFifoSize(DtTx* Tx, int* FifoSize)
 //
 static DtapiResult GetMaxFifoSize(DtTx* Tx, int* MaxFifoSize)
 {
-    *MaxFifoSize = FifoSizeOr((const DtSdiTx*)Tx, DT_TX_FIFO_SIZE_MAX);
+    *MaxFifoSize = FifoSizeInRawBytes((const DtSdiTx*)Tx, DT_SDITX_FIFO_SIZE_MAX);
     return DTAPI_OK;
 }
 
@@ -1585,8 +1602,8 @@ static DtapiResult SetTxMode(DtTx* Tx, int TxMode, int StuffMode)
         Sdi->BitsPerSymbol = (TxMode & DTAPI_TXMODE_SDI_10B) != 0   ? 10
                              : (TxMode & DTAPI_TXMODE_SDI_16B) != 0 ? 16
                                                                     : 8;
-        if (Sdi->Registered)
-            Sdi->RawSize = DtSdiFrame_RawSize(&Sdi->Layout, Sdi->BitsPerSymbol);
+        if (Sdi->BufferRegistered)
+            Sdi->RawFrameSize = DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol);
     }
     return Result;
 }
@@ -1607,11 +1624,11 @@ static DtapiResult ApplyIoConfig(DtTx* Tx, const DtIoConfig* Config,
     return ConfigureChannel(Sdi);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlagsSdi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ClearFlags -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Clears the underflow flags named in Latched.
 //
-static DtapiResult ClearFlagsSdi(DtTx* Tx, int Latched)
+static DtapiResult ClearFlags(DtTx* Tx, int Latched)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
@@ -1632,13 +1649,6 @@ static DtapiResult SetTxPolarity(DtTx* Tx, int TxPolarity)
     return TxPolarity == DTAPI_TXPOL_NORMAL ? DTAPI_OK : DTAPI_E_INVALID_ARG;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Write -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t Size)
-{
-    return WriteSdi((DtSdiTx*)Tx, Data, Size);
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A frame a Write began and did not finish, or bytes it left that are not yet in a
@@ -1650,16 +1660,16 @@ static DtapiResult WriteFrame(DtTx* Tx, const uint8_t* Frame, int FrameSize,
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    if (Sdi->Stage != DT_STAGE_SEARCH || Sdi->RawHave > 0)
+    if (Sdi->WriteStage != DT_SDITX_STAGE_SEARCH || Sdi->PartialLineBytes > 0)
         return DTAPI_E_INCOMP_FRAME;
-    return WriteWhole(Sdi, Frame, FrameSize, Deadline);
+    return WriteOneFrame(Sdi, Frame, FrameSize, Deadline);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Wake -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 static void Wake(DtTx* Tx)
 {
-    OsEvent_Set(((DtSdiTx*)Tx)->Room);
+    OsEvent_Set(((DtSdiTx*)Tx)->RoomEvent);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitUntilSent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1674,19 +1684,19 @@ static void WaitUntilSent(DtTx* Tx)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
     uint64_t Since = OsTime_MonotonicMs();
-    int WaitMs = Sdi->QuarterMs < 500 ? 2 * Sdi->QuarterMs : 1000;
+    int WaitMs = Sdi->QuarterFrameMs < 500 ? 2 * Sdi->QuarterFrameMs : 1000;
     bool BlackToCome = Sdi->NextFrameId != 0;
 
-    StopKeeper(Sdi);
-    ResetFrame(Sdi);
+    StopSignalKeeper(Sdi);
+    ForgetPartialFrame(Sdi);
     while (Sdi->NextFrameId != 0)
     {
         size_t Load;
         if (BlackToCome && DmaBufferLoad(Sdi, &Load) == DTAPI_OK &&
-            Sdi->MaxLoad - Load >= Sdi->CodedSize)
+            Sdi->MaxLoad - Load >= Sdi->CodedFrameSize)
         {
             InsertBlack(Sdi, Load);
-            PadToWord(Sdi);
+            PadToPcieWord(Sdi);
             BlackToCome = false;
         }
 
@@ -1700,14 +1710,14 @@ static void WaitUntilSent(DtTx* Tx)
 
         if (Result == DTAPI_OK)
         {
-            Sdi->Started = true;
-            Sdi->SendingId = Event.FrameId;
+            Sdi->FirstEventSeen = true;
+            Sdi->SendingFrameId = Event.FrameId;
             Since = OsTime_MonotonicMs();
         }
         else if (Result != DTAPI_E_TIMEOUT)
             break;
-        else if ((Sdi->Started && !BlackToCome && UnsentFrames(Sdi) <= 1) ||
-                 OsTime_MonotonicMs() - Since >= DT_SENT_STALL_MS)
+        else if ((Sdi->FirstEventSeen && !BlackToCome && UnsentFrames(Sdi) <= 1) ||
+                 OsTime_MonotonicMs() - Since >= DT_SDITX_SENT_STALL_MS)
         {
             break;
         }
@@ -1726,22 +1736,22 @@ static DtapiResult SetWorkPool(DtTx* Tx, DtWorkPool* Pool, int NumThreads)
 
     Sdi->WorkPool = Pool;
     Sdi->WorkThreads = NumThreads;
-    if (Sdi->Layout.VidStd == DTAPI_VIDSTD_UNKNOWN)
+    if (Sdi->FrameLayout.VidStd == DTAPI_VIDSTD_UNKNOWN)
         return DtWork_SetPool(&Sdi->Work, NULL, 0);
-    return SizeWork(Sdi);
+    return DivideWork(Sdi);
 }
 
 static const DtTxBackend g_SdiTxBackend = {
     .Release = Release,
     .SetWorkPool = SetWorkPool,
-    .SetTxControl = SetTxControlSdi,
+    .SetTxControl = SetTxControl,
     .ClearFifo = ClearFifo,
     .GetFifoLoad = GetFifoLoad,
     .GetFifoSize = GetFifoSize,
     .GetMaxFifoSize = GetMaxFifoSize,
     .GetFlags = GetFlags,
     .SetTxMode = SetTxMode,
-    .ClearFlags = ClearFlagsSdi,
+    .ClearFlags = ClearFlags,
     .ApplyIoConfig = ApplyIoConfig,
     .SetTxPolarity = SetTxPolarity,
     .Write = Write,
@@ -1759,14 +1769,14 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     if (Sdi == NULL)
         return DTAPI_E_OUT_OF_MEM;
     memset(Sdi, 0, sizeof(*Sdi));
-    Sdi->Base.Backend = &g_SdiTxBackend;
-    Sdi->Base.Port = *Port;
-    Sdi->Layout.VidStd = DTAPI_VIDSTD_UNKNOWN;
+    Sdi->Tx.Backend = &g_SdiTxBackend;
+    Sdi->Tx.Port = *Port;
+    Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     DtWork_Init(&Sdi->Work);
-    DtVec_Init(&Sdi->AfTx.Objects, sizeof(DtFuncObject));
-    DtVec_Init(&Sdi->AfDma.Objects, sizeof(DtFuncObject));
-    Sdi->Room = OsEvent_Create();
-    if (Sdi->Room == NULL)
+    DtVec_Init(&Sdi->TxFunction.Objects, sizeof(DtFuncObject));
+    DtVec_Init(&Sdi->DmaFunction.Objects, sizeof(DtFuncObject));
+    Sdi->RoomEvent = OsEvent_Create();
+    if (Sdi->RoomEvent == NULL)
     {
         DtAlloc_Free(Sdi);
         return DTAPI_E_OUT_OF_MEM;
@@ -1775,28 +1785,28 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
     Sdi->IoStdSubValue = IoStd->SubValue;
 
     // The default transmit mode and cleared flags; the I/O standard is applied again.
-    Sdi->Base.TxMode = DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B;
+    Sdi->Tx.TxMode = DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B;
     Sdi->BitsPerSymbol = 10;
-    Sdi->Base.TxControl = DTAPI_TXCTRL_IDLE;
+    Sdi->Tx.TxControl = DTAPI_TXCTRL_IDLE;
     DtapiResult Result = DtPcieCmd_SetIoConfig(DrvOf(Sdi), IoStd);
 
     // Exclusive access to the transmitter and the DMA, all blocks idle, the encoder's
     // corrections on, and the channel set up for the standard.
     if (Result == DTAPI_OK)
-        Result = FindObjects(Sdi);
+        Result = FindDriverBlocks(Sdi);
     if (Result == DTAPI_OK)
-        Result =
-            DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfTx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
+        Result = DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->TxFunction,
+                                   DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)
-        Result =
-            DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->AfDma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
+        Result = DtFunc_ExclAccess(DrvOf(Sdi), &Sdi->DmaFunction,
+                                   DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE);
     if (Result == DTAPI_OK)
         Result = BlocksToIdle(Sdi);
 
     // The data comes from the channel, not from a quad-link master, where the port has
     // that switch.
-    if (Result == DTAPI_OK && Sdi->FromMaster.Uuid != 0)
-        Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->FromMaster, 0, 0);
+    if (Result == DTAPI_OK && Sdi->QuadLinkMasterSwitch.Uuid != 0)
+        Result = DtPcieCmd_SwitchSetPosition(DrvOf(Sdi), Sdi->QuadLinkMasterSwitch, 0, 0);
     if (Result == DTAPI_OK)
         Result =
             DtPcieCmd_SdiTxPSetGenerationMode(DrvOf(Sdi), Sdi->Txp, true, true, true);
@@ -1804,9 +1814,9 @@ DtapiResult DtSdiTx_Attach(const DtTxPort* Port, const DtIoConfig* IoStd, DtTx**
         Result = ConfigureChannel(Sdi);
     if (Result != DTAPI_OK)
     {
-        Release(&Sdi->Base);
+        Release(&Sdi->Tx);
         return Result;
     }
-    *Tx = &Sdi->Base;
+    *Tx = &Sdi->Tx;
     return DTAPI_OK;
 }
