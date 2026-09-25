@@ -206,13 +206,13 @@ static void PutHeader(DtSdiTx* Sdi, size_t Offset, int FrameId)
     PutAt(Sdi, Offset, Bytes, (size_t)Sdi->Layout.TxHeaderNumBytes);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DmaBufferLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The bytes of committed frames the card has not yet taken. Right after the DMA
 // controller is set running a DTA-2178 reports a read offset of an earlier run for a
 // while; the load is therefore never more than what was committed since.
 //
-static DtapiResult ReadLoad(DtSdiTx* Sdi, size_t* Load)
+static DtapiResult DmaBufferLoad(DtSdiTx* Sdi, size_t* Load)
 {
     uint32_t ReadOffset = 0;
     DtapiResult Result =
@@ -387,7 +387,8 @@ static void Keeper(void* Context)
 
         // The frame going out is the last: a black frame follows it.
         size_t Load;
-        if (Sdi->Settled && UnsentFrames(Sdi) <= 1 && ReadLoad(Sdi, &Load) == DTAPI_OK)
+        if (Sdi->Settled && UnsentFrames(Sdi) <= 1 &&
+            DmaBufferLoad(Sdi, &Load) == DTAPI_OK)
             InsertBlack(Sdi, Load);
         OsEvent_Set(Sdi->Room);
         OsMutex_Unlock(Sdi->Base.Port.Lock);
@@ -1015,7 +1016,7 @@ static DtapiResult WaitForRoom(DtSdiTx* Sdi, uint64_t Deadline)
         if (Sdi->Base.TxControl == DTAPI_TXCTRL_IDLE)
             return DTAPI_E_IDLE;
         size_t Load;
-        DtapiResult Result = ReadLoad(Sdi, &Load);
+        DtapiResult Result = DmaBufferLoad(Sdi, &Load);
         if (Result != DTAPI_OK)
             return Result;
         if (Sdi->MaxLoad - Load >= Sdi->CodedSize)
@@ -1386,7 +1387,7 @@ static void PadToWord(DtSdiTx* Sdi)
     size_t Offset = Wrap(Sdi, Sdi->WriteOffset + Pad);
     size_t Load;
 
-    if (Pad == 0 || Pad > sizeof(Zeros) || ReadLoad(Sdi, &Load) != DTAPI_OK ||
+    if (Pad == 0 || Pad > sizeof(Zeros) || DmaBufferLoad(Sdi, &Load) != DTAPI_OK ||
         Sdi->MaxLoad - Load < Pad)
     {
         return;
@@ -1680,7 +1681,7 @@ static void WaitUntilSent(DtTx* Tx)
     while (Sdi->NextFrameId != 0)
     {
         size_t Load;
-        if (BlackToCome && ReadLoad(Sdi, &Load) == DTAPI_OK &&
+        if (BlackToCome && DmaBufferLoad(Sdi, &Load) == DTAPI_OK &&
             Sdi->MaxLoad - Load >= Sdi->CodedSize)
         {
             InsertBlack(Sdi, Load);

@@ -112,13 +112,13 @@ typedef struct DtAsiTx
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Buffer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DmaLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DmaBufferLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The bytes of symbols the card has not yet taken, 0 while idle. Right after CDMAC is set
 // running a DTA-2178 reports a read offset of an earlier run for a while; the load is
 // therefore never more than what was committed since.
 //
-static DtapiResult DmaLoad(DtAsiTx* Tx, size_t* Load)
+static DtapiResult DmaBufferLoad(DtAsiTx* Tx, size_t* Load)
 {
     *Load = 0;
     if (Tx->Base.TxControl == DTAPI_TXCTRL_IDLE)
@@ -211,7 +211,7 @@ static DtapiResult Convert(DtAsiTx* Tx)
         return DTAPI_OK;
 
     size_t Load;
-    DtapiResult Result = DmaLoad(Tx, &Load);
+    DtapiResult Result = DmaBufferLoad(Tx, &Load);
     if (Result != DTAPI_OK)
         return Result;
     size_t Free = Tx->MaxLoad - Load;
@@ -257,7 +257,7 @@ static DtapiResult Convert(DtAsiTx* Tx)
 static DtapiResult Stuff(DtAsiTx* Tx)
 {
     size_t Load;
-    DtapiResult Result = DmaLoad(Tx, &Load);
+    DtapiResult Result = DmaBufferLoad(Tx, &Load);
     if (Result != DTAPI_OK)
         return Result;
     if (Load >= DT_ASITX_STUFF_LOAD)
@@ -549,7 +549,7 @@ static DtapiResult FifoLoadOf(DtAsiTx* Tx, size_t* Load)
     }
 
     size_t Dma = 0;
-    DtapiResult Result = DmaLoad(Tx, &Dma);
+    DtapiResult Result = DmaBufferLoad(Tx, &Dma);
     if (Result != DTAPI_OK)
         return Result;
     *Load = Tx->FifoLoad;
@@ -634,7 +634,7 @@ static DtapiResult IdleToHold(DtAsiTx* Tx)
 static DtapiResult WaitForBurstFifo(DtAsiTx* Tx)
 {
     size_t Load;
-    DtapiResult Result = DmaLoad(Tx, &Load);
+    DtapiResult Result = DmaBufferLoad(Tx, &Load);
     if (Result != DTAPI_OK)
         return Result;
     const size_t Size = (size_t)Tx->BurstFifoSize;
