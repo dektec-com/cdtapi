@@ -61,11 +61,11 @@
 typedef struct DtAsiTxSlave
 {
     int Port; // From 1
-    int IoDirSubValue;
     DtFuncInstance Function;
     bool HasExclusiveAccess;
     DtDrvObject Phy;
-    DtDrvObject Txp; // Its UUID 0 when the function has none
+    DtDrvObject
+        Txp; // Its SDI encoder, idled on release; UUID 0 when the function has none
 } DtAsiTxSlave;
 
 typedef struct DtAsiTx
@@ -340,28 +340,16 @@ static DtAsiTxSlave* SlaveAt(const DtAsiTx* Asi, size_t i)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetSlavesOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Each slave's PHY to OpMode, a DT_FUNC_OPMODE_ value; the encoder, which has no standby,
-// runs for STANDBY, but only on a slave whose direction's sub-value is an output, which a
-// slave's never is.
+// Each slave's PHY to OpMode, a DT_FUNC_OPMODE_ value. A slave's SDI encoder stays idle:
+// a monitor or a double-buffered port carries the master's symbols, which the master
+// encodes.
 //
 static DtapiResult SetSlavesOpMode(DtAsiTx* Asi, int OpMode)
 {
     for (size_t i = 0; i < DtVec_Count(&Asi->Slaves); i++)
     {
         const DtAsiTxSlave* Slave = SlaveAt(Asi, i);
-        const bool Encoder =
-            Slave->Txp.Uuid != 0 && (Slave->IoDirSubValue == DTAPI_IOCONFIG_OUTPUT ||
-                                     Slave->IoDirSubValue == DTAPI_IOCONFIG_INTOUTPUT);
-        const int TxpMode =
-            OpMode == DT_FUNC_OPMODE_IDLE ? DT_BLOCK_OPMODE_IDLE : DT_BLOCK_OPMODE_RUN;
-
-        DtapiResult Result = DTAPI_OK;
-        if (Encoder && OpMode == DT_FUNC_OPMODE_RUN)
-            Result = DtPcieCmd_SdiTxPSetOpMode(Asi->Drv, Slave->Txp, TxpMode);
-        if (Result == DTAPI_OK)
-            Result = DtPcieCmd_SdiTxPhySetOpMode(Asi->Drv, Slave->Phy, OpMode);
-        if (Result == DTAPI_OK && Encoder && OpMode != DT_FUNC_OPMODE_RUN)
-            Result = DtPcieCmd_SdiTxPSetOpMode(Asi->Drv, Slave->Txp, TxpMode);
+        DtapiResult Result = DtPcieCmd_SdiTxPhySetOpMode(Asi->Drv, Slave->Phy, OpMode);
         if (Result != DTAPI_OK)
             return Result;
     }
@@ -422,7 +410,6 @@ static DtapiResult FindSlaves(DtAsiTx* Asi)
         DtAsiTxSlave Slave;
         memset(&Slave, 0, sizeof(Slave));
         Slave.Port = Index + 1;
-        Slave.IoDirSubValue = Dir.SubValue;
         DtVec_Init(&Slave.Function.Objects, sizeof(DtFuncObject));
         Result = DtFunc_Find(Asi->Drv, Index, Name, "", &Slave.Function);
         if (Result == DTAPI_OK)

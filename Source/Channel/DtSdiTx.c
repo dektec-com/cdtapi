@@ -634,12 +634,12 @@ static DtapiResult ChangeTxControl(DtSdiTx* Sdi, int TxControl)
 static size_t BufferSizeFor(const DtSdiTx* Sdi, int PrefetchSize)
 {
     size_t Raw = DtSdiFrame_RawSize(&Sdi->FrameLayout, 10);
-    size_t DriverBlockSpec =
+    size_t NeededSize =
         (DT_SDITX_BUF_ROOM_FRAMES + DT_SDITX_FIFO_SIZE_TYP / Raw) * Sdi->CodedFrameSize;
     size_t Unit = 4096 * (size_t)(PrefetchSize > 0 ? PrefetchSize : 1);
     size_t Size = DT_SDITX_BUF_MIN_SIZE;
 
-    while (Size < DriverBlockSpec && Size < DT_SDITX_BUF_MAX_SIZE)
+    while (Size < NeededSize && Size < DT_SDITX_BUF_MAX_SIZE)
         Size *= 2;
     return (Size + Unit - 1) / Unit * Unit;
 }
