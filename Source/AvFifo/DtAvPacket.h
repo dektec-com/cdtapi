@@ -80,10 +80,10 @@ typedef struct DtAvRxPacket
     int PayloadSize;        // Its bytes, from the UDP header
 } DtAvRxPacket;
 
-// Reads the packet of Size bytes at Packet. False when its DtEthIp header does not check,
-// it is not a UDP packet, or its UDP header does not fit its frame or claims more bytes
-// than the frame holds. A frame from the card may end in the Ethernet checksum, which the
-// UDP length leaves out.
+// Reads the packet of Size bytes at Packet. False when it is shorter than a DtEthIp
+// header, that header does not check, it is not an IPv4 or IPv6 UDP packet, or its UDP
+// header does not fit its frame or claims more bytes than the frame holds. A frame from
+// the card may end in the Ethernet checksum, which the UDP length leaves out.
 bool DtAvRxPacket_Parse(const uint8_t* Packet, int Size, DtAvRxPacket* Rx);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= RTP +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

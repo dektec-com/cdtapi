@@ -143,13 +143,14 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
     int SamplesPerPacket = Tx->PayloadSize / Tx->BytesPerSamplePeriod;
     for (int i = 0; i < Packets; i++)
     {
-        uint64_t TodNs = FirstTodNs - (uint64_t)Stream->OutputDelayNs + Offset / 1000;
+        uint64_t TodNs =
+            FirstTodNs - (uint64_t)Stream->OutputDelayNs + Offset / DT_AV_PS_PER_NS;
         int FromFrame = Tx->PayloadSize - Tx->LeftOverBytes;
         WritePacket(Stream, Sink, RtpTime, TodNs, Tx->LeftOverSamples, Tx->LeftOverBytes,
                     Src, FromFrame);
         Src += FromFrame;
         Tx->LeftOverBytes = 0;
-        Offset += DT_AV_NS_PER_SEC * 1000 * (uint64_t)SamplesPerPacket /
+        Offset += DT_AV_NS_PER_SEC * DT_AV_PS_PER_NS * (uint64_t)SamplesPerPacket /
                   (uint64_t)Tx->Config.SampleRate;
         RtpTime += (uint32_t)SamplesPerPacket;
     }
@@ -160,7 +161,7 @@ DtapiResult DtSt2110AudioTx_Packetize(DtSt2110AudioTx* Tx, DtAvTxStream* Stream,
     {
         if (Tx->LeftOverBytes == 0)
         {
-            Tx->LeftOverTodNs = FirstTodNs + Offset / 1000;
+            Tx->LeftOverTodNs = FirstTodNs + Offset / DT_AV_PS_PER_NS;
             Tx->LeftOverRtpTime = RtpTime;
         }
         memcpy(Tx->LeftOverSamples + Tx->LeftOverBytes, Src, (size_t)Remaining);

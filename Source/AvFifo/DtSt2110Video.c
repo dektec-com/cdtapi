@@ -16,9 +16,6 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The packet spacing is kept in thousandths of a nanosecond.
-#define PS_PER_NS 1000
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PeriodFractionNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Part / Whole of a frame period at Rate, in nanoseconds; -1 when it does not fit an int.
@@ -247,7 +244,8 @@ DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Strea
     Tx->PayloadSize = Payload;
     Tx->PacketsPerFrame = PacketsPerFrame(Tx);
 
-    uint64_t Numerator = DT_AV_NS_PER_SEC * PS_PER_NS * (uint64_t)Tx->Rate.Denominator;
+    uint64_t Numerator =
+        DT_AV_NS_PER_SEC * DT_AV_PS_PER_NS * (uint64_t)Tx->Rate.Denominator;
     uint64_t Denominator = (uint64_t)Tx->PacketsPerFrame * (uint64_t)Tx->Rate.Numerator;
     if (Tx->Scheduling == St2110_Scheduling_Gapped)
         Tx->PacketSpacingPs =
@@ -409,9 +407,10 @@ void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx)
 //
 // The row headers up to one without continuation or of length 0, at most three, each
 // checked against the payload size. Sets the offset of the data, and learns from a
-// field bit that the stream is interlaced. False when the packet is to be skipped:
-// an IP packet error, with the frame skipped, or the field bit appearing once the size
-// is known, a size error that resets the learned sizes.
+// field bit that the stream is interlaced. False when the packet is to be skipped. A
+// header that does not fit, a fourth header or data beyond the payload count an IP packet
+// error and skip the frame; a field bit once the size is known counts a size error and
+// forgets the learned sizes.
 //
 static bool ReadRowHeaders(DtSt2110VideoRx* Rx, const uint8_t* Payload, int PayloadSize,
                            DtAvSrd* Srd, int* NumRows, bool* IsSecondField,

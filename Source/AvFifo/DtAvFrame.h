@@ -20,7 +20,7 @@
 //
 // A frame is the application's AvFifo_Frame itself, followed by what the pool keeps: the
 // application gets a pointer to the first member and gives it back. Its data starts on a
-// 32-byte boundary and holds Size bytes.
+// DT_AV_FRAME_ALIGNMENT boundary and holds Size bytes.
 //
 
 // The boundary a frame's data starts on.
@@ -92,7 +92,7 @@ int DtAvFramePool_NumFree(const DtAvFramePool* Pool);
 typedef struct DtAvFrameFifo
 {
     OsMutex* Mutex;
-    DtAvFrame** Ring; // A ring of Capacity items
+    DtAvFrame** Ring; // A ring of RingSlots items
     int RingSlots;
     int Head;
     int Load;

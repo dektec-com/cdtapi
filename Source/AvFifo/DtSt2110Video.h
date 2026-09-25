@@ -14,7 +14,7 @@
 
 // CDTAPI includes
 #include "DtAvPixConv.h" // Pixel conversions.
-#include "DtAvStream.h"  // Sinks, streams and targets.
+#include "DtAvStream.h"  // Sinks and streams.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -58,14 +58,15 @@ typedef struct DtSt2110VideoTx
 
 // Configures a packetizer for 8-bit or 10-bit UYVY, with the transmit offset and active
 // part for the resolution, scanning and rate. DTAPI_E_INVALID_ARG for a rate or
-// format that is not valid, or a resolution that is not a positive even width and
-// positive height.
+// format that is not valid, a resolution that is not a positive even width and positive
+// height, or a transmit offset that does not fit an int.
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
                                       const DtAvPixConvTable* Conv);
 
 // Configures a packetizer for rows of pixel groups as the application gives them.
-// DTAPI_E_INVALID_ARG for a pixel group, row, row count or rate that is not valid.
+// DTAPI_E_INVALID_ARG for a pixel group, row, row count, rate or active part that is not
+// valid.
 DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
                                          const St2110_TxConfigRawVideo* Config);
 
@@ -83,7 +84,7 @@ int DtSt2110VideoTx_FrameBytes(const DtSt2110VideoTx* Tx, const DtAvTxStream* St
 int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field);
 
 // Hands the packets of Frame to Sink. DTAPI_E_INVALID_FORMAT, sending nothing, when its
-// valid bytes are not those of DtSt2110VideoTx_FrameSize.
+// valid bytes are not those of DtSt2110VideoTx_FrameSize or exceed its size.
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvTxSink* Sink);
 

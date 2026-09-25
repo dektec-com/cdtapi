@@ -54,7 +54,7 @@ static __m256i LoadGroups(const uint8_t* Src)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StoreGroups -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The lower lane's ten bytes at Dst and the upper lane's at Dst + 10.
+// The lower lane's 16 bytes at Dst and the upper lane's at Dst + 10; ten of each count.
 //
 static void StoreGroups(uint8_t* Dst, __m256i Groups)
 {

@@ -30,7 +30,7 @@
 
 // The FIFO size for audio when the application sets none: 400 frames, which hold at
 // least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
-// The default of 4 would then hold 500 us.
+// DT_AV_FIFO_DEFAULT_MAX_SIZE frames would then hold 500 us.
 #define TX_AUDIO_FIFO_FRAMES 400
 
 // How long the thread waits for a frame before it looks at its stop flag again.
@@ -74,7 +74,7 @@ struct AvFifo_TxFifoC
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PipeBytesForFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The room a frame's packets need: those of a video frame at most, those of an audio
-// frame exactly.
+// frame exactly, or -1 for an audio frame that cannot be sent.
 //
 static int PipeBytesForFrame(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 {
@@ -86,8 +86,9 @@ static int PipeBytesForFrame(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvTxThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Takes the oldest frame, waits until the buffer has room for its packets, packetizes it
-// and returns it to the pool. A frame that no buffer's worth of room can hold, or that
-// fails to go out, returns to the pool unsent.
+// and returns it to the pool. A frame the buffer cannot hold, one that fails to go out
+// and one taken while the FIFO stops return to the pool unsent; a failed read of the read
+// offset is retried.
 //
 static void AvTxThread(void* Context)
 {
@@ -138,11 +139,13 @@ static void AvTxThread(void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RoundUpToPagesPlusOne -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Rounds up to whole 4 KB pages, and adds one page more.
+// Rounds up to whole pages and adds one, so that the buffer less the data word
+// DtAvPipe_UsableBytes keeps free still holds Size bytes.
 //
 static size_t RoundUpToPagesPlusOne(uint64_t Size)
 {
-    return (size_t)((Size + 4095) / 4096 + 1) * 4096;
+    return (size_t)((Size + DT_AV_PIPE_PAGE_BYTES - 1) / DT_AV_PIPE_PAGE_BYTES + 1) *
+           DT_AV_PIPE_PAGE_BYTES;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SharedBufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -254,7 +257,7 @@ static DtapiResult StartTransmitting(AvFifo_TxFifo* Fifo)
     Stream->Net.SrcPort = OsNetSocket_Port(Fifo->Socket);
     Stream->Net.DstPort = (uint16_t)Pars->Port;
     Stream->PayloadType = Pars->RtpPayloadType;
-    Stream->Ssrc = ByteSwapped((uint32_t)Fifo->Pipe.Ref.Uuid);
+    Stream->Ssrc = ByteSwapped((uint32_t)Fifo->Pipe.Object.Uuid);
     Stream->OutputDelayNs = DT_AV_OUTPUT_DELAY_NS;
     if (IsVideo)
     {
@@ -275,10 +278,10 @@ static DtapiResult StartTransmitting(AvFifo_TxFifo* Fifo)
     DtAvFrameFifo_Clear(&Fifo->Fifo, &Fifo->Pool);
     DtAtomic_Store(&Fifo->FramesOk, 0);
     OsDrv* Drv = Fifo->Port.Device.Drv;
-    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Ref);
+    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Object);
     DtAvWriter_Init(&Fifo->Writer, &Fifo->Pipe);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Ref, DT_PIPE_OPMODE_RUN);
+        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Object, DT_PIPE_OPMODE_RUN);
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Starting the pipe failed");
 

@@ -28,13 +28,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The shared buffer sizes: 64 MB for video, 4 MB for audio.
+// The shared buffer sizes for video and for audio.
 #define RX_SHARED_BUFFER_VIDEO_BYTES (64 * 1024 * 1024)
 #define RX_SHARED_BUFFER_AUDIO_BYTES (4 * 1024 * 1024)
 
-// The FIFO size for audio when the application sets none: 400 frames, which hold at
-// least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
-// The default of 4 would then hold 500 us.
+// The FIFO size for audio when the application sets none: 400 frames, one packet each,
+// 50 ms of 125 us packets, the shortest there are. DT_AV_FIFO_DEFAULT_MAX_SIZE frames
+// would hold 500 us.
 #define RX_AUDIO_FIFO_FRAMES 400
 
 struct AvFifo_RxFifoC
@@ -152,7 +152,7 @@ static DtapiResult SetIpFilter(AvFifo_RxFifo* Fifo, bool Enable)
         }
         Filter.VlanId[0] = Pars->Vlan.Id;
     }
-    return DtPcieCmd_PipeSetIpFilter(Fifo->Port.Device.Drv, Fifo->Pipe.Ref, &Filter);
+    return DtPcieCmd_PipeSetIpFilter(Fifo->Port.Device.Drv, Fifo->Pipe.Object, &Filter);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StopReceiving -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -175,7 +175,7 @@ static void StopReceiving(AvFifo_RxFifo* Fifo)
                     NumSources);
         Fifo->HasJoinedGroup = false;
     }
-    if (Fifo->Pipe.Ref.Uuid != 0)
+    if (Fifo->Pipe.Object.Uuid != 0)
         SetIpFilter(Fifo, false);
     DtAvPipe_Close(&Fifo->Pipe);
     OsNetSocket_Close(Fifo->Socket);
@@ -230,10 +230,10 @@ static DtapiResult StartReceiving(AvFifo_RxFifo* Fifo)
         DtSt2110AudioRx_Init(&Fifo->AudioRx, &Fifo->AudioConfig, &Target);
 
     OsDrv* Drv = Fifo->Port.Device.Drv;
-    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Ref);
+    Result = DtPcieCmd_PipeFlush(Drv, Fifo->Pipe.Object);
     DtAvReader_Init(&Fifo->Reader, &Fifo->Pipe);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Ref, DT_PIPE_OPMODE_RUN);
+        Result = DtPcieCmd_PipeSetOpMode(Drv, Fifo->Pipe.Object, DT_PIPE_OPMODE_RUN);
     if (Result == DTAPI_OK)
         Result = SetIpFilter(Fifo, true);
     if (Result != DTAPI_OK)

@@ -20,10 +20,10 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The output delay of the DTA-2110: how much later than its time a packet leaves the
-// card. The 25G card uses the same until its own is known.
+// card. Every card gets this value.
 #define DT_AV_OUTPUT_DELAY_NS 14800
 
-// How long a FIFO's thread sleeps when there is nothing to do.
+// How long the receive thread sleeps after a pass that found nothing or failed.
 #define DT_AV_RX_IDLE_SLEEP_MS 2
 
 typedef struct DtAvPort
@@ -32,7 +32,7 @@ typedef struct DtAvPort
     int PortIndex;   // From 0
     DtDrvObject Nw;  // The network function
     HwOrSwPipe PipePreference;
-    uint8_t Mac[6]; // Read at Start
+    uint8_t Mac[6]; // Read by DtAvPort_CheckNetwork
 } DtAvPort;
 
 // Attaches to port PortIndex of Device with a pipe preference, through a handle of the
@@ -48,9 +48,9 @@ void DtAvPort_Detach(DtAvPort* Port);
 DtapiResult DtAvPort_CheckNetwork(DtAvPort* Port, const AvFifo_IpPars* Pars,
                                   const char* Where);
 
-// Opens a receive or transmit pipe by the preference: for HwOrSwPipe_Auto a hardware pipe
-// with a software fallback when PreferHardware, else a software pipe. A forced hardware
-// pipe that is not free gives DTAPI_E_OUT_OF_RESOURCES.
+// Opens a receive or transmit pipe by the preference: a hardware pipe for ForceHwPipe,
+// one with a software fallback for PreferHwPipe and for Auto when HardwareIfAuto, else a
+// software pipe. A forced hardware pipe that is in use gives DTAPI_E_OUT_OF_RESOURCES.
 DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool IsRx,
                               bool HardwareIfAuto, const char* Where);
 

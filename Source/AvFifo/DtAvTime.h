@@ -22,6 +22,7 @@
 //
 
 #define DT_AV_NS_PER_SEC UINT64_C(1000000000)
+#define DT_AV_PS_PER_NS 1000
 
 // The RTP clock rate of video.
 #define DT_AV_VIDEO_RTP_RATE 90000

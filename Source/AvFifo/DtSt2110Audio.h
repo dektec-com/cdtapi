@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "DtAvStream.h" // Sinks, streams and targets.
+#include "DtAvStream.h" // Sinks and streams.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //

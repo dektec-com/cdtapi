@@ -16,9 +16,6 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipe +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// A buffer is rounded to 4 KB pages, whatever the operating system's page size.
-#define PIPE_PAGE_BYTES 4096
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPipe_Open -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
@@ -27,9 +24,9 @@ DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
     memset(Pipe, 0, sizeof(*Pipe));
     Pipe->Drv = Drv;
     Pipe->Nw = Nw;
-    DtapiResult Result = DtPcieCmd_NwOpenPipe(Drv, Nw, Type, Fallback, &Pipe->Ref);
+    DtapiResult Result = DtPcieCmd_NwOpenPipe(Drv, Nw, Type, Fallback, &Pipe->Object);
     if (Result == DTAPI_OK)
-        Result = DtPcieCmd_PipeGetProps(Drv, Pipe->Ref, &Pipe->Props);
+        Result = DtPcieCmd_PipeGetProps(Drv, Pipe->Object, &Pipe->Props);
     if (Result == DTAPI_OK &&
         (Pipe->Props.DataWidth < 8 || Pipe->Props.DataWidth % 32 != 0 ||
          Pipe->Props.PrefetchSize < 1))
@@ -45,19 +42,19 @@ DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
 //
 DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
 {
-    if (Pipe->Ref.Uuid == 0 || Pipe->SharedBuffer.Data != NULL || Size == 0 ||
+    if (Pipe->Object.Uuid == 0 || Pipe->SharedBuffer.Data != NULL || Size == 0 ||
         Size > INT32_MAX / 2)
         return DTAPI_E_INVALID_ARG;
     DtapiResult Result =
-        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Ref, DT_PIPE_OPMODE_IDLE);
+        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Object, DT_PIPE_OPMODE_IDLE);
     if (Result != DTAPI_OK)
         return Result;
 
-    size_t Unit = (size_t)PIPE_PAGE_BYTES * (size_t)Pipe->Props.PrefetchSize;
+    size_t Unit = (size_t)DT_AV_PIPE_PAGE_BYTES * (size_t)Pipe->Props.PrefetchSize;
     size_t Rounded = (Size + Unit - 1) / Unit * Unit;
     if (OsDmaBuffer_Alloc(Rounded, &Pipe->SharedBuffer) != 0)
         return DTAPI_E_OUT_OF_MEM;
-    Result = DtPcieCmd_PipeSetSharedBuffer(Pipe->Drv, Pipe->Ref, &Pipe->SharedBuffer);
+    Result = DtPcieCmd_PipeSetSharedBuffer(Pipe->Drv, Pipe->Object, &Pipe->SharedBuffer);
     if (Result != DTAPI_OK)
     {
         OsDmaBuffer_Free(&Pipe->SharedBuffer);
@@ -73,16 +70,16 @@ DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size)
 //
 void DtAvPipe_Close(DtAvPipe* Pipe)
 {
-    if (Pipe->Ref.Uuid != 0)
+    if (Pipe->Object.Uuid != 0)
     {
-        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Ref, DT_PIPE_OPMODE_IDLE);
+        DtPcieCmd_PipeSetOpMode(Pipe->Drv, Pipe->Object, DT_PIPE_OPMODE_IDLE);
         if (Pipe->BufferRegistered)
-            DtPcieCmd_PipeReleaseSharedBuffer(Pipe->Drv, Pipe->Ref);
-        DtPcieCmd_NwClosePipe(Pipe->Drv, Pipe->Ref);
+            DtPcieCmd_PipeReleaseSharedBuffer(Pipe->Drv, Pipe->Object);
+        DtPcieCmd_NwClosePipe(Pipe->Drv, Pipe->Object);
     }
     OsDmaBuffer_Free(&Pipe->SharedBuffer);
     Pipe->BufferRegistered = false;
-    Pipe->Ref.Uuid = 0;
+    Pipe->Object.Uuid = 0;
     Pipe->BufferSize = 0;
     Pipe->Offset = 0;
 }
@@ -178,7 +175,8 @@ DtapiResult DtAvWriter_FreeBytes(DtAvWriter* Writer, uint32_t* Free)
     uint32_t ReadOffset = 0;
 
     *Free = 0;
-    DtapiResult Result = DtPcieCmd_PipeGetTxReadOffset(Pipe->Drv, Pipe->Ref, &ReadOffset);
+    DtapiResult Result =
+        DtPcieCmd_PipeGetTxReadOffset(Pipe->Drv, Pipe->Object, &ReadOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (ReadOffset >= Pipe->BufferSize)
@@ -199,7 +197,8 @@ DtapiResult DtAvWriter_Flush(DtAvWriter* Writer)
     if (Writer->UnflushedPackets == 0)
         return Result;
     Writer->UnflushedPackets = 0;
-    DtapiResult Set = DtPcieCmd_PipeSetTxWriteOffset(Pipe->Drv, Pipe->Ref, Pipe->Offset);
+    DtapiResult Set =
+        DtPcieCmd_PipeSetTxWriteOffset(Pipe->Drv, Pipe->Object, Pipe->Offset);
     return Result != DTAPI_OK ? Result : Set;
 }
 
@@ -214,7 +213,7 @@ void DtAvReader_Init(DtAvReader* Reader, DtAvPipe* Pipe)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PacketInOnePiece -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The Size bytes at Offset in one piece: in place, or copied into the scratch packet.
+// The Size bytes at Offset in one piece: in place, or copied into WrapPacket.
 //
 static const uint8_t* PacketInOnePiece(DtAvReader* Reader, uint32_t Offset, uint32_t Size)
 {
@@ -239,7 +238,7 @@ DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Conte
     *Packets = 0;
     *LostSync = false;
     DtapiResult Result =
-        DtPcieCmd_PipeGetRxWriteOffset(Pipe->Drv, Pipe->Ref, &WriteOffset);
+        DtPcieCmd_PipeGetRxWriteOffset(Pipe->Drv, Pipe->Object, &WriteOffset);
     if (Result != DTAPI_OK)
         return Result;
     if (WriteOffset >= Pipe->BufferSize)
@@ -270,5 +269,5 @@ DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Conte
     if (Offset == Pipe->Offset)
         return DTAPI_OK;
     Pipe->Offset = Offset;
-    return DtPcieCmd_PipeSetRxReadOffset(Pipe->Drv, Pipe->Ref, Offset);
+    return DtPcieCmd_PipeSetRxReadOffset(Pipe->Drv, Pipe->Object, Offset);
 }

@@ -47,7 +47,7 @@ void DtAvFramePool_Destroy(DtAvFramePool* Pool)
 // Gives a frame's data room for Size bytes on the alignment boundary; false when there
 // is no memory, leaving the frame as it was.
 //
-static DtapiResult EnsureDataCapacity(DtAvFrame* Frame, size_t Size)
+static bool EnsureDataCapacity(DtAvFrame* Frame, size_t Size)
 {
     if (Frame->Allocation != NULL && Frame->DataCapacity >= Size)
         return true;

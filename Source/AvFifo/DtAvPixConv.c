@@ -43,7 +43,7 @@ static uint64_t Swap64(uint64_t Value)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadLe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The eight bytes at Src as a word, first byte lowest; and the other way about.
+// The eight bytes at Src as a word, first byte lowest.
 //
 static uint64_t LoadLe(const uint8_t* Src)
 {
@@ -55,6 +55,10 @@ static uint64_t LoadLe(const uint8_t* Src)
     return Value;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StoreLe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The word at Dst, lowest byte first.
+//
 static void StoreLe(uint8_t* Dst, uint64_t Value)
 {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
