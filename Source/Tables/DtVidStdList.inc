@@ -24,7 +24,7 @@
 //
 // Including this file with X defined expands the list:
 //
-//     #define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd, \
+//     #define X(Name, FpsNum, FpsDen, NumLines, Scan, LineNumSymHanc, IsLevelB, IoStd,
 //               OneLinkVidStd) {Name},
 //     #include "Tables/DtVidStdList.inc"
 //     #undef X
