@@ -42,30 +42,39 @@ static const struct
 
 #define OBJECT_COUNT (sizeof(g_Objects) / sizeof(g_Objects[0]))
 
-// Opens the emulated device in its power-on state and notes the live allocations. Returns
-// NULL, having recorded a failure, when it is not the emulator.
-static OsDrv* OpenSim(int* DtFailures, int* Live)
+// Closes the case's device handle when an assertion fails before FINISH does.
+static void CloseDrv(void* Context)
 {
-    OsDrv* Drv;
+    OsDrv** Drv = (OsDrv**)Context;
 
+    OsDrv_Close(*Drv);
+    *Drv = NULL;
+}
+
+// Opens the emulated device in its power-on state into *Drv and notes the live
+// allocations. Returns false, having recorded a failure, when it is not the emulator.
+static bool OpenSim(int* DtFailures, OsDrv** Drv, int* Live)
+{
     SimDtPcie_Reset();
     DtAlloc_ResetCount();
     *Live = DtAlloc_NumLive();
-    Drv = OsDrv_Open(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
+    *Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    DtTest_SetCleanup(CloseDrv, Drv);
+    if (*Drv == NULL || !OsDrv_IsEmulated(*Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrv_Close(Drv);
-        return NULL;
+        DtTest_Cleanup();
+        return false;
     }
-    return Drv;
+    return true;
 }
 
 // Closes the device and checks that nothing is left open or allocated.
 #define FINISH(Drv, Live)                                                                \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
@@ -84,9 +93,9 @@ static const DtFuncObject* ObjectAt(const DtFuncInstance* Instance, size_t Index
 DT_TEST(ObjectsOfTheReceiverFunction)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     DtFuncInstance Func;
@@ -139,9 +148,9 @@ DT_TEST(ObjectsOfTheTransmitFunctions)
     };
     const size_t Count = sizeof(Expected) / sizeof(Expected[0]);
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     for (int Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
@@ -190,9 +199,9 @@ DT_TEST(UuidsAreUnique)
     int j;
     size_t f;
     size_t i;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     for (Port = 0; Port < SIM_SDI_PORT_COUNT; Port++)
@@ -229,9 +238,9 @@ DT_TEST(UuidsAreUnique)
 DT_TEST(MissingFunctionIsNotFound)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     DtFuncInstance Func;
@@ -254,9 +263,9 @@ DT_TEST(MissingFunctionIsNotFound)
 DT_TEST(InstanceIsChosenByRole)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     SimDtPcie_OverrideString("AF_ASISDIRX#2", 1, true, "SECOND");
@@ -284,9 +293,9 @@ DT_TEST(InstanceIsChosenByRole)
 DT_TEST(ReadFailures)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     SimDtPcie_FailProperty("AF_ASISDIRX#1", 2, true, DT_STATUS_TIMEOUT);
@@ -317,9 +326,9 @@ DT_TEST(ReadFailures)
 DT_TEST(OutOfMemory)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     DtAlloc_FailAfter(0);
@@ -337,9 +346,9 @@ DT_TEST(OutOfMemory)
 DT_TEST(ObjectsAreFoundByKindTypeAndRole)
 {
     int Live;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
+    OsDrv* Drv;
 
-    if (Drv == NULL)
+    if (!OpenSim(DtFailures, &Drv, &Live))
         return;
 
     DtFuncInstance Func;

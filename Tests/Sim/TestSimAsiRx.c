@@ -35,7 +35,8 @@ typedef struct Fixture
     int Live;
     DtDevice* Device;
     DtInpChannel* Channel;
-    uint8_t* Buffer; // BUFFER_SIZE bytes
+    uint8_t* Buffer;  // BUFFER_SIZE bytes
+    OsThread* Thread; // A thread of the case that reads from the channel, or NULL
 } Fixture;
 
 // One I/O configuration through the device, which takes a list.
@@ -43,6 +44,23 @@ static DtapiResult SetIoConfig(DtDevice* Device, int Group, int Value, int SubVa
 {
     DtIoConfig Config = {PORT, Group, Value, SubValue, {-1, -1}};
     return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
+// Frees what Start made when an assertion fails before FINISH does. Freeing the channel
+// ends a read on the case's thread, which is then joined while the case's frame, where
+// the thread's context lives, still stands.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtInpChannel_Free(Fix->Channel);
+    OsThread_Join(Fix->Thread);
+    DtDevice_Free(Fix->Device);
+    free(Fix->Buffer);
+    Fix->Channel = NULL;
+    Fix->Thread = NULL;
+    Fix->Device = NULL;
+    Fix->Buffer = NULL;
 }
 
 // Resets the emulator without real time, makes the port an ASI input with the default
@@ -56,6 +74,8 @@ static bool Start(Fixture* Fix, int* DtFailures)
     Fix->Device = DtDevice_Alloc();
     Fix->Channel = DtInpChannel_Alloc();
     Fix->Buffer = (uint8_t*)malloc(BUFFER_SIZE);
+    Fix->Thread = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
 
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     bool Emulated = Drv != NULL && OsDrv_IsEmulated(Drv);
@@ -71,6 +91,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: no emulated ASI input; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
+        DtTest_Cleanup();
         return false;
     }
     return true;
@@ -80,6 +101,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtInpChannel_Free((Fix).Channel);                                                \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
@@ -477,12 +499,13 @@ DT_TEST(DetachEndsAWaitingRead)
         DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
 
         Reader R = {Fix.Channel, Fix.Buffer, TimeOuts[t], DTAPI_OK};
-        OsThread* Thread = OsThread_Start(ReadForever, &R);
-        DT_ASSERT(Thread != NULL);
+        Fix.Thread = OsThread_Start(ReadForever, &R);
+        DT_ASSERT(Fix.Thread != NULL);
         OsTime_SleepMs(40);
         DT_ASSERT_EQ(DtInpChannel_Read(Fix.Channel, Fix.Buffer, 188, 10), DTAPI_E_IN_USE);
         DT_ASSERT_OK(DtInpChannel_Detach(Fix.Channel, 0));
-        OsThread_Join(Thread);
+        OsThread_Join(Fix.Thread);
+        Fix.Thread = NULL;
         DT_ASSERT_EQ(R.Result, DTAPI_E_CANCELLED);
         FINISH(Fix);
     }

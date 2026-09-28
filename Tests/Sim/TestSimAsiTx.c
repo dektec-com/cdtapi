@@ -38,8 +38,11 @@ typedef struct Fixture
     int Live;
     DtDevice* Device;
     DtOutpChannel* Channel;
-    uint8_t* Data; // What is written
-    uint8_t* Got;  // What the sink decoded, or the input read
+    DtInpChannel* Input;  // A channel on the input the output loops to, or NULL
+    DtOutpChannel* Other; // A channel of another user of a port, or NULL
+    uint8_t* Data;        // What is written
+    uint8_t* Got;         // What the sink decoded, or the input read
+    OsThread* Thread;     // A thread of the case that writes to the channel, or NULL
 } Fixture;
 
 // One I/O configuration through the device.
@@ -48,6 +51,29 @@ static DtapiResult SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
 {
     DtIoConfig Config = {Port, Group, Value, SubValue, {ParXtra0, -1}};
     return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
+// Frees what Start and the case made when an assertion fails before FINISH does. Freeing
+// the channel ends a write on the case's thread, which is then joined while the case's
+// frame, where the thread's context lives, still stands.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtOutpChannel_Free(Fix->Channel);
+    OsThread_Join(Fix->Thread);
+    DtInpChannel_Free(Fix->Input);
+    DtOutpChannel_Free(Fix->Other);
+    DtDevice_Free(Fix->Device);
+    free(Fix->Data);
+    free(Fix->Got);
+    Fix->Channel = NULL;
+    Fix->Thread = NULL;
+    Fix->Input = NULL;
+    Fix->Other = NULL;
+    Fix->Device = NULL;
+    Fix->Data = NULL;
+    Fix->Got = NULL;
 }
 
 // Resets the emulator without real time, makes PORT an ASI output and attaches a channel
@@ -59,8 +85,12 @@ static bool Start(Fixture* Fix, int* DtFailures, bool Attach)
     Fix->Live = DtAlloc_NumLive();
     Fix->Device = DtDevice_Alloc();
     Fix->Channel = DtOutpChannel_Alloc();
+    Fix->Input = NULL;
+    Fix->Other = NULL;
     Fix->Data = (uint8_t*)malloc(MAX_PACKETS * 204);
     Fix->Got = (uint8_t*)malloc(MAX_PACKETS * 204);
+    Fix->Thread = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
     if (Fix->Device == NULL || Fix->Channel == NULL || Fix->Data == NULL ||
         Fix->Got == NULL ||
         DtDevice_AttachToSerial(Fix->Device, SIM_SERIAL) != DTAPI_OK ||
@@ -71,17 +101,21 @@ static bool Start(Fixture* Fix, int* DtFailures, bool Attach)
     {
         printf("    FAIL: no emulated ASI output; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
+        DtTest_Cleanup();
         return false;
     }
     return true;
 }
 
-// Frees what Start made and checks that nothing is left open or allocated, once the
-// emulator has let go of the bytes its sink kept.
+// Frees what Start and the case made and checks that nothing is left open or allocated,
+// once the emulator has let go of the bytes its sink kept.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtOutpChannel_Free((Fix).Channel);                                               \
+        DtInpChannel_Free((Fix).Input);                                                  \
+        DtOutpChannel_Free((Fix).Other);                                                 \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Data);                                                                \
         free((Fix).Got);                                                                 \
@@ -285,13 +319,13 @@ static void LoopsToAnInput(int Size, int* DtFailures)
     Fixture Fix;
     if (!Start(&Fix, DtFailures, true))
         return;
-    DtInpChannel* Input = DtInpChannel_Alloc();
-    DT_ASSERT(Input != NULL);
+    Fix.Input = DtInpChannel_Alloc();
+    DT_ASSERT(Fix.Input != NULL);
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT_INPUT, DTAPI_IOCONFIG_IODIR,
                              DTAPI_IOCONFIG_INPUT, DTAPI_IOCONFIG_INPUT, -1));
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT_INPUT, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_ASI, -1, -1));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(Input, Fix.Device, PORT_INPUT));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.Input, Fix.Device, PORT_INPUT));
     SimDtPcie_SetAsiLoopback(PORT - 1, PORT_INPUT - 1);
 
     const int N = 500;
@@ -299,22 +333,21 @@ static void LoopsToAnInput(int Size, int* DtFailures)
     MakePackets(Fix.Data, 0, N, Size);
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(Fix.Channel,
                                          Is188 ? DTAPI_TXMODE_188 : DTAPI_TXMODE_204, 0));
-    DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(Input, Is188 ? DTAPI_RXMODE_ST188 : DTAPI_RXMODE_ST204));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(Input, DTAPI_RXCTRL_RCV));
+    DT_ASSERT_OK(DtInpChannel_SetRxMode(Fix.Input,
+                                        Is188 ? DTAPI_RXMODE_ST188 : DTAPI_RXMODE_ST204));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Input, DTAPI_RXCTRL_RCV));
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, Fix.Data, N * Size));
-    DT_ASSERT_OK(DtInpChannel_Read(Input, Fix.Got, N * Size, 2000));
+    DT_ASSERT_OK(DtInpChannel_Read(Fix.Input, Fix.Got, N * Size, 2000));
     DT_ASSERT(memcmp(Fix.Got, Fix.Data, (size_t)N * (size_t)Size) == 0);
 
     int PacketSize, NumInv, ClkDet, AsiLock, RateOk, AsiInv;
-    DT_ASSERT_OK(DtInpChannel_GetStatus(Input, &PacketSize, &NumInv, &ClkDet, &AsiLock,
-                                        &RateOk, &AsiInv));
+    DT_ASSERT_OK(DtInpChannel_GetStatus(Fix.Input, &PacketSize, &NumInv, &ClkDet,
+                                        &AsiLock, &RateOk, &AsiInv));
     DT_ASSERT_EQ(PacketSize, Is188 ? DTAPI_PCKSIZE_188 : DTAPI_PCKSIZE_204);
     DT_ASSERT_EQ(AsiLock, DTAPI_ASI_INLOCK);
 
     SimDtPcie_SetAsiLoopback(-1, -1);
-    DtInpChannel_Free(Input);
     FINISH(Fix);
 }
 
@@ -380,12 +413,13 @@ DT_TEST(DetachEndsAWaitingWrite)
     DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_HOLD));
 
     Writer W = {Fix.Channel, Big, 9 * 1024 * 1024, DTAPI_OK};
-    OsThread* Thread = OsThread_Start(WriteAll, &W);
-    DT_ASSERT(Thread != NULL);
+    Fix.Thread = OsThread_Start(WriteAll, &W);
+    DT_ASSERT(Fix.Thread != NULL);
     OsTime_SleepMs(60);
     DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Channel, Big, 188 * 4), DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 0));
-    OsThread_Join(Thread);
+    OsThread_Join(Fix.Thread);
+    Fix.Thread = NULL;
     DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
     free(Big);
     FINISH(Fix);
@@ -422,14 +456,14 @@ DT_TEST(DrivesItsSlave)
                              DTAPI_IOCONFIG_OUTPUT, DTAPI_IOCONFIG_DBLBUF, PORT));
 
     // Held by another user first.
-    DtOutpChannel* Other = DtOutpChannel_Alloc();
-    DT_ASSERT(Other != NULL);
+    Fix.Other = DtOutpChannel_Alloc();
+    DT_ASSERT(Fix.Other != NULL);
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT_SLAVE, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_ASI, -1, -1));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Other, Fix.Device, PORT_SLAVE));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Other, Fix.Device, PORT_SLAVE));
     DT_ASSERT_EQ(DtOutpChannel_AttachToPort(Fix.Channel, Fix.Device, PORT),
                  DTAPI_E_IN_USE);
-    DtOutpChannel_Free(Other);
+    DtOutpChannel_Freep(&Fix.Other);
     DT_ASSERT_OK(SetIoConfig(Fix.Device, PORT_SLAVE, DTAPI_IOCONFIG_IOSTD,
                              DTAPI_IOCONFIG_HDSDI, DTAPI_IOCONFIG_1080I50, -1));
 

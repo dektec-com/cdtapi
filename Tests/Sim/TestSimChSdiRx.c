@@ -35,9 +35,21 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
+    OsDrv* Other;   // A second handle of the case, or NULL
     DtDrvObject Ch; // The receive channel
     int Live;
 } Fixture;
+
+// Closes the handles when an assertion fails before FINISH does.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    OsDrv_Close(Fix->Other);
+    OsDrv_Close(Fix->Drv);
+    Fix->Other = NULL;
+    Fix->Drv = NULL;
+}
 
 // Opens the emulated device in its power-on state and finds the channel. Returns
 // false, having recorded a failure, when that is not possible.
@@ -48,6 +60,9 @@ static bool Open(Fixture* Fix, int* DtFailures)
 
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_NumLive();
+    Fix->Drv = NULL;
+    Fix->Other = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
     Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     memset(&Fix->Ch, 0, sizeof(Fix->Ch));
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
@@ -55,20 +70,24 @@ static bool Open(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrv_Close(Fix->Drv);
+        DtTest_Cleanup();
         return false;
     }
     Object = DtFunc_FindObject(&Instance, true, DT_FUNC_TYPE_CHSDIRX, "");
     if (Object != NULL)
         Fix->Ch = Object->Object;
+    else
+        DtTest_Cleanup();
     DtFunc_Release(&Instance);
     return Object != NULL;
 }
 
-// Closes the device and checks that nothing is left open or allocated.
+// Closes the handles and checks that nothing is left open or allocated.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
+        OsDrv_Close((Fix).Other);                                                        \
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), (Fix).Live);                                     \
@@ -175,15 +194,16 @@ DT_TEST(AttachesUsers)
 
     if (!Open(&Fix, DtFailures))
         return;
-    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
+    Fix.Other = OsDrv_Open(SIM_DEVICE_INDEX);
 
     DT_ASSERT_EQ(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Ch, &OpMode), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, ""), DTAPI_E_INVALID_ARG);
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"));
     DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, true, "test:1"),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, true, "other:2"), DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"),
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Other, Fix.Ch, true, "other:2"),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Other, Fix.Ch, false, "other:2"),
                  DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetOpMode(Fix.Drv, Fix.Ch, &OpMode));
     DT_ASSERT_EQ(OpMode, DT_FUNC_OPMODE_IDLE);
@@ -193,11 +213,12 @@ DT_TEST(AttachesUsers)
 
     // Shared users go together, and a handle that is a user already cannot attach again.
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Drv, Fix.Ch, false, "test:1"));
-    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"));
-    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Other, Fix.Ch, false, "other:2"),
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxAttach(Fix.Other, Fix.Ch, false, "other:2"));
+    DT_ASSERT_EQ(DtPcieCmd_ChSdiRxAttach(Fix.Other, Fix.Ch, false, "other:2"),
                  DTAPI_E_IN_USE);
 
-    OsDrv_Close(Other);
+    OsDrv_Close(Fix.Other);
+    Fix.Other = NULL;
     FINISH(Fix);
 }
 

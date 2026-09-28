@@ -53,6 +53,20 @@ static DtapiResult Configure(OsDrv* Drv, int Index, int Group, int Value, int Su
     return DtPcieCmd_SetIoConfig(Drv, &Config);
 }
 
+// Frees the objects and closes the handle when an assertion fails before FINISH does. A
+// released instance can be released again, so FINISH may follow.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtFunc_Release(&Fix->Rx);
+    DtFunc_Release(&Fix->RxDma);
+    DtFunc_Release(&Fix->Tx);
+    DtFunc_Release(&Fix->TxDma);
+    OsDrv_Close(Fix->Drv);
+    Fix->Drv = NULL;
+}
+
 // Opens the emulated device in its power-on state, makes RX an ASI input and TX an ASI
 // output, and finds their objects. Returns false, having recorded a failure, when that is
 // not possible.
@@ -60,11 +74,13 @@ static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_NumLive();
-    Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    Fix->Drv = NULL;
     DtVec_Init(&Fix->Rx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->RxDma.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->Tx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->TxDma.Objects, sizeof(DtFuncObject));
+    DtTest_SetCleanup(Cleanup, Fix);
+    Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         Configure(Fix->Drv, RX, DTAPI_IOCONFIG_IODIR, DTAPI_IOCONFIG_INPUT,
                   DTAPI_IOCONFIG_INPUT) != DTAPI_OK ||
@@ -81,11 +97,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: no emulated ASI ports; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        DtFunc_Release(&Fix->Rx);
-        DtFunc_Release(&Fix->RxDma);
-        DtFunc_Release(&Fix->Tx);
-        DtFunc_Release(&Fix->TxDma);
-        OsDrv_Close(Fix->Drv);
+        DtTest_Cleanup();
         return false;
     }
     Fix->AsiRx = DtFunc_FindObject(&Fix->Rx, true, DT_FUNC_TYPE_ASIRX, "")->Object;
@@ -117,6 +129,7 @@ static bool Acquire(Fixture* Fix)
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtFunc_Release(&(Fix).Rx);                                                       \
         DtFunc_Release(&(Fix).RxDma);                                                    \
         DtFunc_Release(&(Fix).Tx);                                                       \

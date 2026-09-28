@@ -29,20 +29,37 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Opens the emulated DTA-2178 in its power-on state and notes the live allocations.
-static OsDrv* OpenSim(int* DtFailures, int* Live)
+// Closes the case's device handle when an assertion fails before FINISH does.
+static void CloseDrv(void* Context)
+{
+    OsDrv** Drv = (OsDrv**)Context;
+
+    OsDrv_Close(*Drv);
+    *Drv = NULL;
+}
+
+// Frees the case's device object when an assertion fails before FINISH_DEVICE does.
+static void FreeDevice(void* Context)
+{
+    DtDevice_Freep((DtDevice**)Context);
+}
+
+// Opens the emulated DTA-2178 in its power-on state into *Drv and notes the live
+// allocations. Returns false, having recorded a failure, when it is not the emulator.
+static bool OpenSim(int* DtFailures, OsDrv** Drv, int* Live)
 {
     SimDtPcie_Reset();
     *Live = DtAlloc_NumLive();
-    OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
-    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
+    *Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    DtTest_SetCleanup(CloseDrv, Drv);
+    if (*Drv == NULL || !OsDrv_IsEmulated(*Drv))
     {
         printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrv_Close(Drv);
-        return NULL;
+        DtTest_Cleanup();
+        return false;
     }
-    return Drv;
+    return true;
 }
 
 // The object of the device's API function Name that is a driver function when
@@ -66,6 +83,7 @@ static bool FindObject(OsDrv* Drv, const char* Name, bool IsDriverFunction, int 
 #define FINISH(Drv, Live)                                                                \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
@@ -78,8 +96,8 @@ static bool FindObject(OsDrv* Drv, const char* Name, bool IsDriverFunction, int 
 DT_TEST(ObjectsAreThoseOfTheDevice)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Object;
     DtDriverVersion Version;
     DT_ASSERT_OK(DtPcieCmd_GetDriverVersion(Drv, &Version));
@@ -108,8 +126,8 @@ DT_TEST(ObjectsAreThoseOfTheDevice)
 DT_TEST(CommandsGoToTheirOwnObject)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Genlock;
     DtDrvObject Tod;
     DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
@@ -137,8 +155,8 @@ DT_TEST(CommandsGoToTheirOwnObject)
 DT_TEST(GenlockStateAtPowerOn)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Genlock;
     DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
                          &Genlock));
@@ -173,8 +191,8 @@ DT_TEST(GenlockStatesConvert)
         {99, DTAPI_GENL_NO_REF, true},
     };
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Genlock;
     DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
                          &Genlock));
@@ -198,8 +216,8 @@ DT_TEST(GenlockStatesConvert)
 DT_TEST(ClockPropertiesAreListed)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Genlock;
     DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
                          &Genlock));
@@ -248,8 +266,8 @@ DT_TEST(ClockPropertiesAreListed)
 DT_TEST(OffsetsAreSetAndRead)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Genlock;
     DT_ASSERT(FindObject(Drv, "AF_GENLOCKCTRL_AF", true, DT_FUNC_TYPE_GENLOCKCTRL, "",
                          &Genlock));
@@ -297,8 +315,8 @@ DT_TEST(OffsetsAreSetAndRead)
 DT_TEST(CountersCountTheirClock)
 {
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject NonFrac;
     DtDrvObject Frac;
     DT_ASSERT(FindObject(Drv, "AF_TXCLKCNTRS", false, DT_BLOCK_TYPE_CLKCNT,
@@ -352,8 +370,8 @@ DT_TEST(TimeOfDayStatesConvert)
         {99, 99, DTAPI_TODCLK_FREE_RUN, DTAPI_TODREF_INTERNAL},
     };
     int Live = 0;
-    OsDrv* Drv = OpenSim(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenSim(DtFailures, &Drv, &Live));
     DtDrvObject Tod;
     DT_ASSERT(
         FindObject(Drv, "AF_TODCLKCTRL_AF", true, DT_FUNC_TYPE_TODCLKCTRL, "", &Tod));
@@ -383,27 +401,29 @@ DT_TEST(TimeOfDayStatesConvert)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Attaches a device object to the emulated DTA-2178 in its power-on state, after the
-// overrides a case has set, and notes the live allocations. Returns NULL, having recorded
-// a failure, when that is not possible.
-static DtDevice* AttachSim(int* DtFailures, int* Live)
+// Attaches a device object, put in *Device, to the emulated DTA-2178 in its power-on
+// state, after the overrides a case has set, and notes the live allocations. Returns
+// false, having recorded a failure, when that is not possible.
+static bool AttachSim(int* DtFailures, DtDevice** Device, int* Live)
 {
     *Live = DtAlloc_NumLive();
-    DtDevice* Device = DtDevice_Alloc();
-    if (Device == NULL || DtDevice_AttachToSerial(Device, SIM_SERIAL) != DTAPI_OK)
+    *Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, Device);
+    if (*Device == NULL || DtDevice_AttachToSerial(*Device, SIM_SERIAL) != DTAPI_OK)
     {
         printf("    FAIL: cannot attach to the emulated device; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        DtDevice_Free(Device);
-        return NULL;
+        DtTest_Cleanup();
+        return false;
     }
-    return Device;
+    return true;
 }
 
 // Frees the device and checks that nothing is left open or allocated.
 #define FINISH_DEVICE(Device, Live)                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtDevice_Freep(&(Device));                                                       \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
@@ -414,8 +434,8 @@ DT_TEST(DeviceGivesTheStates)
 {
     int Live = 0;
     SimDtPcie_Reset();
-    DtDevice* Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DtDevice* Device;
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
 
     DtGenlockState Genlock;
     DT_ASSERT_OK(DtDevice_GetGenlockState(Device, &Genlock));
@@ -442,8 +462,8 @@ DT_TEST(DeviceListsTheClocks)
 {
     int Live = 0;
     SimDtPcie_Reset();
-    DtDevice* Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DtDevice* Device;
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
 
     DtTxClockProperties Clocks[3];
     int Num = -1;
@@ -481,8 +501,8 @@ DT_TEST(DeviceCountsAClock)
 {
     int Live = 0;
     SimDtPcie_Reset();
-    DtDevice* Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DtDevice* Device;
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
 
     uint32_t First = 0;
     uint32_t Second = 0;
@@ -503,8 +523,8 @@ DT_TEST(DeviceSetsAnOffset)
 {
     int Live = 0;
     SimDtPcie_Reset();
-    DtDevice* Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DtDevice* Device;
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
 
     double OffsetPpm = 7.0;
     DT_ASSERT_OK(DtDevice_GetTxClockOffset(Device, 1, &OffsetPpm));
@@ -544,8 +564,8 @@ DT_TEST(DeviceWithoutTheClocks)
     int Live = 0;
     SimDtPcie_Reset();
     SimDtPcie_OverrideString("AF_GENLOCKCTRL_AF#1", DT_PROPERTY_DEVICE, false, NULL);
-    DtDevice* Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DtDevice* Device;
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
 
     DtGenlockState Genlock;
     DT_ASSERT_EQ(DtDevice_GetGenlockState(Device, &Genlock), DTAPI_E_NOT_SUPPORTED);
@@ -565,8 +585,7 @@ DT_TEST(DeviceWithoutTheClocks)
     SimDtPcie_Reset();
     SimDtPcie_OverrideString("AF_TXCLKCNTRS#1", DT_PROPERTY_DEVICE, false, NULL);
     SimDtPcie_OverrideString("AF_TODCLKCTRL_AF#1", DT_PROPERTY_DEVICE, false, NULL);
-    Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
     DT_ASSERT_EQ(DtDevice_GetTimeOfDayState(Device, &Tod), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtDevice_GetTxClockCount(Device, 0, &Count), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_OK(DtDevice_GetTxClockOffset(Device, 0, &OffsetPpm));
@@ -575,8 +594,7 @@ DT_TEST(DeviceWithoutTheClocks)
     // Older than the time-of-day clock control and the counters, not than the genlock.
     SimDtPcie_Reset();
     SimDtPcie_SetDriverVersion(1, 13, 19, 295);
-    Device = AttachSim(DtFailures, &Live);
-    DT_ASSERT(Device != NULL);
+    DT_ASSERT(AttachSim(DtFailures, &Device, &Live));
     DT_ASSERT_EQ(DtDevice_GetTimeOfDayState(Device, &Tod), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_EQ(DtDevice_GetTxClockCount(Device, 0, &Count), DTAPI_E_DRIVER_INCOMP);
     DT_ASSERT_OK(DtDevice_GetGenlockState(Device, &Genlock));

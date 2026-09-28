@@ -50,26 +50,34 @@ static bool StartSim(int* DtFailures, int* Live)
     return true;
 }
 
-// Attaches a device object to the emulated card, whose properties a case may have
-// overridden first. Returns NULL, having recorded a failure, when it cannot.
-static DtDevice* Attach(int* DtFailures)
+// Frees the case's device object when an assertion fails before FINISH does.
+static void FreeDevice(void* Context)
 {
-    DtDevice* Device = DtDevice_Alloc();
+    DtDevice_Freep((DtDevice**)Context);
+}
 
-    if (Device == NULL || DtDevice_AttachToSerial(Device, SIM_SERIAL) != DTAPI_OK)
+// Attaches a device object to the emulated card, whose properties a case may have
+// overridden first, and puts it in *Device. Returns false, having recorded a failure,
+// when it cannot.
+static bool Attach(int* DtFailures, DtDevice** Device)
+{
+    *Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, Device);
+    if (*Device == NULL || DtDevice_AttachToSerial(*Device, SIM_SERIAL) != DTAPI_OK)
     {
         printf("    FAIL: cannot attach to the emulated device\n");
         (*DtFailures)++;
-        DtDevice_Free(Device);
-        return NULL;
+        DtTest_Cleanup();
+        return false;
     }
-    return Device;
+    return true;
 }
 
 // Frees the device object and checks that nothing is left open or allocated.
 #define FINISH(Device, Live)                                                             \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtDevice_Free(Device);                                                           \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
@@ -167,7 +175,7 @@ DT_TEST(NullArgumentsAreRefused)
     int Live;
     DtDevice* Device;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     DT_ASSERT_EQ(DtDevice_DetectVidStd(NULL, PORT_INPUT, &VidStd), DTAPI_E_INVALID_ARG);
@@ -199,6 +207,7 @@ DT_TEST(DetachedDeviceIsNotADevice)
         return;
 
     DtDevice* Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, &Device);
     DT_ASSERT(Device != NULL);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_DEVICE);
     DT_ASSERT_EQ(VidStd, 12345);
@@ -223,9 +232,10 @@ DT_TEST(FirmwareStatusComesFirst)
 
     SimDtPcie_SetFirmwareStatus(DT_FWSTATUS_OBSOLETE);
     DtDevice* Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, &Device);
     DT_ASSERT_EQ(DtDevice_AttachToSerial(Device, SIM_SERIAL), DTAPI_OK_OBSOLETE_FW);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, 99, &VidStd), DTAPI_E_OBSOLETE_FW);
-    DtDevice_Free(Device);
+    DtDevice_Freep(&Device);
 
     SimDtPcie_SetFirmwareStatus(DT_FWSTATUS_TAINTED);
     Device = DtDevice_Alloc();
@@ -252,7 +262,7 @@ DT_TEST(PortsAreAllPortsOfTheCard)
     SimDtPcie_OverrideProperty("CAP_INPUT", PORT_GENLOCK - 1, true, 1);
     SimDtPcie_OverrideProperty("CAP_MATRIX2", PORT_GENLOCK - 1, true, 1);
     DtDevice* Device;
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
 
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, 0, &VidStd), DTAPI_E_NO_SUCH_PORT);
@@ -281,7 +291,7 @@ static void CheckRefusedByCaps(int* DtFailures, const char* Cap1, bool Has1,
     if (Cap2 != NULL)
         SimDtPcie_OverrideProperty(Cap2, PORT_INPUT - 1, true, Has2 ? 1 : 0);
     DtDevice* Device;
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
 
     // The last request attaching sent, to tell whether detection sent any.
@@ -355,8 +365,7 @@ static DtapiResult DetectWith(int* DtFailures, DtDevice** Device, int* VidStd)
 
     *VidStd = 12345;
     SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
-    *Device = Attach(DtFailures);
-    if (*Device == NULL)
+    if (!Attach(DtFailures, Device))
         return DTAPI_E_INTERNAL;
     return DtDevice_DetectVidStd(*Device, PORT_INPUT, VidStd);
 }
@@ -399,7 +408,7 @@ DT_TEST(ReadFailureIsReturned)
     int VidStd = 12345;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_PROPERTY_CMD, DT_STATUS_TIMEOUT);
@@ -408,20 +417,20 @@ DT_TEST(ReadFailureIsReturned)
     FINISH(Device, Live);
 
     // Reading an instance's role, or an object's name, fails the search.
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
     SimDtPcie_FailProperty("AF_ASISDIRX#1", 0, true, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
     SimDtPcie_FailProperty("AF_ASISDIRX#1.7", 0, true, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
     // Reading an object's role or type only skips the object.
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
     SimDtPcie_FailProperty("BC_SWITCH#2", 0, true, DT_STATUS_TIMEOUT);
     SimDtPcie_FailProperty("DF_ASIRX#1_TYPE", 0, false, DT_STATUS_TIMEOUT);
@@ -562,7 +571,7 @@ DT_TEST(EveryStandardWithItsVpid)
     if (!StartSim(DtFailures, &Live))
         return;
     DtDevice* Device;
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
 
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
@@ -594,7 +603,7 @@ DT_TEST(EveryStandardWithoutVpid)
     if (!StartSim(DtFailures, &Live))
         return;
     DtDevice* Device;
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
 
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
@@ -631,7 +640,7 @@ DT_TEST(ScaledPortReportsOneLink)
     if (!StartSim(DtFailures, &Live))
         return;
     SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
 
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
@@ -657,7 +666,7 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     DtDevice* Device;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     // The second of four level-A links at 50 frames, 4:3.
@@ -686,7 +695,7 @@ DT_TEST(NoStandardIsUnknown)
     int VidStd = 12345;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
@@ -726,7 +735,7 @@ DT_TEST(OutputPortIsInTheWrongMode)
     int VidStd = 12345;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     SimDtPcie_SetSdiSignal(PORT_OUTPUT - 1, &Signal);
@@ -755,7 +764,7 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
     SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
     SimDtPcie_SetDriverVersion(1, 4, 0, 110);
     DtDevice* Device;
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd),
                  DTAPI_E_DRIVER_INCOMP);
@@ -763,11 +772,11 @@ DT_TEST(OldDriverIsFoundWhenDetecting)
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
-    DtDevice_Free(Device);
+    DtDevice_Freep(&Device);
 
     SimDtPcie_Reset();
     SimDtPcie_SetDriverVersion(1, 4, 0, 111);
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
 
@@ -785,13 +794,13 @@ DT_TEST(DownScalingIsReadOnlyWhereItExists)
     if (!StartSim(DtFailures, &Live))
         return;
     SimDtPcie_OverrideProperty("CAP_SCALE_12GTO3G", PORT_INPUT - 1, true, 1);
-    if ((Device = Attach(DtFailures)) == NULL)
+    if (!Attach(DtFailures, &Device))
         return;
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_EQ(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd), DTAPI_E_TIMEOUT);
     FINISH(Device, Live);
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_IOCONFIG_CMD, DT_STATUS_TIMEOUT);
     DT_ASSERT_OK(DtDevice_DetectVidStd(Device, PORT_INPUT, &VidStd));
@@ -808,7 +817,7 @@ DT_TEST(WaitRetriesUntilTheSignalAppears)
     int VidStd = 12345;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     SimDtPcie_SetSdiSignal(PORT_INPUT - 1, &Signal);
@@ -849,7 +858,7 @@ DT_TEST(WaitEndsAtItsTimeLimit)
     DtDevice* Device;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     uint64_t Start = OsTime_MonotonicMs();
@@ -877,7 +886,7 @@ DT_TEST(WaitReturnsAtOnceForAPortItCannotAttach)
     DtDevice* Device;
     int Live;
 
-    if (!StartSim(DtFailures, &Live) || (Device = Attach(DtFailures)) == NULL)
+    if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
     DtDetVidStd Info;

@@ -30,31 +30,59 @@
 // The index the emulated DTA-2110 is put at; the DTA-2178 keeps index 0.
 #define DTA2110_INDEX 1
 
-// Opens the emulated DTA-2110 in its power-on state and notes the live allocations.
-static OsDrv* OpenDta2110(int* DtFailures, int* Live)
+// Closes the case's device handle when an assertion fails before FINISH does.
+static void CloseDrv(void* Context)
 {
-    OsDrv* Drv;
+    OsDrv** Drv = (OsDrv**)Context;
 
+    OsDrv_Close(*Drv);
+    *Drv = NULL;
+}
+
+// Closes the two handles of a case that opens the device twice, when an assertion fails
+// before the case closes them.
+static void CloseDrvPair(void* Context)
+{
+    OsDrv** Pair = (OsDrv**)Context;
+
+    OsDrv_Close(Pair[0]);
+    OsDrv_Close(Pair[1]);
+    Pair[0] = NULL;
+    Pair[1] = NULL;
+}
+
+// Frees the case's device object when an assertion fails before the case frees it.
+static void FreeDevice(void* Context)
+{
+    DtDevice_Freep((DtDevice**)Context);
+}
+
+// Opens the emulated DTA-2110 in its power-on state into *Drv and notes the live
+// allocations. Returns false, having recorded a failure, when it is not the emulator.
+static bool OpenDta2110(int* DtFailures, OsDrv** Drv, int* Live)
+{
     SimDtPcie_Reset();
     SimDtPcie_SetDta2110Index(DTA2110_INDEX);
     DtAlloc_ResetCount();
     *Live = DtAlloc_NumLive();
-    Drv = OsDrv_Open(DTA2110_INDEX);
-    if (Drv == NULL || !OsDrv_IsEmulated(Drv))
+    *Drv = OsDrv_Open(DTA2110_INDEX);
+    DtTest_SetCleanup(CloseDrv, Drv);
+    if (*Drv == NULL || !OsDrv_IsEmulated(*Drv))
     {
         printf("    FAIL: no emulated device at index %d; is CDTAPI_SIM=1 set?\n",
                DTA2110_INDEX);
         (*DtFailures)++;
-        OsDrv_Close(Drv);
-        return NULL;
+        DtTest_Cleanup();
+        return false;
     }
-    return Drv;
+    return true;
 }
 
 // Closes the device and checks that nothing is left open or allocated.
 #define FINISH(Drv, Live)                                                                \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         OsDrv_Close(Drv);                                                                \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(DtAlloc_NumLive(), Live);                                           \
@@ -66,8 +94,8 @@ static OsDrv* OpenDta2110(int* DtFailures, int* Live)
 DT_TEST(VpdProperties)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
     DtVpdProps Props;
     DT_ASSERT_OK(DtPcieCmd_VpdGetProps(Drv, &Props));
@@ -87,8 +115,8 @@ DT_TEST(VpdProperties)
 DT_TEST(VpdRawRead)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
     uint8_t Buf[SIM_VPD_TAIL_BYTES];
     int NumRead = 0;
@@ -111,8 +139,8 @@ DT_TEST(VpdRawRead)
 DT_TEST(ActivatesOnce)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
     DT_ASSERT(!SimActivate_IsReady());
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
@@ -128,8 +156,8 @@ DT_TEST(ActivatesOnce)
 DT_TEST(ActivationWaits)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
     SimActivate_SetBusyCount(5);
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
@@ -142,8 +170,8 @@ DT_TEST(ActivationWaits)
 DT_TEST(BlankEepromFails)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
     SimVpd_SetTailBlank(true);
     DT_ASSERT(DtDevActivate_OnAttach(Drv) != DTAPI_OK);
@@ -158,6 +186,7 @@ DT_TEST(OtherDeviceNeedsNone)
     DtAlloc_ResetCount();
     int Live = DtAlloc_NumLive();
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    DtTest_SetCleanup(CloseDrv, &Drv);
     DT_ASSERT(Drv != NULL);
 
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
@@ -174,12 +203,14 @@ DT_TEST(AttachActivates)
     int Live = DtAlloc_NumLive();
 
     DtDevice* Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, &Device);
     DT_ASSERT(Device != NULL);
     DT_ASSERT(!SimActivate_IsReady());
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, (int64_t)SIM_DTA2110_SERIAL));
     DT_ASSERT(SimActivate_IsReady());
 
     DT_ASSERT_OK(DtDevice_Detach(Device));
+    DtTest_SetCleanup(NULL, NULL);
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
@@ -196,11 +227,13 @@ DT_TEST(AttachSucceedsWithoutActivation)
     int Live = DtAlloc_NumLive();
 
     DtDevice* Device = DtDevice_Alloc();
+    DtTest_SetCleanup(FreeDevice, &Device);
     DT_ASSERT(Device != NULL);
     DT_ASSERT_OK(DtDevice_AttachToSerial(Device, (int64_t)SIM_DTA2110_SERIAL));
     DT_ASSERT(!SimActivate_IsReady());
 
     DT_ASSERT_OK(DtDevice_Detach(Device));
+    DtTest_SetCleanup(NULL, NULL);
     DtDevice_Free(Device);
     DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
     DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
@@ -211,10 +244,13 @@ DT_TEST(AttachSucceedsWithoutActivation)
 DT_TEST(ActivationNeedsTheObject)
 {
     int Live = 0;
-    OsDrv* Drv = OpenDta2110(DtFailures, &Live);
-    DT_ASSERT(Drv != NULL);
+    OsDrv* Drv;
+    DT_ASSERT(OpenDta2110(DtFailures, &Drv, &Live));
 
-    OsDrv* Other = OsDrv_Open(DTA2110_INDEX);
+    // Both handles are closed when an assertion fails; FINISH closes Drv itself.
+    OsDrv* Pair[2] = {Drv, OsDrv_Open(DTA2110_INDEX)};
+    OsDrv* Other = Pair[1];
+    DtTest_SetCleanup(CloseDrvPair, Pair);
     DT_ASSERT(Other != NULL);
     int Uuid = 0;
     DT_ASSERT_OK(
@@ -227,6 +263,7 @@ DT_TEST(ActivationNeedsTheObject)
 
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Object, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
     OsDrv_Close(Other);
+    Pair[1] = NULL;
     DT_ASSERT_OK(DtDevActivate_OnAttach(Drv));
     DT_ASSERT(SimActivate_IsReady());
     FINISH(Drv, Live);

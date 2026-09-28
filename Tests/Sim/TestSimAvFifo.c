@@ -42,14 +42,46 @@ static const uint8_t Group[4] = {239, 1, 2, 3};
 typedef struct Fixture
 {
     DtDevice* Device;
+    AvFifo_RxFifo* Rx;    // The case's receive FIFO, or NULL
+    AvFifo_TxFifo* Tx;    // The case's transmit FIFO, or NULL
+    AvFifo_RxFifo* Hw[3]; // Receive FIFOs on the hardware pipes, or NULL
     int Live;
 } Fixture;
+
+// Frees the FIFOs, which detaches them, and then the device.
+static void FreeAll(Fixture* Fix)
+{
+    for (int i = 0; i < 3; i++)
+        AvFifo_RxFifo_Freep(&Fix->Hw[i]);
+    AvFifo_TxFifo_Freep(&Fix->Tx);
+    AvFifo_RxFifo_Freep(&Fix->Rx);
+    DtDevice_Freep(&Fix->Device);
+}
+
+// Frees what the case made when an assertion fails before FINISH does.
+static void Cleanup(void* Context)
+{
+    FreeAll((Fixture*)Context);
+}
+
+// Resets the emulator, notes the live allocations and registers the cleanup, with
+// nothing made yet.
+static void Init(Fixture* Fix)
+{
+    SimDtPcie_Reset();
+    Fix->Live = DtAlloc_NumLive();
+    Fix->Device = NULL;
+    Fix->Rx = NULL;
+    Fix->Tx = NULL;
+    for (int i = 0; i < 3; i++)
+        Fix->Hw[i] = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
+}
 
 // The DTA-2110 attached, its clock stopped at T0 and its loopback on.
 static bool Open(Fixture* Fix, int* DtFailures)
 {
-    SimDtPcie_Reset();
-    Fix->Live = DtAlloc_NumLive();
+    Init(Fix);
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     SimDtPcie_SetNwLoopback(true);
@@ -59,17 +91,18 @@ static bool Open(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: no emulated DTA-2110; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        DtDevice_Free(Fix->Device);
+        DtTest_Cleanup();
         return false;
     }
     return true;
 }
 
-// Frees the device and checks that nothing is left.
+// Frees the FIFOs and the device and checks that nothing is left.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
-        DtDevice_Free((Fix).Device);                                                     \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
+        FreeAll(&(Fix));                                                                 \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);                                 \
         DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);                                 \
@@ -160,67 +193,67 @@ DT_TEST(ResultsOfTheLifecycle)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Rx != NULL && Tx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     AvFifo_IpPars P = Pars(5004, false, Sources);
     const St2110_RxConfigVideo RxVideo = {St2110_RxFrameFormat_Uyvy422_8b};
     const St2110_TxConfigVideo TxVideo = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
 
-    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT(strstr(GetLastException(), "AvFifo_RxFifo_Start") != NULL);
-    DT_ASSERT_EQ(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo), DTAPI_E_NOT_ATTACHED);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, NULL, 1), DTAPI_E_DEVICE);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 0), DTAPI_E_NO_SUCH_PORT);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 2), DTAPI_E_NO_SUCH_PORT);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 1, (HwOrSwPipe)9),
+    DT_ASSERT_EQ(AvFifo_RxFifo_ConfigureVideo(Fix.Rx, &RxVideo), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Fix.Rx, NULL, 1), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 0), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 2), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach2(Fix.Rx, Fix.Device, 1, (HwOrSwPipe)9),
                  DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1), DTAPI_E_ATTACHED);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_CONFIG);
-    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_NO_IPPARS);
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1), DTAPI_E_ATTACHED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_CONFIG);
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fix.Rx, &RxVideo));
+    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_NO_IPPARS);
     int UsesHw = -1;
-    DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw), DTAPI_E_NOT_STARTED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
     // IP parameters that are refused.
     IpSrcFlt Four[4];
     memset(Four, 0, sizeof(Four));
     P.SrcFlt = Four;
     P.NSrcFlt = 4;
-    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Rx, &P), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
     P.NSrcFlt = 2;
     Four[1].IpAddr[3] = 1;
-    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Rx, &P), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
     P.NSrcFlt = 0;
     P.Port = 70000;
-    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Rx, &P), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
     P.Port = 5004;
-    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P));
 
     // The transmit side.
-    DT_ASSERT(AvFifo_TxFifo_GetFromMemPool(Tx, 100) == NULL);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 1, HwOrSwPipe_UseSwPipe));
-    DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Tx, &UsesHw));
+    DT_ASSERT(AvFifo_TxFifo_GetFromMemPool(Fix.Tx, 100) == NULL);
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Fix.Tx, Fix.Device, 1, HwOrSwPipe_UseSwPipe));
+    DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fix.Tx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 0);
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &TxVideo));
-    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, WIDTH * 2 * HEIGHT);
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &TxVideo));
+    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, WIDTH * 2 * HEIGHT);
     DT_ASSERT(Frame != NULL);
-    DT_ASSERT_EQ(AvFifo_TxFifo_Write(Tx, Frame), DTAPI_E_NOT_STARTED);
+    DT_ASSERT_EQ(AvFifo_TxFifo_Write(Fix.Tx, Frame), DTAPI_E_NOT_STARTED);
     P.RtpPayloadType = 128;
-    DT_ASSERT_EQ(AvFifo_TxFifo_SetIpPars(Tx, &P), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P), DTAPI_E_INVALID_ARG);
     P.RtpPayloadType = 98;
     St2110_TxConfigVideo Odd = TxVideo;
     Odd.Resolution.Width = 321;
-    DT_ASSERT_EQ(AvFifo_TxFifo_ConfigureVideo(Tx, &Odd), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_EQ(AvFifo_TxFifo_Stop(Tx), DTAPI_OK);
+    DT_ASSERT_EQ(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Odd), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(AvFifo_TxFifo_Stop(Fix.Tx), DTAPI_OK);
 
-    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Rx));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Detach(Rx), DTAPI_E_NOT_ATTACHED);
-    AvFifo_RxFifo_Freep(&Rx);
-    DT_ASSERT(Rx == NULL);
-    AvFifo_TxFifo_Free(Tx);
+    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fix.Rx));
+    DT_ASSERT_EQ(AvFifo_RxFifo_Detach(Fix.Rx), DTAPI_E_NOT_ATTACHED);
+    AvFifo_RxFifo_Freep(&Fix.Rx);
+    DT_ASSERT(Fix.Rx == NULL);
+    AvFifo_TxFifo_Freep(&Fix.Tx);
     AvFifo_RxFifo_Free(NULL);
     DT_ASSERT_EQ(AvFifo_RxFifo_GetFifoLoad(NULL), 0);
     DT_ASSERT(AvFifo_RxFifo_Read(NULL) == NULL);
@@ -230,18 +263,14 @@ DT_TEST(ResultsOfTheLifecycle)
 // The DTA-2178's SDI ports have no A/V FIFO.
 DT_TEST(SdiPortIsRefused)
 {
-    SimDtPcie_Reset();
-    int Live = DtAlloc_NumLive();
-    DtDevice* Device = DtDevice_Alloc();
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    DT_ASSERT(Device != NULL && Rx != NULL);
-    DT_ASSERT_OK(DtDevice_AttachToSerial(Device, (int64_t)SIM_SERIAL));
-    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Rx, Device, 1), DTAPI_E_NOT_SUPPORTED);
-    AvFifo_RxFifo_Free(Rx);
-    DtDevice_Free(Device);
-    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
-    SimDtPcie_Reset();
-    DT_ASSERT_EQ(DtAlloc_NumLive(), Live);
+    Fixture Fix;
+    Init(&Fix);
+    Fix.Device = DtDevice_Alloc();
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    DT_ASSERT(Fix.Device != NULL && Fix.Rx != NULL);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, (int64_t)SIM_SERIAL));
+    DT_ASSERT_EQ(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1), DTAPI_E_NOT_SUPPORTED);
+    FINISH(Fix);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Starting +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -267,75 +296,71 @@ DT_TEST(StartFailures)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Rx != NULL && Tx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     AvFifo_IpPars P = Pars(5004, false, Sources);
     SimNwPipeState State;
 
     SimDtPcie_SetNwLink(false);
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_NO_LINK);
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_NO_LINK);
     SimDtPcie_SetNwLink(true);
     SimDtPcie_SetNetInterfaceUp(SIM_NET_DTA2110_INDEX, false, false);
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_DISABLED);
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_DISABLED);
     SimDtPcie_SetNetInterfaceUp(SIM_NET_DTA2110_INDEX, true, true);
     SimDtPcie_ClearNetAddresses(SIM_NET_DTA2110_INDEX, false);
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P),
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P),
                  DTAPI_E_NO_ADAPTER_IP_ADDR);
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_FailNetBind(true);
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_BIND);
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_BIND);
     SimDtPcie_FailNetBind(false);
     P.Vlan.Id = 100;
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_VLAN_NOT_FOUND);
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P),
+                 DTAPI_E_VLAN_NOT_FOUND);
     P.Vlan.Id = 0;
 
     // A failed join leaves nothing behind.
     SimDtPcie_FailNetJoin(true);
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_MULTICASTJOIN);
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P), DTAPI_E_MULTICASTJOIN);
     SimDtPcie_FailNetJoin(false);
     DT_ASSERT(strstr(GetLastException(), "multicast") != NULL);
     DT_ASSERT_EQ(PipeInUse(SIM_NW_FIRST_RX_HWP, SIM_NW_FIRST_SWP + 8, &State), 0);
     DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);
     int UsesHw = -1;
-    DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw), DTAPI_E_NOT_STARTED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
     // An unknown unicast destination has no MAC address.
     const St2110_TxConfigVideo Video = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
     AvFifo_IpPars Unicast = P;
     memcpy(Unicast.IpAddr, Unknown, 4);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &Video));
-    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &Unicast));
-    DT_ASSERT_EQ(AvFifo_TxFifo_Start(Tx), DTAPI_E_DST_MAC_ADDR);
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Video));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &Unicast));
+    DT_ASSERT_EQ(AvFifo_TxFifo_Start(Fix.Tx), DTAPI_E_DST_MAC_ADDR);
     DT_ASSERT_EQ(PipeInUse(SIM_NW_FIRST_TX_HWP, SIM_NW_FIRST_TX_HWP + 2, &State), 0);
 
     // Three receive FIFOs take the hardware pipes; a forced fourth gets none, a
     // preferring one a software pipe.
-    AvFifo_RxFifo* Hw[3];
     for (int i = 0; i < 3; i++)
     {
-        Hw[i] = AvFifo_RxFifo_Alloc();
-        DT_ASSERT(Hw[i] != NULL);
-        DT_ASSERT_OK(StartRx(Hw[i], Fix.Device, HwOrSwPipe_ForceHwPipe, &P));
-        DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Hw[i], &UsesHw));
+        Fix.Hw[i] = AvFifo_RxFifo_Alloc();
+        DT_ASSERT(Fix.Hw[i] != NULL);
+        DT_ASSERT_OK(StartRx(Fix.Hw[i], Fix.Device, HwOrSwPipe_ForceHwPipe, &P));
+        DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Hw[i], &UsesHw));
         DT_ASSERT_EQ(UsesHw, 1);
     }
-    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Rx));
-    DT_ASSERT_EQ(StartRx(Rx, Fix.Device, HwOrSwPipe_ForceHwPipe, &P),
+    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fix.Rx));
+    DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_ForceHwPipe, &P),
                  DTAPI_E_OUT_OF_RESOURCES);
-    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Rx));
-    DT_ASSERT_OK(StartRx(Rx, Fix.Device, HwOrSwPipe_PreferHwPipe, &P));
-    DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw));
+    DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fix.Rx));
+    DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_PreferHwPipe, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 0);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Rx), DTAPI_E_STARTED);
-    DT_ASSERT_EQ(AvFifo_RxFifo_Clear(Rx), DTAPI_E_STARTED);
-    for (int i = 0; i < 3; i++)
-        AvFifo_RxFifo_Free(Hw[i]);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_STARTED);
+    DT_ASSERT_EQ(AvFifo_RxFifo_Clear(Fix.Rx), DTAPI_E_STARTED);
 
-    AvFifo_RxFifo_Free(Rx);
-    AvFifo_TxFifo_Free(Tx);
     FINISH(Fix);
 }
 
@@ -345,12 +370,12 @@ DT_TEST(StartedAndStopped)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    DT_ASSERT(Rx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL);
     IpSrcFlt Sources[3];
     AvFifo_IpPars P = Pars(5004, true, Sources);
     Sources[0].Port = 6000;
-    DT_ASSERT_OK(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P));
+    DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P));
 
     SimNwPipeState State;
     int Id = PipeInUse(SIM_NW_FIRST_RX_HWP, SIM_NW_FIRST_RX_HWP + 2, &State);
@@ -370,17 +395,16 @@ DT_TEST(StartedAndStopped)
     DT_ASSERT_EQ(Joined.Port, 5004);
     DT_ASSERT_EQ(Joined.IfIndex, SIM_NET_DTA2110_INDEX);
 
-    DT_ASSERT_OK(AvFifo_RxFifo_Stop(Rx));
+    DT_ASSERT_OK(AvFifo_RxFifo_Stop(Fix.Rx));
     SimDtPcie_GetNwPipeState(Id, &State);
     DT_ASSERT(!State.InUse && !State.BufferRegistered);
     DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 0);
     DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);
-    DT_ASSERT_OK(AvFifo_RxFifo_Stop(Rx));
+    DT_ASSERT_OK(AvFifo_RxFifo_Stop(Fix.Rx));
 
     // It starts again.
-    DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
+    DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
     DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 1);
-    AvFifo_RxFifo_Free(Rx);
     FINISH(Fix);
 }
 
@@ -404,33 +428,33 @@ DT_TEST(PacketsOnTheWire)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Tx != NULL);
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5004, false, Sources);
     const St2110_TxConfigVideo Video = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &Video));
-    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
-    DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Video));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
+    DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
     int UsesHw = -1;
-    DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Tx, &UsesHw));
+    DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fix.Tx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 1);
 
-    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, WIDTH * 2 * HEIGHT);
+    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, WIDTH * 2 * HEIGHT);
     DT_ASSERT(Frame != NULL);
     for (int i = 0; i < WIDTH * 2 * HEIGHT; i++)
         Frame->Data[i] = (uint8_t)i;
     Frame->NumValidBytes = WIDTH * 2 * HEIGHT - 2;
-    DT_ASSERT_EQ(AvFifo_TxFifo_Write(Tx, Frame), DTAPI_E_INVALID_FORMAT);
+    DT_ASSERT_EQ(AvFifo_TxFifo_Write(Fix.Tx, Frame), DTAPI_E_INVALID_FORMAT);
     Frame->NumValidBytes = WIDTH * 2 * HEIGHT;
     Frame->RtpTime = 0x01020304;
     Frame->ToD = DtAvTime_FromNs(T0 + 100 * MS);
-    DT_ASSERT_OK(AvFifo_TxFifo_Write(Tx, Frame));
+    DT_ASSERT_OK(AvFifo_TxFifo_Write(Fix.Tx, Frame));
 
     // The packets up to the one with the marker carry the 240 rows of 640 bytes each.
     DT_ASSERT(RunUntil(HasMarker, NULL));
-    DT_ASSERT_EQ(AvFifo_TxFifo_GetStatistics(Tx).FramesOk, 1);
+    DT_ASSERT_EQ(AvFifo_TxFifo_GetStatistics(Fix.Tx).FramesOk, 1);
     const int Packets = SimDtPcie_NwSentCount();
     int64_t RowBytes = 0;
     for (int i = 0; i < Packets; i++)
@@ -474,7 +498,6 @@ DT_TEST(PacketsOnTheWire)
     // 28/750 of 40 ms after the frame, less the output delay.
     DT_ASSERT_EQ(Sent.TodNs, T0 + 100 * MS + 1493333 - 14800);
 
-    AvFifo_TxFifo_Free(Tx);
     FINISH(Fix);
 }
 
@@ -518,21 +541,21 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Rx != NULL && Tx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5004, false, Sources);
     const St2110_TxConfigVideo TxVideo = VideoConfig(TxFormat);
     const St2110_RxConfigVideo RxVideo = {RxFormat};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Rx, Fix.Device, 1, Pipe));
-    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Rx, &RxVideo));
-    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
-    DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Tx, Fix.Device, 1, Pipe));
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Tx, &TxVideo));
-    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
-    DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Fix.Rx, Fix.Device, 1, Pipe));
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fix.Rx, &RxVideo));
+    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Fix.Tx, Fix.Device, 1, Pipe));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &TxVideo));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
+    DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
 
     int Size = TxFormat == St2110_TxFrameFormat_Uyvy422_10b ? WIDTH * 5 / 2 * HEIGHT
                                                             : WIDTH * 2 * HEIGHT;
@@ -545,21 +568,21 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
 
     for (int f = 0; f < 3; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, Size);
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, Size);
         DT_ASSERT(Frame != NULL);
         memcpy(Frame->Data, Image, (size_t)Size);
         Frame->NumValidBytes = Size;
         Frame->RtpTime = 3600u * (uint32_t)f;
         Frame->ToD = DtAvTime_FromNs(T0 + 100 * MS + (uint64_t)f * 40 * MS);
-        DT_ASSERT_OK(AvFifo_TxFifo_Write(Tx, Frame));
+        DT_ASSERT_OK(AvFifo_TxFifo_Write(Fix.Tx, Frame));
     }
-    LoadWanted Wanted = {Rx, 2};
+    LoadWanted Wanted = {Fix.Rx, 2};
     DT_ASSERT(RunUntil(HasLoad, &Wanted));
-    DT_ASSERT_EQ(AvFifo_TxFifo_GetStatistics(Tx).FramesOk, 3);
+    DT_ASSERT_EQ(AvFifo_TxFifo_GetStatistics(Fix.Tx).FramesOk, 3);
 
     for (int f = 1; f < 3; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_RxFifo_Read(Rx);
+        AvFifo_Frame* Frame = AvFifo_RxFifo_Read(Fix.Rx);
         DT_ASSERT(Frame != NULL);
         int Valid = RxFormat == St2110_RxFrameFormat_Uyvy422_10b_to_8b ||
                             RxFormat == St2110_RxFrameFormat_Yuv422p_8b
@@ -583,17 +606,15 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
         }
         else
             DT_ASSERT_MEM(Frame->Data, Expected, Compare);
-        DT_ASSERT_OK(AvFifo_RxFifo_ReturnToMemPool(Rx, Frame));
-        DT_ASSERT_EQ(AvFifo_RxFifo_ReturnToMemPool(Rx, Frame), DTAPI_E_INVALID_ARG);
+        DT_ASSERT_OK(AvFifo_RxFifo_ReturnToMemPool(Fix.Rx, Frame));
+        DT_ASSERT_EQ(AvFifo_RxFifo_ReturnToMemPool(Fix.Rx, Frame), DTAPI_E_INVALID_ARG);
     }
-    RxStatistics Stats = AvFifo_RxFifo_GetStatistics(Rx);
+    RxStatistics Stats = AvFifo_RxFifo_GetStatistics(Fix.Rx);
     DT_ASSERT_EQ(Stats.FramesOk, 2);
     DT_ASSERT_EQ(Stats.FramesIncomplete + Stats.IpPacketErrors + Stats.SyncErrors, 0);
 
     free(Image);
     free(Expected);
-    AvFifo_TxFifo_Free(Tx);
-    AvFifo_RxFifo_Free(Rx);
     FINISH(Fix);
 }
 
@@ -635,31 +656,31 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Rx != NULL && Tx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5006, false, Sources);
     const St2110_RxConfigAudio RxAudio = {Format, 48000};
     const St2110_TxConfigAudio TxAudio = {Format, 2, 48, 48000};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Rx, &RxAudio));
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 400);
-    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
-    DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Tx, &TxAudio));
-    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
-    DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Fix.Rx, &RxAudio));
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Fix.Rx), 400);
+    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &TxAudio));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
+    DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
     int UsesHw = -1;
-    DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Rx, &UsesHw));
+    DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw));
     DT_ASSERT_EQ(UsesHw, 0);
 
     int FrameNumBytes = 480 * 2 * SampleBytes;
     uint8_t Sent[5 * 480 * 2 * 3];
     for (int f = 0; f < 5; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, FrameNumBytes);
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, FrameNumBytes);
         DT_ASSERT(Frame != NULL);
         for (int i = 0; i < FrameNumBytes; i++)
             Frame->Data[i] = (uint8_t)(f * 31 + i);
@@ -667,26 +688,24 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
         Frame->NumValidBytes = FrameNumBytes;
         Frame->RtpTime = 48000u + 480u * (uint32_t)f;
         Frame->ToD = DtAvTime_FromNs(T0 + 100 * MS + (uint64_t)f * 10 * MS);
-        DT_ASSERT_OK(AvFifo_TxFifo_Write(Tx, Frame));
+        DT_ASSERT_OK(AvFifo_TxFifo_Write(Fix.Tx, Frame));
     }
-    LoadWanted Wanted = {Rx, 50};
+    LoadWanted Wanted = {Fix.Rx, 50};
     DT_ASSERT(RunUntil(HasLoad, &Wanted));
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetFifoLoad(Rx), 50);
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetFifoLoad(Fix.Rx), 50);
     for (int k = 0; k < 50; k++)
     {
-        AvFifo_Frame* Frame = AvFifo_RxFifo_Read(Rx);
+        AvFifo_Frame* Frame = AvFifo_RxFifo_Read(Fix.Rx);
         DT_ASSERT(Frame != NULL);
         DT_ASSERT_EQ(Frame->NumValidBytes, 48 * 2 * SampleBytes);
         DT_ASSERT_EQ(Frame->RtpTime, 48000u + 48u * (uint32_t)k);
         DT_ASSERT_MEM(Frame->Data, Sent + k * 48 * 2 * SampleBytes,
                       (size_t)Frame->NumValidBytes);
-        DT_ASSERT_OK(AvFifo_RxFifo_ReturnToMemPool(Rx, Frame));
+        DT_ASSERT_OK(AvFifo_RxFifo_ReturnToMemPool(Fix.Rx, Frame));
     }
-    DT_ASSERT(AvFifo_RxFifo_Read(Rx) == NULL);
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetStatistics(Rx).FramesOk, 50);
+    DT_ASSERT(AvFifo_RxFifo_Read(Fix.Rx) == NULL);
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetStatistics(Fix.Rx).FramesOk, 50);
 
-    AvFifo_TxFifo_Free(Tx);
-    AvFifo_RxFifo_Free(Rx);
     FINISH(Fix);
 }
 
@@ -709,53 +728,53 @@ DT_TEST(FullFifos)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    AvFifo_TxFifo* Tx = AvFifo_TxFifo_Alloc();
-    DT_ASSERT(Rx != NULL && Tx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5006, false, Sources);
     const St2110_RxConfigAudio RxAudio = {St2110_AudioFormat_L24BE, 48000};
     const St2110_TxConfigAudio TxAudio = {St2110_AudioFormat_L24BE, 2, 240, 48000};
-    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Rx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Rx, &RxAudio));
-    AvFifo_RxFifo_SetMaxSize(Rx, 5);
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 5);
-    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Rx, &P));
-    DT_ASSERT_OK(AvFifo_RxFifo_Start(Rx));
-    AvFifo_RxFifo_SetMaxSize(Rx, 50);
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Rx), 5);
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Fix.Rx, &RxAudio));
+    AvFifo_RxFifo_SetMaxSize(Fix.Rx, 5);
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Fix.Rx), 5);
+    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
+    AvFifo_RxFifo_SetMaxSize(Fix.Rx, 50);
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Fix.Rx), 5);
     DT_ASSERT(strstr(GetLastException(), "already started") != NULL);
 
-    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Tx, Fix.Device, 1));
-    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Tx, &TxAudio));
-    AvFifo_TxFifo_SetMaxSize(Tx, 2);
-    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Tx, &P));
-    DT_ASSERT_OK(AvFifo_TxFifo_Start(Tx));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &TxAudio));
+    AvFifo_TxFifo_SetMaxSize(Fix.Tx, 2);
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
+    DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
 
     // Ten packets now, then frames five seconds ahead until the FIFO is full.
     for (int f = 0; f < 10; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, 1440);
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, 1440);
         DT_ASSERT(Frame != NULL);
         Frame->NumValidBytes = 1440;
         Frame->ToD = DtAvTime_FromNs(T0 + 50 * MS + (uint64_t)f * 5 * MS);
         DtapiResult Result = DTAPI_E_FIFO_FULL;
         for (int Try = 0; Try < 1000 && Result == DTAPI_E_FIFO_FULL; Try++)
         {
-            Result = AvFifo_TxFifo_Write(Tx, Frame);
+            Result = AvFifo_TxFifo_Write(Fix.Tx, Frame);
             if (Result == DTAPI_E_FIFO_FULL)
                 OsTime_SleepMs(1);
         }
         DT_ASSERT_OK(Result);
     }
-    LoadWanted Wanted = {Rx, 5};
+    LoadWanted Wanted = {Fix.Rx, 5};
     DT_ASSERT(RunUntil(HasLoad, &Wanted));
     for (int Step = 0; Step < 20; Step++)
     {
         SimDtPcie_AdvanceNwTime(10 * MS);
         OsTime_SleepMs(3);
     }
-    RxStatistics Stats = AvFifo_RxFifo_GetStatistics(Rx);
+    RxStatistics Stats = AvFifo_RxFifo_GetStatistics(Fix.Rx);
     DT_ASSERT_EQ(Stats.FramesOk, 10);
     DT_ASSERT_EQ(Stats.DroppedFrames, 5);
 
@@ -763,20 +782,19 @@ DT_TEST(FullFifos)
     uint64_t Later = SimDtPcie_Now() + 5000 * MS;
     for (int f = 0; f < 200 && Result == DTAPI_OK; f++)
     {
-        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Tx, 1440);
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, 1440);
         DT_ASSERT(Frame != NULL);
         Frame->NumValidBytes = 1440;
         Frame->ToD = DtAvTime_FromNs(Later + (uint64_t)f * 5 * MS);
-        Result = AvFifo_TxFifo_Write(Tx, Frame);
+        Result = AvFifo_TxFifo_Write(Fix.Tx, Frame);
         // The refused frame stays the application's; the receive FIFO does not take it.
         if (Result == DTAPI_E_FIFO_FULL)
-            DT_ASSERT_EQ(AvFifo_RxFifo_ReturnToMemPool(Rx, Frame), DTAPI_E_INVALID_ARG);
+            DT_ASSERT_EQ(AvFifo_RxFifo_ReturnToMemPool(Fix.Rx, Frame),
+                         DTAPI_E_INVALID_ARG);
         OsTime_SleepMs(1);
     }
     DT_ASSERT_EQ(Result, DTAPI_E_FIFO_FULL);
 
-    AvFifo_TxFifo_Free(Tx);
-    AvFifo_RxFifo_Free(Rx);
     FINISH(Fix);
 }
 
@@ -786,11 +804,11 @@ DT_TEST(InjectedFaultIsCounted)
     Fixture Fix;
     if (!Open(&Fix, DtFailures))
         return;
-    AvFifo_RxFifo* Rx = AvFifo_RxFifo_Alloc();
-    DT_ASSERT(Rx != NULL);
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL);
     IpSrcFlt Sources[3];
     const AvFifo_IpPars P = Pars(5004, false, Sources);
-    DT_ASSERT_OK(StartRx(Rx, Fix.Device, HwOrSwPipe_Auto, &P));
+    DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P));
 
     uint8_t Frame[14 + 20 + 8 + 12 + 2 + 4 * 6 + 8];
     memset(Frame, 0, sizeof(Frame));
@@ -821,14 +839,13 @@ DT_TEST(InjectedFaultIsCounted)
     }
     DT_ASSERT(SimDtPcie_InjectNwFrame(Frame, sizeof(Frame), T0 + 10 * MS));
     SimDtPcie_AdvanceNwTime(20 * MS);
-    for (int Try = 0; Try < 500 && AvFifo_RxFifo_GetStatistics(Rx).IpPacketErrors == 0;
-         Try++)
+    for (int Try = 0;
+         Try < 500 && AvFifo_RxFifo_GetStatistics(Fix.Rx).IpPacketErrors == 0; Try++)
     {
         OsTime_SleepMs(2);
     }
-    DT_ASSERT_EQ(AvFifo_RxFifo_GetStatistics(Rx).IpPacketErrors, 1);
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetStatistics(Fix.Rx).IpPacketErrors, 1);
 
-    AvFifo_RxFifo_Free(Rx);
     FINISH(Fix);
 }
 

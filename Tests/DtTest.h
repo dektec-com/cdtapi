@@ -44,9 +44,38 @@
 //
 //     DT_TEST_MAIN("Api", DT_RUN(VersionIsNotEmpty))
 //
+// A case that opens a device or a channel frees it at its end, and checks then that
+// nothing is left open. A failing assertion returns before that end, so what the case
+// opened would stay open, and every case after it that makes the same check would fail
+// on that alone. So a case that opens something registers, with DtTest_SetCleanup, a
+// function that frees it, and DT_FAIL calls that function before it returns. The case's
+// own end unregisters the function first, and frees as it always does.
+//
 
 // Declares one test case. The body follows this macro.
 #define DT_TEST(Name) static void Name(int* DtFailures)
+
+// Frees what the running case opened. The function runs at most once: DT_FAIL
+// unregisters it before calling it, so a failure while it runs does not run it again.
+typedef void (*DtTestCleanupFunc)(void* Context);
+
+static DtTestCleanupFunc g_DtTestCleanupFunc;
+static void* g_DtTestCleanupContext;
+
+static inline void DtTest_SetCleanup(DtTestCleanupFunc Func, void* Context)
+{
+    g_DtTestCleanupFunc = Func;
+    g_DtTestCleanupContext = Context;
+}
+
+static inline void DtTest_Cleanup(void)
+{
+    DtTestCleanupFunc Func = g_DtTestCleanupFunc;
+
+    g_DtTestCleanupFunc = NULL;
+    if (Func != NULL)
+        Func(g_DtTestCleanupContext);
+}
 
 #define DT_FAIL(...)                                                                     \
     do                                                                                   \
@@ -55,6 +84,7 @@
         printf(__VA_ARGS__);                                                             \
         printf("\n");                                                                    \
         (*DtFailures)++;                                                                 \
+        DtTest_Cleanup();                                                                \
         return;                                                                          \
     } while (0)
 

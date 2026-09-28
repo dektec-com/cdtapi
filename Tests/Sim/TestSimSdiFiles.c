@@ -50,8 +50,34 @@ typedef struct Fixture
 {
     int Live;
     DtDevice* Device;
-    char* Buffer; // BUFFER_SIZE bytes
+    DtInpChannel* In;   // The case's input channel, or NULL
+    DtOutpChannel* Out; // The case's output channel, or NULL
+    DtWorkerPool* Pool; // The case's pool, until the channels hold it, or NULL
+    char* Buffer;       // BUFFER_SIZE bytes
+    OsThread* Thread;   // A thread of the case that writes to Out, or NULL
 } Fixture;
+
+// Frees what Start and the case made when an assertion fails before FINISH does. The
+// channels go first: freeing a channel detaches it and ends a write on the case's
+// thread, which is then joined while the case's frame, where the thread's context
+// lives, still stands.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtInpChannel_Free(Fix->In);
+    DtOutpChannel_Free(Fix->Out);
+    OsThread_Join(Fix->Thread);
+    DtWorkerPool_Free(Fix->Pool);
+    DtDevice_Free(Fix->Device);
+    free(Fix->Buffer);
+    Fix->In = NULL;
+    Fix->Out = NULL;
+    Fix->Thread = NULL;
+    Fix->Pool = NULL;
+    Fix->Device = NULL;
+    Fix->Buffer = NULL;
+}
 
 // Resets the emulator and attaches a device object. Returns false, having recorded a
 // failure, when that is not possible.
@@ -60,7 +86,12 @@ static bool Start(Fixture* Fix, int* DtFailures)
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_NumLive();
     Fix->Device = NULL;
+    Fix->In = NULL;
+    Fix->Out = NULL;
+    Fix->Pool = NULL;
     Fix->Buffer = NULL;
+    Fix->Thread = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
 
     OsDrv* Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
@@ -68,6 +99,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
+        DtTest_Cleanup();
         return false;
     }
     OsDrv_Close(Drv);
@@ -79,16 +111,21 @@ static bool Start(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: cannot set up\n");
         (*DtFailures)++;
+        DtTest_Cleanup();
         return false;
     }
     return true;
 }
 
-// Frees what Start made, lets the emulator close its files and free their frames, and
-// checks that nothing is left open or allocated.
+// Frees what Start and the case made, lets the emulator close its files and free their
+// frames, and checks that nothing is left open or allocated.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
+        DtInpChannel_Free((Fix).In);                                                     \
+        DtOutpChannel_Free((Fix).Out);                                                   \
+        DtWorkerPool_Free((Fix).Pool);                                                   \
         DtDevice_Free((Fix).Device);                                                     \
         free((Fix).Buffer);                                                              \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
@@ -263,25 +300,24 @@ DT_TEST(SourcePlaysTheFile)
         DT_ASSERT_OK(DtDevice_DetectVidStd(Fix.Device, PORT, &Found));
         DT_ASSERT_EQ(Found, Cases[c].VidStd);
 
-        DtInpChannel* Channel = DtInpChannel_Alloc();
-        DT_ASSERT(Channel != NULL);
+        Fix.In = DtInpChannel_Alloc();
+        DT_ASSERT(Fix.In != NULL);
         DT_ASSERT_OK(SetStandard(&Fix, PORT, Cases[c].VidStd));
-        DT_ASSERT_OK(DtInpChannel_AttachToPort(Channel, Fix.Device, PORT));
-        DT_ASSERT_OK(DtInpChannel_SetRxMode(Channel, DTAPI_RXMODE_SDI_FULL |
-                                                         DTAPI_RXMODE_SDI_10B));
-        DT_ASSERT_OK(DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV));
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+        DT_ASSERT_OK(
+            DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
         for (uint32_t i = 0; i < 4; i++)
         {
             size_t Size, Padded;
             uint8_t* Expected =
                 PatternFrame(Cases[c].VidStd, 100 + i % 3, &Size, &Padded);
             int FrameSize = BUFFER_SIZE;
-            DT_ASSERT_OK(DtInpChannel_ReadFrame(Channel, Fix.Buffer, &FrameSize, 2000));
+            DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Fix.Buffer, &FrameSize, 2000));
             DT_ASSERT_EQ((size_t)FrameSize, Size);
             DT_ASSERT(Expected != NULL && memcmp(Fix.Buffer, Expected, Size) == 0);
             free(Expected);
         }
-        DtInpChannel_Free(Channel);
         FINISH(Fix);
     }
     remove(SOURCE_FILE);
@@ -346,18 +382,18 @@ DT_TEST(SourceFollowsTheClock)
         DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("625I50", SOURCE_FILE)));
         SimDtPcie_SetRxRealTime(RealTime != 0);
 
-        DtInpChannel* Channel = DtInpChannel_Alloc();
-        DT_ASSERT(Channel != NULL);
+        Fix.In = DtInpChannel_Alloc();
+        DT_ASSERT(Fix.In != NULL);
         DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
-        DT_ASSERT_OK(DtInpChannel_AttachToPort(Channel, Fix.Device, PORT));
-        DT_ASSERT_OK(DtInpChannel_SetRxMode(Channel, DTAPI_RXMODE_SDI_FULL |
-                                                         DTAPI_RXMODE_SDI_10B));
-        DT_ASSERT_OK(DtInpChannel_SetRxControl(Channel, DTAPI_RXCTRL_RCV));
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+        DT_ASSERT_OK(
+            DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
 
         int Load = 0;
         for (int Ms = 0; Ms < (RealTime ? 2000 : 200) && Load == 0; Ms += 10)
         {
-            DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Channel, &Load));
+            DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.In, &Load));
             if (Load == 0)
                 OsTime_SleepMs(10);
         }
@@ -367,7 +403,7 @@ DT_TEST(SourceFollowsTheClock)
             uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_625I50, 7, &Size, &Padded);
             int FrameSize = BUFFER_SIZE;
             DT_ASSERT(Load > 0 && (size_t)Load % Size == 0);
-            DT_ASSERT_OK(DtInpChannel_ReadFrame(Channel, Fix.Buffer, &FrameSize, 1000));
+            DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Fix.Buffer, &FrameSize, 1000));
             DT_ASSERT_EQ((size_t)FrameSize, Size);
             DT_ASSERT(Expected != NULL && memcmp(Fix.Buffer, Expected, Size) == 0);
             free(Expected);
@@ -376,7 +412,6 @@ DT_TEST(SourceFollowsTheClock)
         {
             DT_ASSERT_EQ(Load, 0);
         }
-        DtInpChannel_Free(Channel);
         FINISH(Fix);
     }
     remove(SOURCE_FILE);
@@ -469,13 +504,13 @@ DT_TEST(SinkWritesWhatIsSent)
         return;
     DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
 
-    DtOutpChannel* Channel = DtOutpChannel_Alloc();
-    DT_ASSERT(Channel != NULL);
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Fix.Out != NULL);
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_625I50));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Channel, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
     DT_ASSERT_OK(DtOutpChannel_SetTxMode(
-        Channel, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD));
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
 
     uint8_t* Frames[3];
     size_t Size = 0, Padded = 0;
@@ -483,13 +518,12 @@ DT_TEST(SinkWritesWhatIsSent)
     {
         Frames[i] = PatternFrame(DTAPI_VIDSTD_625I50, (uint32_t)i, &Size, &Padded);
         DT_ASSERT(Frames[i] != NULL);
-        DT_ASSERT_OK(DtOutpChannel_WriteFrame(Channel, Frames[i], (int)Size, 2000));
+        DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Out, Frames[i], (int)Size, 2000));
     }
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND));
-    DT_ASSERT_OK(DtOutpChannel_Detach(Channel, DTAPI_WAIT_UNTIL_SENT));
-    DtOutpChannel_Free(Channel);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     size_t FileSize = 0;
@@ -527,32 +561,32 @@ static void ThreadsGiveOneThreadsBytes(int VidStd, const char* Name, int* DtFail
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(VidStd, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
-    DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkerPool* Pool = ThreadPool(4);
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
-    DT_ASSERT(Pool != NULL);
+    Fix.In = DtInpChannel_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    Fix.Pool = ThreadPool(4);
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Out != NULL);
+    DT_ASSERT(Fix.Pool != NULL);
 
     // Four pieces asked for, where the library would take one for a standard up to 3G.
     DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 4));
     DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
     int FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
     DT_ASSERT_EQ((size_t)FrameSize, Size);
     DT_ASSERT_MEM(Buffer, Expected, Size);
-    DtInpChannel_Free(In);
+    DtInpChannel_Freep(&Fix.In);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 4));
-    DtWorkerPool_Freep(&Pool);
-    DT_ASSERT_OK(
-        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Fix.Out, Fix.Pool, 4));
+    DtWorkerPool_Freep(&Fix.Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
 
     // Twice over the stream: the second frame follows the first in the same call, and its
     // first line begins where the last line of the first ended.
@@ -560,12 +594,11 @@ static void ThreadsGiveOneThreadsBytes(int VidStd, const char* Name, int* DtFail
     DT_ASSERT(Two != NULL);
     memcpy(Two, Buffer, Size);
     memcpy(Two + Size, Buffer, Size);
-    DT_ASSERT_OK(DtOutpChannel_Write(Out, Two, (int)(2 * Size)));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
-    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
-    DtOutpChannel_Free(Out);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Out, Two, (int)(2 * Size)));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     size_t FileSize = 0;
@@ -615,32 +648,31 @@ DT_TEST(FourKThroughFiles)
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
-    DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+    Fix.In = DtInpChannel_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Out != NULL);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
     DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
     int FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
     DT_ASSERT_EQ((size_t)FrameSize, Size);
     DT_ASSERT_MEM(Buffer, Expected, Size);
-    DtInpChannel_Free(In);
+    DtInpChannel_Freep(&Fix.In);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(
-        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
-    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Out, Buffer, (int)Size, 30000));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
-    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
-    DtOutpChannel_Free(Out);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Out, Buffer, (int)Size, 30000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     size_t FileSize = 0;
@@ -671,27 +703,27 @@ DT_TEST(FourKOverThreads)
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
-    DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkerPool* Pool = ThreadPool(4);
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
-    DT_ASSERT(Pool != NULL);
+    Fix.In = DtInpChannel_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    Fix.Pool = ThreadPool(4);
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Out != NULL);
+    DT_ASSERT(Fix.Pool != NULL);
 
     // With 0 the library takes four pieces for 2160p50.
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, Pool, -1), DTAPI_E_INVALID_ARG);
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 0));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, -1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 0));
     DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
     int FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
     DT_ASSERT_EQ((size_t)FrameSize, Size);
     DT_ASSERT_MEM(Buffer, Expected, Size);
 
     // Setting the pool again, with the layout in place, reallocates the working buffers.
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 3));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 3));
 
     // A 2160p50 frame takes 28.4 MB of the 256 MB ring, so the tenth frame is the first
     // whose coded lines run across the end of it: those lines are copied into a band's
@@ -700,32 +732,31 @@ DT_TEST(FourKOverThreads)
     for (int Frame = 0; Frame < 10; Frame++)
     {
         FrameSize = (int)Size;
-        DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
         DT_ASSERT_MEM(Buffer, Expected, Size);
     }
-    DtInpChannel_Free(In);
+    DtInpChannel_Freep(&Fix.In);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 0));
-    DtWorkerPool_Freep(&Pool);
-    DT_ASSERT_OK(
-        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Fix.Out, Fix.Pool, 0));
+    DtWorkerPool_Freep(&Fix.Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
 
     // A coded 2160p50 frame takes 28.4 MB of the 256 MB buffer, so from the tenth frame a
     // line runs across the end of it. A batch stops at the last line that lies in one
     // piece and that line goes through the line buffer, so the frame must come out whole
     // all the same. The card must be sending for the tenth to have anywhere to go: the
     // buffer holds nine.
-    DT_ASSERT_OK(DtOutpChannel_Write(Out, Buffer, (int)Size));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Out, Buffer, (int)Size));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
     for (int Frame = 1; Frame < 10; Frame++)
-        DT_ASSERT_OK(DtOutpChannel_Write(Out, Buffer, (int)Size));
-    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
-    DtOutpChannel_Free(Out);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+        DT_ASSERT_OK(DtOutpChannel_Write(Fix.Out, Buffer, (int)Size));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     // The file holds ten frames, which is too much to hold whole, so the last of them is
@@ -757,56 +788,55 @@ DT_TEST(FourKThroughDispatch)
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
-    DtOutpChannel* Out = DtOutpChannel_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
     Dispatcher Reading = {0};
     Dispatcher Writing = {0};
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Out != NULL);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DtWorkerPool* Pool = DtWorkerPool_Alloc();
-    DT_ASSERT(Pool != NULL);
-    DT_ASSERT_EQ(DtWorkerPool_SetDispatch(Pool, Dispatch, &Reading, 0),
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    Fix.Pool = DtWorkerPool_Alloc();
+    DT_ASSERT(Fix.Pool != NULL);
+    DT_ASSERT_EQ(DtWorkerPool_SetDispatch(Fix.Pool, Dispatch, &Reading, 0),
                  DTAPI_E_INVALID_ARG);
-    DtWorkerPool_Freep(&Pool);
-    Pool = DispatchPool(&Reading, 4);
-    DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 0));
-    DtWorkerPool_Freep(&Pool);
+    DtWorkerPool_Freep(&Fix.Pool);
+    Fix.Pool = DispatchPool(&Reading, 4);
+    DT_ASSERT(Fix.Pool != NULL);
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 0));
+    DtWorkerPool_Freep(&Fix.Pool);
     DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
     int FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
     DT_ASSERT_EQ((size_t)FrameSize, Size);
     DT_ASSERT_MEM(Buffer, Expected, Size);
     DT_ASSERT_EQ(Reading.Calls, 1);
 
     // No pool converts in the reading thread again, and the frame is still right.
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, NULL, 0));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, NULL, 0));
     FrameSize = (int)Size;
-    DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+    DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
     DT_ASSERT_MEM(Buffer, Expected, Size);
     DT_ASSERT_EQ(Reading.Calls, 1);
-    DtInpChannel_Free(In);
+    DtInpChannel_Freep(&Fix.In);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    Pool = DispatchPool(&Writing, 4);
-    DT_ASSERT(Pool != NULL);
-    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 0));
-    DtWorkerPool_Freep(&Pool);
-    DT_ASSERT_OK(
-        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
-    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Out, Buffer, (int)Size, 30000));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_SEND));
-    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    Fix.Pool = DispatchPool(&Writing, 4);
+    DT_ASSERT(Fix.Pool != NULL);
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Fix.Out, Fix.Pool, 0));
+    DtWorkerPool_Freep(&Fix.Pool);
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Out, Buffer, (int)Size, 30000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
     DT_ASSERT(Writing.Calls > 0);
-    DtOutpChannel_Free(Out);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     size_t FileSize = 0;
@@ -864,42 +894,42 @@ DT_TEST(TwoChannelsShareAPoolOfEight)
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_2160P50, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
-    DtOutpChannel* Out = DtOutpChannel_Alloc();
-    DtWorkerPool* Pool = ThreadPool(8);
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Out != NULL);
-    DT_ASSERT(Pool != NULL);
+    Fix.In = DtInpChannel_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    Fix.Pool = ThreadPool(8);
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Out != NULL);
+    DT_ASSERT(Fix.Pool != NULL);
 
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_2160P50));
     DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_2160P50));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Out, Fix.Device, PORT_OUTPUT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
-    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Out, Pool, 4));
-    DtWorkerPool_Freep(&Pool);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 4));
+    DT_ASSERT_OK(DtOutpChannel_SetWorkerPool(Fix.Out, Fix.Pool, 4));
+    DtWorkerPool_Freep(&Fix.Pool);
     DT_ASSERT_OK(
-        DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
-    DT_ASSERT_OK(
-        DtOutpChannel_SetTxMode(Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Out, DTAPI_TXCTRL_HOLD));
-    DT_ASSERT_OK(DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV));
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtOutpChannel_SetTxMode(
+        Fix.Out, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
 
-    Sender Send = {Out, Expected, (int)Size, NUM_FRAMES, DTAPI_E};
-    OsThread* Thread = OsThread_Start(SendFrames, &Send);
-    DT_ASSERT(Thread != NULL);
+    Sender Send = {Fix.Out, Expected, (int)Size, NUM_FRAMES, DTAPI_E};
+    Fix.Thread = OsThread_Start(SendFrames, &Send);
+    DT_ASSERT(Fix.Thread != NULL);
     for (int Frame = 0; Frame < NUM_FRAMES; Frame++)
     {
         int FrameSize = (int)Size;
-        DT_ASSERT_OK(DtInpChannel_ReadFrame(In, Buffer, &FrameSize, 30000));
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Buffer, &FrameSize, 30000));
         DT_ASSERT_MEM(Buffer, Expected, Size);
     }
-    OsThread_Join(Thread);
+    OsThread_Join(Fix.Thread);
+    Fix.Thread = NULL;
     DT_ASSERT_OK(Send.Result);
-    DtInpChannel_Free(In);
-    DT_ASSERT_OK(DtOutpChannel_Detach(Out, DTAPI_WAIT_UNTIL_SENT));
-    DtOutpChannel_Free(Out);
-    DtDevice_Free(Fix.Device);
-    Fix.Device = NULL;
+    DtInpChannel_Freep(&Fix.In);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
     uint8_t* File = ReadFrameAt(SINK_FILE, NUM_FRAMES - 1, Padded, Size);
@@ -957,40 +987,39 @@ DT_TEST(PoolStaysThroughAsiAndBack)
     size_t Size = 0, Padded = 0;
     uint8_t* Expected = PatternFrame(DTAPI_VIDSTD_1080I50, 0, &Size, &Padded);
     char* Buffer = (char*)malloc(Size);
-    DtInpChannel* In = DtInpChannel_Alloc();
+    Fix.In = DtInpChannel_Alloc();
     Dispatcher First = {0};
     Dispatcher Second = {0};
-    DtWorkerPool* Pool = DispatchPool(&First, 4);
-    DT_ASSERT(Expected != NULL && Buffer != NULL && In != NULL && Pool != NULL);
+    Fix.Pool = DispatchPool(&First, 4);
+    DT_ASSERT(Expected != NULL && Buffer != NULL && Fix.In != NULL && Fix.Pool != NULL);
 
-    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, Pool, 4), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 4), DTAPI_E_NOT_ATTACHED);
     DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_1080I50));
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(In, Pool, 4));
-    DtWorkerPool_Freep(&Pool);
-    ReadOne(In, Buffer, Expected, Size, DtFailures);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(DtInpChannel_SetWorkerPool(Fix.In, Fix.Pool, 4));
+    DtWorkerPool_Freep(&Fix.Pool);
+    ReadOne(Fix.In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 1);
 
-    ThroughAsi(In, NULL, DtFailures);
-    ReadOne(In, Buffer, Expected, Size, DtFailures);
+    ThroughAsi(Fix.In, NULL, DtFailures);
+    ReadOne(Fix.In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 2);
 
-    Pool = DispatchPool(&Second, 4);
-    DT_ASSERT(Pool != NULL);
-    ThroughAsi(In, Pool, DtFailures);
-    DtWorkerPool_Freep(&Pool);
-    ReadOne(In, Buffer, Expected, Size, DtFailures);
+    Fix.Pool = DispatchPool(&Second, 4);
+    DT_ASSERT(Fix.Pool != NULL);
+    ThroughAsi(Fix.In, Fix.Pool, DtFailures);
+    DtWorkerPool_Freep(&Fix.Pool);
+    ReadOne(Fix.In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(First.Calls, 2);
     DT_ASSERT_EQ(Second.Calls, 1);
 
     // A detach lets go of the pool: attached again, the channel reads in its own thread.
-    DT_ASSERT_OK(DtInpChannel_Detach(In, DTAPI_INSTANT_DETACH));
-    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(In, NULL, 0), DTAPI_E_NOT_ATTACHED);
-    DT_ASSERT_OK(DtInpChannel_AttachToPort(In, Fix.Device, PORT));
-    ReadOne(In, Buffer, Expected, Size, DtFailures);
+    DT_ASSERT_OK(DtInpChannel_Detach(Fix.In, DTAPI_INSTANT_DETACH));
+    DT_ASSERT_EQ(DtInpChannel_SetWorkerPool(Fix.In, NULL, 0), DTAPI_E_NOT_ATTACHED);
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    ReadOne(Fix.In, Buffer, Expected, Size, DtFailures);
     DT_ASSERT_EQ(Second.Calls, 1);
 
-    DtInpChannel_Free(In);
     free(Expected);
     free(Buffer);
     FINISH(Fix);

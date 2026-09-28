@@ -35,10 +35,25 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
+    OsDrv* Other;       // A second handle of the case, or NULL
     DtFuncInstance Tx;  // AF_ASISDITX
     DtFuncInstance Dma; // AF_DMA
     int Live;
 } Fixture;
+
+// Frees the objects and closes the handles when an assertion fails before FINISH does.
+// A released instance can be released again, so FINISH may follow.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtFunc_Release(&Fix->Tx);
+    DtFunc_Release(&Fix->Dma);
+    OsDrv_Close(Fix->Other);
+    OsDrv_Close(Fix->Drv);
+    Fix->Other = NULL;
+    Fix->Drv = NULL;
+}
 
 // Opens the emulated device in its power-on state and finds the port's transmitter and
 // DMA. Returns false, having recorded a failure, when that is not possible.
@@ -47,30 +62,34 @@ static bool Open(Fixture* Fix, int* DtFailures)
     SimDtPcie_Reset();
     SimDtPcie_SetTxRealTime(false);
     Fix->Live = DtAlloc_NumLive();
-    Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
+    Fix->Drv = NULL;
+    Fix->Other = NULL;
     DtVec_Init(&Fix->Tx.Objects, sizeof(DtFuncObject));
     DtVec_Init(&Fix->Dma.Objects, sizeof(DtFuncObject));
+    DtTest_SetCleanup(Cleanup, Fix);
+    Fix->Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Fix->Drv == NULL || !OsDrv_IsEmulated(Fix->Drv) ||
         DtFunc_Find(Fix->Drv, PORT, "AF_ASISDITX", "", &Fix->Tx) != DTAPI_OK ||
         DtFunc_Find(Fix->Drv, PORT, "AF_DMA", "", &Fix->Dma) != DTAPI_OK)
     {
         printf("    FAIL: no emulated transmitter; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        DtFunc_Release(&Fix->Tx);
-        DtFunc_Release(&Fix->Dma);
-        OsDrv_Close(Fix->Drv);
+        DtTest_Cleanup();
         return false;
     }
     return true;
 }
 
-// Frees the objects, closes the device and checks that nothing is left open or allocated.
-// The frames the sink kept are the emulator's until a reset, which comes first.
+// Frees the objects, closes the handles and checks that nothing is left open or
+// allocated. The frames the sink kept are the emulator's until a reset, which comes
+// first.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtFunc_Release(&(Fix).Tx);                                                       \
         DtFunc_Release(&(Fix).Dma);                                                      \
+        OsDrv_Close((Fix).Other);                                                        \
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
@@ -175,6 +194,7 @@ static bool Hold(Fixture* Fix, Objects* P, OsDmaBuffer* Buf, int* DtFailures)
     {
         printf("    FAIL: cannot bring the transmit blocks to hold\n");
         (*DtFailures)++;
+        DtTest_Cleanup();
         return false;
     }
     return true;
@@ -281,9 +301,9 @@ DT_TEST(OneHandleHoldsAnObject)
 
     if (!Open(&Fix, DtFailures))
         return;
-    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
+    Fix.Other = OsDrv_Open(SIM_DEVICE_INDEX);
     DtDrvObject Uuid = ObjectOf(&Fix.Dma, false, DT_BLOCK_TYPE_CDMAC, "");
-    DT_ASSERT(Other != NULL && Uuid.Uuid != 0);
+    DT_ASSERT(Fix.Other != NULL && Uuid.Uuid != 0);
 
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
                  DTAPI_E_EXCL_ACCESS_REQD);
@@ -297,18 +317,19 @@ DT_TEST(OneHandleHoldsAnObject)
     DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_PROBE),
                  DTAPI_E_IN_USE);
 
-    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_CHECK),
                  DTAPI_E_IN_USE);
-    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
+    DT_ASSERT_EQ(DtPcieCmd_ExclAccess(Fix.Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_RELEASE),
                  DTAPI_E_IN_USE);
 
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_RELEASE));
-    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Other, Uuid, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
 
     // Closing a handle lets go of what it holds.
-    OsDrv_Close(Other);
+    OsDrv_Close(Fix.Other);
+    Fix.Other = NULL;
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, Uuid, DT_EXCLUSIVE_ACCESS_CMD_PROBE));
 
     FINISH(Fix);
@@ -361,10 +382,10 @@ DT_TEST(AcquiringAllRollsBack)
 
     if (!Open(&Fix, DtFailures))
         return;
-    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
-    DT_ASSERT(Other != NULL && DtVec_Count(&Fix.Tx.Objects) == 7);
+    Fix.Other = OsDrv_Open(SIM_DEVICE_INDEX);
+    DT_ASSERT(Fix.Other != NULL && DtVec_Count(&Fix.Tx.Objects) == 7);
 
-    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Other, ObjectAt(&Fix.Tx, 3),
+    DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Other, ObjectAt(&Fix.Tx, 3),
                                       DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
     DT_ASSERT_EQ(DtFunc_ExclAccess(Fix.Drv, &Fix.Tx, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE),
                  DTAPI_E_IN_USE);
@@ -384,7 +405,8 @@ DT_TEST(AcquiringAllRollsBack)
                  DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtPcieCmd_ExclAccess(Fix.Drv, ObjectAt(&Fix.Tx, 6),
                                       DT_EXCLUSIVE_ACCESS_CMD_PROBE));
-    OsDrv_Close(Other);
+    OsDrv_Close(Fix.Other);
+    Fix.Other = NULL;
 
     SimDtPcie_FailWithStatus(DT_FUNC_CODE_EXCL_ACCESS_CMD, DT_STATUS_NOT_SUPPORTED);
     DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Drv, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
@@ -1044,13 +1066,15 @@ DT_TEST(ClosingTheHandleStopsTheDma)
     if (!Open(&Fix, DtFailures))
         return;
     Objects P = ObjectsOf(&Fix);
-    OsDrv* Other = OsDrv_Open(SIM_DEVICE_INDEX);
+    Fix.Other = OsDrv_Open(SIM_DEVICE_INDEX);
     OsDmaBuffer Buf;
-    DT_ASSERT(Other != NULL && OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
-    DT_ASSERT_OK(DtFunc_ExclAccess(Other, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
-    DT_ASSERT_OK(DtPcieCmd_CdmacAllocateBuffer(Other, P.Cdmac, DT_CDMAC_DIR_TX, &Buf));
-    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Other, P.Cdmac, DT_BLOCK_OPMODE_RUN));
-    OsDrv_Close(Other);
+    DT_ASSERT(Fix.Other != NULL && OsDmaBuffer_Alloc(BUFFER_SIZE, &Buf) == 0);
+    DT_ASSERT_OK(DtFunc_ExclAccess(Fix.Other, &Fix.Dma, DT_EXCLUSIVE_ACCESS_CMD_ACQUIRE));
+    DT_ASSERT_OK(
+        DtPcieCmd_CdmacAllocateBuffer(Fix.Other, P.Cdmac, DT_CDMAC_DIR_TX, &Buf));
+    DT_ASSERT_OK(DtPcieCmd_CdmacSetOpMode(Fix.Other, P.Cdmac, DT_BLOCK_OPMODE_RUN));
+    OsDrv_Close(Fix.Other);
+    Fix.Other = NULL;
     SimTxState State;
     SimDtPcie_GetTxState(PORT, &State);
     DT_ASSERT(!State.BufferRegistered && State.CdmacMode == DT_BLOCK_OPMODE_IDLE);

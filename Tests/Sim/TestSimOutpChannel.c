@@ -46,6 +46,7 @@ typedef struct Fixture
     int Live;
     DtDevice* Device;
     DtOutpChannel* Channel;
+    OsThread* Thread; // A thread of the case that writes to the channel, or NULL
 } Fixture;
 
 // One I/O configuration through the device, which takes a list.
@@ -54,6 +55,21 @@ static DtapiResult SetIoConfig(DtDevice* Device, int Port, int Group, int Value,
 {
     DtIoConfig Config = {Port, Group, Value, SubValue, {-1, -1}};
     return DtDevice_SetIoConfig(Device, &Config, 1);
+}
+
+// Frees what Start made when an assertion fails before FINISH does. Freeing the channel
+// ends a write on the case's thread, which is then joined while the case's frame, where
+// the thread's context lives, still stands.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    DtOutpChannel_Free(Fix->Channel);
+    OsThread_Join(Fix->Thread);
+    DtDevice_Free(Fix->Device);
+    Fix->Channel = NULL;
+    Fix->Thread = NULL;
+    Fix->Device = NULL;
 }
 
 // Resets the emulator, attaches a device object and allocates a channel. Returns false,
@@ -66,6 +82,8 @@ static bool Start(Fixture* Fix, int* DtFailures)
     Fix->Live = DtAlloc_NumLive();
     Fix->Device = NULL;
     Fix->Channel = NULL;
+    Fix->Thread = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
 
     Drv = OsDrv_Open(SIM_DEVICE_INDEX);
     if (Drv == NULL || !OsDrv_IsEmulated(Drv))
@@ -73,6 +91,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
         printf("    FAIL: no emulated device at index 0; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
         OsDrv_Close(Drv);
+        DtTest_Cleanup();
         return false;
     }
     OsDrv_Close(Drv);
@@ -84,6 +103,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: cannot set up\n");
         (*DtFailures)++;
+        DtTest_Cleanup();
         return false;
     }
     return true;
@@ -94,6 +114,7 @@ static bool Start(Fixture* Fix, int* DtFailures)
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
         DtOutpChannel_Free((Fix).Channel);                                               \
         DtDevice_Free((Fix).Device);                                                     \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
@@ -1229,8 +1250,8 @@ DT_TEST(WriteFrameInUseAndCancelled)
     W.Channel = Fix.Channel;
     W.Written = 0;
     W.Result = DTAPI_OK;
-    OsThread* Thread = OsThread_Start(WriteFramesUntilFailure, &W);
-    DT_ASSERT(Thread != NULL);
+    Fix.Thread = OsThread_Start(WriteFramesUntilFailure, &W);
+    DT_ASSERT(Fix.Thread != NULL);
 
     uint64_t Start0 = OsTime_MonotonicMs();
     while (Load < 18 * 7425000 && OsTime_MonotonicMs() - Start0 < SEND_TIMEOUT_MS)
@@ -1245,7 +1266,8 @@ DT_TEST(WriteFrameInUseAndCancelled)
                  DTAPI_E_IN_USE);
     DT_ASSERT_EQ(WriteFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10), DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
-    OsThread_Join(Thread);
+    OsThread_Join(Fix.Thread);
+    Fix.Thread = NULL;
     DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
     DT_ASSERT_EQ(W.Written, 18);
     FINISH(Fix);
@@ -1486,8 +1508,8 @@ DT_TEST(DetachCancelsAWrite)
     Writer W;
     W.Channel = Fix.Channel;
     W.Result = DTAPI_OK;
-    OsThread* Thread = OsThread_Start(WriteUntilFailure, &W);
-    DT_ASSERT(Thread != NULL);
+    Fix.Thread = OsThread_Start(WriteUntilFailure, &W);
+    DT_ASSERT(Fix.Thread != NULL);
 
     uint64_t Start0 = OsTime_MonotonicMs();
     while (Load < 18 * 7425000 && OsTime_MonotonicMs() - Start0 < SEND_TIMEOUT_MS)
@@ -1503,7 +1525,8 @@ DT_TEST(DetachCancelsAWrite)
     DT_ASSERT_EQ(WriteWholeFrame(Fix.Channel, DTAPI_VIDSTD_1080I50, 1, 10, 20),
                  DTAPI_E_IN_USE);
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Channel, 1));
-    OsThread_Join(Thread);
+    OsThread_Join(Fix.Thread);
+    Fix.Thread = NULL;
     DT_ASSERT_EQ(W.Result, DTAPI_E_CANCELLED);
     FINISH(Fix);
 }

@@ -42,9 +42,21 @@
 typedef struct Fixture
 {
     OsDrv* Drv;
+    OsDrv* Other;   // A second handle of the case, or NULL
     DtDrvObject Nw; // The network function
     int Live;
 } Fixture;
+
+// Closes the handles when an assertion fails before FINISH does.
+static void Cleanup(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+
+    OsDrv_Close(Fix->Other);
+    OsDrv_Close(Fix->Drv);
+    Fix->Other = NULL;
+    Fix->Drv = NULL;
+}
 
 // Adds the DTA-2110, stops its clock at T0, opens it and finds its network function.
 // Returns false, having recorded a failure, when that is not possible.
@@ -52,6 +64,9 @@ static bool Open(Fixture* Fix, int* DtFailures)
 {
     SimDtPcie_Reset();
     Fix->Live = DtAlloc_NumLive();
+    Fix->Drv = NULL;
+    Fix->Other = NULL;
+    DtTest_SetCleanup(Cleanup, Fix);
     SimDtPcie_SetDta2110Index(INDEX);
     SimDtPcie_SetNwTime(T0);
     Fix->Drv = OsDrv_Open(INDEX);
@@ -64,7 +79,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     {
         printf("    FAIL: no emulated DTA-2110; is CDTAPI_SIM=1 set?\n");
         (*DtFailures)++;
-        OsDrv_Close(Fix->Drv);
+        DtTest_Cleanup();
         return false;
     }
     const DtFuncObject* Object = DtFunc_FindObject(&Af, true, DT_FUNC_TYPE_NW, "");
@@ -74,10 +89,12 @@ static bool Open(Fixture* Fix, int* DtFailures)
     return true;
 }
 
-// Closes the device and checks that nothing is left open or allocated.
+// Closes the handles and checks that nothing is left open or allocated.
 #define FINISH(Fix)                                                                      \
     do                                                                                   \
     {                                                                                    \
+        DtTest_SetCleanup(NULL, NULL);                                                   \
+        OsDrv_Close((Fix).Other);                                                        \
         OsDrv_Close((Fix).Drv);                                                          \
         DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);                                    \
         SimDtPcie_Reset();                                                               \
@@ -382,9 +399,9 @@ DT_TEST(ClosingPipes)
     DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_RX_RT_HWP, -1, &Hwp));
     DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Drv, Fix.Nw, DT_PIPE_TX_RT_SWP, -1, &Swp));
 
-    OsDrv* Other = OsDrv_Open(INDEX);
-    DT_ASSERT(Other != NULL);
-    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Other, Hwp), DTAPI_E_NOT_FOUND);
+    Fix.Other = OsDrv_Open(INDEX);
+    DT_ASSERT(Fix.Other != NULL);
+    DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Other, Hwp), DTAPI_E_NOT_FOUND);
     DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Fix.Nw), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(
         DtPcieCmd_NwClosePipe(Fix.Drv, (DtDrvObject){Fix.Nw.Uuid | 3 << 20, PORT}),
@@ -398,9 +415,11 @@ DT_TEST(ClosingPipes)
     DT_ASSERT_EQ(DtPcieCmd_NwClosePipe(Fix.Drv, Swp), DTAPI_E_INVALID_ARG);
 
     DtDrvObject OtherPipe = {0, PORT};
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Other, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &OtherPipe));
-    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Other, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Swp));
-    OsDrv_Close(Other);
+    DT_ASSERT_OK(
+        DtPcieCmd_NwOpenPipe(Fix.Other, Fix.Nw, DT_PIPE_TX_RT_HWP, -1, &OtherPipe));
+    DT_ASSERT_OK(DtPcieCmd_NwOpenPipe(Fix.Other, Fix.Nw, DT_PIPE_RX_RT_SWP, -1, &Swp));
+    OsDrv_Close(Fix.Other);
+    Fix.Other = NULL;
     SimNwPipeState State;
     SimDtPcie_GetNwPipeState(IdOf(OtherPipe), &State);
     DT_ASSERT(State.Exists && !State.InUse);
