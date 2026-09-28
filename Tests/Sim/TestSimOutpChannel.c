@@ -1251,18 +1251,11 @@ DT_TEST(WriteFrameInUseAndCancelled)
     FINISH(Fix);
 }
 
-// The number of frames the card has sent.
-static int FramesSent(void)
-{
-    SimTxState State;
-
-    SimDtPcie_GetTxState(PORT - 1, &State);
-    return State.FramesSent;
-}
-
 // Frames written one at a time, each after the card sent two more frames, so that black
 // frames from the thread come between them, go out whole: every frame the card kept is
-// black or one of them, in the order written, and at least two are found.
+// black or one of them, in the order written, and at least two are found. The card
+// stops after each two frames until the next frame is written, so that the frames go
+// out among the frames the card keeps however slow the machine is.
 DT_TEST(WholeFramesAmongBlackFrames)
 {
     Fixture Fix;
@@ -1270,6 +1263,7 @@ DT_TEST(WholeFramesAmongBlackFrames)
     uint8_t* Frames[4] = {NULL, NULL, NULL, NULL};
     size_t Size = 0;
     int Found = 0;
+    int Limit = 2;
 
     if (!Start(&Fix, DtFailures))
         return;
@@ -1285,13 +1279,15 @@ DT_TEST(WholeFramesAmongBlackFrames)
     }
 
     DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frames[0], (int)Size, 100));
-    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Channel, DTAPI_TXCTRL_SEND));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, Limit));
     for (int n = 1; n < 4; n++)
     {
-        DT_ASSERT(WaitForFrames(FramesSent() + 2));
+        DT_ASSERT(WaitForFrames(Limit));
         DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frames[n], (int)Size, 1000));
+        Limit += n < 3 ? 2 : 3;
+        SimDtPcie_SetTxFrameLimit(PORT - 1, Limit);
     }
-    DT_ASSERT(SentAndHeld(Fix.Channel, FramesSent() + 3));
+    DT_ASSERT(SentAndHeld(Fix.Channel, Limit));
     for (int n = 0; n < 4; n++)
         free(Frames[n]);
 
@@ -1353,7 +1349,9 @@ DT_TEST(BlackFramesWhenWritingStops)
 }
 
 // A frame the application has only partly written when the card runs short follows the
-// black frames whole, with the next frame ID.
+// black frames whole, with the next frame ID. The card stops after two frames while the
+// rest of the frame is written, so that the frame goes out among the frames the card
+// keeps however slow the machine is; the limit is raised once the frame is whole.
 DT_TEST(BlackFrameBeforeAPartlyWrittenFrame)
 {
     Fixture Fix;
@@ -1373,11 +1371,12 @@ DT_TEST(BlackFrameBeforeAPartlyWrittenFrame)
     DT_ASSERT(Frame != NULL);
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)(Size / 2 / 4 * 4)));
 
-    DT_ASSERT_OK(SendUpTo(Fix.Channel, SIM_TX_KEPT_FRAMES));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 2));
     DT_ASSERT(WaitForFrames(2));
     DT_ASSERT_OK(DtOutpChannel_Write(Fix.Channel, (char*)Frame + Size / 2 / 4 * 4,
                                      (int)(Size - Size / 2 / 4 * 4)));
     free(Frame);
+    SimDtPcie_SetTxFrameLimit(PORT - 1, SIM_TX_KEPT_FRAMES);
 
     DT_ASSERT(SentAndHeld(Fix.Channel, SIM_TX_KEPT_FRAMES));
     DT_ASSERT(SentFrameIs(0, DTAPI_VIDSTD_525I59_94, 0));
