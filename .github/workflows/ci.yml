@@ -41,7 +41,9 @@ jobs:
       fail-fast: false
       # windows-latest has the newest Visual Studio, and CDTAPI promises 2022 or newer, so
       # windows-2022 builds with the oldest it promises: the two do not warn alike, and
-      # the presets turn a warning into a failed build.
+      # the presets turn a warning into a failed build. On Linux, ubuntu-22.04 builds with
+      # GCC 11 and CMake 3.22, the oldest CDTAPI promises; the image has a newer CMake,
+      # so that job installs 3.22 itself.
       matrix:
         include:
           - os: ubuntu-latest
@@ -50,6 +52,10 @@ jobs:
             preset: linux-release
           - os: ubuntu-latest
             preset: linux-asan
+          - os: ubuntu-22.04
+            preset: linux-release
+            cmake: 3.22.6
+            name: linux-release, GCC 11 and CMake 3.22
           - os: windows-latest
             preset: windows-debug
           - os: windows-latest
@@ -63,6 +69,16 @@ jobs:
       - name: Install Ninja
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install CMake ${{ matrix.cmake }}
+        if: matrix.cmake
+        run: |
+          python3 -m pip install --user cmake==${{ matrix.cmake }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Show the tools
+        if: runner.os == 'Linux'
+        run: cmake --version && gcc --version
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
