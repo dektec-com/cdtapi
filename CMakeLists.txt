@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.22)
 
 # The major and minor number are those of the DTAPI whose behaviour CDTAPI reproduces;
 # the patch number is CDTAPI's own. The driver is told the major and minor number in

@@ -15,7 +15,7 @@ set -u
 # of one major version do not format alike either, so another one reformats files that
 # are already right. pip install clang-format==<version> gives exactly this one.
 ClangFormatVersion="18.1.8"
-CMakeMinimum="3.21"
+CMakeMinimum="3.22"
 PythonMinimum="3.8"
 GccMinimum=11
 

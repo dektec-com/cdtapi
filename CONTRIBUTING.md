@@ -65,7 +65,7 @@ what is missing:
 | Tool | Version | For |
 |---|---|---|
 | clang-format | exactly 18.1.8 | Rules 4 and 6. Another build formats differently and would reformat files that are right. `pip install clang-format==18.1.8` is the surest way to the same one the CI uses |
-| CMake | 3.21 or newer | The presets, which need schema 6 |
+| CMake | 3.22 or newer | The tests, which set their environment with `ENVIRONMENT_MODIFICATION`, new in 3.22. The presets are schema 3 |
 | Python | 3.8 or newer | `Scripts/fix_banners.py` and the generated test cases |
 | Visual Studio | 2022 or newer | The Windows presets; CMake builds with the newest that is installed |
 | GCC | 11 or newer | The Linux presets |

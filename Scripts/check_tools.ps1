@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 # of one major version do not format alike either, so another one reformats files that
 # are already right. pip install clang-format==<version> gives exactly this one.
 $ClangFormatVersion = "18.1.8"
-$CMakeMinimum = [version] "3.21"
+$CMakeMinimum = [version] "3.22"
 $PythonMinimum = [version] "3.8"
 $VisualStudioMinimum = [version] "17.0"
 

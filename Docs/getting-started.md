@@ -54,7 +54,7 @@ The sources are at <https://github.com/dektec-com/cdtapi>, BSD-3-Clause:
     cd cdtapi
     Scripts/build.sh          # configure, build and test for the host
 
-`Scripts\build.ps1` does the same from PowerShell. CMake 3.21 or newer and a C11
+`Scripts\build.ps1` does the same from PowerShell. CMake 3.22 or newer and a C11
 compiler, with Ninja on Linux, are all it asks for; `Scripts/check_tools.sh` reports
 what is installed.
 
