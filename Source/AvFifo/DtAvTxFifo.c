@@ -575,24 +575,30 @@ int AvFifo_TxFifo_GetFifoLoad(const AvFifo_TxFifo* Fifo)
 //
 // The frame is checked here as well as when it is packetized, so that a frame of the
 // wrong size fails the write. A frame the FIFO has no room for stays the application's.
+// The checks and the push are made under the FIFO's lock, so that Stop and Configure,
+// which change what the frame is checked against, cannot come between them.
 //
 DtapiResult AvFifo_TxFifo_Write(AvFifo_TxFifo* Fifo, AvFifo_Frame* Frame)
 {
     static const char* const Where = "AvFifo_TxFifo_Write";
     if (Fifo == NULL || Frame == NULL)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or frame");
+    DtapiResult Result = DTAPI_OK;
+    OsMutex_Lock(Fifo->Lock);
     if (DtAtomic_Load(&Fifo->Started) == 0)
-        return DtAvError_Set(DTAPI_E_NOT_STARTED, Where, "TxFifo not started");
-    if (!DtAvFramePool_Owns(&Fifo->Pool, Frame))
-        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
-                             "The frame is not a frame this TxFifo gave");
-    if (!FrameSizeMatches(Fifo, Frame))
-        return DtAvError_Set(DTAPI_E_INVALID_FORMAT, Where,
-                             "Incorrect frame size for the configuration");
-    if (!DtAvFrameFifo_Push(&Fifo->Fifo, DtAvFrame_Of(Frame)))
-        return DtAvError_Set(DTAPI_E_FIFO_FULL, Where, "TxFifo overflow");
-    OsEvent_Set(Fifo->FrameWrittenEvent);
-    return DTAPI_OK;
+        Result = DtAvError_Set(DTAPI_E_NOT_STARTED, Where, "TxFifo not started");
+    else if (!DtAvFramePool_Owns(&Fifo->Pool, Frame))
+        Result = DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                               "The frame is not a frame this TxFifo gave");
+    else if (!FrameSizeMatches(Fifo, Frame))
+        Result = DtAvError_Set(DTAPI_E_INVALID_FORMAT, Where,
+                               "Incorrect frame size for the configuration");
+    else if (!DtAvFrameFifo_Push(&Fifo->Fifo, DtAvFrame_Of(Frame)))
+        Result = DtAvError_Set(DTAPI_E_FIFO_FULL, Where, "TxFifo overflow");
+    OsMutex_Unlock(Fifo->Lock);
+    if (Result == DTAPI_OK)
+        OsEvent_Set(Fifo->FrameWrittenEvent);
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_TxFifo_GetFromMemPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -605,7 +611,10 @@ AvFifo_Frame* AvFifo_TxFifo_GetFromMemPool(AvFifo_TxFifo* Fifo, int Size)
         DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or a negative size");
         return NULL;
     }
-    if (Fifo->Kind == DT_AV_KIND_NONE)
+    OsMutex_Lock(Fifo->Lock);
+    bool Configured = Fifo->Kind != DT_AV_KIND_NONE;
+    OsMutex_Unlock(Fifo->Lock);
+    if (!Configured)
     {
         DtAvError_Set(DTAPI_E_CONFIG, Where,
                       "Configure the TxFifo before calling GetFromMemPool");

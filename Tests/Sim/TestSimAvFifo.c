@@ -18,6 +18,7 @@
 #include "AvFifo/DtAvPixConv.h" // The reference conversions.
 #include "AvFifo/DtAvTime.h"    // Times of day.
 #include "Core/DtAlloc.h"       // Live allocations.
+#include "Core/DtAtomic.h"      // The monitoring thread's stop flag.
 #include "Device/DtDevice.h"    // The port's capabilities.
 #include "DtPcieAbi.h"          // Pipe modes and filter flags.
 #include "DtTest.h"             // Test framework.
@@ -45,12 +46,21 @@ typedef struct Fixture
     AvFifo_RxFifo* Rx;    // The case's receive FIFO, or NULL
     AvFifo_TxFifo* Tx;    // The case's transmit FIFO, or NULL
     AvFifo_RxFifo* Hw[3]; // Receive FIFOs on the hardware pipes, or NULL
+    OsThread* Monitor;    // A thread that asks Rx for its statistics, or NULL
+    DtAtomicInt StopMonitor;
     int Live;
 } Fixture;
 
-// Frees the FIFOs, which detaches them, and then the device.
+// Stops the monitoring thread, then frees the FIFOs, which detaches them, and then the
+// device.
 static void FreeAll(Fixture* Fix)
 {
+    if (Fix->Monitor != NULL)
+    {
+        DtAtomic_Store(&Fix->StopMonitor, 1);
+        OsThread_Join(Fix->Monitor);
+        Fix->Monitor = NULL;
+    }
     for (int i = 0; i < 3; i++)
         AvFifo_RxFifo_Freep(&Fix->Hw[i]);
     AvFifo_TxFifo_Freep(&Fix->Tx);
@@ -75,6 +85,8 @@ static void Init(Fixture* Fix)
     Fix->Tx = NULL;
     for (int i = 0; i < 3; i++)
         Fix->Hw[i] = NULL;
+    Fix->Monitor = NULL;
+    DtAtomic_Init(&Fix->StopMonitor, 0);
     DtTest_SetCleanup(Cleanup, Fix);
 }
 
@@ -399,6 +411,43 @@ DT_TEST(StartedAndStopped)
     // It starts again.
     DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
     DT_ASSERT_EQ(SimDtPcie_NetMembershipCount(), 1);
+    FINISH(Fix);
+}
+
+// Asks the receive FIFO for its statistics until told to stop, as a monitoring thread of
+// a program's would.
+static void AskForStatistics(void* Context)
+{
+    Fixture* Fix = (Fixture*)Context;
+    while (DtAtomic_Load(&Fix->StopMonitor) == 0)
+        (void)AvFifo_RxFifo_GetStatistics(Fix->Rx);
+}
+
+// A thread of the program's asks for the statistics while the thread that owns the FIFO
+// stops it, configures it for audio and for video, and starts it again.
+DT_TEST(StatisticsWhileReconfigured)
+{
+    Fixture Fix;
+    if (!Open(&Fix, DtFailures))
+        return;
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL);
+    const AvFifo_IpPars P = Pars(5004, false);
+    DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P));
+    Fix.Monitor = OsThread_Start(AskForStatistics, &Fix);
+    DT_ASSERT(Fix.Monitor != NULL);
+
+    const St2110_RxConfigAudio Audio = {St2110_AudioFormat_L24BE, 48000};
+    const St2110_RxConfigVideo Video = {St2110_RxFrameFormat_Uyvy422_8b};
+    for (int i = 0; i < 20; i++)
+    {
+        DT_ASSERT_OK(AvFifo_RxFifo_Stop(Fix.Rx));
+        if (i % 2 == 0)
+            DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Fix.Rx, &Audio));
+        else
+            DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fix.Rx, &Video));
+        DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
+    }
     FINISH(Fix);
 }
 
@@ -878,8 +927,9 @@ DT_TEST(PortCapabilities)
 
 DT_TEST_MAIN("SimAvFifo", DT_RUN(PortCapabilities), DT_RUN(ResultsOfTheLifecycle),
              DT_RUN(SdiPortIsRefused), DT_RUN(StartFailures), DT_RUN(StartedAndStopped),
-             DT_RUN(PacketsOnTheWire), DT_RUN(Loopback10BitRawHardware),
-             DT_RUN(Loopback10BitSoftware), DT_RUN(Loopback10BitTo8Bit),
-             DT_RUN(Loopback8Bit), DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackAudioL24),
+             DT_RUN(StatisticsWhileReconfigured), DT_RUN(PacketsOnTheWire),
+             DT_RUN(Loopback10BitRawHardware), DT_RUN(Loopback10BitSoftware),
+             DT_RUN(Loopback10BitTo8Bit), DT_RUN(Loopback8Bit),
+             DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackAudioL24),
              DT_RUN(LoopbackAudioL16), DT_RUN(FullFifos), DT_RUN(InjectedFaultIsCounted),
              DT_RUN(FailureTextPerThread))

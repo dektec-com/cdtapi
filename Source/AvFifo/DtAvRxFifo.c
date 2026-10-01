@@ -535,7 +535,10 @@ DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo, AvFifo_Frame* Fra
     static const char* const Where = "AvFifo_RxFifo_ReturnToMemPool";
     if (Fifo == NULL || Frame == NULL)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or frame");
-    if (Fifo->Kind == DT_AV_KIND_NONE)
+    OsMutex_Lock(Fifo->Lock);
+    bool Configured = Fifo->Kind != DT_AV_KIND_NONE;
+    OsMutex_Unlock(Fifo->Lock);
+    if (!Configured)
         return DtAvError_Set(DTAPI_E_CONFIG, Where, "Configure the RxFifo first");
     if (!DtAvFramePool_Return(&Fifo->Pool, Frame))
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
@@ -574,18 +577,24 @@ void AvFifo_RxFifo_SetMaxSize(AvFifo_RxFifo* Fifo, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_RxFifo_GetStatistics -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The FIFO's lock keeps out Configure and Start, which set the kind and reset the
+// statistics; the parser's lock keeps out the thread, which counts. The thread never
+// takes the FIFO's lock, so the two are taken in this order only.
+//
 RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo)
 {
     RxStatistics Stats;
     memset(&Stats, 0, sizeof(Stats));
     if (Fifo == NULL)
         return Stats;
+    OsMutex_Lock(Fifo->Lock);
     OsMutex_Lock(Fifo->ParserLock);
     if (Fifo->Kind == DT_AV_KIND_AUDIO)
         Stats = Fifo->AudioRx.Stats;
     else if (Fifo->Kind == DT_AV_KIND_VIDEO)
         Stats = Fifo->VideoRx.Stats;
     OsMutex_Unlock(Fifo->ParserLock);
+    OsMutex_Unlock(Fifo->Lock);
     return Stats;
 }
 
