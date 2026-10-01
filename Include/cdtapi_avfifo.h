@@ -188,14 +188,17 @@ typedef struct IpSrcFlt
     int Port;           // The source's UDP port, or -1 for any
 } IpSrcFlt;
 
-// An IP endpoint.
+// The number of source filters an AvFifo_IpPars holds.
+#define AVFIFO_MAX_SRC_FLT 3
+
+// An IP endpoint. It holds its source filters, so a copy made with = stands alone.
 typedef struct AvFifo_IpPars
 {
     uint8_t IpAddr[16]; // 4 bytes for IPv4; 16 bytes for IPv6
     IpProtocolVersion IpVersion;
     int Port;
-    IpSrcFlt* SrcFlt; // Source filters for source-specific multicast, or NULL
-    int NSrcFlt;      // Number of source filters
+    IpSrcFlt SrcFlt[AVFIFO_MAX_SRC_FLT]; // Source filters for source-specific multicast
+    int NSrcFlt; // The number of them in use, 0 to AVFIFO_MAX_SRC_FLT
 
     int DiffServ;        // Differentiated Services field
     uint8_t Gateway[16]; // Gateway address to use, or all zeros
@@ -398,8 +401,8 @@ CDTAPI_API AvFifo_Frame* AvFifo_RxFifo_Read(AvFifo_RxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_RxFifo_ReturnToMemPool(AvFifo_RxFifo* Fifo,
                                                      AvFifo_Frame* Frame);
 
-// Configures the stream to receive. Source filters are copied; up to three sources may
-// be specified, all with the same source address and differing in port only.
+// Configures the stream to receive. Up to AVFIFO_MAX_SRC_FLT source filters may be in
+// use, all with the same source address and differing in port only.
 CDTAPI_API DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo,
                                                const AvFifo_IpPars* IpPars);
 

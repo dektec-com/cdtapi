@@ -111,7 +111,7 @@ static bool Open(Fixture* Fix, int* DtFailures)
     } while (0)
 
 // IP parameters of the multicast stream, with one source of 192.168.1.50 when Source.
-static AvFifo_IpPars Pars(int Port, bool Source, IpSrcFlt* Sources)
+static AvFifo_IpPars Pars(int Port, bool Source)
 {
     static const uint8_t SourceIp[4] = {192, 168, 1, 50};
     AvFifo_IpPars P;
@@ -123,10 +123,8 @@ static AvFifo_IpPars Pars(int Port, bool Source, IpSrcFlt* Sources)
     P.RtpPayloadType = 98;
     if (Source)
     {
-        memset(Sources, 0, sizeof(*Sources));
-        memcpy(Sources[0].IpAddr, SourceIp, 4);
-        Sources[0].Port = -1;
-        P.SrcFlt = Sources;
+        memcpy(P.SrcFlt[0].IpAddr, SourceIp, 4);
+        P.SrcFlt[0].Port = -1;
         P.NSrcFlt = 1;
     }
     return P;
@@ -196,8 +194,7 @@ DT_TEST(ResultsOfTheLifecycle)
     Fix.Rx = AvFifo_RxFifo_Alloc();
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    AvFifo_IpPars P = Pars(5004, false, Sources);
+    AvFifo_IpPars P = Pars(5004, false);
     const St2110_RxConfigVideo RxVideo = {St2110_RxFrameFormat_Uyvy422_8b};
     const St2110_TxConfigVideo TxVideo = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
 
@@ -218,13 +215,12 @@ DT_TEST(ResultsOfTheLifecycle)
     DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
     // IP parameters that are refused.
-    IpSrcFlt Four[4];
-    memset(Four, 0, sizeof(Four));
-    P.SrcFlt = Four;
-    P.NSrcFlt = 4;
+    P.NSrcFlt = AVFIFO_MAX_SRC_FLT + 1;
+    DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
+    P.NSrcFlt = -1;
     DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
     P.NSrcFlt = 2;
-    Four[1].IpAddr[3] = 1;
+    P.SrcFlt[1].IpAddr[3] = 1;
     DT_ASSERT_EQ(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P), DTAPI_E_INVALID_ARG);
     P.NSrcFlt = 0;
     P.Port = 70000;
@@ -299,8 +295,7 @@ DT_TEST(StartFailures)
     Fix.Rx = AvFifo_RxFifo_Alloc();
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    AvFifo_IpPars P = Pars(5004, false, Sources);
+    AvFifo_IpPars P = Pars(5004, false);
     SimNwPipeState State;
 
     SimDtPcie_SetNwLink(false);
@@ -372,9 +367,8 @@ DT_TEST(StartedAndStopped)
         return;
     Fix.Rx = AvFifo_RxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL);
-    IpSrcFlt Sources[3];
-    AvFifo_IpPars P = Pars(5004, true, Sources);
-    Sources[0].Port = 6000;
+    AvFifo_IpPars P = Pars(5004, true);
+    P.SrcFlt[0].Port = 6000;
     DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P));
 
     SimNwPipeState State;
@@ -430,8 +424,7 @@ DT_TEST(PacketsOnTheWire)
         return;
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    const AvFifo_IpPars P = Pars(5004, false, Sources);
+    const AvFifo_IpPars P = Pars(5004, false);
     const St2110_TxConfigVideo Video = VideoConfig(St2110_TxFrameFormat_Uyvy422_8b);
     DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Video));
@@ -544,8 +537,7 @@ static void CheckLoopback(St2110_TxFrameFormat TxFormat, St2110_RxFrameFormat Rx
     Fix.Rx = AvFifo_RxFifo_Alloc();
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    const AvFifo_IpPars P = Pars(5004, false, Sources);
+    const AvFifo_IpPars P = Pars(5004, false);
     const St2110_TxConfigVideo TxVideo = VideoConfig(TxFormat);
     const St2110_RxConfigVideo RxVideo = {RxFormat};
     DT_ASSERT_OK(AvFifo_RxFifo_Attach2(Fix.Rx, Fix.Device, 1, Pipe));
@@ -659,8 +651,7 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
     Fix.Rx = AvFifo_RxFifo_Alloc();
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    const AvFifo_IpPars P = Pars(5006, false, Sources);
+    const AvFifo_IpPars P = Pars(5006, false);
     const St2110_RxConfigAudio RxAudio = {Format, 48000};
     const St2110_TxConfigAudio TxAudio = {Format, 2, 48, 48000};
     DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
@@ -731,8 +722,7 @@ DT_TEST(FullFifos)
     Fix.Rx = AvFifo_RxFifo_Alloc();
     Fix.Tx = AvFifo_TxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
-    IpSrcFlt Sources[3];
-    const AvFifo_IpPars P = Pars(5006, false, Sources);
+    const AvFifo_IpPars P = Pars(5006, false);
     const St2110_RxConfigAudio RxAudio = {St2110_AudioFormat_L24BE, 48000};
     const St2110_TxConfigAudio TxAudio = {St2110_AudioFormat_L24BE, 2, 240, 48000};
     DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
@@ -806,8 +796,7 @@ DT_TEST(InjectedFaultIsCounted)
         return;
     Fix.Rx = AvFifo_RxFifo_Alloc();
     DT_ASSERT(Fix.Rx != NULL);
-    IpSrcFlt Sources[3];
-    const AvFifo_IpPars P = Pars(5004, false, Sources);
+    const AvFifo_IpPars P = Pars(5004, false);
     DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_Auto, &P));
 
     uint8_t Frame[14 + 20 + 8 + 12 + 2 + 4 * 6 + 8];

@@ -52,7 +52,7 @@ struct AvFifo_TxFifoC
     DtSt2110AudioTx AudioTx;
     DtSt2110VideoTx VideoTx;
     bool HasIpPars;
-    DtAvIpPars IpPars;
+    AvFifo_IpPars IpPars;
     bool HasExplicitMaxSize;
 
     DtAvFramePool Pool;
@@ -215,7 +215,7 @@ static uint32_t ByteSwapped(uint32_t Value)
 static DtapiResult StartTransmitting(AvFifo_TxFifo* Fifo)
 {
     static const char* const Where = "AvFifo_TxFifo_Start";
-    const AvFifo_IpPars* Pars = &Fifo->IpPars.Pars;
+    const AvFifo_IpPars* Pars = &Fifo->IpPars;
     bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->IpPars);
     bool IsVideo = Fifo->Kind == DT_AV_KIND_VIDEO;
 
@@ -509,13 +509,11 @@ DtapiResult AvFifo_TxFifo_SetIpPars(AvFifo_TxFifo* Fifo, const AvFifo_IpPars* Ip
                              "Invalid RtpPayloadType. Range: 0..127");
     OsMutex_Lock(Fifo->Lock);
     DtapiResult Result = CheckStopped(Fifo, Where);
-    DtAvIpPars Copy = {0};
     if (Result == DTAPI_OK)
-        Result = DtAvIpPars_Copy(&Copy, IpPars, Where);
+        Result = DtAvIpPars_Check(IpPars, Where);
     if (Result == DTAPI_OK)
     {
-        Fifo->IpPars = Copy;
-        Fifo->IpPars.Pars.SrcFlt = IpPars->NSrcFlt > 0 ? Fifo->IpPars.Sources : NULL;
+        Fifo->IpPars = *IpPars;
         Fifo->HasIpPars = true;
     }
     OsMutex_Unlock(Fifo->Lock);

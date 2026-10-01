@@ -171,12 +171,11 @@ DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPi
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= IP parameters +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_Copy -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_Check -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The checks the IP parameters must pass before a FIFO keeps them.
 //
-DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
-                            const char* Where)
+DtapiResult DtAvIpPars_Check(const AvFifo_IpPars* Pars, const char* Where)
 {
     if (Pars->IpVersion != IpProtocolVersion_IPv4 &&
         Pars->IpVersion != IpProtocolVersion_IPv6)
@@ -185,8 +184,7 @@ DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
     }
     if (Pars->Port < 0 || Pars->Port > 65535)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "Invalid Port. Range: 0..65535");
-    if (Pars->NSrcFlt < 0 || Pars->NSrcFlt > 3 ||
-        (Pars->NSrcFlt > 0 && Pars->SrcFlt == NULL))
+    if (Pars->NSrcFlt < 0 || Pars->NSrcFlt > AVFIFO_MAX_SRC_FLT)
     {
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
                              "The maximum number of source filters is 3");
@@ -198,28 +196,23 @@ DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
             return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
                                  "All source filter addresses must be identical");
     }
-
-    memset(Copy, 0, sizeof(*Copy));
-    Copy->Pars = *Pars;
-    for (int i = 0; i < Pars->NSrcFlt; i++)
-        Copy->Sources[i] = Pars->SrcFlt[i];
-    Copy->Pars.SrcFlt = Pars->NSrcFlt > 0 ? Copy->Sources : NULL;
     return DTAPI_OK;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_IsIpV6 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-bool DtAvIpPars_IsIpV6(const DtAvIpPars* Ip)
-{
-    return Ip->Pars.IpVersion == IpProtocolVersion_IPv6;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_CopySources -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtAvIpPars_CopySources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16])
+int DtAvIpPars_CopySources(const AvFifo_IpPars* Pars,
+                           uint8_t Sources[AVFIFO_MAX_SRC_FLT * 16])
 {
-    memset(Sources, 0, 3 * 16);
-    for (int i = 0; i < Ip->Pars.NSrcFlt; i++)
-        memcpy(Sources + 16 * i, Ip->Sources[i].IpAddr, 16);
-    return Ip->Pars.NSrcFlt;
+    memset(Sources, 0, AVFIFO_MAX_SRC_FLT * 16);
+    for (int i = 0; i < Pars->NSrcFlt; i++)
+        memcpy(Sources + 16 * i, Pars->SrcFlt[i].IpAddr, 16);
+    return Pars->NSrcFlt;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvIpPars_IsIpV6 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtAvIpPars_IsIpV6(const AvFifo_IpPars* Pars)
+{
+    return Pars->IpVersion == IpProtocolVersion_IPv6;
 }

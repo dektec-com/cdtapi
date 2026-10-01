@@ -61,23 +61,16 @@ DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPi
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= IP parameters +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// A FIFO's copy of the application's IP parameters, with its own copy of the sources.
-typedef struct DtAvIpPars
-{
-    AvFifo_IpPars Pars; // SrcFlt points at Sources
-    IpSrcFlt Sources[3];
-} DtAvIpPars;
-
-// Checks and copies Pars: an IP version, a port from 0 to 65535, at most three sources of
-// one address; DTAPI_E_INVALID_ARG otherwise.
-DtapiResult DtAvIpPars_Copy(DtAvIpPars* Copy, const AvFifo_IpPars* Pars,
-                            const char* Where);
-
-// Whether the parameters are IPv6.
-bool DtAvIpPars_IsIpV6(const DtAvIpPars* Ip);
+// Checks the IP parameters a FIFO is to keep: an IP version, a port from 0 to 65535, at
+// most AVFIFO_MAX_SRC_FLT sources of one address; DTAPI_E_INVALID_ARG otherwise.
+DtapiResult DtAvIpPars_Check(const AvFifo_IpPars* Pars, const char* Where);
 
 // The sources as DtNet_Join takes them, 16 bytes each, into Sources; returns how many.
-int DtAvIpPars_CopySources(const DtAvIpPars* Ip, uint8_t Sources[3 * 16]);
+int DtAvIpPars_CopySources(const AvFifo_IpPars* Pars,
+                           uint8_t Sources[AVFIFO_MAX_SRC_FLT * 16]);
+
+// Whether the parameters are IPv6.
+bool DtAvIpPars_IsIpV6(const AvFifo_IpPars* Pars);
 
 // What a FIFO carries: nothing yet, audio or video.
 typedef enum DtAvKind

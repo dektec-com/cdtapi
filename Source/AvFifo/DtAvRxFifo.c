@@ -48,7 +48,7 @@ struct AvFifo_RxFifoC
     St2110_RxConfigAudio AudioConfig;
     St2110_RxConfigVideo VideoConfig;
     bool HasIpPars;
-    DtAvIpPars IpPars;
+    AvFifo_IpPars IpPars;
     bool HasExplicitMaxSize;
 
     DtAvFramePool Pool;
@@ -130,7 +130,7 @@ static DtapiResult SetIpFilter(AvFifo_RxFifo* Fifo, bool Enable)
     memset(&Filter, 0, sizeof(Filter));
     if (Enable)
     {
-        const AvFifo_IpPars* Pars = &Fifo->IpPars.Pars;
+        const AvFifo_IpPars* Pars = &Fifo->IpPars;
         bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->IpPars);
         Filter.Flags =
             DT_PIPE_IPFLT_FLAG_EN_FILT | DT_PIPE_IPFLT_FLAG_EN_DSTPORT0 |
@@ -169,9 +169,9 @@ static void StopReceiving(AvFifo_RxFifo* Fifo)
     bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->IpPars);
     if (Fifo->HasJoinedGroup)
     {
-        uint8_t Sources[3 * 16];
+        uint8_t Sources[AVFIFO_MAX_SRC_FLT * 16];
         int NumSources = DtAvIpPars_CopySources(&Fifo->IpPars, Sources);
-        DtNet_Leave(Fifo->Socket, Fifo->ItfIndex, IpV6, Fifo->IpPars.Pars.IpAddr, Sources,
+        DtNet_Leave(Fifo->Socket, Fifo->ItfIndex, IpV6, Fifo->IpPars.IpAddr, Sources,
                     NumSources);
         Fifo->HasJoinedGroup = false;
     }
@@ -194,7 +194,7 @@ static void StopReceiving(AvFifo_RxFifo* Fifo)
 static DtapiResult StartReceiving(AvFifo_RxFifo* Fifo)
 {
     static const char* const Where = "AvFifo_RxFifo_Start";
-    const AvFifo_IpPars* Pars = &Fifo->IpPars.Pars;
+    const AvFifo_IpPars* Pars = &Fifo->IpPars;
     bool IpV6 = DtAvIpPars_IsIpV6(&Fifo->IpPars);
     bool IsVideo = Fifo->Kind == DT_AV_KIND_VIDEO;
 
@@ -248,7 +248,7 @@ static DtapiResult StartReceiving(AvFifo_RxFifo* Fifo)
 
     if (DtNet_IsMulticast(IpV6, Pars->IpAddr))
     {
-        uint8_t Sources[3 * 16];
+        uint8_t Sources[AVFIFO_MAX_SRC_FLT * 16];
         int NumSources = DtAvIpPars_CopySources(&Fifo->IpPars, Sources);
         Result = DtNet_Join(Fifo->Socket, Fifo->ItfIndex, IpV6, Pars->IpAddr, Sources,
                             NumSources);
@@ -456,13 +456,11 @@ DtapiResult AvFifo_RxFifo_SetIpPars(AvFifo_RxFifo* Fifo, const AvFifo_IpPars* Ip
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or IP parameters");
     OsMutex_Lock(Fifo->Lock);
     DtapiResult Result = CheckStopped(Fifo, Where);
-    DtAvIpPars Copy = {0};
     if (Result == DTAPI_OK)
-        Result = DtAvIpPars_Copy(&Copy, IpPars, Where);
+        Result = DtAvIpPars_Check(IpPars, Where);
     if (Result == DTAPI_OK)
     {
-        Fifo->IpPars = Copy;
-        Fifo->IpPars.Pars.SrcFlt = IpPars->NSrcFlt > 0 ? Fifo->IpPars.Sources : NULL;
+        Fifo->IpPars = *IpPars;
         Fifo->HasIpPars = true;
     }
     OsMutex_Unlock(Fifo->Lock);
