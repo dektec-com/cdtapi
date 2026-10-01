@@ -20,6 +20,8 @@
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsAbstractionLayer.h" // Direct handles for reading back.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "OAL/Sim/SimDta2110.h"     // The DTA-2110's identity.
+#include "OAL/Sim/SimNet.h"         // The emulated network.
 #include "cdtapi.h"                 // Public API under test.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -143,8 +145,78 @@ DT_TEST(ScanDescribesEveryPort)
         DT_ASSERT_EQ(Func->IsInput, Sdi);
         DT_ASSERT_EQ(Func->IsOutput, Sdi);
         DT_ASSERT_EQ(Func->IsAsi, Sdi);
+        // No port of the DTA-2178 is a network port, so none has an address.
+        static const uint8_t Zero[6] = {0};
+        DT_ASSERT_MEM(Func->Ip, Zero, sizeof(Func->Ip));
+        DT_ASSERT_MEM(Func->MacAddr, Zero, sizeof(Func->MacAddr));
     }
     DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
+}
+
+// The network port of the DTA-2110 at index 1 in a scan of both cards.
+static bool ScanDta2110(DtHwFuncDesc* Found)
+{
+    DtHwFuncDesc Funcs[SIM_PORT_COUNT + SIM_DTA2110_PORT_COUNT];
+    int Count = 0;
+    if (DtapiHwFuncScan(SIM_PORT_COUNT + SIM_DTA2110_PORT_COUNT, &Count, Funcs) !=
+        DTAPI_OK)
+        return false;
+    for (int i = 0; i < Count; i++)
+    {
+        if (Funcs[i].SerialNumber == (int64_t)SIM_DTA2110_SERIAL)
+        {
+            *Found = Funcs[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+// A network port has the MAC address its driver gives and the addresses of the operating
+// system's interface with it, IPv6 packed in the order link-local, site-local, global;
+// without an interface or addresses, those stay zero and the MAC address stays.
+DT_TEST(ScanGivesTheAddressesOfANetworkPort)
+{
+    if (!StartSim(DtFailures))
+        return;
+    SimDtPcie_SetDta2110Index(1);
+
+    DtHwFuncDesc Port;
+    DT_ASSERT(ScanDta2110(&Port));
+    static const uint8_t Mac[6] = SIM_DTA2110_MAC_ADDRESS;
+    static const uint8_t Ipv4[4] = SIM_NET_DTA2110_IPV4;
+    static const uint8_t LinkLocal[16] = SIM_NET_DTA2110_LINK_LOCAL;
+    static const uint8_t Global[16] = SIM_NET_DTA2110_GLOBAL;
+    static const uint8_t Zero[16] = {0};
+    DT_ASSERT(Port.IsAvFifo);
+    DT_ASSERT_MEM(Port.MacAddr, Mac, 6);
+    DT_ASSERT_MEM(Port.Ip, Ipv4, 4);
+    DT_ASSERT_MEM(Port.IpV6[0], LinkLocal, 16);
+    DT_ASSERT_MEM(Port.IpV6[1], Global, 16);
+    DT_ASSERT_MEM(Port.IpV6[2], Zero, 16);
+
+    // A site-local address goes between the link-local and the global one.
+    OsNetAddr SiteLocal = {true,
+                           {0xFD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10},
+                           64,
+                           OS_NET_ADDR_PREFERRED};
+    DT_ASSERT(SimDtPcie_AddNetAddress(SIM_NET_DTA2110_INDEX, &SiteLocal));
+    DT_ASSERT(ScanDta2110(&Port));
+    DT_ASSERT_MEM(Port.IpV6[0], LinkLocal, 16);
+    DT_ASSERT_MEM(Port.IpV6[1], SiteLocal.Ip, 16);
+    DT_ASSERT_MEM(Port.IpV6[2], Global, 16);
+
+    // Without addresses, and without the interface, only the MAC address is left.
+    SimDtPcie_ClearNetAddresses(SIM_NET_DTA2110_INDEX, false);
+    DT_ASSERT(ScanDta2110(&Port));
+    DT_ASSERT_MEM(Port.Ip, Zero, 4);
+    DT_ASSERT_MEM(Port.IpV6[0], LinkLocal, 16);
+    SimNet_SetDta2110Interface(false, Mac);
+    DT_ASSERT(ScanDta2110(&Port));
+    DT_ASSERT_MEM(Port.MacAddr, Mac, 6);
+    DT_ASSERT_MEM(Port.IpV6[0], Zero, 16);
+    DT_ASSERT_EQ(SimDtPcie_OpenHandleCount(), 0);
+    SimDtPcie_Reset();
 }
 
 // Descriptors beyond the last port are filled as a descriptor of no port is: all zeros,
@@ -784,6 +856,7 @@ DT_TEST(TimeOfDayComesFromTheCard)
 }
 
 DT_TEST_MAIN("SimApi", DT_RUN(ScanCountsThePorts), DT_RUN(ScanDescribesEveryPort),
+             DT_RUN(ScanGivesTheAddressesOfANetworkPort),
              DT_RUN(ScanFillsTheRestOfTheArray),
              DT_RUN(ScanWithTooSmallAnArrayChangesNothing),
              DT_RUN(ScanNeedsRoomForEveryPort), DT_RUN(DevicesAreFoundAtAnyIndex),

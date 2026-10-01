@@ -5,11 +5,12 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Prints one line per port: its device name, which is the serial number and the port
-// number; its description; and what it is: SDI, ASI, AVFIFO, INPUT, OUTPUT. Then the
-// number of ports found.
+// number; its description; what it is: SDI, ASI, AVFIFO, INPUT, OUTPUT; and for a
+// network port its MAC address and IPv4 address. Then the number of ports found.
 //
 //     9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT
 //     ...
+//     9211000001:1  DTA-2110 port 1  AVFIFO,INPUT,OUTPUT  00:14:F4:08:00:01 192.168.1.10
 //     10 ports
 //
 // Exits with 0 when ports are found, 2 when there are none, and 1 when the scan fails.
@@ -55,7 +56,26 @@ static void PrintKinds(const DtHwFuncDesc* Port)
     PrintKind(Port->IsAvFifo, "AVFIFO", &Printed);
     PrintKind(Port->IsInput, "INPUT", &Printed);
     PrintKind(Port->IsOutput, "OUTPUT", &Printed);
-    printf("%s\n", Printed > 0 ? "" : "-");
+    printf("%s", Printed > 0 ? "" : "-");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The MAC address and the IPv4 address of a network port, as the scan found them; a
+// port without a MAC address is no network port, and prints nothing.
+//
+static void PrintAddress(const DtHwFuncDesc* Port)
+{
+    static const uint8_t NoMac[6] = {0};
+    if (memcmp(Port->MacAddr, NoMac, sizeof(NoMac)) == 0)
+        return;
+    const uint8_t* M = Port->MacAddr;
+    printf("  %02X:%02X:%02X:%02X:%02X:%02X", M[0], M[1], M[2], M[3], M[4], M[5]);
+    const uint8_t* Ip = Port->Ip;
+    if (Ip[0] != 0 || Ip[1] != 0 || Ip[2] != 0 || Ip[3] != 0)
+        printf(" %u.%u.%u.%u", Ip[0], Ip[1], Ip[2], Ip[3]);
+    else
+        printf(" no IPv4 address");
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -99,6 +119,8 @@ int main(int Argc, char** Argv)
             continue;
         printf("%s  %s  ", Ports[i].DeviceName, Ports[i].Description);
         PrintKinds(&Ports[i]);
+        PrintAddress(&Ports[i]);
+        printf("\n");
         Listed++;
     }
     printf("%d ports\n", Listed);

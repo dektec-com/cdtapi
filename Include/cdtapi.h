@@ -101,6 +101,9 @@ typedef struct DtTimeOfDay
 // The sizes of its two strings, MAX_DEVICE_NAME_SIZE and MAX_DEVICE_DESC_SIZE, are in
 // cdtapi_constants.h.
 
+// The number of IPv6 addresses a hardware function or device descriptor holds.
+#define MAX_IPV6_ADDR 3
+
 typedef struct DtHwFuncDesc
 {
     char DeviceName[MAX_DEVICE_NAME_SIZE];  // Serial and port, as "<serial>:<port>"
@@ -112,12 +115,23 @@ typedef struct DtHwFuncDesc
     bool IsInput;  // The port can be used as input
     bool IsOutput; // The port can be used as output
     bool IsAsi;    // The port supports ASI
+    // Of a network port, a port with CAP_IP or CAP_AVFIFO, as the operating system has
+    // its network interface when the scan asks: the IPv4 address; the IPv6 addresses it
+    // has of link-local, site-local and global, in that order, packed from the first;
+    // and the MAC address of the port. All zero for another port; an address the
+    // interface does not have is zero, as are the addresses of a port whose network
+    // driver is not installed.
+    uint8_t Ip[4];
+    uint8_t IpV6[MAX_IPV6_ADDR][16];
+    uint8_t MacAddr[6];
 } DtHwFuncDesc;
 
 // Describes the public ports of every device, in the order the driver numbers the
 // devices. HwFuncs holds NumEntries descriptors; *NumEntriesResult receives how many
 // ports there are, also when they do not all fit. A device that cannot be attached, for
-// example because its driver is too old, is left out.
+// example because its driver is too old, is left out. The addresses of a network port
+// are those of the moment of the scan: an address the operating system gives the port
+// later shows at the next scan.
 //
 // Returns DTAPI_OK and fills all NumEntries descriptors; those beyond the last port are
 // zero, with DeviceName "0:0" and Description "DTA-0 port 0". Returns
@@ -142,9 +156,6 @@ CDTAPI_API DtapiResult DtapiHwFuncScan(int NumEntries, int* NumEntriesResult,
 #define DTAPI_CAT_IP 3   // Network appliance: DTE-31xx
 #define DTAPI_CAT_NIC 4  // Non-DekTec network card
 #define DTAPI_CAT_NWAP 5 // Network Advanced Protocol (VLAN device)
-
-// The number of IPv6 addresses a device descriptor holds.
-#define MAX_IPV6_ADDR 3
 
 // Describes whether the firmware is compatible with the driver.
 typedef enum DtFirmwareStatus

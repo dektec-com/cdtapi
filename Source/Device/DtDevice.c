@@ -17,8 +17,11 @@
 #include "DtDevActivate.h" // Activating the device at attach.
 #include "DtDevClock.h"    // Finding the clocks at attach.
 #include "DtDevice.h"      // Interface being implemented.
+#include "DtFunc.h"        // The network function of a port.
 #include "DtIoConfig.h"    // I/O configuration validation.
 #include "DtPcieAbi.h"     // DT_FWSTATUS_ values.
+#include "DtPcieCmd.h"     // The MAC address of a network port.
+#include "Net/DtNet.h"     // The addresses of the operating system's interfaces.
 #include "OAL/OsThread.h"  // Sleeping and the clock while waiting for a signal.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Attach +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -305,6 +308,43 @@ bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DescribeNetwork -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Fills the addresses of a network port, as DTAPI's hardware function scan does: the MAC
+// address from the driver, through the port's network function, and the addresses of
+// the operating system's interface with that MAC address, VLAN 0: IPv4, then IPv6
+// link-local, site-local and global, each one found in the next slot. What cannot be
+// found stays zero; the scan goes on.
+//
+static void DescribeNetwork(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
+{
+    DtFuncInstance NwFunction;
+    DtVec_Init(&NwFunction.Objects, sizeof(DtFuncObject));
+    DtapiResult Result = DtFunc_Find(Device->Drv, Port - 1, "AF_NW", "", &NwFunction);
+    const DtFuncObject* Object =
+        Result == DTAPI_OK ? DtFunc_FindObject(&NwFunction, true, DT_FUNC_TYPE_NW, "")
+                           : NULL;
+    uint8_t Mac[6] = {0};
+    if (Object != NULL)
+        Result = DtPcieCmd_NwGetMacAddress(Device->Drv, Object->Object, Mac);
+    DtFunc_Release(&NwFunction);
+    if (Object == NULL || Result != DTAPI_OK)
+        return;
+    memcpy(Desc->MacAddr, Mac, sizeof(Desc->MacAddr));
+
+    DtNetOwnAddress Own;
+    if (DtNet_GetOwnAddress(Mac, 0, DT_NET_ADDR_IPV4, NULL, &Own) == DTAPI_OK)
+        memcpy(Desc->Ip, Own.Ip, sizeof(Desc->Ip));
+    static const int Kinds[] = {DT_NET_ADDR_LINK_LOCAL, DT_NET_ADDR_SITE_LOCAL,
+                                DT_NET_ADDR_GLOBAL};
+    int Slot = 0;
+    for (size_t i = 0; i < sizeof(Kinds) / sizeof(Kinds[0]) && Slot < MAX_IPV6_ADDR; i++)
+    {
+        if (DtNet_GetOwnAddress(Mac, 0, Kinds[i], NULL, &Own) == DTAPI_OK)
+            memcpy(Desc->IpV6[Slot++], Own.Ip, 16);
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtDevice_DescribeHwFunc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void DtDevice_DescribeHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc)
@@ -321,6 +361,8 @@ void DtDevice_DescribeHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Des
     Desc->IsInput = DtDevice_PortHasAllCaps(Device, Port, DT_CAP_INPUT);
     Desc->IsOutput = DtDevice_PortHasAllCaps(Device, Port, DT_CAP_OUTPUT);
     Desc->IsAsi = DtDevice_PortHasAsiCaps(Device, Port);
+    if (DtDevice_PortHasAnyCap(Device, Port, DT_CAP_IP | DT_CAP_AVFIFO))
+        DescribeNetwork(Device, Port, Desc);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHwFuncScan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
