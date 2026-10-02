@@ -31,6 +31,9 @@
 #include "DtTest.h"
 #include "cdtapi.h"
 #include "cdtapi_avfifo.h"
+#if CDTAPI_TEST_WITH_NMOS
+    #include "cdtapi_nmos.h"
+#endif
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -599,7 +602,31 @@ DT_TEST(FramePropertiesAndTimingCalls)
     DT_ASSERT(GetLastException() != NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= NMOS +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The bridge's functions, in a build that has them and installs their header; a build
+// without them exports them as stubs, which TestApi calls.
+DT_TEST(NmosCalls)
+{
+#if CDTAPI_TEST_WITH_NMOS
+    DtNmosFlow Flow;
+    memset(&Flow, 0, sizeof(Flow));
+    Flow.Size = sizeof(Flow);
+    Flow.Media = DTNMOS_MEDIA_VIDEO;
+    snprintf(Flow.DestinationIp, sizeof(Flow.DestinationIp), "239.1.2.3");
+    Flow.DestinationPort = 5004;
+    Flow.PayloadType = 96;
+    St2110_RxConfigVideo Video;
+    AvFifo_IpPars IpPars;
+    DT_ASSERT_OK(DtNmosAvFifo_RxConfigFromFlow(&Flow, St2110_RxFrameFormat_Raw, &Video,
+                                               NULL, &IpPars));
+    DT_ASSERT_EQ(IpPars.Port, 5004);
+#else
+    (void)DtFailures;
+#endif
+}
+
 DT_TEST_MAIN("Conformance", DT_RUN(EveryPublicFunctionIsThere), DT_RUN(LibraryCalls),
              DT_RUN(DeviceCalls), DT_RUN(InputChannelCalls), DT_RUN(OutputChannelCalls),
              DT_RUN(ReceiveFifoCalls), DT_RUN(TransmitFifoCalls),
-             DT_RUN(FramePropertiesAndTimingCalls))
+             DT_RUN(FramePropertiesAndTimingCalls), DT_RUN(NmosCalls))

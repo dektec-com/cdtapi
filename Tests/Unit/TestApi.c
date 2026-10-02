@@ -7,8 +7,9 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDTAPI includes
-#include "DtTest.h" // Test framework.
-#include "cdtapi.h" // Public API.
+#include "DtTest.h"        // Test framework.
+#include "cdtapi.h"        // Public API.
+#include "cdtapi_avfifo.h" // The FIFOs' configurations, which the bridge takes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -36,5 +37,32 @@ DT_TEST(HasNmosAsBuilt)
     DT_ASSERT_EQ(DtapiHasNmos(), CDTAPI_TEST_WITH_NMOS);
 }
 
+#if !CDTAPI_TEST_WITH_NMOS
+
+// The bridge's functions as a build without it exports them: the header that declares
+// them is not installed, so they are declared here as the stubs define them.
+typedef struct DtNmosFlow DtNmosFlow;
+CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
+                                                     St2110_RxFrameFormat Format,
+                                                     St2110_RxConfigVideo* Video,
+                                                     St2110_RxConfigAudio* Audio,
+                                                     AvFifo_IpPars* IpPars);
+
+#endif
+
+// Without the bridge its functions are there and fail, saying why.
+DT_TEST(NmosStubsFail)
+{
+#if CDTAPI_TEST_WITH_NMOS
+    (void)DtFailures;
+#else
+    AvFifo_IpPars IpPars;
+    DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(NULL, St2110_RxFrameFormat_Raw, NULL, NULL,
+                                               &IpPars),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT(strstr(GetLastException(), "without NMOS") != NULL);
+#endif
+}
+
 DT_TEST_MAIN("Api", DT_RUN(VersionStringIsPresent), DT_RUN(VersionMacrosAgreeWithString),
-             DT_RUN(HasNmosAsBuilt))
+             DT_RUN(HasNmosAsBuilt), DT_RUN(NmosStubsFail))

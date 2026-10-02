@@ -95,6 +95,7 @@ cdtapi_add_test(Vec Unit/TestVec.c)
 
 # The NMOS bridge, in a build that has it.
 if(CDTAPI_WITH_NMOS)
+    cdtapi_add_test(NmosAddr Nmos/TestNmosAddr.c)
     cdtapi_add_test(NmosAvFifo Nmos/TestNmosAvFifo.c)
 endif()
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
@@ -152,6 +153,9 @@ target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Gene
 set(PublicHeaders
     "${CMAKE_SOURCE_DIR}/Include/cdtapi.h"
     "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h")
+if(CDTAPI_WITH_NMOS)
+    list(APPEND PublicHeaders "${CMAKE_SOURCE_DIR}/Include/cdtapi_nmos.h")
+endif()
 set(ConformanceSource "${CMAKE_CURRENT_SOURCE_DIR}/Conformance/TestConformance.c")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PublicHeaders}
                                                                 ${ConformanceSource})
@@ -183,6 +187,11 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Generated/PublicFunctions.inc"
 # The whole interface called once against the emulator, which needs the emulated DTA-2110
 # for the AV FIFO.
 cdtapi_add_test(Conformance Conformance/TestConformance.c)
+if(CDTAPI_WITH_NMOS)
+    target_compile_definitions(test_Conformance PRIVATE CDTAPI_TEST_WITH_NMOS=1)
+else()
+    target_compile_definitions(test_Conformance PRIVATE CDTAPI_TEST_WITH_NMOS=0)
+endif()
 target_include_directories(test_Conformance PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/Generated")
 set_property(TEST Conformance APPEND PROPERTY

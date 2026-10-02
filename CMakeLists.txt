@@ -156,7 +156,9 @@ endif()
 
 # The NMOS bridge, or the functions that say it is not there; both export the same.
 if(CDTAPI_WITH_NMOS)
-    list(APPEND CDTAPI_SOURCES Source/Nmos/DtNmosAvFifo.c)
+    list(APPEND CDTAPI_SOURCES
+        Source/Nmos/DtNmosAddr.c
+        Source/Nmos/DtNmosAvFifo.c)
 else()
     list(APPEND CDTAPI_SOURCES Source/Nmos/DtNmosAvFifoStub.c)
 endif()
@@ -370,6 +372,12 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_avfifo.h"
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/cdtapi_version.h"
     DESTINATION ${CDTAPI_INCLUDE_DIR})
+
+# The bridge's header includes dtnmos's, so it is installed only with the bridge.
+if(CDTAPI_WITH_NMOS)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_nmos.h"
+        DESTINATION ${CDTAPI_INCLUDE_DIR})
+endif()
 
 # A pkg-config file, for a consumer that builds outside CMake. The SDK's Windows tree
 # leaves it out: a Windows application is not built through pkg-config, and one file
