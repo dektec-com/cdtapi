@@ -135,6 +135,7 @@ DT_TEST(EveryPublicFunctionIsThere)
 DT_TEST(LibraryCalls)
 {
     DT_ASSERT(DtapiGetVersion() != NULL && DtapiGetVersion()[0] != '\0');
+    DT_ASSERT(DtapiHasNmos() == 0 || DtapiHasNmos() == 1);
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_NOT_ATTACHED), "DTAPI_E_NOT_ATTACHED");
 

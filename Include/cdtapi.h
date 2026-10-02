@@ -60,6 +60,11 @@ typedef uint32_t DtapiResult;
 // own. The returned pointer is static storage owned by the library and must not be freed.
 CDTAPI_API const char* DtapiGetVersion(void);
 
+// Returns 1 when the library was built with the NMOS bridge of the AV FIFO,
+// CDTAPI_WITH_NMOS, and 0 otherwise. A library built without it exports the bridge's
+// functions all the same, and they fail with DTAPI_E_NOT_SUPPORTED.
+CDTAPI_API int DtapiHasNmos(void);
+
 // Returns the name of a result code's macro, for example "DTAPI_E_IN_USE". A value with
 // two names gives the first, DTAPI_E_NO_DT_INPUT rather than DTAPI_E_NO_DT_OUTPUT. A
 // value that is no result code, and DTAPI_E_INVALID_NUM_INPUTS, DTAPI_E_DISABLED and

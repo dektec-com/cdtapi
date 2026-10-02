@@ -14,6 +14,12 @@ if(NOT WIN32)
     find_dependency(Threads)
 endif()
 
+# A library built with the NMOS bridge links dtnmos, and says so in its interface.
+set(CDTAPI_WITH_NMOS @CDTAPI_WITH_NMOS@)
+if(CDTAPI_WITH_NMOS)
+    find_dependency(dtnmos CONFIG)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/cdtapi-targets.cmake")
 
 check_required_components(cdtapi)

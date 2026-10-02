@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg-configuration.schema.json",
+  "default-registry": {
+    "kind": "git",
+    "repository": "https://github.com/microsoft/vcpkg",
+    "baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/dektec-com/dektec-vcpkg-registry",
+      "baseline": "5bcdd31c11b27fa40784d21cf9303175a3b486bd",
+      "packages": [ "dtnmos" ]
+    }
+  ]
+}

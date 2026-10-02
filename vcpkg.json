@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "cdtapi",
+  "version": "6.14.6",
+  "description": "The dependencies of CDTAPI's own build with the NMOS bridge, the presets windows-sim-nmos and linux-sim-nmos; the library needs none without it, and a program takes CDTAPI from the port in DekTec's vcpkg registry",
+  "homepage": "https://github.com/dektec-com/cdtapi",
+  "license": "BSD-3-Clause",
+  "features": {
+    "nmos": {
+      "description": "The NMOS bridge of the AV FIFO, on dtnmos with its client and server",
+      "dependencies": [
+        {
+          "name": "dtnmos",
+          "features": [ "curl", "server" ]
+        }
+      ]
+    }
+  }
+}

@@ -61,6 +61,11 @@ endfunction()
 
 cdtapi_add_test(Alloc Unit/TestAlloc.c)
 cdtapi_add_test(Api Unit/TestApi.c)
+if(CDTAPI_WITH_NMOS)
+    target_compile_definitions(test_Api PRIVATE CDTAPI_TEST_WITH_NMOS=1)
+else()
+    target_compile_definitions(test_Api PRIVATE CDTAPI_TEST_WITH_NMOS=0)
+endif()
 cdtapi_add_test(AsiEnc Unit/TestAsiEnc.c)
 cdtapi_add_test(AvFrame Unit/TestAvFrame.c)
 cdtapi_add_test(AvPacket Unit/TestAvPacket.c)
@@ -87,6 +92,11 @@ cdtapi_add_test(St2110Audio Unit/TestSt2110Audio.c)
 cdtapi_add_test(St2110Video Unit/TestSt2110Video.c)
 cdtapi_add_test(Thread Unit/TestThread.c)
 cdtapi_add_test(Vec Unit/TestVec.c)
+
+# The NMOS bridge, in a build that has it.
+if(CDTAPI_WITH_NMOS)
+    cdtapi_add_test(NmosAvFifo Nmos/TestNmosAvFifo.c)
+endif()
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
 cdtapi_add_test(WorkerPool Unit/TestWorkerPool.c)
 

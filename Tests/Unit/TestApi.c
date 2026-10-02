@@ -29,4 +29,12 @@ DT_TEST(VersionMacrosAgreeWithString)
     DT_ASSERT_STR(DtapiGetVersion(), Expected);
 }
 
-DT_TEST_MAIN("Api", DT_RUN(VersionStringIsPresent), DT_RUN(VersionMacrosAgreeWithString))
+// The library says it has the NMOS bridge exactly when it was built with it. The test's
+// own build is told which, CDTAPI_TEST_WITH_NMOS, from the same option.
+DT_TEST(HasNmosAsBuilt)
+{
+    DT_ASSERT_EQ(DtapiHasNmos(), CDTAPI_TEST_WITH_NMOS);
+}
+
+DT_TEST_MAIN("Api", DT_RUN(VersionStringIsPresent), DT_RUN(VersionMacrosAgreeWithString),
+             DT_RUN(HasNmosAsBuilt))

@@ -41,6 +41,24 @@
       }
     },
     {
+      "name": "nmos",
+      "hidden": true,
+      "description": "With the NMOS bridge, on dtnmos from vcpkg; needs VCPKG_ROOT.",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "nmos",
+        "CDTAPI_WITH_NMOS": "ON"
+      }
+    },
+    {
+      "name": "windows-sim-nmos",
+      "displayName": "Windows Debug, emulator only, with the NMOS bridge",
+      "inherits": [
+        "nmos",
+        "windows-sim"
+      ]
+    },
+    {
       "name": "windows-asan",
       "displayName": "Windows Debug with AddressSanitizer",
       "description": "MSVC /fsanitize=address. UBSan is not available on MSVC.",
@@ -81,6 +99,14 @@
       }
     },
     {
+      "name": "linux-sim-nmos",
+      "displayName": "Linux Debug, emulator only, with the NMOS bridge",
+      "inherits": [
+        "nmos",
+        "linux-sim"
+      ]
+    },
+    {
       "name": "linux-asan",
       "displayName": "Linux Debug with ASan and UBSan",
       "inherits": "linux-debug",
@@ -107,6 +133,11 @@
       "configuration": "Debug"
     },
     {
+      "name": "windows-sim-nmos",
+      "configurePreset": "windows-sim-nmos",
+      "configuration": "Debug"
+    },
+    {
       "name": "windows-asan",
       "configurePreset": "windows-asan",
       "configuration": "Debug"
@@ -122,6 +153,10 @@
     {
       "name": "linux-sim",
       "configurePreset": "linux-sim"
+    },
+    {
+      "name": "linux-sim-nmos",
+      "configurePreset": "linux-sim-nmos"
     },
     {
       "name": "linux-asan",
@@ -154,6 +189,14 @@
       }
     },
     {
+      "name": "windows-sim-nmos",
+      "configurePreset": "windows-sim-nmos",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
       "name": "windows-asan",
       "configurePreset": "windows-asan",
       "configuration": "Debug",
@@ -178,6 +221,13 @@
     {
       "name": "linux-sim",
       "configurePreset": "linux-sim",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-sim-nmos",
+      "configurePreset": "linux-sim-nmos",
       "output": {
         "outputOnFailure": true
       }

@@ -6,6 +6,7 @@ Name: CDTAPI
 Description: Native open-source C API for DekTec SDI, DVB-ASI and SMPTE ST 2110 interfaces
 Version: @PROJECT_VERSION@
 URL: https://www.dektec.com
+Requires: @CDTAPI_REQUIRES@
 Libs: -L"${libdir}" -l@CDTAPI_LINK_NAME@
 Libs.private: @CDTAPI_SYSTEM_LIBS@
 Cflags: -I"${includedir}"

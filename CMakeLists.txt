@@ -40,6 +40,11 @@ option(CDTAPI_SIM_ONLY "Build without the real driver backends" OFF)
 
 option(CDTAPI_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
+# Builds in the NMOS bridge of the AV FIFO, which needs dtnmos and through it libcurl and
+# civetweb. Without it the library needs nothing beyond the platform, and exports the
+# bridge's functions all the same, failing with DTAPI_E_NOT_SUPPORTED.
+option(CDTAPI_WITH_NMOS "Build in the NMOS bridge of the AV FIFO, which needs dtnmos" OFF)
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Generated files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 configure_file(
@@ -147,6 +152,13 @@ else()
         Source/OAL/Linux/LinMemory.c
         Source/OAL/Linux/LinNet.c
         Source/OAL/Linux/LinThread.c)
+endif()
+
+# The NMOS bridge, or the functions that say it is not there; both export the same.
+if(CDTAPI_WITH_NMOS)
+    list(APPEND CDTAPI_SOURCES Source/Nmos/DtNmosAvFifo.c)
+else()
+    list(APPEND CDTAPI_SOURCES Source/Nmos/DtNmosAvFifoStub.c)
 endif()
 
 # The real driver backend for this platform, or a stand-in that finds no hardware.
@@ -276,6 +288,13 @@ else()
     target_link_libraries(cdtapi PUBLIC Threads::Threads)
 endif()
 
+# The bridge's header includes dtnmos's, so a program that includes it needs dtnmos's
+# include directory, and a static library leaves dtnmos to the program's link.
+if(CDTAPI_WITH_NMOS)
+    find_package(dtnmos CONFIG REQUIRED)
+    target_link_libraries(cdtapi PUBLIC dtnmos::dtnmos)
+endif()
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-- Warnings -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 if(MSVC)
@@ -365,6 +384,13 @@ if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
     endif()
 
     set(CDTAPI_LINK_NAME "cdtapi")
+
+    # With the bridge, a program needs dtnmos's flags and libraries too.
+    if(CDTAPI_WITH_NMOS)
+        set(CDTAPI_REQUIRES "dtnmos")
+    else()
+        set(CDTAPI_REQUIRES "")
+    endif()
 
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cdtapi.pc.in"
