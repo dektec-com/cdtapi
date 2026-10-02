@@ -9,7 +9,7 @@
     {
       "kind": "git",
       "repository": "https://github.com/dektec-com/dektec-vcpkg-registry",
-      "baseline": "5bcdd31c11b27fa40784d21cf9303175a3b486bd",
+      "baseline": "62129c704453cf8cffc9f9cfdc7745e04ddc7bc3",
       "packages": [ "dtnmos" ]
     }
   ]
