@@ -36,9 +36,6 @@
 
 #define DT_NMOS_NS_PER_SEC UINT64_C(1000000000)
 
-// The only sampling a FIFO converts or sends.
-#define DT_NMOS_SAMPLING_422 "YCbCr-4:2:2"
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AudioFormatOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The FIFO's format of the audio encoding Encoding, and false for one it does not know.
@@ -46,15 +43,21 @@
 //
 static bool AudioFormatOf(const char* Encoding, St2110_AudioFormat* Format)
 {
-    if (strcmp(Encoding, "L16") == 0)
+    switch (DtNmosAudioEncoding_FromText(Encoding))
+    {
+    case DTNMOS_AUDIO_ENCODING_L16:
         *Format = St2110_AudioFormat_L16BE;
-    else if (strcmp(Encoding, "L24") == 0)
+        return true;
+    case DTNMOS_AUDIO_ENCODING_L24:
         *Format = St2110_AudioFormat_L24BE;
-    else if (strcmp(Encoding, "AM824") == 0)
+        return true;
+    case DTNMOS_AUDIO_ENCODING_AM824:
         *Format = St2110_AudioFormat_Raw;
-    else
-        return false;
-    return true;
+        return true;
+    case DTNMOS_AUDIO_ENCODING_OTHER:
+        break;
+    }
+    return false;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -235,7 +238,7 @@ static bool RxVideoTakes(St2110_RxFrameFormat Format, const DtNmosVideoFormat* V
         Depth = 10;
         break;
     }
-    if (strcmp(Video->Sampling, DT_NMOS_SAMPLING_422) != 0)
+    if (DtNmosSampling_FromText(Video->Sampling) != DTNMOS_SAMPLING_YCBCR_422)
     {
         snprintf(Why, Size, "%s takes YCbCr-4:2:2, and the flow is %.32s; use Raw",
                  RxFormatName(Format), Video->Sampling);
@@ -302,7 +305,7 @@ static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video
 {
     const DtNmosVideoFormat* Format = &Flow->Format.Video;
     char Why[160];
-    if (strcmp(Format->Sampling, DT_NMOS_SAMPLING_422) != 0 ||
+    if (DtNmosSampling_FromText(Format->Sampling) != DTNMOS_SAMPLING_YCBCR_422 ||
         (Format->Depth != 8 && Format->Depth != 10))
     {
         snprintf(Why, sizeof(Why),
@@ -318,23 +321,25 @@ static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video
                              "The flow has no width, height or frame rate");
     }
 
+    // An empty PM is General, as when the SDP leaves it out.
     St2110_PackingMode Packing = St2110_PackingMode_General;
-    if (strcmp(Format->PackingMode, "2110BPM") == 0)
+    const DtNmosPackingMode Mode = DtNmosPackingMode_FromText(Format->PackingMode);
+    if (Mode == DTNMOS_PACKING_MODE_BLOCK)
         Packing = St2110_PackingMode_Block;
-    else if (Format->PackingMode[0] != '\0' &&
-             strcmp(Format->PackingMode, "2110GPM") != 0)
+    else if (Mode == DTNMOS_PACKING_MODE_OTHER && Format->PackingMode[0] != '\0')
     {
         snprintf(Why, sizeof(Why), "The flow's PM %.16s is no packing mode of the FIFO",
                  Format->PackingMode);
         return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
     }
 
+    // An empty TP is gapped, and a wide sender's is sent narrow, gapped.
     St2110_Scheduling Scheduling = St2110_Scheduling_Gapped;
-    if (strcmp(Format->TransmitterType, "2110TPNL") == 0)
+    const DtNmosTransmitterType Type =
+        DtNmosTransmitterType_FromText(Format->TransmitterType);
+    if (Type == DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR)
         Scheduling = St2110_Scheduling_Linear;
-    else if (Format->TransmitterType[0] != '\0' &&
-             strcmp(Format->TransmitterType, "2110TPN") != 0 &&
-             strcmp(Format->TransmitterType, "2110TPW") != 0)
+    else if (Type == DTNMOS_TRANSMITTER_TYPE_OTHER && Format->TransmitterType[0] != '\0')
     {
         snprintf(Why, sizeof(Why), "The flow's TP %.16s is no sender type of the FIFO",
                  Format->TransmitterType);
@@ -500,13 +505,18 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
         Video->RateNumerator = Numerator;
         Video->RateDenominator = Denominator;
         Video->Depth = Config->Format == St2110_TxFrameFormat_Uyvy422_10b ? 10 : 8;
-        snprintf(Video->Sampling, sizeof(Video->Sampling), DT_NMOS_SAMPLING_422);
-        snprintf(Video->PackingMode, sizeof(Video->PackingMode), "%s",
-                 Config->Packing.PackingMode == St2110_PackingMode_Block ? "2110BPM"
-                                                                         : "2110GPM");
+        snprintf(Video->Sampling, sizeof(Video->Sampling), "%s",
+                 DtNmosSampling_Text(DTNMOS_SAMPLING_YCBCR_422));
+        snprintf(
+            Video->PackingMode, sizeof(Video->PackingMode), "%s",
+            DtNmosPackingMode_Text(Config->Packing.PackingMode == St2110_PackingMode_Block
+                                       ? DTNMOS_PACKING_MODE_BLOCK
+                                       : DTNMOS_PACKING_MODE_GENERAL));
         snprintf(Video->TransmitterType, sizeof(Video->TransmitterType), "%s",
-                 Config->Timing.Scheduling == St2110_Scheduling_Linear ? "2110TPNL"
-                                                                       : "2110TPN");
+                 DtNmosTransmitterType_Text(Config->Timing.Scheduling ==
+                                                    St2110_Scheduling_Linear
+                                                ? DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR
+                                                : DTNMOS_TRANSMITTER_TYPE_NARROW));
         snprintf(Video->Ssn, sizeof(Video->Ssn), "ST2110-20:2017");
         DtNmosVideoFormat_SetDefaults(Video);
     }
@@ -517,7 +527,9 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
         Made.Media = DTNMOS_MEDIA_AUDIO;
         Made.ClockRate = (uint32_t)Config->SampleRate;
         snprintf(Audio->Encoding, sizeof(Audio->Encoding), "%s",
-                 Config->Format == St2110_AudioFormat_L16BE ? "L16" : "L24");
+                 DtNmosAudioEncoding_Text(Config->Format == St2110_AudioFormat_L16BE
+                                              ? DTNMOS_AUDIO_ENCODING_L16
+                                              : DTNMOS_AUDIO_ENCODING_L24));
         Audio->SampleRate = (uint32_t)Config->SampleRate;
         Audio->Channels = (uint32_t)Config->NumChannels;
         Audio->PacketTimeNs =
