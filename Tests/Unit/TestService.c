@@ -18,6 +18,7 @@
 #endif
 
 // Standard includes
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,11 +40,13 @@
 #endif
 
 // CDTAPI includes
-#include "Core/DtAlloc.h"      // Allocation seam.
-#include "DtTest.h"            // Test framework.
-#include "OAL/OsPipe.h"        // Interface under test.
-#include "OAL/OsThread.h"      // The fake service's thread.
-#include "Service/DtService.h" // Interface under test.
+#include "Core/DtAlloc.h"       // Allocation seam.
+#include "DtTest.h"             // Test framework.
+#include "OAL/OsPipe.h"         // Interface under test.
+#include "OAL/OsThread.h"       // The fake service's thread.
+#include "Service/DtPtpSlave.h" // Interface under test.
+#include "Service/DtService.h"  // Interface under test.
+#include "Service/DtXml.h"      // The fake PTP slave's XML.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Fake service +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -59,7 +62,26 @@ typedef enum FakeBehaviour
     FAKE_WRONG_CMD, // Answers as if to the next command
     FAKE_BAD_TEXT,  // Answers with XML that does not end in a zero character
     FAKE_CLOSE,     // Reads the command and closes the pipe without answering
+    FAKE_PTP,       // Answers as DtapiService's PTP clock slave, as FakePtp says
 } FakeBehaviour;
+
+// The PTP clock slave FAKE_PTP plays: what it answers, and what it was asked.
+typedef struct FakePtp
+{
+    int VersionMajor;    // The service's major version
+    int AttachException; // The exception ATTACH answers, or DT_SERVICE_NO_EXCEPTION
+    const char* Missing; // A parameter left out of the descriptions, or NULL
+    int SlaveState;
+    int LockStatus;
+    int Domain;
+    uint64_t MasterIdentity;
+    const char* MasterInfo; // The value of MasterInfo
+    bool Attached;          // Whether ATTACH came, with the values below
+    int64_t AttachSerial;
+    int64_t AttachPort;
+    bool AttachExclusive;
+    bool Detached; // Whether DETACH came
+} FakePtp;
 
 typedef struct FakeService
 {
@@ -67,6 +89,7 @@ typedef struct FakeService
     char PipeName[64];
     int NumCommands; // The commands answered, or read for FAKE_CLOSE
     bool GotCleanup; // Whether CLEANUP_CONNECTION came
+    FakePtp* Ptp;    // The slave FAKE_PTP plays
     OsThread* Thread;
 #ifdef _WIN32
     HANDLE Pipe;
@@ -339,6 +362,201 @@ static bool FakeAnswer(FakeService* Fake, const uint8_t* Msg, size_t Size)
     return Written;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeReply -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Answers command Cmd with the exception Exception, or, without one, with Xml.
+//
+static bool FakeReply(FakeService* Fake, uint8_t Cmd, int Exception, const char* Xml)
+{
+    uint8_t* Wire = NULL;
+    size_t WireSize = 0;
+    if (Exception == DT_SERVICE_NO_EXCEPTION &&
+        DtService_TextToWire(Xml, DT_SERVICE_CHAR_SIZE, &Wire, &WireSize) != DTAPI_OK)
+        return false;
+    uint8_t* Answer = (uint8_t*)malloc(8 + WireSize);
+    if (Answer == NULL)
+    {
+        DtAlloc_Free(Wire);
+        return false;
+    }
+    uint32_t Reason = (uint32_t)Exception;
+    uint8_t Header[8] = {Cmd,
+                         0,
+                         0,
+                         0,
+                         (uint8_t)Reason,
+                         (uint8_t)(Reason >> 8),
+                         (uint8_t)(Reason >> 16),
+                         (uint8_t)(Reason >> 24)};
+    memcpy(Answer, Header, 8);
+    if (WireSize > 0)
+        memcpy(Answer + 8, Wire, WireSize);
+    bool Written = FakeWriteMsg(Fake, Answer, 8 + WireSize);
+    free(Answer);
+    DtAlloc_Free(Wire);
+    return Written;
+}
+
+// The parameters of the fake PTP slave. Their IDs are not those of DtapiService 5.2.8,
+// so that a client that does not look them up by name fails.
+typedef struct FakePar
+{
+    const char* Name;
+    int ParId;
+    int Type; // The place in Variant::Type: 2 Int, 3 UInt64, 4 Bool, 5 String
+} FakePar;
+static const FakePar FakePars[] = {
+    {"ClockOffset", 1, 2},          {"Enable", 5, 4},        {"SlaveState", 40, 2},
+    {"MasterLockingStatus", 41, 2}, {"DomainNumber", 42, 2}, {"MasterIdentity", 43, 3},
+    {"MasterInfo", 44, 5},
+};
+#define FAKE_NUM_PARS (int)(sizeof(FakePars) / sizeof(FakePars[0]))
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeParDescs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The descriptions of the group General, without the one the case leaves out.
+//
+static char* FakeParDescs(const FakePtp* Ptp)
+{
+    DtXmlOut Out;
+    DtXmlOut_Init(&Out);
+    DtXmlOut_Open(&Out, "ParDescs");
+    int Count = 0;
+    for (int i = 0; i < FAKE_NUM_PARS; i++)
+        Count += Ptp->Missing == NULL || strcmp(FakePars[i].Name, Ptp->Missing) != 0;
+    DtXmlOut_AttrInt(&Out, "Cnt", Count);
+    for (int i = 0; i < FAKE_NUM_PARS; i++)
+    {
+        if (Ptp->Missing != NULL && strcmp(FakePars[i].Name, Ptp->Missing) == 0)
+            continue;
+        DtXmlOut_Open(&Out, "ParDesc");
+        DtXmlOut_AttrInt(&Out, "ParId", FakePars[i].ParId);
+        DtXmlOut_Attr(&Out, "Name", FakePars[i].Name);
+        DtXmlOut_Attr(&Out, "Desc", "A parameter <of> the \"fake\" slave & more.");
+        DtXmlOut_AttrInt(&Out, "VT", FakePars[i].Type);
+        DtXmlOut_AttrBool(&Out, "W", false);
+        DtXmlOut_AttrInt(&Out, "ECount", 0);
+        DtXmlOut_Close(&Out, "ParDesc");
+    }
+    DtXmlOut_Close(&Out, "ParDescs");
+    char* Text = NULL;
+    DtXmlOut_Finish(&Out, &Text);
+    return Text;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeParVals -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The values of the parameters Request asks for, <ParIds Cnt="n"> with an I per ID.
+// Sets *Exception to 2, InvalidParId, for an ID it does not have.
+//
+static char* FakeParVals(const FakePtp* Ptp, const DtXmlElem* Request, int* Exception)
+{
+    DtXmlOut Out;
+    DtXmlOut_Init(&Out);
+    DtXmlOut_Open(&Out, "ParIdVals");
+    DtXmlOut_AttrInt(&Out, "Cnt", Request->NumChildren);
+    for (int i = 0; i < Request->NumChildren; i++)
+    {
+        int64_t Id = -1;
+        DtXml_AttrInt(&Request->Children[i], "Val", &Id);
+        const FakePar* Par = NULL;
+        for (int p = 0; p < FAKE_NUM_PARS; p++)
+        {
+            if (FakePars[p].ParId == Id)
+                Par = &FakePars[p];
+        }
+        if (Par == NULL)
+        {
+            *Exception = 2;
+            break;
+        }
+        DtXmlOut_Open(&Out, "ParIdVal");
+        DtXmlOut_AttrInt(&Out, "ParId", Id);
+        DtXmlOut_AttrInt(&Out, "VT", Par->Type);
+        char Value[32];
+        if (strcmp(Par->Name, "SlaveState") == 0)
+            DtXmlOut_AttrInt(&Out, "VV", Ptp->SlaveState);
+        else if (strcmp(Par->Name, "MasterLockingStatus") == 0)
+            DtXmlOut_AttrInt(&Out, "VV", Ptp->LockStatus);
+        else if (strcmp(Par->Name, "DomainNumber") == 0)
+            DtXmlOut_AttrInt(&Out, "VV", Ptp->Domain);
+        else if (strcmp(Par->Name, "MasterInfo") == 0)
+            DtXmlOut_Attr(&Out, "VV", Ptp->MasterInfo);
+        else if (strcmp(Par->Name, "MasterIdentity") == 0)
+        {
+            snprintf(Value, sizeof(Value), "%" PRIu64, Ptp->MasterIdentity);
+            DtXmlOut_Attr(&Out, "VV", Value);
+        }
+        else if (strcmp(Par->Name, "Enable") == 0)
+            DtXmlOut_AttrBool(&Out, "VV", Ptp->SlaveState != 0);
+        else
+            DtXmlOut_AttrInt(&Out, "VV", 0);
+        DtXmlOut_Close(&Out, "ParIdVal");
+    }
+    DtXmlOut_Close(&Out, "ParIdVals");
+    char* Text = NULL;
+    DtXmlOut_Finish(&Out, &Text);
+    return Text;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeAnswerPtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Answers command Msg as DtapiService's PTP clock slave does, and notes the attach and
+// the detach.
+//
+static bool FakeAnswerPtp(FakeService* Fake, const uint8_t* Msg, size_t Size)
+{
+    FakePtp* Ptp = Fake->Ptp;
+    char* Text = NULL;
+    DtXmlElem Request;
+    memset(&Request, 0, sizeof(Request));
+    if (DtService_TextFromWire(Msg + 4, Size - 4, DT_SERVICE_CHAR_SIZE, &Text) !=
+        DTAPI_OK)
+        return false;
+    if (Text[0] != '\0' && DtXml_Parse(Text, &Request) != DTAPI_OK)
+    {
+        DtAlloc_Free(Text);
+        return false;
+    }
+    DtAlloc_Free(Text);
+
+    int Exception = DT_SERVICE_NO_EXCEPTION;
+    char* Answer = NULL;
+    char Small[96] = "";
+    switch (Msg[0])
+    {
+    case DT_SERVICE_CMD_VERSION:
+        snprintf(Small, sizeof(Small),
+                 "<Version Major=\"%d\" Minor=\"2\" BugFix=\"8\" Build=\"141\"/>\n",
+                 Ptp->VersionMajor);
+        break;
+    case DT_SERVICE_CMD_ATTACH:
+        Ptp->Attached = true;
+        DtXml_AttrInt(&Request, "Serial", &Ptp->AttachSerial);
+        DtXml_AttrInt(&Request, "Port", &Ptp->AttachPort);
+        DtXml_AttrBool(&Request, "Exclusive", &Ptp->AttachExclusive);
+        Exception = Ptp->AttachException;
+        snprintf(Small, sizeof(Small), "<Id Val=\"0\"/>\n");
+        break;
+    case DT_SERVICE_CMD_DETACH:
+        Ptp->Detached = true;
+        break;
+    case DT_SERVICE_CMD_GET_PARDESCS:
+        Answer = FakeParDescs(Ptp);
+        break;
+    case DT_SERVICE_CMD_GET_PARVALS:
+        Answer = FakeParVals(Ptp, &Request, &Exception);
+        break;
+    default:
+        Exception = 13; // InvalidCmd
+        break;
+    }
+    DtXml_Free(&Request);
+    bool Written = FakeReply(Fake, Msg[0], Exception, Answer != NULL ? Answer : Small);
+    DtAlloc_Free(Answer);
+    return Written;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeServe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The fake service's thread: accepts one client and answers its commands until it ends
@@ -365,7 +583,9 @@ static void FakeServe(void* Context)
             break;
         }
         Fake->NumCommands++;
-        bool Answered = Fake->Behaviour != FAKE_CLOSE && FakeAnswer(Fake, Msg, Size);
+        bool Answered = Fake->Behaviour == FAKE_PTP ? FakeAnswerPtp(Fake, Msg, Size)
+                                                    : Fake->Behaviour != FAKE_CLOSE &&
+                                                          FakeAnswer(Fake, Msg, Size);
         free(Msg);
         if (!Answered)
             break;
@@ -375,10 +595,11 @@ static void FakeServe(void* Context)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FakeStart -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static bool FakeStart(FakeService* Fake, FakeBehaviour Behaviour)
+static bool FakeStart(FakeService* Fake, FakeBehaviour Behaviour, FakePtp* Ptp)
 {
     memset(Fake, 0, sizeof(*Fake));
     Fake->Behaviour = Behaviour;
+    Fake->Ptp = Ptp;
     if (!FakeListen(Fake))
         return false;
     Fake->Thread = OsThread_Start(FakeServe, Fake);
@@ -567,7 +788,7 @@ DT_TEST(WriteAfterServiceClosedFails)
     // The service hangs up after the first command. A write to the closed pipe must fail
     // rather than end the program with SIGPIPE.
     FakeService Fake;
-    DT_ASSERT(FakeStart(&Fake, FAKE_CLOSE));
+    DT_ASSERT(FakeStart(&Fake, FAKE_CLOSE, NULL));
     DtTest_SetCleanup(StopFake, &Fake);
     OsPipe* Pipe = NULL;
     DT_ASSERT_EQ(OsPipe_Connect(Fake.PipeName, 2000, &Pipe), OS_PIPE_OK);
@@ -596,7 +817,7 @@ DT_TEST(WriteAfterServiceClosedFails)
 static bool ConnectToFake(FakeService* Fake, FakeBehaviour Behaviour, DtService** Service)
 {
     *Service = NULL;
-    if (!FakeStart(Fake, Behaviour))
+    if (!FakeStart(Fake, Behaviour, NULL))
         return false;
     DtTest_SetCleanup(StopFake, Fake);
     return DtService_Connect(Fake->PipeName, Service) == DTAPI_OK;
@@ -753,6 +974,231 @@ DT_TEST(TransferChecksItsArguments)
     OsPipe_Close(NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= PTP slave +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The serial number and port index the cases read.
+#define PTP_SERIAL 2110000076
+#define PTP_PORT_INDEX 0
+
+// A grandmaster identity with its top bit set, which the service writes in MasterInfo
+// as a negative number, and another one.
+#define PTP_GM_HIGH 0xEC4670FFFE0A1B2Cu
+#define PTP_GM_OTHER 0x001B19FFFE000001u
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MasterInfoXml -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Writes the value of MasterInfo with the masters Ids into Xml, each with the attributes
+// DtapiService writes; the first is time traceable, in domain 127, with clock class 6.
+//
+static void MasterInfoXml(char* Xml, size_t Size, const uint64_t* Ids, int NumIds)
+{
+    int Length = snprintf(Xml, Size, "<V Cnt=\"%d\">\n", NumIds);
+    for (int i = 0; i < NumIds; i++)
+    {
+        Length += snprintf(
+            Xml + Length, Size - (size_t)Length,
+            "<MI AM=\"false\" FT=\"%s\" L59=\"false\" L61=\"false\" TT=\"%s\" "
+            "CUOV=\"true\" ID=\"%" PRId64 "\" PID=\"%" PRId64 "\" PPN=\"1\" AI=\"0\" "
+            "CA=\"33\" CC=\"%d\" CUO=\"37\" DN=\"%d\" MiId=\"0\" MaId=\"0\" "
+            "OSLV=\"20061\" OT=\"1790000000.0\" P1=\"128\" P2=\"128\" SR=\"%d\" "
+            "TS=\"32\" "
+            "IP=\"192.168.39.1\" AMC=\"12\"/>\n",
+            i == 0 ? "true" : "false", i == 0 ? "true" : "false", (int64_t)Ids[i],
+            (int64_t)Ids[i], i == 0 ? 6 : 248, i == 0 ? 127 : 0, i + 1);
+    }
+    snprintf(Xml + Length, Size - (size_t)Length, "</V>\n");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InitPtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A slave of DtapiService 5 that is off, as on a card nobody has configured.
+//
+static void InitPtp(FakePtp* Ptp)
+{
+    memset(Ptp, 0, sizeof(*Ptp));
+    Ptp->VersionMajor = 5;
+    Ptp->AttachException = DT_SERVICE_NO_EXCEPTION;
+    Ptp->Domain = 127;
+    Ptp->MasterInfo = "<V Cnt=\"0\"/>\n";
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadFakePtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Starts a fake PTP slave as Ptp describes it and reads it.
+//
+static DtapiResult ReadFakePtp(FakePtp* Ptp, DtPtpSlaveValues* Values)
+{
+    FakeService Fake;
+    if (!FakeStart(&Fake, FAKE_PTP, Ptp))
+        return DTAPI_E_INTERNAL;
+    DtapiResult Result =
+        DtPtpSlave_Read(Fake.PipeName, PTP_SERIAL, PTP_PORT_INDEX, Values);
+    FakeStop(&Fake);
+    return Result;
+}
+
+DT_TEST(PtpSlaveThatIsOffHasNoMaster)
+{
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    DtPtpSlaveValues Values;
+    DT_ASSERT_OK(ReadFakePtp(&Ptp, &Values));
+    DT_ASSERT_EQ(Values.SlaveState, 0);
+    DT_ASSERT_EQ(Values.LockStatus, 0);
+    DT_ASSERT_EQ(Values.Domain, 127);
+    DT_ASSERT(Values.MasterIdentity == 0);
+    DT_ASSERT(!Values.HasMasterInfo);
+
+    // Attached without exclusive access to the port asked for, and detached again.
+    DT_ASSERT(Ptp.Attached);
+    DT_ASSERT_EQ(Ptp.AttachSerial, PTP_SERIAL);
+    DT_ASSERT_EQ(Ptp.AttachPort, PTP_PORT_INDEX);
+    DT_ASSERT(!Ptp.AttachExclusive);
+    DT_ASSERT(Ptp.Detached);
+}
+
+DT_TEST(PtpSlaveGivesTheChosenMaster)
+{
+    // Two masters heard; the slave has chosen the second, whose identity has its top bit
+    // set.
+    static const uint64_t Ids[] = {PTP_GM_OTHER, PTP_GM_HIGH};
+    char Masters[2048];
+    MasterInfoXml(Masters, sizeof(Masters), Ids, 2);
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.SlaveState = 5;
+    Ptp.LockStatus = 4;
+    Ptp.Domain = 0;
+    Ptp.MasterIdentity = PTP_GM_HIGH;
+    Ptp.MasterInfo = Masters;
+
+    DtPtpSlaveValues Values;
+    DT_ASSERT_OK(ReadFakePtp(&Ptp, &Values));
+    DT_ASSERT_EQ(Values.SlaveState, 5);
+    DT_ASSERT_EQ(Values.LockStatus, 4);
+    DT_ASSERT_EQ(Values.Domain, 0);
+    DT_ASSERT(Values.MasterIdentity == PTP_GM_HIGH);
+    DT_ASSERT(Values.HasMasterInfo);
+    DT_ASSERT(Values.Master.Identity == PTP_GM_HIGH);
+    DT_ASSERT_EQ(Values.Master.Domain, 0);
+    DT_ASSERT(!Values.Master.IsTimeTraceable);
+    DT_ASSERT(!Values.Master.IsFrequencyTraceable);
+    DT_ASSERT_EQ(Values.Master.ClockClass, 248);
+    DT_ASSERT_EQ(Values.Master.StepsRemoved, 2);
+}
+
+DT_TEST(PtpSlaveWithMasterNotListed)
+{
+    // The slave has chosen a master that its list does not have (yet).
+    static const uint64_t Ids[] = {PTP_GM_OTHER};
+    char Masters[1024];
+    MasterInfoXml(Masters, sizeof(Masters), Ids, 1);
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.SlaveState = 4;
+    Ptp.LockStatus = 2;
+    Ptp.MasterIdentity = PTP_GM_HIGH;
+    Ptp.MasterInfo = Masters;
+
+    DtPtpSlaveValues Values;
+    DT_ASSERT_OK(ReadFakePtp(&Ptp, &Values));
+    DT_ASSERT(Values.MasterIdentity == PTP_GM_HIGH);
+    DT_ASSERT(!Values.HasMasterInfo);
+    DT_ASSERT(Values.Master.Identity == 0);
+}
+
+DT_TEST(PtpSlaveOfOldServiceIsIncompatible)
+{
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.VersionMajor = 3;
+    DtPtpSlaveValues Values;
+    DT_ASSERT_EQ(ReadFakePtp(&Ptp, &Values), DTAPI_E_SERVICE_INCOMP);
+    DT_ASSERT(!Ptp.Attached);
+}
+
+DT_TEST(PtpSlaveHeldExclusivelyIsInUse)
+{
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.AttachException = 20;
+    DtPtpSlaveValues Values;
+    DT_ASSERT_EQ(ReadFakePtp(&Ptp, &Values), DTAPI_E_IN_USE);
+    DT_ASSERT(Ptp.Attached);
+    DT_ASSERT(!Ptp.Detached);
+}
+
+DT_TEST(PtpSlaveOnPortWithoutOneIsNotSupported)
+{
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.AttachException = 27;
+    DtPtpSlaveValues Values;
+    DT_ASSERT_EQ(ReadFakePtp(&Ptp, &Values), DTAPI_E_NOT_SUPPORTED);
+}
+
+DT_TEST(PtpSlaveWithoutParameterIsIncompatible)
+{
+    FakePtp Ptp;
+    InitPtp(&Ptp);
+    Ptp.Missing = "MasterInfo";
+    DtPtpSlaveValues Values;
+    Values.SlaveState = 99;
+    DT_ASSERT_EQ(ReadFakePtp(&Ptp, &Values), DTAPI_E_SERVICE_INCOMP);
+    DT_ASSERT_EQ(Values.SlaveState, 0);
+    DT_ASSERT(Ptp.Detached);
+}
+
+DT_TEST(PtpSlaveWithoutServiceCannotConnect)
+{
+#ifndef _WIN32
+    char Dir[] = "/tmp/cdtapi-service-XXXXXX";
+    DT_ASSERT(mkdtemp(Dir) != NULL);
+    DT_ASSERT(setenv("DTAPI_PIPES_PATH", Dir, 1) == 0);
+#endif
+    DtPtpSlaveValues Values;
+    DtapiResult Result = DtPtpSlave_Read("CdtapiNoSuchService", PTP_SERIAL, 0, &Values);
+#ifndef _WIN32
+    rmdir(Dir);
+#endif
+    DT_ASSERT_EQ(Result, DTAPI_E_CONNECT_TO_SERVICE);
+    DT_ASSERT_EQ(DtPtpSlave_Read(NULL, PTP_SERIAL, 0, &Values), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPtpSlave_Read("X", PTP_SERIAL, -1, &Values), DTAPI_E_INVALID_ARG);
+}
+
+DT_TEST(PtpExceptionsHaveTheirResults)
+{
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(DT_SERVICE_NO_EXCEPTION), DTAPI_OK);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(3), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(17), DTAPI_E_SERVICE_INCOMP);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(20), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(24), DTAPI_E_DRIVER_INCOMP);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(26), DTAPI_E_NO_SUCH_DEVICE);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(27), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(0), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(2), DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtPtpSlave_ExceptionResult(99), DTAPI_E_COMMUNICATION);
+}
+
+DT_TEST(PtpMasterListThatIsBrokenIsRefused)
+{
+    DtPtpMaster Master;
+    bool Found = true;
+    DT_ASSERT_OK(DtPtpSlave_FindMaster("", PTP_GM_HIGH, &Master, &Found));
+    DT_ASSERT(!Found);
+    DT_ASSERT_EQ(DtPtpSlave_FindMaster("<V Cnt=\"1\"><MI ID=\"x\"/></V>", PTP_GM_HIGH,
+                                       &Master, &Found),
+                 DTAPI_E_COMMUNICATION);
+    DT_ASSERT_EQ(DtPtpSlave_FindMaster("<V Cnt=\"1\"><MI", PTP_GM_HIGH, &Master, &Found),
+                 DTAPI_E_COMMUNICATION);
+
+    // A master without the attributes CDTAPI reads.
+    DT_ASSERT_EQ(
+        DtPtpSlave_FindMaster("<V Cnt=\"1\"><MI ID=\"1\"/></V>", 1, &Master, &Found),
+        DTAPI_E_COMMUNICATION);
+    DT_ASSERT(!Found);
+}
+
 DT_TEST_MAIN(
     "Service", DT_RUN(LengthBelowFfffTakesTwoBytes),
     DT_RUN(LengthFromFfffTakesEightBytes), DT_RUN(TextToUtf16HasSurrogatesAndZero),
@@ -763,4 +1209,11 @@ DT_TEST_MAIN(
     DT_RUN(WriteAfterServiceClosedFails), DT_RUN(CommandIsAnsweredAndConnectionEnds),
     DT_RUN(LongMessagesTakeTheLongPrefix), DT_RUN(ExceptionIsGivenWithoutXml),
     DT_RUN(AnswerToAnotherCommandIsRefused), DT_RUN(AnswerWithoutZeroIsRefused),
-    DT_RUN(ServiceThatHangsUpFailsTheTransfer), DT_RUN(TransferChecksItsArguments))
+    DT_RUN(ServiceThatHangsUpFailsTheTransfer), DT_RUN(TransferChecksItsArguments),
+    DT_RUN(PtpSlaveThatIsOffHasNoMaster), DT_RUN(PtpSlaveGivesTheChosenMaster),
+    DT_RUN(PtpSlaveWithMasterNotListed), DT_RUN(PtpSlaveOfOldServiceIsIncompatible),
+    DT_RUN(PtpSlaveHeldExclusivelyIsInUse),
+    DT_RUN(PtpSlaveOnPortWithoutOneIsNotSupported),
+    DT_RUN(PtpSlaveWithoutParameterIsIncompatible),
+    DT_RUN(PtpSlaveWithoutServiceCannotConnect), DT_RUN(PtpExceptionsHaveTheirResults),
+    DT_RUN(PtpMasterListThatIsBrokenIsRefused))

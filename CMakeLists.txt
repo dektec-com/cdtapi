@@ -112,7 +112,9 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
     Source/OAL/Sim/SimVpd.c
+    Source/Service/DtPtpSlave.c
     Source/Service/DtService.c
+    Source/Service/DtXml.c
     Source/Ts/DtAsiEnc.c
     Source/Ts/DtTsTrp.c
     Source/Video/DtFrameProps.c

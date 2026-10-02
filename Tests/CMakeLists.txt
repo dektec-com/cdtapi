@@ -103,6 +103,7 @@ if(CDTAPI_WITH_NMOS)
 endif()
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
 cdtapi_add_test(WorkerPool Unit/TestWorkerPool.c)
+cdtapi_add_test(Xml Unit/TestXml.c)
 
 # The throughput of the pixel conversions and of the 4K SDI frame conversion. A program
 # to run by hand, not a test: timing
