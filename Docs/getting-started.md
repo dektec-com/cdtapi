@@ -232,6 +232,26 @@ DTAPI. `DtInpChannel_GetTsRateBps` and `DtInpChannel_GetStatus` report what arri
 the flags say when the receive FIFO overflowed or the input lost sync, and when the
 transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all of this.
 
+## NMOS
+
+The NMOS bridge, in `cdtapi_nmos.h`, connects the AV FIFOs of an IP port to NMOS. With
+it, a program registers a FIFO as an NMOS sender or receiver, lets a controller connect
+it through IS-05, and converts between an SDP and a FIFO's configuration. The node
+itself comes from [dtnmos](https://github.com/dektec-com/dtnmos), version 0.5.
+
+The bridge is optional, so that a program without NMOS needs nothing besides CDTAPI:
+
+- **With vcpkg**, ask for the feature: `cdtapi[nmos]` among the `dependencies`, with
+  `dtnmos` added to the registry's `packages` as well.
+- **From source**, configure with `-DCDTAPI_WITH_NMOS=ON` and a dtnmos that
+  `find_package(dtnmos 0.5)` finds. The presets `windows-sim-nmos` and `linux-sim-nmos`
+  take it from vcpkg, and need `VCPKG_ROOT` set.
+
+Only then is `cdtapi_nmos.h` installed. A library built without the bridge still exports
+its functions, which return `DTAPI_E_NOT_SUPPORTED`, and `DtapiHasNmos()` tells a program
+which library it has. `DtNmos2110` in the examples runs a node with a receiver or a
+sender that a controller connects.
+
 ## Without a card
 
     CDTAPI_SIM=1 ./list_ports
