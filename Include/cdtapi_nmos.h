@@ -20,19 +20,41 @@
 #include "cdtapi_avfifo.h" // The FIFOs and their configurations.
 
 // dtnmos includes
-#include "dtnmos_sdp.h" // Flows.
+#include "dtnmos_node.h" // Nodes, their devices, senders and receivers.
+#include "dtnmos_sdp.h"  // Flows.
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-//
-// A function that fails returns its error and sets the text GetLastException returns,
-// naming what the FIFO cannot do. Addresses are literal: a domain name is
+// A function of the bridge that fails returns its error and sets the text
+// GetLastException returns: naming what the FIFO cannot do, or with the message of
+// dtnmos when dtnmos failed. Addresses are literal: a domain name is
 // DTAPI_E_NOT_SUPPORTED, as the bridge looks no name up.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
+// The program opens the node with dtnmos, and adds the NMOS device of each port it uses
+// through the bridge. It gives the dtnmos config of a device, sender or receiver, and
+// the bridge fills in what it leaves empty. An ID the bridge makes is the same each
+// time the program runs, so that a registry and its controllers know the device, sender
+// or receiver again after a restart.
+//
+
+// Adds to Node the NMOS device of port Port of Device, which is attached, and writes
+// its ID into *Id: the Id of Config, or when Config is null or gives none, one the
+// bridge makes. An empty Label becomes "DTA-2110 2110000076 port 1". The program gives
+// the ID to the senders and receivers of the port, and removes the device with
+// DtNmosNode_Remove(). DTAPI_E_DEVICE for a device not attached, DTAPI_E_NO_SUCH_PORT,
+// DTAPI_E_NOT_SUPPORTED for a port without an AV FIFO, DTAPI_E_INVALID_ARG for a
+// Config whose Size is smaller than DtNmosDeviceConfig, and what dtnmos gives: the node
+// not open, or having the ID already.
+CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
+                                              int Port, const DtNmosDeviceConfig* Config,
+                                              DtNmosId* Id);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The flow of a transmit FIFO that is configured and has its IP parameters, started or
 // not, for its SDP and its NMOS sender: its format, its destination, port and payload

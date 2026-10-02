@@ -18,6 +18,7 @@
 // CDTAPI includes
 #include "AvFifo/DtAvError.h"  // The failure text.
 #include "AvFifo/DtAvTxFifo.h" // What a transmit FIFO is configured with.
+#include "Device/DtDevice.h"   // A device's ports.
 #include "DtNmosAddr.h"        // Addresses.
 #include "cdtapi_constants.h"  // Result codes.
 #include "cdtapi_nmos.h"       // Interface being implemented.
@@ -107,6 +108,45 @@ static DtapiResult FailAddress(DtapiResult Result, const char* Where, const char
     else
         snprintf(Message, sizeof(Message), "The %s %.64s is no IP address", What, Text);
     return DtAvError_Set(Result, Where, Message);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FailDtNmos -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Records a failure of dtnmos, Result, with dtnmos's message, and returns the result of
+// CDTAPI that matches it. Both texts belong to the calling thread.
+//
+static DtapiResult FailDtNmos(DtNmosResult Result, const char* Where)
+{
+    DtapiResult Mapped = DTAPI_E_INTERNAL;
+    switch (Result)
+    {
+    case DTNMOS_E_INVALID_ARGUMENT:
+    case DTNMOS_E_PARSE:
+        Mapped = DTAPI_E_INVALID_ARG;
+        break;
+    case DTNMOS_E_NOT_FOUND:
+        Mapped = DTAPI_E_NOT_FOUND;
+        break;
+    case DTNMOS_E_STATE:
+        Mapped = DTAPI_E_STATE;
+        break;
+    case DTNMOS_E_NO_MEMORY:
+        Mapped = DTAPI_E_OUT_OF_MEM;
+        break;
+    case DTNMOS_E_TIMEOUT:
+        Mapped = DTAPI_E_TIMEOUT;
+        break;
+    case DTNMOS_E_HTTP:
+    case DTNMOS_E_NETWORK:
+        Mapped = DTAPI_E_COMMUNICATION;
+        break;
+    case DTNMOS_E_BUFFER_TOO_SMALL:
+        Mapped = DTAPI_E_BUF_TOO_SMALL;
+        break;
+    default:
+        break;
+    }
+    return DtAvError_Set(Mapped, Where, DtNmos_GetLastError());
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IpParsOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -331,6 +371,73 @@ bool DtapiHasNmos(void)
     return true;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The ID the bridge makes is a name-based UUID, version 5 of RFC 9562: the SHA-1 of the
+// node's ID and "device/cdtapi/<serial>:<port>", which gives the same ID for the same
+// node, card and port every time, as dtcore derives its own. The label puts the serial
+// number between the type and the port of the port's name, "DTA-2110 port 1", so that
+// two cards of a type tell apart.
+//
+DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device, int Port,
+                                   const DtNmosDeviceConfig* Config, DtNmosId* Id)
+{
+    static const char* const Where = "DtNmosAvFifo_AddDevice";
+    if (Node == NULL || Id == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No node or ID");
+    if (Device == NULL || Device->Drv == NULL)
+        return DtAvError_Set(DTAPI_E_DEVICE, Where, "No device, or one not attached");
+    if (Port < 1 || Port > Device->NumPublicPorts)
+        return DtAvError_Set(DTAPI_E_NO_SUCH_PORT, Where, "The device has no such port");
+    if (!DtDevice_PortHasAllCaps(Device, Port, DT_CAP_AVFIFO))
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, "The port has no AV FIFO");
+    if (Config != NULL && Config->Size < sizeof(DtNmosDeviceConfig))
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The config's Size is smaller than sizeof(DtNmosDeviceConfig)");
+
+    DtNmosDeviceConfig Filled;
+    memset(&Filled, 0, sizeof(Filled));
+    if (Config != NULL)
+        Filled = *Config;
+    Filled.Size = sizeof(Filled);
+    DtNmosResult Result = DTNMOS_OK;
+    if (Filled.Id.Text[0] == '\0')
+    {
+        DtNmosId NodeId;
+        Result = DtNmosNode_Id(Node, &NodeId);
+        if (Result != DTNMOS_OK)
+            return FailDtNmos(Result, Where);
+        char Name[64];
+        snprintf(Name, sizeof(Name), "device/cdtapi/%lld:%d",
+                 (long long)Device->Info.Serial, Port);
+        Result = DtNmosId_FromName(&NodeId, Name, &Filled.Id);
+        if (Result != DTNMOS_OK)
+            return FailDtNmos(Result, Where);
+    }
+
+    DtHwFuncDesc Desc;
+    DtDevice_DescribeHwFunc(Device, Port, &Desc);
+    char Label[96];
+    const char* PortText = strstr(Desc.Description, " port ");
+    const int TypeLength = PortText != NULL ? (int)(PortText - Desc.Description)
+                                            : (int)strlen(Desc.Description);
+    snprintf(Label, sizeof(Label), "%.*s %lld port %d", TypeLength, Desc.Description,
+             (long long)Device->Info.Serial, Port);
+    if (Filled.Label == NULL || Filled.Label[0] == '\0')
+        Filled.Label = Label;
+    if (Filled.Description == NULL)
+        Filled.Description = "";
+
+    Result = DtNmosNode_AddDevice(Node, &Filled);
+    if (Result != DTNMOS_OK)
+        return FailDtNmos(Result, Where);
+    *Id = Filled.Id;
+    return DTAPI_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -368,7 +475,7 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
     snprintf(Made.RefClock.LocalMac, sizeof(Made.RefClock.LocalMac),
              "%02X-%02X-%02X-%02X-%02X-%02X", Mac[0], Mac[1], Mac[2], Mac[3], Mac[4],
              Mac[5]);
-    Made.MediaClockDirect = 1;
+    Made.MediaClockDirect = true;
 
     if (Description.Kind == DT_AV_KIND_VIDEO)
     {
@@ -387,8 +494,8 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
                 Numerator /= 2;
             else
                 Denominator *= 2;
-            Video->Interlaced = 1;
-            Video->Segmented = Scanning == St2110_VideoScanning_PsF ? 1 : 0;
+            Video->Interlaced = true;
+            Video->Segmented = Scanning == St2110_VideoScanning_PsF;
         }
         Video->RateNumerator = Numerator;
         Video->RateDenominator = Denominator;

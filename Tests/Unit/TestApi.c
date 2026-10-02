@@ -42,6 +42,12 @@ DT_TEST(HasNmosAsBuilt)
 // The bridge's functions as a build without it exports them: the header that declares
 // them is not installed, so they are declared here as the stubs define them.
 typedef struct DtNmosFlow DtNmosFlow;
+typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
+typedef struct DtNmosId DtNmosId;
+typedef struct DtNmosNode DtNmosNode;
+CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
+                                              int Port, const DtNmosDeviceConfig* Config,
+                                              DtNmosId* Id);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -62,6 +68,8 @@ DT_TEST(NmosStubsFail)
     (void)DtFailures;
 #else
     AvFifo_IpPars IpPars;
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(NULL, NULL, 1, NULL, NULL),
+                 DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT(strstr(GetLastException(), "DtNmosAvFifo_FlowFromTxFifo") != NULL);
     DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(NULL, St2110_RxFrameFormat_Raw, NULL, NULL,

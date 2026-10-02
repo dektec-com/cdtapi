@@ -633,6 +633,8 @@ DT_TEST(NmosCalls)
     DT_ASSERT_EQ(TxVideo.Format, St2110_TxFrameFormat_Uyvy422_10b);
 
     DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, &Flow), DTAPI_E_INVALID_ARG);
+    DtNmosId Id;
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(NULL, NULL, 1, NULL, &Id), DTAPI_E_INVALID_ARG);
 #else
     (void)DtFailures;
 #endif

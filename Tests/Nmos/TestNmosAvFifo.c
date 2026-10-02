@@ -55,6 +55,7 @@
 typedef struct Fixture
 {
     DtNmosSdp* Sdp;
+    DtNmosNode* Node;
     DtDevice* Device;
     AvFifo_TxFifo* Tx;
 } Fixture;
@@ -64,8 +65,73 @@ static void FreeFixture(void* Context)
     Fixture* Fix = (Fixture*)Context;
     DtNmosSdp_Free(Fix->Sdp);
     Fix->Sdp = NULL;
+    DtNmosNode_Freep(&Fix->Node);
     AvFifo_TxFifo_Freep(&Fix->Tx);
     DtDevice_Freep(&Fix->Device);
+}
+
+// The ID of the nodes here.
+#define NODE_ID "aaaaaaaa-0000-4000-8000-000000000001"
+
+// The registry of the nodes here: it takes every registration and every heartbeat.
+static DtNmosResult RegistryHttp(void* User, const DtNmosHttpRequest* Request,
+                                 DtNmosHttpResponse* Response)
+{
+    (void)User;
+    const bool Posts =
+        strcmp(Request->Method, "POST") == 0 && strstr(Request->Url, "/resource") != NULL;
+    DtNmosHttpResponse_SetStatus(Response, Posts ? 201 : 200);
+    return DTNMOS_OK;
+}
+
+// Opens the fixture's node on the registry stub; false, failing the case, when not.
+static bool OpenNode(Fixture* Fix, int* DtFailures)
+{
+    DtNmosNodeConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Size = sizeof(Config);
+    snprintf(Config.Id.Text, sizeof(Config.Id.Text), "%s", NODE_ID);
+    Config.Label = "bridge node";
+    Config.ApiHost = "192.168.1.10";
+    Config.ApiPort = 8080;
+    Config.RegistrationUrl = "http://registry.test";
+    Config.Http = RegistryHttp;
+    Fix->Node = DtNmosNode_Alloc();
+    if (Fix->Node == NULL || DtNmosNode_Open(Fix->Node, &Config) != DTNMOS_OK)
+    {
+        printf("    FAIL: no node: %s\n", DtNmos_GetLastError());
+        (*DtFailures)++;
+        return false;
+    }
+    return true;
+}
+
+// The label of the device Id of Node, as the Node API answers it, into Label.
+static void DeviceLabel(DtNmosNode* Node, const DtNmosId* Id, char* Label, size_t Size)
+{
+    char Url[128];
+    snprintf(Url, sizeof(Url), "/x-nmos/node/v1.3/devices/%s", Id->Text);
+    DtNmosHttpRequest Request;
+    memset(&Request, 0, sizeof(Request));
+    Request.Size = sizeof(Request);
+    Request.Method = "GET";
+    Request.Url = Url;
+    DtNmosHttpResponse* Response = DtNmosHttpResponse_Alloc();
+    Label[0] = '\0';
+    if (Response != NULL && DtNmosNode_Handle(Node, &Request, Response) == DTNMOS_OK)
+    {
+        size_t Length = 0;
+        const char* Body = DtNmosHttpResponse_Body(Response, &Length);
+        const char* Start = Body != NULL ? strstr(Body, "\"label\": \"") : NULL;
+        if (Start != NULL)
+        {
+            Start += strlen("\"label\": \"");
+            const char* End = strchr(Start, '"');
+            if (End != NULL)
+                snprintf(Label, Size, "%.*s", (int)(End - Start), Start);
+        }
+    }
+    DtNmosHttpResponse_Free(Response);
 }
 
 // Parses Text into the fixture and returns its flow at Index, or NULL.
@@ -603,7 +669,64 @@ DT_TEST(TxFifoNotReady)
     DtTest_SetCleanup(NULL, NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The device of the DTA-2110's port: without a config, its ID derived from the node's,
+// the serial number and the port, and its label with the serial number; once only, and
+// only of a port with an AV FIFO that the device has. A config's ID and label are kept.
+DT_TEST(AddDevice)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures) || !OpenNode(&Fix, DtFailures))
+        return;
+    DtNmosId Id;
+    DT_ASSERT_OK(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 1, NULL, &Id));
+    DtNmosId NodeId = {NODE_ID};
+    DtNmosId Want;
+    char Name[64];
+    snprintf(Name, sizeof(Name), "device/cdtapi/%lld:1", (long long)SIM_DTA2110_SERIAL);
+    DT_ASSERT(DtNmosId_FromName(&NodeId, Name, &Want) == DTNMOS_OK);
+    DT_ASSERT_STR(Id.Text, Want.Text);
+    char Label[96];
+    DeviceLabel(Fix.Node, &Id, Label, sizeof(Label));
+    char WantLabel[96];
+    snprintf(WantLabel, sizeof(WantLabel), "DTA-2110 %lld port 1",
+             (long long)SIM_DTA2110_SERIAL);
+    DT_ASSERT_STR(Label, WantLabel);
+
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 1, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT(strstr(GetLastException(), "already") != NULL);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 0, NULL, &Id),
+                 DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 99, NULL, &Id),
+                 DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(Fix.Node, NULL, 1, NULL, &Id), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(NULL, Fix.Device, 1, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+
+    // A config's own ID and label, once the device with the derived ID is removed.
+    DT_ASSERT(DtNmosNode_Remove(Fix.Node, &Id) == DTNMOS_OK);
+    DtNmosDeviceConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Size = sizeof(Config);
+    snprintf(Config.Id.Text, sizeof(Config.Id.Text), "%s",
+             "aaaaaaaa-0000-4000-8000-0000000000d1");
+    Config.Label = "studio camera input";
+    DT_ASSERT_OK(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 1, &Config, &Id));
+    DT_ASSERT_STR(Id.Text, "aaaaaaaa-0000-4000-8000-0000000000d1");
+    DeviceLabel(Fix.Node, &Id, Label, sizeof(Label));
+    DT_ASSERT_STR(Label, "studio camera input");
+    Config.Size = sizeof(Config) - 1;
+    DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(Fix.Node, Fix.Device, 1, &Config, &Id),
+                 DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
 DT_TEST_MAIN("NmosAvFifo", DT_RUN(LinksDtnmos), DT_RUN(RxVideo), DT_RUN(RxVideoFormats),
              DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6),
              DT_RUN(TxVideo), DT_RUN(TxAudio), DT_RUN(TxRefused),
-             DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady))
+             DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady),
+             DT_RUN(AddDevice))

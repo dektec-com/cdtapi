@@ -21,8 +21,14 @@
 // The types of dtnmos the bridge's functions take, as cdtapi_nmos.h has them through
 // dtnmos's headers; here only their names, as only pointers to them are passed.
 typedef struct DtNmosFlow DtNmosFlow;
+typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
+typedef struct DtNmosId DtNmosId;
+typedef struct DtNmosNode DtNmosNode;
 
 // The declarations of cdtapi_nmos.h, which this build does not install.
+CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
+                                              int Port, const DtNmosDeviceConfig* Config,
+                                              DtNmosId* Id);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -49,6 +55,21 @@ static DtapiResult NoNmos(const char* Where)
 bool DtapiHasNmos(void)
 {
     return false;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device, int Port,
+                                   const DtNmosDeviceConfig* Config, DtNmosId* Id)
+{
+    (void)Node;
+    (void)Device;
+    (void)Port;
+    (void)Config;
+    (void)Id;
+    return NoNmos("DtNmosAvFifo_AddDevice");
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
