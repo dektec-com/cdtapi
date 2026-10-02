@@ -4,21 +4,21 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches an input channel to the port, receives --count frames in the receive mode's
-// symbol size, and prints one line per frame: its number, its size and a 64-bit FNV-1a
-// hash of its bytes. With --out each frame is also written to <out><number>.raw. With
-// --detect the channel first detects the I/O standard of the input. With --threads a
-// pool of that many threads of the library's own converts the frames, which a 2160p
-// input needs on a slow core:
+// Receives --count raw SDI frames from an input port, and prints a line per frame: its
+// number, its size and a 64-bit FNV-1a hash of its bytes.
+//
+// --out also writes each frame to <out><number>.raw. --detect first detects the I/O
+// standard of the signal and prints it. --threads converts the frames on a pool of that
+// many threads, which 2160p needs on a slow processor:
 //
 //     9217800001:1  io standard HDSDI 1080I50
 //
 //     9217800001:1  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //     9217800001:1  no frame within 1000 ms
 //
-// The port must be configured as an input for the standard it receives; DtConfigPort
-// does that. Exits with 0 when every frame is received, 2 when a frame does not arrive in
-// time, and 1 when a call fails or the command line is wrong.
+// The port must be an input set to the signal's standard; DtConfigPort does that. Exits
+// with 0 when every frame is received, 2 when a frame does not arrive in time, and 1
+// when a call fails or the command line is wrong.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -38,8 +38,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Room for the largest frame a channel delivers: 2160p24 over one 6G link with 16-bit
-// symbols, 49 500 000 bytes.
+// Room for the largest frame an input channel delivers: 2160p24 on one 6G link, with
+// 16-bit symbols, 49 500 000 bytes.
 #define FRAME_BUFFER_SIZE (48 * 1024 * 1024)
 
 static const ExampleOption g_Options[] = {
@@ -57,12 +57,16 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Returns whether a port can be an SDI input, for Example_FindPort().
+//
 static bool IsSdiInput(const DtHwFuncDesc* Port)
 {
     return Port->IsSdi && Port->IsInput;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns the 64-bit FNV-1a hash of Size bytes of Data, to compare frames by.
 //
 static uint64_t Fnv1a64(const char* Data, int Size)
 {
@@ -78,7 +82,8 @@ static uint64_t Fnv1a64(const char* Data, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The receive mode for a symbol size named on the command line. False for another name.
+// Sets *RxMode to the receive mode for the symbol size --rxmode names: "8B", "10B"
+// (also when not given) or "16B". Returns false for another name.
 //
 static bool RxModeFrom(const char* Name, int* RxMode)
 {
@@ -95,6 +100,9 @@ static bool RxModeFrom(const char* Name, int* RxMode)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Writes a frame of Size bytes to the file <Prefix><Number>.raw. Returns false when
+// that fails.
+//
 static bool WriteFrame(const char* Prefix, int64_t Number, const char* Frame, int Size)
 {
     char Path[1024];
@@ -109,7 +117,8 @@ static bool WriteFrame(const char* Prefix, int64_t Number, const char* Frame, in
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Sets the channel up and receives the frames. Returns the exit code.
+// Sets the receive mode, starts receiving and reads Count frames, waiting up to
+// TimeoutMs for each. Returns the program's exit code.
 //
 static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
                    int64_t Count, int64_t TimeoutMs, const char* Out, char* Frame)
@@ -152,11 +161,10 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives the channel a pool of NumThreads threads of the library's own, over which it
-// converts each frame's lines. With 0 as its number of pieces the channel takes what the
-// standard calls for: 4 for 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and one piece
-// up to 3G, where the pool goes unused. The channel holds the pool, so the program lets
-// go of its own hold at once.
+// Gives the channel a pool of NumThreads threads to convert its frames on. The channel
+// itself picks how many of them a frame needs (NumThreads 0 in SetWorkerPool): 4 for
+// 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and none up to 3G-SDI. The channel
+// keeps the pool, so the program releases its own reference at once.
 //
 static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
 {
@@ -172,8 +180,9 @@ static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Attaches the device and the channel to Port, gives it a pool of Threads threads when
-// asked, detects the I/O standard when asked, and receives. Returns the exit code.
+// Attaches Device and Channel to Port, gives the channel a pool of Threads threads when
+// asked, detects and prints the I/O standard when asked, and receives the frames.
+// Returns the program's exit code.
 //
 static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame,
                             const DtHwFuncDesc* Port, int Argc, char** Argv, int RxMode,

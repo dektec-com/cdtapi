@@ -29,7 +29,7 @@
 // Example includes
 #include "ExampleMailbox.h" // Interface being implemented.
 
-// The states of the item, which the lock guards.
+// Where the item is in its round trip. The lock guards it.
 typedef enum MailboxState
 {
     MAILBOX_EMPTY = 0, // nothing posted, or an answer collected
@@ -56,6 +56,8 @@ struct ExampleMailbox
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Lock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Takes the mailbox's lock.
+//
 static void Lock(ExampleMailbox* Box)
 {
 #ifdef _WIN32
@@ -66,6 +68,8 @@ static void Lock(ExampleMailbox* Box)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unlock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Releases the mailbox's lock.
 //
 static void Unlock(ExampleMailbox* Box)
 {
@@ -78,6 +82,8 @@ static void Unlock(ExampleMailbox* Box)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Signal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Wakes the threads waiting for the mailbox to change.
+//
 static void Signal(ExampleMailbox* Box)
 {
 #ifdef _WIN32
@@ -89,8 +95,8 @@ static void Signal(ExampleMailbox* Box)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitUntil -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Waits, holding the lock, until the item is answered or TimeoutMs have passed. True when
-// it is answered.
+// Waits, with the lock held, until the item is answered or TimeoutMs milliseconds have
+// passed. Returns whether it is answered.
 //
 static bool WaitUntilAnswered(ExampleMailbox* Box, int TimeoutMs)
 {
@@ -125,7 +131,8 @@ static bool WaitUntilAnswered(ExampleMailbox* Box, int TimeoutMs)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleMailbox_Answer -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// An answer to an item the asking thread withdrew after it gave up goes nowhere.
+// When the asking thread has given up waiting and withdrawn the item, the answer is
+// dropped.
 //
 void ExampleMailbox_Answer(ExampleMailbox* Box, unsigned int Result, const char* Text)
 {

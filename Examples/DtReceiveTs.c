@@ -4,12 +4,13 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches an input channel to the port, sets the port's I/O standard to ASI when it is
-// another, and receives --count packets in the receive mode, or until the program is
-// stopped. With --out the stream is written to a file; with --check each packet must be
-// the next of DtTransmitTs's numbered packets. Once a second, and at the end, it prints
-// the packets received, the rate the card measures, the packet size it finds, whether
-// it is locked, and the flags that were raised:
+// Receives a transport stream from a DVB-ASI input: --count packets, or until the
+// program is stopped. It sets the port to ASI first when it is not.
+//
+// --out writes the stream to a file. --check checks that each packet is the next of the
+// numbered packets DtTransmitTs sends. Once a second, and at the end, the program prints
+// the packets received, the rate the card measures, the packet size it found, whether
+// it is locked, and the problems that occurred:
 //
 //     9217800001:1  io standard ASI
 //     9217800001:1  26596 packets  rate 40000000  packets of 188  lock  flags -
@@ -57,15 +58,17 @@ static const ExampleOption g_Options[] = {
 // What was received, and what the check found.
 typedef struct Tally
 {
-    int64_t Packets;
-    bool Check;
+    int64_t Packets;   // Packets received
+    bool Check;        // True with --check
     uint64_t Expected; // The number the next packet should have
     int64_t Gaps;      // Packets whose number is not the one expected
     int64_t Bad;       // Packets that are not numbered packets
-    uint64_t First;
+    uint64_t First;    // The number of the first packet received
 } Tally;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Returns whether a port can be an ASI input, for Example_FindPort().
 //
 static bool IsAsiInput(const DtHwFuncDesc* Port)
 {
@@ -74,8 +77,9 @@ static bool IsAsiInput(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The receive mode for a name on the command line, and the size of the packets it
-// delivers: 0 for MP2 and RAW, which deliver them as they arrive. False for another name.
+// Sets *RxMode to the receive mode --rxmode names ("188", also when not given, "204",
+// "MP2" or "RAW"), and *PacketSize to the size of the packets it delivers: 0 for MP2
+// and RAW, which deliver them as they arrive. Returns false for another name.
 //
 static bool RxModeFrom(const char* Name, int* RxMode, int* PacketSize)
 {
@@ -101,8 +105,8 @@ static bool RxModeFrom(const char* Name, int* RxMode, int* PacketSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ArrivingSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The size of the packets that arrive, as the input reports it once it has found them;
-// 0 when it has not within TimeoutMs.
+// Waits up to TimeoutMs until the input has found the packet size of the stream, and
+// returns it, or 0 when it has not.
 //
 static int ArrivingSize(DtInpChannel* Channel, int64_t TimeoutMs)
 {
@@ -123,8 +127,8 @@ static int ArrivingSize(DtInpChannel* Channel, int64_t TimeoutMs)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// One line of what the channel reports. The latched flags are cleared, so that each
-// line shows what happened since the one before.
+// Prints a line with what the channel reports. It clears the latched flags, so that
+// each line shows the problems since the line before.
 //
 static void PrintStatus(DtInpChannel* Channel, const DtHwFuncDesc* Port,
                         const Tally* Counts)
@@ -153,8 +157,9 @@ static void PrintStatus(DtInpChannel* Channel, const DtHwFuncDesc* Port,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Check -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Checks each packet of Data against the numbered packets. A packet with another number
-// than the one expected counts as a gap, and the count goes on from its number.
+// Checks each packet of Data against the numbered packets, and counts in *Counts. A
+// packet with another number than the one expected counts as a gap, and the next packet
+// is expected to follow it.
 //
 static void Check(Tally* Counts, const uint8_t* Data, int Size, int PacketSize)
 {
@@ -177,7 +182,8 @@ static void Check(Tally* Counts, const uint8_t* Data, int Size, int PacketSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Sets the channel up and receives the stream. Returns the exit code.
+// Sets the receive mode, starts receiving, and reads the stream until Count packets
+// arrived or it stops arriving. Returns the program's exit code.
 //
 static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
                    int PacketSize, int64_t Count, int64_t TimeoutMs, FILE* Out,
@@ -238,8 +244,8 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Attaches the device and the channel to Port, makes the port ASI, and receives.
-// Returns the exit code.
+// Attaches Device and Channel to Port, sets the port to ASI, and receives. Returns the
+// program's exit code.
 //
 static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, uint8_t* Buffer,
                             const DtHwFuncDesc* Port, int RxMode, int PacketSize,

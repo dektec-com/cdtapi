@@ -4,18 +4,18 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches a transmit FIFO to an IP port, sends --count frames of a moving test pattern,
-// or of a tone with --audio, to a multicast group, and prints one line per frame: its
-// number, its size, its time of day and its RTP timestamp.
+// Sends --count frames of SMPTE ST 2110 video, a moving test pattern, or with --audio a
+// tone, from an IP port to a multicast group. Prints a line per frame: its number, its
+// size, its time of day and its RTP timestamp.
 //
 //     9211000001:1  hardware pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit
 //     9211000001:1  frame 0  5184000 bytes  tod 1800000000.100000000  rtp 2296742400
 //     9211000001:1  sent 3 frames
 //
-// Each frame is given a time of day a little after the card's clock, which is what the
-// card's scheduler sends it at; correct ST 2110 timing needs the card's clock locked to
-// a PTP grandmaster. Exits with 0 when every frame is written, 2 when there is no IP
-// port, and 1 when a call fails or the command line is wrong.
+// The card sends each frame at the time of day the program gives it; the first frame a
+// little after the card's current time. For correct ST 2110 timing, the card's clock
+// must be locked to a PTP grandmaster. Exits with 0 when every frame is written, 2 when
+// there is no IP port, and 1 when a call fails or the command line is wrong.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -46,10 +46,10 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A frame of vertical bars 128 pixels wide that move 16 pixels to the left a frame, in
-// the packing the configuration asks for, or a square wave of 1 kHz on every channel for
-// audio: 48 samples a period at 48 kHz, as 24-bit two's complement samples, most
-// significant byte first.
+// Fills frame Number of Size bytes with the test pattern. Video: vertical bars 128
+// pixels wide that move 16 pixels to the left per frame, in the sample size of Config.
+// Audio: a 1 kHz square wave on every channel, as 24-bit samples, most significant byte
+// first.
 //
 static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, int Size)
 {
@@ -89,8 +89,9 @@ static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, in
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes Count frames, one frame period apart in time of day, from a little after the
-// card's clock, as fast as the FIFO takes them, and waits until the FIFO is empty.
+// Writes Count frames to the FIFO, one frame period apart in time of day, starting a
+// little after the card's current time. Writes as fast as the FIFO takes them, then
+// waits until it is empty. Returns the program's exit code.
 //
 static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc* Port,
                       const ExampleAvConfig* Config, int Count)
@@ -144,6 +145,9 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Attaches Device and Fifo to Port, configures the FIFO for the stream of Config,
+// starts it and sends Count frames. Returns the program's exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
                              const DtHwFuncDesc* Port, const ExampleAvConfig* Config,

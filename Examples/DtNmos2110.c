@@ -4,11 +4,12 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Registers a node with the registry of --registry: the NMOS device of an IP port, and on
-// it a receiver, with --receive, or a sender, with --send, of a FIFO of that port. A
-// controller connects them through the Connection API (IS-05), which the node serves; the
-// receiver then receives the stream the controller names, and the sender sends a moving
-// test pattern, or a tone with --audio, to where the controller says. Runs for --seconds.
+// Makes an IP port of a DekTec card an NMOS node, registered with the registry at
+// --registry. The node has the port as its device, and on it a receiver (--receive) or a
+// sender (--send) of an AV FIFO. An NMOS controller can then connect them (IS-05):
+// the receiver receives the stream the controller names, and the sender sends a moving
+// test pattern, or with --audio a tone, to where the controller says. The program runs
+// for --seconds, and prints each change:
 //
 //     9211000001:1  node 0b5c3a1e-... at http://192.168.1.20:41005
 //     9211000001:1  receiver 7d1f20c4-...  video as 10b
@@ -16,13 +17,14 @@
 //     9211000001:1  received 250 frames
 //     9211000001:1  stop
 //
-// The node calls a callback on a thread of its own when a controller activates the
-// receiver or sender, while the FIFO belongs to the program's main thread, which reads
-// or writes it. So the callback turns the activation into a change, refusing what the
-// FIFO cannot take, posts the change in a mailbox, and waits; the main thread takes it
-// between two frames, applies it, and answers, so that the controller learns the result.
-// The program applies a scheduled activation when it is called for it, ActivationLeadMs
-// early, which is 0 here.
+// How a controller's request reaches the FIFO: the node calls a callback on a thread of
+// its own, but only the program's main thread may touch the FIFO. So the callback
+// converts the request into a change, refusing what the FIFO cannot do, puts the change
+// in a mailbox, and waits. The main thread takes it between two frames, applies it, and
+// answers; the callback passes the answer on to the controller.
+//
+// A scheduled request is applied when the node calls the callback for it, which is at
+// the scheduled time, as ActivationLeadMs is 0 here.
 //
 // Needs a library built with the NMOS bridge, and dtnmos with libcurl and the server.
 // Exits with 0 when the time is over, 2 when there is no IP port, and 1 when a call fails
@@ -72,15 +74,15 @@ static const ExampleOption g_Options[] = {
 // of the same port and direction has the same ID each time it runs.
 static const DtNmosId g_Namespace = {"3e9c4b27-5a10-4d8e-b6f1-2c7a9d0e4f58"};
 
-// What the main thread and the callback share: the mailbox, and what the callback needs
-// to make a change. The FIFOs are the main thread's alone.
+// What the callback needs: the mailbox to the main thread, and the frame format to make
+// a receiver's change for. Only the main thread touches the FIFOs.
 typedef struct Program
 {
     ExampleMailbox* Mailbox;
     St2110_RxFrameFormat Format; // Of the receiver
 } Program;
 
-// A change the callback posts: of the receiver or of the sender.
+// A change the callback puts in the mailbox: of the receiver or of the sender.
 typedef struct Posted
 {
     bool Receiver;
@@ -90,8 +92,8 @@ typedef struct Posted
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AskOwner -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Posts Change for the main thread and returns its answer to the node, which answers the
-// controller with it.
+// Puts Change in the mailbox, waits for the main thread's answer, and returns it as the
+// node's result, which the node passes on to the controller.
 //
 static DtNmosResult AskOwner(Program* Prog, const Posted* Change)
 {
@@ -105,8 +107,9 @@ static DtNmosResult AskOwner(Program* Prog, const Posted* Change)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ActivateReceiver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// On a thread of the node. A flow the FIFO cannot take is refused here, without asking
-// the main thread.
+// The receiver's callback, called on a thread of the node when a controller connects or
+// disconnects it. A stream the FIFO cannot receive is refused here, without asking the
+// main thread.
 //
 static DtNmosResult ActivateReceiver(void* User, const DtNmosId* Receiver,
                                      const DtNmosReceiverActivation* Activation)
@@ -124,7 +127,8 @@ static DtNmosResult ActivateReceiver(void* User, const DtNmosId* Receiver,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ActivateSender -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// On a thread of the node.
+// The sender's callback, called on a thread of the node when a controller enables,
+// disables or redirects it.
 //
 static DtNmosResult ActivateSender(void* User, const DtNmosId* Sender,
                                    const DtNmosSenderActivation* Activation)
@@ -140,7 +144,8 @@ static DtNmosResult ActivateSender(void* User, const DtNmosId* Sender,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FormatFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The receive format for a name on the command line. False for another name.
+// Sets *Format to the frame format --format names ("raw", "8b", "10b", also when
+// not given, "10bto8b" or "planar"). Returns false for another name.
 //
 static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
 {
@@ -161,8 +166,7 @@ static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Prints what a change of Port does: where the FIFO now receives or sends, or that it
-// stopped.
+// Prints what a change did: where the FIFO now receives or sends to, or that it stopped.
 //
 static void PrintChange(const DtHwFuncDesc* Port, bool Receiver, bool Enabled,
                         const uint8_t Ip[16], int UdpPort)
@@ -176,8 +180,8 @@ static void PrintChange(const DtHwFuncDesc* Port, bool Receiver, bool Enabled,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A frame of vertical bars that move to the left, or a square wave of 1 kHz for audio,
-// as DtTransmit2110 sends them.
+// Fills frame Number with the test pattern DtTransmit2110 sends: vertical bars that move
+// to the left, or a 1 kHz square wave for audio.
 //
 static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, int Size)
 {
@@ -225,8 +229,8 @@ typedef struct Owner
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Prints how many frames the running FIFO received, or sent as the FIFO counts them, as
-// the program writes frames ahead of their time.
+// Prints how many frames the FIFO received or sent, if it is running. For a sender the
+// FIFO's own count is used, as the program writes frames ahead of their time.
 //
 static void PrintFrames(const Owner* O)
 {
@@ -281,7 +285,7 @@ static void Apply(Owner* O, ExampleMailbox* Mailbox, const Posted* Change)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Takes the frames that arrived and gives them back.
+// Reads the frames that arrived, counts them, and gives them back to the FIFO.
 //
 static void Receive(Owner* O)
 {
@@ -295,8 +299,8 @@ static void Receive(Owner* O)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Send -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Keeps the FIFO filled with frames one frame period apart in time of day, which the
-// card's scheduler sends at their time.
+// Keeps the FIFO half full with frames, one frame period apart in time of day. The card
+// sends each frame at its time.
 //
 static void Send(Owner* O)
 {
@@ -332,8 +336,8 @@ static void Send(Owner* O)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The main thread for Seconds: applies the changes the callback posts, between which it
-// receives or sends.
+// The main thread's loop, for Seconds: applies each change the callback posts, and in
+// between receives or sends frames.
 //
 static void Run(Owner* O, ExampleMailbox* Mailbox, int64_t Seconds)
 {
@@ -354,8 +358,8 @@ static void Run(Owner* O, ExampleMailbox* Mailbox, int64_t Seconds)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureTx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Configures the transmit FIFO for the stream of the command line, which the bridge
-// describes to the registry; it starts when a controller activates the sender.
+// Configures the transmit FIFO for the stream the command line describes. The bridge
+// registers that stream; the FIFO starts when a controller enables the sender.
 //
 static unsigned int ConfigureTx(AvFifo_TxFifo* Fifo, const ExampleAvConfig* Config)
 {
@@ -392,8 +396,8 @@ static unsigned int ConfigureTx(AvFifo_TxFifo* Fifo, const ExampleAvConfig* Conf
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenNode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Opens the node of Port, whose ID follows from the port and the direction, and serves
-// its APIs. EXAMPLE_OK, or the exit of the failure.
+// Opens the node and serves its APIs. Its ID is made from the port and the direction,
+// so that it is the same each run. Returns EXAMPLE_OK, or the exit code of the failure.
 //
 static int OpenNode(DtNmosNode* Node, const DtHwFuncDesc* Port, bool Receives,
                     const char* Registry, const char* Host, int64_t ApiPort)
@@ -429,8 +433,8 @@ static int OpenNode(DtNmosNode* Node, const DtHwFuncDesc* Port, bool Receives,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AddToNode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Adds the port's device and the receiver or sender of the FIFO. EXAMPLE_OK, or the exit
-// of the failure.
+// Adds the port as a device to the node, and the FIFO as its receiver or sender.
+// Returns EXAMPLE_OK, or the exit code of the failure.
 //
 static int AddToNode(DtNmosNode* Node, Owner* O, Program* Prog, const char* FormatName)
 {
@@ -471,6 +475,9 @@ static int AddToNode(DtNmosNode* Node, Owner* O, Program* Prog, const char* Form
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndRun -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Attaches the device and the FIFO, opens the node, adds the port and the FIFO, and
+// runs the main loop. Returns the program's exit code.
 //
 static int AttachAndRun(Owner* O, Program* Prog, DtNmosNode* Node, int Argc, char** Argv,
                         const char* FormatName, int64_t ApiPort, int64_t Seconds)

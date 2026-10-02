@@ -4,24 +4,22 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches an output channel to the port and transmits --count frames in the transmit
-// mode's symbol size. The frames come from the files <in>0.raw, <in>1.raw and so on, as
-// DtReceiveFrames --out writes them, in turn and from the first again when --count asks
-// for more; or, without --in, they are a generated test pattern of the video standard
-// --vidstd: grey bars and a white bar that moves one step each frame, with legal values,
-// line numbers and line CRCs. --vidstd also sets the port's I/O standard through the
-// channel, with --linkstd for a 4K standard, which says how it is carried. The program
-// prints one line per frame as DtReceiveFrames does, so that the hashes of what one port
-// sends and another receives can be compared:
+// Sends --count raw SDI frames on an output port. The frames come from:
+//   --in        the files <in>0.raw, <in>1.raw and so on, as DtReceiveFrames --out
+//               writes them; after the last file, the first comes again
+//   otherwise   a test pattern of the video standard --vidstd: grey bars and a white bar
+//               that moves each frame, with valid line numbers and CRCs
+// --vidstd also sets the port to that standard; --linkstd says how a 4K standard is
+// carried. The program prints a line per frame, as DtReceiveFrames does, so that the
+// hashes of what one port sends and another receives can be compared:
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
-// With --threads a pool of that many threads of the library's own encodes the frames,
-// which a 2160p output needs on a slow core. With --flags it then prints the channel's
-// latched flags. It detaches when every frame is written, waiting until the card has sent
-// them. The port must be an output;
-// DtConfigPort makes it one. Exits with 0 when every frame is written, 2 when there is no
-// SDI output, and 1 when a call fails or the command line is wrong.
+// --threads converts the frames on a pool of that many threads, which 2160p needs on a
+// slow processor. --flags prints the channel's latched flags at the end. The program
+// waits until the card has sent every frame before it detaches. The port must be an
+// output; DtConfigPort makes it one. Exits with 0 when every frame is written, 2 when
+// there is no SDI output, and 1 when a call fails or the command line is wrong.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -41,7 +39,7 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The most frames --in reads.
+// The most frame files --in reads.
 #define MAX_FILES 1000
 
 static const ExampleOption g_Options[] = {
@@ -62,6 +60,8 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns whether a port can be an SDI output, for Example_FindPort().
+//
 static bool IsSdiOutput(const DtHwFuncDesc* Port)
 {
     return Port->IsSdi && Port->IsOutput;
@@ -69,7 +69,7 @@ static bool IsSdiOutput(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The hash DtReceiveFrames prints.
+// Returns the 64-bit FNV-1a hash of Size bytes of Data, the hash DtReceiveFrames prints.
 //
 static uint64_t Fnv1a64(const char* Data, int Size)
 {
@@ -85,8 +85,8 @@ static uint64_t Fnv1a64(const char* Data, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The transmit mode and symbol size for a name on the command line. False for another
-// name.
+// Sets *TxMode and *BitsPerSymbol for the symbol size --txmode names: "8B", "10B"
+// (also when not given) or "16B". Returns false for another name.
 //
 static bool TxModeFrom(const char* Name, int* TxMode, int* BitsPerSymbol)
 {
@@ -110,17 +110,18 @@ static bool TxModeFrom(const char* Name, int* TxMode, int* BitsPerSymbol)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame files +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// The frames read from files.
 typedef struct Frames
 {
-    int Count;
-    char* Data[MAX_FILES];
-    int Size[MAX_FILES];
+    int Count;             // Frames read
+    char* Data[MAX_FILES]; // The frames
+    int Size[MAX_FILES];   // Their sizes in bytes
 } Frames;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadFile -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads a whole file into a new buffer. Returns NULL when it cannot be opened or read, or
-// when it is empty.
+// Reads the file Path into a new buffer, and sets *Size to its size. Returns the buffer,
+// for the caller to free, or NULL when the file cannot be read or is empty.
 //
 static char* ReadFile(const char* Path, int* Size)
 {
@@ -146,8 +147,8 @@ static char* ReadFile(const char* Path, int* Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads <Prefix>0.raw, <Prefix>1.raw and so on, up to the first that does not exist.
-// False, having printed why, when there is none.
+// Reads the files <Prefix>0.raw, <Prefix>1.raw and so on into *Out, up to the first that
+// does not exist. Returns false, after printing why, when there is none.
 //
 static bool ReadFrames(const char* Prefix, Frames* Out)
 {
@@ -172,6 +173,8 @@ static bool ReadFrames(const char* Prefix, Frames* Out)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Frees the frames read into *Set.
+//
 static void FreeFrames(Frames* Set)
 {
     for (int i = 0; i < Set->Count; i++)
@@ -181,14 +184,15 @@ static void FreeFrames(Frames* Set)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A raw frame holds every line, EAV first, in the order the lines are numbered: in HD
-// each word once for the colour difference and once for the luma, colour difference
-// first, and after the EAV the line number and the line's CRC; in SD the samples as
-// SMPTE 259 orders them. Symbols are packed as the transmit mode says, 10-bit ones least
-// significant bit first, and the frame is padded with zeros to a multiple of 8 bytes.
+// How the program makes a raw SDI frame. A raw frame holds every line, from its EAV on,
+// in line number order. In HD, each word is there for colour difference and for luma,
+// colour difference first, and the EAV is followed by the line number and the line's
+// CRC; in SD, the samples are in the order of SMPTE 259. The symbols are packed in the
+// transmit mode's size, 10-bit symbols least significant bit first, and the frame is
+// padded with zeros to a multiple of 8 bytes.
 //
 
-// The layout of a video standard's lines.
+// What the pattern needs to know of a video standard's lines.
 typedef struct Geometry
 {
     int VidStd;
@@ -214,32 +218,33 @@ static const Geometry g_Geometries[] = {
     {DTAPI_VIDSTD_1080P60B, 536, false},
 };
 
-// Blanking and the grey bars' and white bar's levels.
+// The sample values of blanking, of the grey bars and of the white bar.
 #define BLANK_C 0x200
 #define BLANK_Y 0x040
 #define WHITE_Y 0x3AC
 
+// The layout of the pattern's frames, and its buffers.
 typedef struct Pattern
 {
-    int NumLines;
-    int ActiveSymbols;
-    int EavSymbols; // With the line number and CRC in HD
-    int SavSymbols;
-    int LineSymbols;
-    int Fields[2][4]; // Start line, end line, first and last active line of each field
-    bool TwoFields;
-    int BitsPerSymbol;
-    int FrameSize;
-    uint16_t* Line;  // The line being made
-    uint16_t* Video; // The active part of the current frame's video lines
+    int NumLines;      // Lines in a frame
+    int ActiveSymbols; // Symbols in the active part of a line
+    int EavSymbols;    // With the line number and CRC in HD
+    int SavSymbols;    // Symbols of the SAV
+    int LineSymbols;   // Symbols in a whole line
+    int Fields[2][4];  // Start line, end line, first and last active line of each field
+    bool TwoFields;    // Interlaced or PsF
+    int BitsPerSymbol; // 8, 10 or 16
+    int FrameSize;     // Bytes of a frame, padded
+    uint16_t* Line;    // The line being made
+    uint16_t* Video;   // The active part of the current frame's video lines
     uint32_t ActiveCrc[2]
                       [2]; // CRC over a blanking and a video line's active part, C and Y
 } Pattern;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatternInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The layout of the pattern for VidStd, from the geometry of the video standard. False
-// for a standard the pattern does not know or when memory runs out.
+// Sets up *Pat for frames of VidStd with symbols of BitsPerSymbol bits. Returns false
+// for a standard the pattern does not support, or when there is not enough memory.
 //
 static bool PatternInit(Pattern* Pat, int VidStd, int BitsPerSymbol)
 {
@@ -303,6 +308,8 @@ static bool PatternInit(Pattern* Pat, int VidStd, int BitsPerSymbol)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatternFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Frees the buffers of *Pat.
+//
 static void PatternFree(Pattern* Pat)
 {
     free(Pat->Line);
@@ -313,8 +320,8 @@ static void PatternFree(Pattern* Pat)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SMPTE 292's line CRC, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant
-// bit first.
+// Adds one 10-bit word to Crc, the line CRC of SMPTE 292 (x^18 + x^5 + x^4 + 1), least
+// significant bit first, and returns the new CRC.
 //
 static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 {
@@ -331,7 +338,8 @@ static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Nine bits with bit 9 the inverse of bit 8, as line numbers and CRC words carry them.
+// Returns the nine bits of Nine with bit 9 set to the inverse of bit 8, as line numbers
+// and CRC words carry them.
 //
 static uint32_t WithParity(uint32_t Nine)
 {
@@ -341,8 +349,8 @@ static uint32_t WithParity(uint32_t Nine)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The fourth word of a timing reference of Line: field, vertical blanking, EAV or SAV,
-// and the protection bits.
+// Returns the fourth word of the EAV or SAV of Line: the field, vertical blanking, EAV
+// or SAV, and the protection bits.
 //
 static uint32_t Xyz(const Pattern* Pat, int Line, bool Eav)
 {
@@ -357,6 +365,8 @@ static uint32_t Xyz(const Pattern* Pat, int Line, bool Eav)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsVideoLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns whether Line is in the active picture of its field.
+//
 static bool IsVideoLine(const Pattern* Pat, int Line)
 {
     uint32_t F = Pat->TwoFields && Line >= Pat->Fields[1][0] ? 1 : 0;
@@ -366,9 +376,9 @@ static bool IsVideoLine(const Pattern* Pat, int Line)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Line into Pat->Line: blanking, the active part of a video line where the line has
-// video, and the timing references, in HD with the line number and the CRC over the
-// active part of the line before, which is a video line when PrevIsVideo.
+// Makes line Line in Pat->Line: blanking, the active video if the line has it, and the
+// EAV and SAV; in HD also the line number, and the CRC. PrevIsVideo says whether the
+// line before has active video, as the CRC is over its active part.
 //
 static void MakeLine(Pattern* Pat, int Line, bool PrevIsVideo)
 {
@@ -416,9 +426,9 @@ static void MakeLine(Pattern* Pat, int Line, bool PrevIsVideo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeVideo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The active part of the video lines of frame FrameNumber: eight grey bars, and a white
-// bar a sixteenth of the width wide that moves right by an eighth of its width each
-// frame. Also the CRCs over it and over a blanking line's active part, for each channel.
+// Makes the active video of frame FrameNumber: eight grey bars, and a white bar a
+// sixteenth of the width wide that moves right by an eighth of its width per frame.
+// Also works out the CRCs over a video line and over a blanking line.
 //
 static void MakeVideo(Pattern* Pat, int64_t FrameNumber)
 {
@@ -454,8 +464,9 @@ static void MakeVideo(Pattern* Pat, int64_t FrameNumber)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Frame FrameNumber of the pattern into Frame, which holds Pat->FrameSize bytes. The line
-// before line 1 is the last line of a frame, which is blanking in every standard.
+// Makes frame FrameNumber of the pattern in Frame, of Pat->FrameSize bytes. (The line
+// before line 1, for the CRC, is the frame's last line, which is blanking in every
+// standard.)
 //
 static void MakeFrame(Pattern* Pat, int64_t FrameNumber, char* Frame)
 {
@@ -496,6 +507,7 @@ static void MakeFrame(Pattern* Pat, int64_t FrameNumber, char* Frame)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmit +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// Where the frames come from.
 typedef struct Source
 {
     Frames Files;    // With --in
@@ -505,7 +517,8 @@ typedef struct Source
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteNext -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes frame Number and prints its line. Returns the exit code.
+// Writes frame Number to the channel and prints its line. Returns the program's exit
+// code.
 //
 static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Src,
                      int64_t Number)
@@ -532,7 +545,8 @@ static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* S
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Holds, writes the first frame, sends, and writes the others. Returns the exit code.
+// Writes the first frame while the channel holds, then starts sending and writes the
+// other frames. Returns the program's exit code.
 //
 static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Src,
                     int64_t Count, bool Flags)
@@ -578,11 +592,11 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives the channel a pool of NumThreads threads of the library's own, over which it
-// codes each frame's lines. With 0 as its number of pieces the channel takes what the
-// standard calls for, as it is set now and after --vidstd: 4 for 2160p50 and 2160p60, 2
-// for 2160p24 to 2160p30, and one piece up to 3G, where the pool goes unused. The channel
-// holds the pool, so the program lets go of its own hold at once.
+// Gives the channel a pool of NumThreads threads to convert its frames on. The channel
+// itself picks how many of them a frame needs, for the standard it has now and after
+// --vidstd (NumThreads 0 in SetWorkerPool): 4 for 2160p50 and 2160p60, 2 for 2160p24 to
+// 2160p30, and none up to 3G-SDI. The channel keeps the pool, so the program releases
+// its own reference at once.
 //
 static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
 {
@@ -598,10 +612,10 @@ static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches the device and the channel to Port, gives it a pool of Threads threads when
-// asked, sets the I/O standard when asked and then the transmit mode, in that order,
-// since a standard that crosses between SDI and ASI gives the channel that side's default
-// transmit mode, and transmits. Returns the exit code.
+// Attaches Device and Channel to Port, gives the channel a pool of Threads threads when
+// asked, sets the I/O standard when asked, then the transmit mode, and sends. The
+// transmit mode comes last because changing the standard between SDI and ASI resets it.
+// Returns the program's exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              const DtHwFuncDesc* Port, int TxMode, int VidStd,
@@ -660,7 +674,8 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LoadSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reads the files, or prepares the pattern. False, having printed why, when that fails.
+// Reads the frame files In into *Src, or, when In is NULL, sets up the test pattern.
+// Returns false, after printing why, when that fails.
 //
 static bool LoadSource(const char* In, int VidStd, int BitsPerSymbol, Source* Src)
 {

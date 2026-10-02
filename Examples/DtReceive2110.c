@@ -4,9 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches a receive FIFO to an IP port, joins a multicast group, receives --count
-// frames, and prints one line per frame: its number, its size, its rows, its time of day,
-// its RTP timestamp and a 64-bit FNV-1a hash of its bytes. At the end it prints what the
+// Receives --count frames of SMPTE ST 2110 video or audio from a multicast group on an
+// IP port. Prints a line per frame: its number, its size, its rows, its time of day, its
+// RTP timestamp and a 64-bit FNV-1a hash of its bytes. At the end it prints what the
 // FIFO counted.
 //
 //     9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b
@@ -14,10 +14,10 @@
 //     2296742400  hash 3C0F2E6D89A1B437
 //     9211000001:1  ok 3  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0
 //
-// The video's format follows --format, which is what the FIFO converts the pixel groups
-// to. With --sdp, in a library built with the NMOS bridge, the stream is the first video
-// or audio flow of an SDP file, which the bridge turns into the FIFO's configuration and
-// IP parameters; --ip, --udp and --audio then have no say. Exits with 0 when every frame
+// --format sets the format the FIFO converts the video to. --sdp, in a library built
+// with the NMOS bridge, takes the stream from an SDP file instead: its first video or
+// audio flow, which the bridge converts into the FIFO's configuration and IP parameters;
+// --ip, --udp and --audio are then not used. Exits with 0 when every frame
 // arrives, 2 when a frame does not arrive in time or there is no IP port, and 1 when a
 // call fails or the command line is wrong.
 
@@ -38,13 +38,13 @@
 #include "Common/ExampleAvFifo.h" // The AV FIFO header and what the 2110 examples share.
 #include "Common/ExampleCommon.h" // The API and what the examples share.
 
-// The NMOS bridge, in a library built with it; the build says so in
-// CDTAPI_EXAMPLE_WITH_NMOS.
+// The NMOS bridge, when the library has it; the build sets CDTAPI_EXAMPLE_WITH_NMOS
+// then.
 #if CDTAPI_EXAMPLE_WITH_NMOS
     #include "cdtapi_nmos.h"
 #endif
 
-// The largest SDP file read.
+// The largest SDP file the program reads, in bytes.
 #define MAX_SDP_SIZE 65536
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -64,6 +64,8 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns the 64-bit FNV-1a hash of Size bytes of Data, to compare frames by.
+//
 static uint64_t Fnv1a64(const uint8_t* Data, int Size)
 {
     uint64_t Hash = 0xCBF29CE484222325ull;
@@ -78,7 +80,8 @@ static uint64_t Fnv1a64(const uint8_t* Data, int Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FormatFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The receive format for a name on the command line. False for another name.
+// Sets *Format to the frame format --format names ("raw", "8b", "10b", also when
+// not given, "10bto8b" or "planar"). Returns false for another name.
 //
 static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
 {
@@ -99,7 +102,8 @@ static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads Count frames, waiting up to TimeoutMs for each.
+// Reads Count frames, waiting up to TimeoutMs for each, prints a line per frame and
+// then the statistics. Returns the program's exit code.
 //
 static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Count,
                          int TimeoutMs)
@@ -144,8 +148,8 @@ static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Coun
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads the file Path into Text, of Size bytes, with its null. False, saying why, when
-// it cannot be read or is larger than that.
+// Reads the file Path into Text, of Size bytes, with a null at its end. Returns false,
+// after printing why, when the file cannot be read or is too large.
 //
 static bool ReadSdp(const char* Path, char* Text, size_t Size)
 {
@@ -169,9 +173,9 @@ static bool ReadSdp(const char* Path, char* Text, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Configures Fifo for the first video or audio flow of the SDP file Path, in Format for
-// video, as the bridge turns the flow into a configuration and IP parameters, and sets
-// what Config says of the stream to print. EXAMPLE_OK, or the exit of the failure.
+// Configures Fifo for the first video or audio flow of the SDP file Path, with frame
+// format Format for video, through the NMOS bridge. Sets the fields of Config the
+// program prints. Returns EXAMPLE_OK, or the exit code of the failure.
 //
 static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
                             St2110_RxFrameFormat Format, ExampleAvConfig* Config)
@@ -233,7 +237,7 @@ static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A library built without the NMOS bridge reads no SDP.
+// Without the NMOS bridge the program cannot read an SDP file: prints so and fails.
 //
 static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
                             St2110_RxFrameFormat Format, ExampleAvConfig* Config)
@@ -250,8 +254,8 @@ static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromCommandLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Configures Fifo for the stream Config describes, in Format for video. EXAMPLE_OK, or
-// the exit of the failure.
+// Configures Fifo for the stream Config describes, with frame format Format for video.
+// Returns EXAMPLE_OK, or the exit code of the failure.
 //
 static int ConfigureFromCommandLine(AvFifo_RxFifo* Fifo, const ExampleAvConfig* Config,
                                     St2110_RxFrameFormat Format)

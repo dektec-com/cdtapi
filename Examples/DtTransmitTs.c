@@ -4,21 +4,23 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches an output channel to the port, sets the port's I/O standard to ASI when it is
-// another, and transmits at --rate in the transmit mode: a file with --file, once or with
-// --loop over and over, or a stream the program makes. That is --stream numbered, packets
-// that say which they are, for DtReceiveTs --check, or --stream service, an MPEG-2 test
-// picture that a player shows. It sends --count packets, or without it the file once or
-// the stream until the program is stopped. Once a second it prints the packets written,
-// the load of the channel's FIFO and the flags that were raised, and at the end what was
-// sent:
+// Sends a transport stream on a DVB-ASI output, at --rate bits per second. It sets the
+// port to ASI first when it is not. What it sends:
+//   --file      a file, once, or over and over with --loop
+//   --stream numbered
+//               packets that carry their number, for DtReceiveTs --check
+//   --stream service
+//               an MPEG-2 test picture that a player shows
+// It sends --count packets, or without --count the file once or the stream until the
+// program is stopped. Once a second it prints the packets written, how full the channel's
+// FIFO is, and the problems that occurred; at the end, what was sent:
 //
 //     9217800001:5  io standard ASI
 //     9217800001:5  26596 packets  load 2097152  flags -
 //     9217800001:5  sent 26596 packets
 //
-// With --generate the stream is written to a file instead, for a player such as DekTec's
-// DtPlay; without --count ten seconds of it:
+// --generate writes the stream to a file instead, e.g. for DekTec's DtPlay; without
+// --count, ten seconds of it:
 //
 //     wrote 66489 packets to numbered.ts
 //
@@ -45,9 +47,10 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The source +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// What one Write hands over: a whole number of 188- and of 204-byte packets.
+// How many bytes one Write passes: a whole number of both 188- and 204-byte packets.
 #define CHUNK_SIZE (188 * 204)
 
+// What the program sends.
 typedef enum SourceKind
 {
     SOURCE_NUMBERED,
@@ -55,21 +58,22 @@ typedef enum SourceKind
     SOURCE_FILE
 } SourceKind;
 
+// What the program sends, and how far it is.
 typedef struct Source
 {
     SourceKind Kind;
     int PacketSize;          // Of the stream, for counting packets
-    uint64_t Number;         // Of the next numbered packet
+    uint64_t Number;         // The number of the next numbered packet
     ExampleTsStream Service; // The test service
-    FILE* File;
-    bool Loop;
+    FILE* File;              // The file to send
+    bool Loop;               // Start the file again at its end
 } Source;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fill -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Puts up to Max bytes of the stream in Buffer, a multiple of 4 as Write takes them, and
-// returns how many; 0 at the end of a file. A file that does not end on a multiple of 4
-// loses its last bytes.
+// returns how many: 0 at the end of the file. The last bytes of a file whose size is not
+// a multiple of 4 are not sent.
 //
 static int Fill(Source* Src, uint8_t* Buffer, int Max)
 {
@@ -123,6 +127,8 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsAsiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns whether a port can be an ASI output, for Example_FindPort().
+//
 static bool IsAsiOutput(const DtHwFuncDesc* Port)
 {
     return Port->IsAsi && Port->IsOutput;
@@ -130,8 +136,9 @@ static bool IsAsiOutput(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The transmit mode for a name on the command line, and the size of the packets it
-// takes. False for another name.
+// Sets *TxMode to the transmit mode --txmode names ("188", also when not given, "204",
+// "MIN16", "ADD16" or "RAW"), and *PacketSize to the size of the packets the program
+// writes in it. Returns false for another name.
 //
 static bool TxModeFrom(const char* Name, int* TxMode, int* PacketSize)
 {
@@ -154,8 +161,8 @@ static bool TxModeFrom(const char* Name, int* TxMode, int* PacketSize)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintStatus -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// One line of what the channel reports. The latched flags are cleared, so that each
-// line shows what happened since the one before.
+// Prints a line with what the channel reports. It clears the latched flags, so that
+// each line shows the problems since the line before.
 //
 static void PrintStatus(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int64_t Packets)
 {
@@ -175,9 +182,9 @@ static void PrintStatus(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int64_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets the channel up and sends. The channel holds while the first tenth of a second of
-// the stream is written, or all of it when it is shorter, so that it starts sending with
-// data at hand and the card's buffer does not run dry at once. Returns the exit code.
+// Sets the transmit mode and rate, and sends. The channel first holds while the first
+// tenth of a second of the stream is written (or all of it, if shorter), so that it has
+// data when it starts sending. Returns the program's exit code.
 //
 static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int TxMode,
                     bool Stuff, int64_t Rate, int64_t Count, Source* Src, uint8_t* Buffer)
@@ -243,8 +250,8 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, int TxMode
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches the device and the channel to Port, makes the port ASI, and transmits.
-// Returns the exit code.
+// Attaches Device and Channel to Port, sets the port to ASI, and sends. Returns the
+// program's exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel, uint8_t* Buffer,
                              const DtHwFuncDesc* Port, int TxMode, bool Stuff,
@@ -287,7 +294,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel, uint8_t* 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Generate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes Count packets of the stream to the file Name. Returns the exit code.
+// Writes Count packets of the stream to the file Name. Returns the program's exit code.
 //
 static int Generate(const char* Name, Source* Src, int64_t Count, uint8_t* Buffer)
 {
@@ -318,8 +325,8 @@ static int Generate(const char* Name, Source* Src, int64_t Count, uint8_t* Buffe
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Prepares what the program sends, from the command line. Prints the problem and returns
-// false when that is not possible.
+// Sets up *Src from the command line: opens the file, or prepares the stream. Returns
+// false, after printing why, when that is not possible.
 //
 static bool OpenSource(int Argc, char** Argv, int PacketSize, int64_t Rate, Source* Src)
 {
@@ -368,6 +375,8 @@ static bool OpenSource(int Argc, char** Argv, int PacketSize, int64_t Rate, Sour
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CloseSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Closes the file of *Src, or frees its stream.
 //
 static void CloseSource(Source* Src)
 {
