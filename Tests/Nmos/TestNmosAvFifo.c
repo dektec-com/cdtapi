@@ -304,21 +304,26 @@ DT_TEST(RxRefused)
     }
 
     DtNmosFlow Flow = HandFlow(DTNMOS_MEDIA_AUDIO);
-    snprintf(Flow.Format.Audio.Encoding, sizeof(Flow.Format.Audio.Encoding), "opus");
+    Flow.Format.Audio.Encoding = DTNMOS_AUDIO_ENCODING_OTHER;
     DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(&Flow, St2110_RxFrameFormat_Raw, &Video,
                                                &Audio, &IpPars),
                  DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT(strstr(GetLastException(), "opus") != NULL);
+    DT_ASSERT(strstr(GetLastException(), "does not know") != NULL);
 }
 
-// Arguments that are wrong: no flow or IP parameters, a flow smaller than the bridge's,
-// no configuration of the flow's media, a name or no address, sources of another IP
-// version, and no port.
+// Arguments that are wrong: no flow or IP parameters, a flow without a media or smaller
+// than the bridge's, no configuration of the flow's media, a name or no address, sources
+// of another IP version, and no port.
 DT_TEST(RxArguments)
 {
     St2110_RxConfigVideo Video;
     AvFifo_IpPars IpPars;
-    DtNmosFlow Flow = HandFlow(DTNMOS_MEDIA_VIDEO);
+    DtNmosFlow Flow = HandFlow(DTNMOS_MEDIA_NONE);
+    DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(&Flow, St2110_RxFrameFormat_Raw, &Video,
+                                               NULL, &IpPars),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT(strstr(GetLastException(), "no Media") != NULL);
+    Flow = HandFlow(DTNMOS_MEDIA_VIDEO);
     DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(NULL, St2110_RxFrameFormat_Raw, &Video,
                                                NULL, &IpPars),
                  DTAPI_E_INVALID_ARG);
@@ -439,7 +444,7 @@ DT_TEST(TxAudio)
 
     DtNmosFlow Hand = *Flow;
     Hand.Format.Audio.PacketTimeNs = 125000;
-    snprintf(Hand.Format.Audio.Encoding, sizeof(Hand.Format.Audio.Encoding), "L16");
+    Hand.Format.Audio.Encoding = DTNMOS_AUDIO_ENCODING_L16;
     DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(&Hand, NULL, &Audio, &IpPars));
     DT_ASSERT_EQ(Audio.Format, St2110_AudioFormat_L16BE);
     DT_ASSERT_EQ(Audio.NumSamplesPerIpPacket, 6);
@@ -480,8 +485,7 @@ DT_TEST(TxRefused)
         }
     }
     DtNmosFlow Hand = HandFlow(DTNMOS_MEDIA_VIDEO);
-    snprintf(Hand.Format.Video.Sampling, sizeof(Hand.Format.Video.Sampling),
-             "YCbCr-4:2:2");
+    Hand.Format.Video.Sampling = DTNMOS_SAMPLING_YCBCR_422;
     Hand.Format.Video.Depth = 10;
     DT_ASSERT_EQ(DtNmosAvFifo_TxConfigFromFlow(&Hand, &Video, NULL, &IpPars),
                  DTAPI_E_INVALID_ARG);
@@ -533,7 +537,7 @@ static bool OpenTx(Fixture* Fix, int* DtFailures)
 // configuration again; its source is the port's address, its reference clock the port's
 // MAC address, and its colorimetry that of its raster.
 static void RoundTripVideo(Fixture* Fix, const St2110_TxConfigVideo* Config,
-                           const char* Colorimetry, int* DtFailures)
+                           DtNmosColorimetry Colorimetry, int* DtFailures)
 {
     AvFifo_IpPars IpPars;
     memset(&IpPars, 0, sizeof(IpPars));
@@ -554,9 +558,9 @@ static void RoundTripVideo(Fixture* Fix, const St2110_TxConfigVideo* Config,
     DT_ASSERT_STR(Flow.SourceIp, "192.168.1.10");
     DT_ASSERT_EQ(Flow.RefClock.Kind, DTNMOS_REFCLOCK_LOCALMAC);
     DT_ASSERT(strlen(Flow.RefClock.LocalMac) == 17);
-    DT_ASSERT_STR(Flow.Format.Video.Colorimetry, Colorimetry);
-    DT_ASSERT_STR(Flow.Format.Video.Tcs, "SDR");
-    DT_ASSERT_STR(Flow.Format.Video.Range, "");
+    DT_ASSERT_EQ(Flow.Format.Video.Colorimetry, Colorimetry);
+    DT_ASSERT_EQ(Flow.Format.Video.Tcs, DTNMOS_TCS_SDR);
+    DT_ASSERT_EQ(Flow.Format.Video.Range, DTNMOS_RANGE_NONE);
 
     DtNmosSession Session;
     memset(&Session, 0, sizeof(Session));
@@ -600,22 +604,22 @@ DT_TEST(TxRoundTripVideo)
         St2110_VideoScanning Scanning;
         St2110_Scheduling Scheduling;
         St2110_PackingMode Packing;
-        const char* Colorimetry;
+        DtNmosColorimetry Colorimetry;
     } Cases[] = {
         {St2110_TxFrameFormat_Uyvy422_10b, 1920, 1080, 25, 1,
          St2110_VideoScanning_Progressive, St2110_Scheduling_Gapped,
-         St2110_PackingMode_General, "BT709"},
+         St2110_PackingMode_General, DTNMOS_COLORIMETRY_BT709},
         {St2110_TxFrameFormat_Uyvy422_8b, 1920, 1080, 50, 1,
          St2110_VideoScanning_Interlaced, St2110_Scheduling_Linear,
-         St2110_PackingMode_Block, "BT709"},
+         St2110_PackingMode_Block, DTNMOS_COLORIMETRY_BT709},
         {St2110_TxFrameFormat_Uyvy422_10b, 1920, 1080, 50, 1, St2110_VideoScanning_PsF,
-         St2110_Scheduling_Gapped, St2110_PackingMode_General, "BT709"},
+         St2110_Scheduling_Gapped, St2110_PackingMode_General, DTNMOS_COLORIMETRY_BT709},
         {St2110_TxFrameFormat_Uyvy422_10b, 720, 486, 60000, 1001,
          St2110_VideoScanning_Interlaced, St2110_Scheduling_Gapped,
-         St2110_PackingMode_General, "BT601"},
+         St2110_PackingMode_General, DTNMOS_COLORIMETRY_BT601},
         {St2110_TxFrameFormat_Uyvy422_10b, 3840, 2160, 50, 1,
          St2110_VideoScanning_Progressive, St2110_Scheduling_Gapped,
-         St2110_PackingMode_General, "BT2020"},
+         St2110_PackingMode_General, DTNMOS_COLORIMETRY_BT2020},
     };
     for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
@@ -656,7 +660,7 @@ DT_TEST(TxRoundTripAudio)
     DtNmosFlow Flow;
     DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
     DT_ASSERT_EQ(Flow.Media, DTNMOS_MEDIA_AUDIO);
-    DT_ASSERT_STR(Flow.Format.Audio.Encoding, "L16");
+    DT_ASSERT_EQ(Flow.Format.Audio.Encoding, DTNMOS_AUDIO_ENCODING_L16);
     DT_ASSERT_EQ(Flow.Format.Audio.Channels, 8);
     DT_ASSERT_EQ(Flow.Format.Audio.PacketTimeNs, 125000);
     St2110_TxConfigAudio Back;
@@ -897,8 +901,7 @@ DT_TEST(AddSender)
     // A flow of the program's, with HDR the FIFO does not know.
     DtNmosFlow Flow;
     DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
-    snprintf(Flow.Format.Video.Tcs, sizeof(Flow.Format.Video.Tcs), "%s",
-             DtNmosTcs_Text(DTNMOS_TCS_HLG));
+    Flow.Format.Video.Tcs = DTNMOS_TCS_HLG;
     Config.Label = "program out HLG";
     Config.Flow = &Flow;
     DT_ASSERT_OK(DtNmosAvFifo_AddSender(Fix.Node, Fix.Tx, &Config, TakeTx, NULL, &Id));

@@ -621,8 +621,7 @@ DT_TEST(NmosCalls)
                                                NULL, &IpPars));
     DT_ASSERT_EQ(IpPars.Port, 5004);
 
-    snprintf(Flow.Format.Video.Sampling, sizeof(Flow.Format.Video.Sampling),
-             "YCbCr-4:2:2");
+    Flow.Format.Video.Sampling = DTNMOS_SAMPLING_YCBCR_422;
     Flow.Format.Video.Depth = 10;
     Flow.Format.Video.Width = 1920;
     Flow.Format.Video.Height = 1080;

@@ -42,9 +42,9 @@
 // The FIFO's format of the audio encoding Encoding, and false for one it does not know.
 // A receiving FIFO delivers AM824 as it comes, as Raw.
 //
-static bool AudioFormatOf(const char* Encoding, St2110_AudioFormat* Format)
+static bool AudioFormatOf(DtNmosAudioEncoding Encoding, St2110_AudioFormat* Format)
 {
-    switch (DtNmosAudioEncoding_FromText(Encoding))
+    switch (Encoding)
     {
     case DTNMOS_AUDIO_ENCODING_L16:
         *Format = St2110_AudioFormat_L16BE;
@@ -55,6 +55,7 @@ static bool AudioFormatOf(const char* Encoding, St2110_AudioFormat* Format)
     case DTNMOS_AUDIO_ENCODING_AM824:
         *Format = St2110_AudioFormat_Raw;
         return true;
+    case DTNMOS_AUDIO_ENCODING_NONE:
     case DTNMOS_AUDIO_ENCODING_OTHER:
         break;
     }
@@ -78,6 +79,8 @@ static DtapiResult CheckFlow(const DtNmosFlow* Flow, const char* Where)
     char Why[160];
     switch (Flow->Media)
     {
+    case DTNMOS_MEDIA_NONE:
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "The flow has no Media");
     case DTNMOS_MEDIA_VIDEO:
     case DTNMOS_MEDIA_AUDIO:
         return DTAPI_OK;
@@ -210,6 +213,17 @@ static DtapiResult IpParsOf(const DtNmosFlow* Flow, AvFifo_IpPars* IpPars,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NameOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The name of a value of a flow in a failure text: the enum's spelling Known, or, when
+// the enum is _OTHER, Other, the words for a value dtnmos does not know, which the flow
+// keeps in its OtherParameters; "none" for _NONE.
+//
+static const char* NameOf(const char* Known, bool Other)
+{
+    return Other ? "one dtnmos does not know" : Known[0] != '\0' ? Known : "none";
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The address of a port Desc describes as text into Text, of Size bytes: its IPv4
@@ -278,10 +292,12 @@ static bool RxVideoTakes(St2110_RxFrameFormat Format, const DtNmosVideoFormat* V
         Depth = 10;
         break;
     }
-    if (DtNmosSampling_FromText(Video->Sampling) != DTNMOS_SAMPLING_YCBCR_422)
+    if (Video->Sampling != DTNMOS_SAMPLING_YCBCR_422)
     {
         snprintf(Why, Size, "%s takes YCbCr-4:2:2, and the flow is %.32s; use Raw",
-                 RxFormatName(Format), Video->Sampling);
+                 RxFormatName(Format),
+                 NameOf(DtNmosSampling_Text(Video->Sampling),
+                        Video->Sampling == DTNMOS_SAMPLING_OTHER));
         return false;
     }
     if (Video->Depth != Depth)
@@ -310,8 +326,9 @@ static DtapiResult TxAudioOf(const DtNmosFlow* Flow, St2110_TxConfigAudio* Audio
     if (!AudioFormatOf(Format->Encoding, &AudioFormat) ||
         AudioFormat == St2110_AudioFormat_Raw)
     {
-        snprintf(Why, sizeof(Why), "The FIFO sends L16 and L24, and the flow is %.16s",
-                 Format->Encoding);
+        snprintf(Why, sizeof(Why), "The FIFO sends L16 and L24, and the flow is %s",
+                 NameOf(DtNmosAudioEncoding_Text(Format->Encoding),
+                        Format->Encoding == DTNMOS_AUDIO_ENCODING_OTHER));
         return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
     }
     if (Format->SampleRate == 0 || Format->Channels == 0)
@@ -345,13 +362,15 @@ static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video
 {
     const DtNmosVideoFormat* Format = &Flow->Format.Video;
     char Why[160];
-    if (DtNmosSampling_FromText(Format->Sampling) != DTNMOS_SAMPLING_YCBCR_422 ||
+    if (Format->Sampling != DTNMOS_SAMPLING_YCBCR_422 ||
         (Format->Depth != 8 && Format->Depth != 10))
     {
         snprintf(Why, sizeof(Why),
                  "The FIFO sends YCbCr-4:2:2 of depth 8 or 10, and the flow is %.32s of "
                  "depth %u",
-                 Format->Sampling, Format->Depth);
+                 NameOf(DtNmosSampling_Text(Format->Sampling),
+                        Format->Sampling == DTNMOS_SAMPLING_OTHER),
+                 Format->Depth);
         return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
     }
     if (Format->Width == 0 || Format->Height == 0 || Format->RateNumerator == 0 ||
@@ -361,29 +380,26 @@ static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video
                              "The flow has no width, height or frame rate");
     }
 
-    // An empty PM is General, as when the SDP leaves it out.
+    // A PM not given is General, as ST 2110-20 has it.
     St2110_PackingMode Packing = St2110_PackingMode_General;
-    const DtNmosPackingMode Mode = DtNmosPackingMode_FromText(Format->PackingMode);
-    if (Mode == DTNMOS_PACKING_MODE_BLOCK)
+    if (Format->PackingMode == DTNMOS_PACKING_MODE_BLOCK)
         Packing = St2110_PackingMode_Block;
-    else if (Mode == DTNMOS_PACKING_MODE_OTHER && Format->PackingMode[0] != '\0')
+    else if (Format->PackingMode == DTNMOS_PACKING_MODE_OTHER)
     {
-        snprintf(Why, sizeof(Why), "The flow's PM %.16s is no packing mode of the FIFO",
-                 Format->PackingMode);
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
+                             "The flow's PM is one dtnmos does not know, and no packing "
+                             "mode of the FIFO");
     }
 
-    // An empty TP is gapped, and a wide sender's is sent narrow, gapped.
+    // A TP not given is gapped, and a wide sender's is sent narrow, gapped.
     St2110_Scheduling Scheduling = St2110_Scheduling_Gapped;
-    const DtNmosTransmitterType Type =
-        DtNmosTransmitterType_FromText(Format->TransmitterType);
-    if (Type == DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR)
+    if (Format->TransmitterType == DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR)
         Scheduling = St2110_Scheduling_Linear;
-    else if (Type == DTNMOS_TRANSMITTER_TYPE_OTHER && Format->TransmitterType[0] != '\0')
+    else if (Format->TransmitterType == DTNMOS_TRANSMITTER_TYPE_OTHER)
     {
-        snprintf(Why, sizeof(Why), "The flow's TP %.16s is no sender type of the FIFO",
-                 Format->TransmitterType);
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
+                             "The flow's TP is one dtnmos does not know, and no sender "
+                             "type of the FIFO");
     }
 
     St2110_VideoScanning Scanning = St2110_VideoScanning_Progressive;
@@ -655,18 +671,13 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
         Video->RateNumerator = Numerator;
         Video->RateDenominator = Denominator;
         Video->Depth = Config->Format == St2110_TxFrameFormat_Uyvy422_10b ? 10 : 8;
-        snprintf(Video->Sampling, sizeof(Video->Sampling), "%s",
-                 DtNmosSampling_Text(DTNMOS_SAMPLING_YCBCR_422));
-        snprintf(
-            Video->PackingMode, sizeof(Video->PackingMode), "%s",
-            DtNmosPackingMode_Text(Config->Packing.PackingMode == St2110_PackingMode_Block
-                                       ? DTNMOS_PACKING_MODE_BLOCK
-                                       : DTNMOS_PACKING_MODE_GENERAL));
-        snprintf(Video->TransmitterType, sizeof(Video->TransmitterType), "%s",
-                 DtNmosTransmitterType_Text(Config->Timing.Scheduling ==
-                                                    St2110_Scheduling_Linear
-                                                ? DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR
-                                                : DTNMOS_TRANSMITTER_TYPE_NARROW));
+        Video->Sampling = DTNMOS_SAMPLING_YCBCR_422;
+        Video->PackingMode = Config->Packing.PackingMode == St2110_PackingMode_Block
+                                 ? DTNMOS_PACKING_MODE_BLOCK
+                                 : DTNMOS_PACKING_MODE_GENERAL;
+        Video->TransmitterType = Config->Timing.Scheduling == St2110_Scheduling_Linear
+                                     ? DTNMOS_TRANSMITTER_TYPE_NARROW_LINEAR
+                                     : DTNMOS_TRANSMITTER_TYPE_NARROW;
         snprintf(Video->Ssn, sizeof(Video->Ssn), "ST2110-20:2017");
         DtNmosVideoFormat_SetDefaults(Video);
     }
@@ -676,10 +687,9 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
         DtNmosAudioFormat* Audio = &Made.Format.Audio;
         Made.Media = DTNMOS_MEDIA_AUDIO;
         Made.ClockRate = (uint32_t)Config->SampleRate;
-        snprintf(Audio->Encoding, sizeof(Audio->Encoding), "%s",
-                 DtNmosAudioEncoding_Text(Config->Format == St2110_AudioFormat_L16BE
-                                              ? DTNMOS_AUDIO_ENCODING_L16
-                                              : DTNMOS_AUDIO_ENCODING_L24));
+        Audio->Encoding = Config->Format == St2110_AudioFormat_L16BE
+                              ? DTNMOS_AUDIO_ENCODING_L16
+                              : DTNMOS_AUDIO_ENCODING_L24;
         Audio->SampleRate = (uint32_t)Config->SampleRate;
         Audio->Channels = (uint32_t)Config->NumChannels;
         Audio->PacketTimeNs =
@@ -725,8 +735,9 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
         if (!AudioFormatOf(Flow->Format.Audio.Encoding, &AudioFormat))
         {
             snprintf(Why, sizeof(Why),
-                     "The flow's encoding %.16s is one the FIFO does not know",
-                     Flow->Format.Audio.Encoding);
+                     "The flow's encoding %s is one the FIFO does not know",
+                     NameOf(DtNmosAudioEncoding_Text(Flow->Format.Audio.Encoding),
+                            Flow->Format.Audio.Encoding == DTNMOS_AUDIO_ENCODING_OTHER));
             return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
         }
     }
