@@ -13,12 +13,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Vendored ABI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Every translation unit that talks to the driver includes this header rather than
-// Abi/DtCommon.h, so that the base types and the WINBUILD spelling are set up in exactly
-// one place.
+// Includes the driver's ABI headers, with everything they need. Code that talks to the
+// driver includes this header, never Abi/DtCommon.h itself, so that the set-up below is
+// in one place.
 //
-// DtCommon.h keys its Windows branches off WINBUILD, which is the driver build's own
-// spelling rather than a compiler predefine, so it is derived here from _WIN32.
+// DtCommon.h selects its Windows code with WINBUILD. The driver's build defines that
+// macro; a compiler does not. So this header defines it when _WIN32 is defined.
 //
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -26,19 +26,18 @@
         #define WINBUILD 1
     #endif
 
-    // DtCommon.h names GUID and builds IOCTL numbers with CTL_CODE, and it pulls in
-    // winioctl.h only when DTAPI is defined. Supply both here instead.
+    // DtCommon.h uses GUID, and CTL_CODE to build IOCTL codes. It includes winioctl.h
+    // only when DTAPI is defined, so this header includes both itself.
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
     #endif
     #include <windows.h>
     #include <winioctl.h>
 
-    // DtStatusCodes.h builds Windows driver statuses from two NT status definitions
-    // that come from kernel headers and are not available to user mode. Their values
-    // are fixed by the NTSTATUS layout: success is zero and the error severity is 3.
-    // The severity is unsigned because DT_STATUS_ERROR shifts it left by 30 bits, which
-    // would overflow a signed int.
+    // Defines two NTSTATUS values that DtStatusCodes.h uses. They come from kernel
+    // headers, which a user-mode program cannot include. Their values are fixed: success
+    // is 0 and the error severity is 3. The severity is unsigned because DT_STATUS_ERROR
+    // shifts it left by 30 bits, which would overflow a signed int.
     #ifndef STATUS_SUCCESS
         #define STATUS_SUCCESS 0
     #endif
@@ -46,20 +45,19 @@
         #define STATUS_SEVERITY_ERROR 3U
     #endif
 #else
-    // _IOWR and _IOC_NR, used by the Linux half of the IOCTL definitions.
+    // Provides _IOWR and _IOC_NR, which the Linux IOCTL definitions use.
     #include <sys/ioctl.h>
 #endif
 
-// The vendored headers write ASSERT_SIZE(Type, Size); with a semicolon, and on compilers
-// other than MSVC the macro already ends in one. That leaves an empty declaration at file
-// scope, which -Wpedantic reports and -Werror then turns into a failed build of every
-// file that includes the driver ABI. The headers stay byte-identical to the SDK, so the
-// diagnostic is silenced for exactly these vendored includes instead.
+// Turns off two warnings for the driver's headers only. The headers stay identical to the
+// SDK's, so they cannot be fixed.
 //
-// Visual Studio 2022's compiler reports the flexible array members of those headers, such
-// as m_Buf[] at the end of a command's output, as C4200, a zero-sized array, although C99
-// and C11 have them; later versions do not. /W4 reports it and /WX fails the build, so it
-// is silenced for the same includes.
+// - The headers write "ASSERT_SIZE(Type, Size);". Except on MSVC, the macro already ends
+//   in a semicolon, which leaves an empty declaration. -Wpedantic warns about it, and
+//   -Werror would fail the build.
+// - Visual Studio 2022 reports flexible array members, such as m_Buf[] at the end of a
+//   command's output, as warning C4200, although C99 and C11 allow them. Later versions
+//   do not. /W4 reports it, and /WX would fail the build.
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wpedantic"
@@ -70,11 +68,12 @@
 
 #include "Abi/DtCommon.h"
 
-// The DtPcie driver's own header carries the device interface GUID that the Windows
-// backend enumerates by. Including it for every platform keeps one include order.
+// Includes the GUID of the DtPcie device interface, which the Windows backend uses to
+// find the devices. It is included on every platform, so that the include order is the
+// same everywhere.
 #include "Abi/DtPcieCommon.h"
 
-// The status codes a driver command fails with, DT_STATUS_IN_USE and the like.
+// Includes the DtStatus codes a driver command can fail with, such as DT_STATUS_IN_USE.
 #include "Abi/DtStatusCodes.h"
 
 #if defined(__GNUC__)

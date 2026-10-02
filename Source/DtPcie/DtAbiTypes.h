@@ -14,17 +14,17 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Types +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// Source/DtPcie/Abi/DtCommon.h describes a binary interface to the DtPcie driver and
-// spells its fields as Int, UInt, UInt8 and friends. Those names come from a DekTec
-// header that carries no redistribution grant, so CDTAPI defines them here instead,
-// sized and aligned to match the driver exactly.
+// Defines the base types that the driver's ABI headers use. Abi/DtCommon.h declares the
+// structures of the DtPcie driver with types such as Int, UInt and UInt8. DekTec defines
+// those in a header that may not be redistributed, so CDTAPI defines them here, with the
+// same size and alignment as in the driver.
 //
-// The A suffix on Int64A/UInt64A means "aligned". A 64-bit field inside an ioctl struct
-// must sit on an 8-byte boundary so that a 32-bit library and a 64-bit driver agree on
-// the layout. On x86-32 System V a long long is only 4-byte aligned by default, so the
-// alignment is stated explicitly. Getting this wrong does not fail loudly: the structs
-// simply shift and the driver reads the wrong fields. The ASSERT_SIZE checks that
-// DtCommon.h carries on every struct are what catch it, so they must all compile.
+// The A in Int64A and UInt64A means "aligned". A 64-bit field in an IOCTL structure must
+// be on an 8-byte boundary, so that a 32-bit library and a 64-bit driver agree on the
+// layout. On 32-bit x86 Linux, a long long is only 4-byte aligned by default, so the
+// alignment is set explicitly. A wrong alignment does not fail loudly: the fields shift
+// and the driver reads the wrong values. The ASSERT_SIZE checks in DtCommon.h catch it,
+// so they must all compile.
 //
 
 typedef signed int Int;
@@ -60,9 +60,9 @@ typedef DtInt64 Int64A __attribute__((aligned(8)));
 typedef DtUInt64 UInt64A __attribute__((aligned(8)));
 #endif
 
-// DtCommon.h deliberately poisons the unaligned spellings so that they cannot be used by
-// accident in a structure that crosses the driver boundary. The definitions are repeated
-// here because code may include this header on its own.
+// Makes the unaligned names Int64 and UInt64 fail to compile, so that no structure for
+// the driver uses them by accident. DtCommon.h does the same; this header repeats it
+// because code may include it on its own.
 #ifndef Int64
     #define Int64 ERROR_DO_NOT_USE_UNALIGNED_INT64
 #endif
@@ -70,7 +70,7 @@ typedef DtUInt64 UInt64A __attribute__((aligned(8)));
     #define UInt64 ERROR_DO_NOT_USE_UNALIGNED_UINT64
 #endif
 
-// Alignment is a promise the compiler has to keep; check it here rather than trust it.
+// Checks that the compiler gives the types the sizes and alignment the driver expects.
 _Static_assert(sizeof(Int64A) == 8, "Int64A must be 8 bytes");
 _Static_assert(sizeof(UInt64A) == 8, "UInt64A must be 8 bytes");
 _Static_assert(_Alignof(Int64A) == 8, "Int64A must be 8-byte aligned");

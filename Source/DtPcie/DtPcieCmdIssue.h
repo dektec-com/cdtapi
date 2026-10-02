@@ -20,39 +20,47 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Commands +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Not for use outside the DtPcie command layer, whose other headers keep the driver's
-// structures out of the layers above.
+// Sends commands to the driver. Only the files of the DtPcie command layer use these
+// functions; the layers above call the functions of DtPcieCmd.h, which keep the driver's
+// structures hidden.
 //
 
-// The IOCTL codes come from CTL_CODE on Windows, which the SDK evaluates as int. The
-// device type DekTec uses puts the value above INT_MAX, so it is converted to the
-// unsigned 32 bits it is once, here, rather than at every call.
+// Converts an IOCTL code to uint32_t. On Windows, CTL_CODE gives an int, and DekTec's
+// device type makes the value larger than INT_MAX. Converting once here saves a cast at
+// every call.
 #define DT_IOCTL(Code) ((uint32_t)(Code))
 
-// Fills the header every command starts with, for the driver function or building block
-// Object.
+// Fills Hdr, the header that starts every command. Cmd is the command; Object is the
+// driver function or building block it is for.
 void DtPcieCmd_InitHeader(DtIoctlInputDataHdr* Hdr, int Cmd, DtDrvObject Object);
 
-// The same for a device-level command, which addresses no function: UUID 0 and port
-// index DT_PROPERTY_DEVICE, which the driver reads as the device itself.
+// Fills Hdr for a command to the device as a whole, not to one function. It sets the
+// UUID to 0 and the port index to DT_PROPERTY_DEVICE, which the driver reads as "the
+// device".
 void DtPcieCmd_InitDeviceHeader(DtIoctlInputDataHdr* Hdr, int Cmd);
 
-// Issues a command whose answer has a fixed size, and turns the outcome into a result:
-// a refused command into the result its DtStatus stands for, and a failure to reach the
-// driver into DTAPI_E_COMMUNICATION or DTAPI_E_OUT_OF_RESOURCES. A command without an
-// answer passes Out NULL and OutSize 0.
+// Sends command Code with the input In of InSize bytes, and receives the answer into Out
+// of OutSize bytes. For a command without an answer, pass Out NULL and OutSize 0.
 //
-// A driver that answers with fewer bytes than the structure holds is treated as a
-// failure: the fields it did not write would otherwise be read as zeroes and trusted.
+// | Result                   | When                                          |
+// |--------------------------|-----------------------------------------------|
+// | DTAPI_OK                 | The driver carried out the command            |
+// | DTAPI_E_DEV_DRIVER       | The driver answered with fewer than OutSize   |
+// |                          | bytes                                         |
+// | DTAPI_E_COMMUNICATION    | The command did not reach the driver          |
+// | DTAPI_E_OUT_OF_RESOURCES | The OS had no resources to send the command   |
+// | Other                    | The driver refused the command; the result    |
+// |                          | for its DtStatus                              |
 //
-// That check only has teeth on Windows and against the emulator. The Linux driver does
-// not report how much it wrote, so there OsDrv_Ioctl leaves the size as it was and a
-// short answer cannot be detected here.
+// A short answer counts as a failure, because the fields the driver did not write would
+// read as zeroes and be trusted. Only Windows and the emulator report how much the
+// driver wrote. The Linux driver does not, so on Linux a short answer goes unnoticed.
 DtapiResult DtPcieCmd_Issue(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize,
                             void* Out, size_t OutSize);
 
-// Issues a command that is only its header, for Object, answered with Out of OutSize
-// bytes, which are cleared first, or with nothing when Out is NULL. Gives
-// DTAPI_E_INVALID_ARG for a Drv of NULL.
+// Sends a command that consists of only its header: command Cmd for Object, with IOCTL
+// code Code. Clears Out, of OutSize bytes, and receives the answer into it; pass Out
+// NULL for a command without an answer. Returns DTAPI_E_INVALID_ARG when Drv is NULL,
+// and otherwise the results of DtPcieCmd_Issue().
 DtapiResult DtPcieCmd_IssueHeaderOnly(OsDrv* Drv, uint32_t Code, int Cmd,
                                       DtDrvObject Object, void* Out, size_t OutSize);

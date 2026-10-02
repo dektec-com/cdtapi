@@ -8,12 +8,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Video standard +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The driver names a video standard with a DT_VIDSTD_ code of its own, which is not the
-// DTAPI_VIDSTD_ code of the same standard: DT_VIDSTD_1080I50 is 0x014C, where
-// DTAPI_VIDSTD_1080I50 is 67.
+// The driver has its own codes for video standards, DT_VIDSTD_*. They differ from the
+// DTAPI_VIDSTD_* codes of the API: DT_VIDSTD_1080I50 is 0x014C, but DTAPI_VIDSTD_1080I50
+// is 67. A standard the driver reports must be translated before CDTAPI returns it.
 //
 
-// The DTAPI_VIDSTD_ code of a driver's DT_VIDSTD_ code, for every standard CDTAPI knows;
-// DTAPI_VIDSTD_UNKNOWN for DT_VIDSTD_UNKNOWN, DT_VIDSTD_TS, the driver's standards that
-// CDTAPI does not know, and a value that is not a DT_VIDSTD_ code.
+// Translates the driver's video standard DrvVidStd into a DTAPI_VIDSTD_* code.
+// Returns DTAPI_VIDSTD_UNKNOWN for DT_VIDSTD_UNKNOWN, for DT_VIDSTD_TS, for a standard
+// CDTAPI does not know, and for a value that is not a DT_VIDSTD_* code.
 int DtPcieVidStd_FromDriver(int DrvVidStd);
