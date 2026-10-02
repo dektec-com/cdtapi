@@ -141,19 +141,20 @@ static void Unconfigure(SimRxChannel* Channel)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant bit
-// first.
+// first. The table holds the CRC's change for each value of five bits, so that a word
+// takes two steps rather than ten.
 //
+static const uint32_t Crc18Table[32] = {
+    0x00000, 0x02300, 0x04600, 0x06500, 0x08C00, 0x0AF00, 0x0CA00, 0x0E900,
+    0x11800, 0x13B00, 0x15E00, 0x17D00, 0x19400, 0x1B700, 0x1D200, 0x1F100,
+    0x23000, 0x21300, 0x27600, 0x25500, 0x2BC00, 0x29F00, 0x2FA00, 0x2D900,
+    0x32800, 0x30B00, 0x36E00, 0x34D00, 0x3A400, 0x38700, 0x3E200, 0x3C100,
+};
+
 static uint32_t Crc18(uint32_t Crc, uint32_t Word)
 {
-    for (int Bit = 0; Bit < 10; Bit++)
-    {
-        uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
-
-        Crc >>= 1;
-        if (Feedback != 0)
-            Crc ^= 0x23000;
-    }
-    return Crc;
+    Crc = (Crc >> 5) ^ Crc18Table[(Crc ^ Word) & 0x1F];
+    return (Crc >> 5) ^ Crc18Table[(Crc ^ (Word >> 5)) & 0x1F];
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DataSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
