@@ -609,6 +609,144 @@ DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
     return DTAPI_OK;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ApplyRxChange -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
+                                       const DtNmosAvFifoRxChange* Change)
+{
+    static const char* const Where = "DtNmosAvFifo_ApplyRxChange";
+    if (Fifo == NULL || Change == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or change");
+    if (Change->Size < sizeof(DtNmosAvFifoRxChange))
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The change's Size is smaller than sizeof(DtNmosAvFifoRxChange)");
+    if (Change->MasterEnable && Change->HasConfig &&
+        Change->Media != DTNMOS_MEDIA_VIDEO && Change->Media != DTNMOS_MEDIA_AUDIO)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "The change's configuration is of neither video nor audio");
+
+    DtapiResult Result = AvFifo_RxFifo_Stop(Fifo);
+    if (Result != DTAPI_OK || !Change->MasterEnable)
+        return Result;
+    if (Change->HasConfig)
+    {
+        Result = Change->Media == DTNMOS_MEDIA_VIDEO
+                     ? AvFifo_RxFifo_ConfigureVideo(Fifo, &Change->Video)
+                     : AvFifo_RxFifo_ConfigureAudio(Fifo, &Change->Audio);
+    }
+    if (Result == DTAPI_OK)
+        Result = AvFifo_RxFifo_SetIpPars(Fifo, &Change->IpPars);
+    if (Result == DTAPI_OK)
+        Result = AvFifo_RxFifo_Start(Fifo);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ApplyTxChange -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The FIFO's IP parameters are read before it is stopped, so that a FIFO without them
+// keeps sending what it sends.
+//
+DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
+                                       const DtNmosAvFifoTxChange* Change)
+{
+    static const char* const Where = "DtNmosAvFifo_ApplyTxChange";
+    if (Fifo == NULL || Change == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or change");
+    if (Change->Size < sizeof(DtNmosAvFifoTxChange))
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The change's Size is smaller than sizeof(DtNmosAvFifoTxChange)");
+    if (!Change->MasterEnable)
+        return AvFifo_TxFifo_Stop(Fifo);
+
+    AvFifo_IpPars IpPars;
+    DtapiResult Result = DtAvTxFifo_GetIpPars(Fifo, &IpPars, Where);
+    if (Result != DTAPI_OK)
+        return Result;
+    memcpy(IpPars.IpAddr, Change->DestinationIp, sizeof(IpPars.IpAddr));
+    IpPars.IpVersion = Change->IpVersion;
+    IpPars.Port = Change->DestinationPort;
+    Result = AvFifo_TxFifo_Stop(Fifo);
+    if (Result == DTAPI_OK)
+        Result = AvFifo_TxFifo_SetIpPars(Fifo, &IpPars);
+    if (Result == DTAPI_OK)
+        Result = AvFifo_TxFifo_Start(Fifo);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_RxChangeFromActivation -.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult
+DtNmosAvFifo_RxChangeFromActivation(const DtNmosReceiverActivation* Activation,
+                                    St2110_RxFrameFormat Format,
+                                    DtNmosAvFifoRxChange* Change)
+{
+    static const char* const Where = "DtNmosAvFifo_RxChangeFromActivation";
+    if (Activation == NULL || Change == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No activation or change");
+    DtNmosAvFifoRxChange Made;
+    memset(&Made, 0, sizeof(Made));
+    Made.Size = sizeof(Made);
+    Made.MasterEnable = Activation->MasterEnable;
+    Made.AtNs = Activation->AtNs;
+    if (Activation->MasterEnable)
+    {
+        const DtNmosFlow* Flow = &Activation->Flow;
+        DtapiResult Result = DTAPI_OK;
+        if (Activation->HasFlow)
+        {
+            // The configuration of the flow's media alone is made; the other stays zero.
+            Result = DtNmosAvFifo_RxConfigFromFlow(Flow, Format, &Made.Video, &Made.Audio,
+                                                   &Made.IpPars);
+            Made.HasConfig = true;
+            Made.Media = Flow->Media;
+        }
+        else
+        {
+            Result = CheckFlow(Flow, Where);
+            if (Result == DTAPI_OK)
+                Result = IpParsOf(Flow, &Made.IpPars, Where);
+        }
+        if (Result != DTAPI_OK)
+            return Result;
+    }
+    *Change = Made;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_TxChangeFromActivation -.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_TxChangeFromActivation(const DtNmosSenderActivation* Activation,
+                                                DtNmosAvFifoTxChange* Change)
+{
+    static const char* const Where = "DtNmosAvFifo_TxChangeFromActivation";
+    if (Activation == NULL || Change == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No activation or change");
+    DtNmosAvFifoTxChange Made;
+    memset(&Made, 0, sizeof(Made));
+    Made.Size = sizeof(Made);
+    Made.MasterEnable = Activation->MasterEnable;
+    Made.AtNs = Activation->AtNs;
+    if (Activation->MasterEnable)
+    {
+        bool IpV6 = false;
+        const DtapiResult Result =
+            DtNmosAddr_Parse(Activation->DestinationIp, Made.DestinationIp, &IpV6);
+        if (Result != DTAPI_OK)
+            return FailAddress(Result, Where, "destination", Activation->DestinationIp);
+        if (Activation->DestinationPort == 0)
+            return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                                 "The activation has no destination port");
+        Made.IpVersion = IpV6 ? IpProtocolVersion_IPv6 : IpProtocolVersion_IPv4;
+        Made.DestinationPort = Activation->DestinationPort;
+    }
+    *Change = Made;
+    return DTAPI_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

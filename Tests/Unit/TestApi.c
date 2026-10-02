@@ -41,6 +41,10 @@ DT_TEST(HasNmosAsBuilt)
 
 // The bridge's functions as a build without it exports them: the header that declares
 // them is not installed, so they are declared here as the stubs define them.
+typedef struct DtNmosAvFifoRxChange DtNmosAvFifoRxChange;
+typedef struct DtNmosAvFifoTxChange DtNmosAvFifoTxChange;
+typedef struct DtNmosReceiverActivation DtNmosReceiverActivation;
+typedef struct DtNmosSenderActivation DtNmosSenderActivation;
 typedef struct DtNmosFlow DtNmosFlow;
 typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
 typedef struct DtNmosId DtNmosId;
@@ -49,6 +53,15 @@ typedef struct DtNmosReceiverConfig DtNmosReceiverConfig;
 typedef struct DtNmosSenderConfig DtNmosSenderConfig;
 typedef void (*DtNmosReceiverActivateFunc)(void);
 typedef void (*DtNmosSenderActivateFunc)(void);
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
+                                                  const DtNmosAvFifoRxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
+                                                  const DtNmosAvFifoTxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_RxChangeFromActivation(
+    const DtNmosReceiverActivation* Activation, St2110_RxFrameFormat Format,
+    DtNmosAvFifoRxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
+    const DtNmosSenderActivation* Activation, DtNmosAvFifoTxChange* Change);
 CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
@@ -97,6 +110,12 @@ DT_TEST(NmosStubsFail)
     DT_ASSERT_EQ(DtNmosAvFifo_AddSender(NULL, NULL, NULL, NULL, NULL, NULL),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(NULL, NULL, NULL), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyRxChange(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyTxChange(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(
+        DtNmosAvFifo_RxChangeFromActivation(NULL, St2110_RxFrameFormat_Raw, NULL),
+        DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_TxChangeFromActivation(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
 #endif
 }
 

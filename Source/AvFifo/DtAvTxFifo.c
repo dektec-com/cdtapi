@@ -733,3 +733,23 @@ DtapiResult DtAvTxFifo_Describe(AvFifo_TxFifo* Fifo, DtAvTxFifoDescription* Desc
     OsMutex_Unlock(Fifo->Lock);
     return Result;
 }
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTxFifo_GetIpPars -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtAvTxFifo_GetIpPars(AvFifo_TxFifo* Fifo, AvFifo_IpPars* IpPars,
+                                 const char* Where)
+{
+    if (Fifo == NULL || IpPars == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or IP parameters");
+    OsMutex_Lock(Fifo->Lock);
+    DtapiResult Result = DTAPI_OK;
+    if (!Fifo->Attached)
+        Result = DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "TxFifo not attached");
+    else if (!Fifo->HasIpPars)
+        Result = DtAvError_Set(DTAPI_E_NO_IPPARS, Where,
+                               "Set the TxFifo's IP parameters first");
+    else
+        *IpPars = Fifo->IpPars;
+    OsMutex_Unlock(Fifo->Lock);
+    return Result;
+}

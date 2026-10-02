@@ -37,3 +37,9 @@ typedef struct DtAvTxFifoDescription
 // failure text naming Where.
 DtapiResult DtAvTxFifo_Describe(AvFifo_TxFifo* Fifo, DtAvTxFifoDescription* Description,
                                 const char* Where);
+
+// Gives the IP parameters of Fifo, started or not, under its lock, without checking the
+// network. DTAPI_E_NOT_ATTACHED, and DTAPI_E_NO_IPPARS before SetIpPars, with the
+// failure text naming Where.
+DtapiResult DtAvTxFifo_GetIpPars(AvFifo_TxFifo* Fifo, AvFifo_IpPars* IpPars,
+                                 const char* Where);

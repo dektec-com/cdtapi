@@ -84,6 +84,88 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* F
                                               DtNmosSenderActivateFunc Activate,
                                               void* User, DtNmosId* Id);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// A controller's activation reaches the program in the callback of a sender or receiver,
+// on a thread of the node, while the FIFO belongs to the thread that reads or writes it.
+// The callback turns the activation into a change, with
+// DtNmosAvFifo_RxChangeFromActivation or DtNmosAvFifo_TxChangeFromActivation, which
+// refuses what the FIFO cannot do; hands the change to the FIFO's owner, e.g. through a
+// mailbox of its own; and waits for the owner's result, which it returns, so that the
+// controller learns whether the FIFO took it. The owner applies the change with
+// DtNmosAvFifo_ApplyRxChange or DtNmosAvFifo_ApplyTxChange between two frames. A change
+// holds values only, and is copied with =.
+//
+// AtNs is when the controller wants the change active, in nanoseconds of TAI since the
+// epoch of PTP. A callback is called ActivationLeadMs early for a scheduled activation;
+// the program that wants the change to take place no sooner waits until AtNs before it
+// applies it.
+//
+
+// What an activation changes of a receiving FIFO. MasterEnable false stops the FIFO and
+// changes nothing else. HasConfig is true when the activation gives the flow's format, in
+// Video or Audio as Media says; false when it gives the transport alone, Media is then
+// DTNMOS_MEDIA_NONE and the FIFO keeps its configuration. IpPars are the new stream's.
+typedef struct DtNmosAvFifoRxChange
+{
+    size_t Size; // sizeof(DtNmosAvFifoRxChange), as the bridge writes it
+    bool MasterEnable;
+    bool HasConfig;
+    DtNmosMedia Media;
+    St2110_RxConfigVideo Video;
+    St2110_RxConfigAudio Audio;
+    AvFifo_IpPars IpPars;
+    uint64_t AtNs;
+} DtNmosAvFifoRxChange;
+
+// What an activation changes of a transmitting FIFO: whether it sends, and where to. The
+// FIFO keeps its format, its payload type and its other IP parameters, and sends from
+// its port's address, whatever source the activation names.
+typedef struct DtNmosAvFifoTxChange
+{
+    size_t Size; // sizeof(DtNmosAvFifoTxChange), as the bridge writes it
+    bool MasterEnable;
+    uint8_t DestinationIp[16]; // as AvFifo_IpPars has it
+    IpProtocolVersion IpVersion;
+    int DestinationPort;
+    uint64_t AtNs;
+} DtNmosAvFifoTxChange;
+
+// Applies Change to Fifo, on the thread that owns it: stops it, and unless MasterEnable
+// is false, configures it when HasConfig, sets its IP parameters and starts it. Frames
+// the program holds stay valid, as Stop keeps them. Fails as those calls do, leaving the
+// FIFO stopped, and with DTAPI_E_INVALID_ARG for a null argument or a change whose Size
+// is smaller than this header's.
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
+                                                  const DtNmosAvFifoRxChange* Change);
+
+// Applies Change to Fifo, on the thread that owns it: stops it, and unless MasterEnable
+// is false, sets the destination and port in the FIFO's IP parameters and starts it.
+// Fails as those calls do, leaving the FIFO stopped; with DTAPI_E_NO_IPPARS, leaving it
+// as it is, for a FIFO that has no IP parameters to change; and with DTAPI_E_INVALID_ARG
+// as DtNmosAvFifo_ApplyRxChange.
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
+                                                  const DtNmosAvFifoTxChange* Change);
+
+// Makes *Change of the activation of a receiver, in the callback, for a FIFO that
+// delivers frames of Format: of the flow, as DtNmosAvFifo_RxConfigFromFlow makes the
+// configuration, when the activation gives a transport file, or of its transport alone.
+// An activation with MasterEnable false needs neither. Fails as
+// DtNmosAvFifo_RxConfigFromFlow does, so that the callback refuses a flow the FIFO
+// cannot take before the owner is asked; the transport alone fails as its IP parameters
+// do there, for a destination or source that is not an address, a domain name, no
+// destination port, or a source of another IP version. DTAPI_E_INVALID_ARG for a null
+// argument.
+CDTAPI_API DtapiResult DtNmosAvFifo_RxChangeFromActivation(
+    const DtNmosReceiverActivation* Activation, St2110_RxFrameFormat Format,
+    DtNmosAvFifoRxChange* Change);
+
+// Makes *Change of the activation of a sender, in the callback. DTAPI_E_INVALID_ARG for
+// a null argument, and for a destination or port that is not one, when MasterEnable is
+// true; DTAPI_E_NOT_SUPPORTED for a domain name.
+CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
+    const DtNmosSenderActivation* Activation, DtNmosAvFifoTxChange* Change);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The flow of a transmit FIFO that is configured and has its IP parameters, started or

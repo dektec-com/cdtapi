@@ -21,6 +21,10 @@
 // The types of dtnmos the bridge's functions take, as cdtapi_nmos.h has them through
 // dtnmos's headers; here only their names, as only pointers to them are passed. The
 // callbacks are passed on and never called, so any function pointer stands for them.
+typedef struct DtNmosAvFifoRxChange DtNmosAvFifoRxChange;
+typedef struct DtNmosAvFifoTxChange DtNmosAvFifoTxChange;
+typedef struct DtNmosReceiverActivation DtNmosReceiverActivation;
+typedef struct DtNmosSenderActivation DtNmosSenderActivation;
 typedef struct DtNmosFlow DtNmosFlow;
 typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
 typedef struct DtNmosId DtNmosId;
@@ -31,6 +35,15 @@ typedef void (*DtNmosReceiverActivateFunc)(void);
 typedef void (*DtNmosSenderActivateFunc)(void);
 
 // The declarations of cdtapi_nmos.h, which this build does not install.
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
+                                                  const DtNmosAvFifoRxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
+                                                  const DtNmosAvFifoTxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_RxChangeFromActivation(
+    const DtNmosReceiverActivation* Activation, St2110_RxFrameFormat Format,
+    DtNmosAvFifoRxChange* Change);
+CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
+    const DtNmosSenderActivation* Activation, DtNmosAvFifoTxChange* Change);
 CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
@@ -117,6 +130,51 @@ DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
     (void)User;
     (void)Id;
     return NoNmos("DtNmosAvFifo_AddSender");
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ApplyRxChange -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
+                                       const DtNmosAvFifoRxChange* Change)
+{
+    (void)Fifo;
+    (void)Change;
+    return NoNmos("DtNmosAvFifo_ApplyRxChange");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ApplyTxChange -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
+                                       const DtNmosAvFifoTxChange* Change)
+{
+    (void)Fifo;
+    (void)Change;
+    return NoNmos("DtNmosAvFifo_ApplyTxChange");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_RxChangeFromActivation -.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult
+DtNmosAvFifo_RxChangeFromActivation(const DtNmosReceiverActivation* Activation,
+                                    St2110_RxFrameFormat Format,
+                                    DtNmosAvFifoRxChange* Change)
+{
+    (void)Activation;
+    (void)Format;
+    (void)Change;
+    return NoNmos("DtNmosAvFifo_RxChangeFromActivation");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_TxChangeFromActivation -.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_TxChangeFromActivation(const DtNmosSenderActivation* Activation,
+                                                DtNmosAvFifoTxChange* Change)
+{
+    (void)Activation;
+    (void)Change;
+    return NoNmos("DtNmosAvFifo_TxChangeFromActivation");
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

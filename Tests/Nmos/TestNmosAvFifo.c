@@ -11,6 +11,7 @@
 
 // CDTAPI includes
 #include "DtTest.h"             // Test framework.
+#include "OAL/OsThread.h"       // The owner of a FIFO and its mailbox.
 #include "OAL/Sim/SimDtPcie.h"  // The emulated devices.
 #include "OAL/Sim/SimDta2110.h" // The emulated DTA-2110's serial number.
 #include "cdtapi_constants.h"   // Result codes.
@@ -765,6 +766,7 @@ static bool OpenPort(Fixture* Fix, DtNmosId* DeviceId, int* DtFailures)
     Config.Resolution.Height = 1080;
     Config.Timing.Rate.Numerator = 25;
     Config.Timing.Rate.Denominator = 1;
+    Config.Packing.PayloadSize = -1;
     AvFifo_IpPars IpPars;
     memset(&IpPars, 0, sizeof(IpPars));
     IpPars.IpAddr[0] = 239;
@@ -921,8 +923,300 @@ DT_TEST(AddSender)
     DtTest_SetCleanup(NULL, NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Whether Fifo is started: SetIpPars, which a stopped FIFO takes, is refused by a started
+// one. IpPars are the FIFO's own, so that a stopped FIFO is left as it was.
+static bool RxStarted(AvFifo_RxFifo* Fifo, const AvFifo_IpPars* IpPars)
+{
+    return AvFifo_RxFifo_SetIpPars(Fifo, IpPars) == DTAPI_E_STARTED;
+}
+
+static bool TxStarted(AvFifo_TxFifo* Fifo, const AvFifo_IpPars* IpPars)
+{
+    return AvFifo_TxFifo_SetIpPars(Fifo, IpPars) == DTAPI_E_STARTED;
+}
+
+// A receiver's activation becomes a change, which the FIFO takes: with the flow of a
+// transport file it is configured, set and started; with the transport alone it keeps
+// its configuration and moves to the new stream; disabled, it stops. A flow the format
+// cannot take is refused when the change is made, before the FIFO is asked.
+DT_TEST(RxChange)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    DtNmosId DeviceId;
+    if (!OpenPort(&Fix, &DeviceId, DtFailures))
+        return;
+    DtNmosReceiverActivation Activation;
+    memset(&Activation, 0, sizeof(Activation));
+    Activation.MasterEnable = true;
+    Activation.HasFlow = true;
+    Activation.Flow = *FlowOf(&Fix, VIDEO("YCbCr-4:2:2", "10"), 0);
+    Activation.AtNs = 1234;
+    DtNmosAvFifoRxChange Change;
+    DT_ASSERT_OK(DtNmosAvFifo_RxChangeFromActivation(
+        &Activation, St2110_RxFrameFormat_Uyvy422_10b, &Change));
+    DT_ASSERT_EQ(Change.Size, sizeof(Change));
+    DT_ASSERT(Change.MasterEnable && Change.HasConfig);
+    DT_ASSERT_EQ(Change.Media, DTNMOS_MEDIA_VIDEO);
+    DT_ASSERT_EQ(Change.Video.Format, St2110_RxFrameFormat_Uyvy422_10b);
+    DT_ASSERT_EQ(Change.IpPars.Port, 5004);
+    DT_ASSERT_EQ(Change.AtNs, 1234);
+    DT_ASSERT_OK(DtNmosAvFifo_ApplyRxChange(Fix.Rx, &Change));
+    DT_ASSERT(RxStarted(Fix.Rx, &Change.IpPars));
+
+    // The transport alone: the FIFO keeps its configuration and moves.
+    DtNmosAvFifoRxChange Moved;
+    Activation.HasFlow = false;
+    memset(&Activation.Flow.Format, 0, sizeof(Activation.Flow.Format));
+    snprintf(Activation.Flow.DestinationIp, sizeof(Activation.Flow.DestinationIp),
+             "239.1.2.9");
+    Activation.Flow.DestinationPort = 5010;
+    DT_ASSERT_OK(DtNmosAvFifo_RxChangeFromActivation(
+        &Activation, St2110_RxFrameFormat_Uyvy422_10b, &Moved));
+    DT_ASSERT(Moved.MasterEnable && !Moved.HasConfig);
+    DT_ASSERT_EQ(Moved.Media, DTNMOS_MEDIA_NONE);
+    DT_ASSERT_EQ(Moved.IpPars.IpAddr[3], 9);
+    DT_ASSERT_EQ(Moved.IpPars.Port, 5010);
+    DT_ASSERT_OK(DtNmosAvFifo_ApplyRxChange(Fix.Rx, &Moved));
+    DT_ASSERT(RxStarted(Fix.Rx, &Moved.IpPars));
+
+    // Disabled: the FIFO stops, whatever the flow.
+    DtNmosAvFifoRxChange Parked;
+    Activation.MasterEnable = false;
+    Activation.Flow.DestinationIp[0] = '\0';
+    DT_ASSERT_OK(DtNmosAvFifo_RxChangeFromActivation(
+        &Activation, St2110_RxFrameFormat_Uyvy422_10b, &Parked));
+    DT_ASSERT(!Parked.MasterEnable && !Parked.HasConfig);
+    DT_ASSERT_OK(DtNmosAvFifo_ApplyRxChange(Fix.Rx, &Parked));
+    DT_ASSERT(!RxStarted(Fix.Rx, &Moved.IpPars));
+
+    // Refused before the FIFO is asked: a flow the format does not take.
+    Activation.MasterEnable = true;
+    Activation.HasFlow = true;
+    Activation.Flow = *FlowOf(&Fix, VIDEO("YCbCr-4:2:2", "8"), 0);
+    DT_ASSERT_EQ(DtNmosAvFifo_RxChangeFromActivation(
+                     &Activation, St2110_RxFrameFormat_Uyvy422_10b, &Change),
+                 DTAPI_E_NOT_SUPPORTED);
+    Parked.Size = sizeof(Parked) - 1;
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyRxChange(Fix.Rx, &Parked), DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// A sender's activation becomes a change of its destination and port, which the FIFO
+// takes keeping its payload type and its other IP parameters; disabled, it stops. A FIFO
+// without IP parameters has none to change.
+DT_TEST(TxChange)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    DtNmosId DeviceId;
+    if (!OpenPort(&Fix, &DeviceId, DtFailures))
+        return;
+    DtNmosSenderActivation Activation;
+    memset(&Activation, 0, sizeof(Activation));
+    Activation.MasterEnable = true;
+    snprintf(Activation.DestinationIp, sizeof(Activation.DestinationIp), "239.9.8.7");
+    Activation.DestinationPort = 6000;
+    snprintf(Activation.SourceIp, sizeof(Activation.SourceIp), "192.168.1.10");
+    DtNmosAvFifoTxChange Change;
+    DT_ASSERT_OK(DtNmosAvFifo_TxChangeFromActivation(&Activation, &Change));
+    DT_ASSERT_EQ(Change.Size, sizeof(Change));
+    DT_ASSERT_EQ(Change.IpVersion, IpProtocolVersion_IPv4);
+    DT_ASSERT_EQ(Change.DestinationPort, 6000);
+    DT_ASSERT_OK(DtNmosAvFifo_ApplyTxChange(Fix.Tx, &Change));
+    DtNmosFlow Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    DT_ASSERT_STR(Flow.DestinationIp, "239.9.8.7");
+    DT_ASSERT_EQ(Flow.DestinationPort, 6000);
+    DT_ASSERT_EQ(Flow.PayloadType, 96);
+    AvFifo_IpPars IpPars;
+    memset(&IpPars, 0, sizeof(IpPars));
+    DT_ASSERT(TxStarted(Fix.Tx, &IpPars));
+
+    Activation.MasterEnable = false;
+    DT_ASSERT_OK(DtNmosAvFifo_TxChangeFromActivation(&Activation, &Change));
+    DT_ASSERT_OK(DtNmosAvFifo_ApplyTxChange(Fix.Tx, &Change));
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    DT_ASSERT_STR(Flow.DestinationIp, "239.9.8.7");
+
+    Activation.MasterEnable = true;
+    snprintf(Activation.DestinationIp, sizeof(Activation.DestinationIp), "camera.local");
+    DT_ASSERT_EQ(DtNmosAvFifo_TxChangeFromActivation(&Activation, &Change),
+                 DTAPI_E_NOT_SUPPORTED);
+    snprintf(Activation.DestinationIp, sizeof(Activation.DestinationIp), "239.9.8.7");
+    Activation.DestinationPort = 0;
+    DT_ASSERT_EQ(DtNmosAvFifo_TxChangeFromActivation(&Activation, &Change),
+                 DTAPI_E_INVALID_ARG);
+
+    Activation.DestinationPort = 6000;
+    DT_ASSERT_OK(DtNmosAvFifo_TxChangeFromActivation(&Activation, &Change));
+    AvFifo_TxFifo* Bare = AvFifo_TxFifo_Alloc();
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Bare, Fix.Device, 1));
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyTxChange(Bare, &Change), DTAPI_E_NO_IPPARS);
+    AvFifo_TxFifo_Freep(&Bare);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// The mailbox of a FIFO's owner: the callback posts a change and waits for the result of
+// applying it, which the owner posts back.
+typedef struct Mailbox
+{
+    OsMutex* Lock;
+    OsEvent* Posted;
+    OsEvent* Done;
+    AvFifo_RxFifo* Fifo;
+    bool Quit;
+    DtNmosAvFifoRxChange Change;
+    DtapiResult Result;
+    int Applied;
+} Mailbox;
+
+// The FIFO's owner: applies each change it is given, between the frames it would read.
+static void Owner(void* Context)
+{
+    Mailbox* Box = (Mailbox*)Context;
+    for (;;)
+    {
+        OsEvent_Wait(Box->Posted, -1);
+        OsMutex_Lock(Box->Lock);
+        const bool Quit = Box->Quit;
+        const DtNmosAvFifoRxChange Change = Box->Change;
+        OsMutex_Unlock(Box->Lock);
+        if (Quit)
+            return;
+        const DtapiResult Result = DtNmosAvFifo_ApplyRxChange(Box->Fifo, &Change);
+        OsMutex_Lock(Box->Lock);
+        Box->Result = Result;
+        Box->Applied++;
+        OsMutex_Unlock(Box->Lock);
+        OsEvent_Set(Box->Done);
+    }
+}
+
+// The receiver's callback: makes the change, posts it, and answers with the owner's
+// result.
+static DtNmosResult HandToOwner(void* User, const DtNmosId* Receiver,
+                                const DtNmosReceiverActivation* Activation)
+{
+    (void)Receiver;
+    Mailbox* Box = (Mailbox*)User;
+    DtNmosAvFifoRxChange Change;
+    if (DtNmosAvFifo_RxChangeFromActivation(Activation, St2110_RxFrameFormat_Raw,
+                                            &Change) != DTAPI_OK)
+        return DtNmos_SetLastError(DTNMOS_E_INVALID_ARGUMENT, GetLastException());
+    OsMutex_Lock(Box->Lock);
+    Box->Change = Change;
+    OsMutex_Unlock(Box->Lock);
+    OsEvent_Set(Box->Posted);
+    if (OsEvent_Wait(Box->Done, 5000) != OS_WAIT_SIGNALLED)
+        return DtNmos_SetLastError(DTNMOS_E_TIMEOUT, "The FIFO's owner did not answer");
+    OsMutex_Lock(Box->Lock);
+    const DtapiResult Result = Box->Result;
+    OsMutex_Unlock(Box->Lock);
+    return Result == DTAPI_OK ? DTNMOS_OK
+                              : DtNmos_SetLastError(DTNMOS_E_STATE, "The FIFO refused");
+}
+
+// The status of a PATCH of the staged parameters of receiver Id with Body.
+static int Patch(DtNmosNode* Node, const DtNmosId* Id, const char* Body)
+{
+    char Url[160];
+    snprintf(Url, sizeof(Url), "/x-nmos/connection/v1.1/single/receivers/%s/staged",
+             Id->Text);
+    DtNmosHttpRequest Request;
+    memset(&Request, 0, sizeof(Request));
+    Request.Size = sizeof(Request);
+    Request.Method = "PATCH";
+    Request.Url = Url;
+    Request.ContentType = "application/json";
+    Request.Body = Body;
+    Request.BodyLength = strlen(Body);
+    DtNmosHttpResponse* Response = DtNmosHttpResponse_Alloc();
+    int Status = 0;
+    if (Response != NULL && DtNmosNode_Handle(Node, &Request, Response) == DTNMOS_OK)
+        Status = DtNmosHttpResponse_Status(Response);
+    DtNmosHttpResponse_Free(Response);
+    return Status;
+}
+
+// A controller's activation reaches the FIFO through its owner: the callback, on the
+// node's thread, posts the change and waits; the owner, a thread of its own, applies it.
+// A flow the FIFO cannot take is refused in the callback, and the owner is not asked.
+DT_TEST(ActivationReachesTheOwner)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    DtNmosId DeviceId;
+    if (!OpenPort(&Fix, &DeviceId, DtFailures))
+        return;
+    Mailbox Box;
+    memset(&Box, 0, sizeof(Box));
+    Box.Lock = OsMutex_Create();
+    Box.Posted = OsEvent_Create();
+    Box.Done = OsEvent_Create();
+    Box.Fifo = Fix.Rx;
+    OsThread* Thread = OsThread_Start(Owner, &Box);
+    DT_ASSERT(Box.Lock != NULL && Box.Posted != NULL && Box.Done != NULL &&
+              Thread != NULL);
+
+    DtNmosReceiverConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Size = sizeof(Config);
+    Config.DeviceId = DeviceId;
+    Config.Label = "monitor";
+    Config.Media = DTNMOS_MEDIA_VIDEO;
+    DtNmosId Id;
+    DT_ASSERT_OK(
+        DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, HandToOwner, &Box, &Id));
+    DT_ASSERT_EQ(Patch(Fix.Node, &Id,
+                       "{\"master_enable\": true, "
+                       "\"activation\": {\"mode\": \"activate_immediate\"}, "
+                       "\"transport_file\": {\"type\": \"application/sdp\", \"data\": "
+                       "\"v=0\\no=- 1 1 IN IP4 192.168.1.7\\ns=peer\\nt=0 0\\n"
+                       "m=video 5000 RTP/AVP 96\\nc=IN IP4 239.1.1.1/64\\n"
+                       "a=rtpmap:96 raw/90000\\na=fmtp:96 sampling=YCbCr-4:2:2; "
+                       "width=1920; height=1080; exactframerate=25; depth=10\\n\"}}"),
+                 200);
+    DT_ASSERT_EQ(Box.Applied, 1);
+    DT_ASSERT_EQ(Box.Change.IpPars.Port, 5000);
+    DT_ASSERT(RxStarted(Fix.Rx, &Box.Change.IpPars));
+
+    DT_ASSERT_EQ(Patch(Fix.Node, &Id,
+                       "{\"master_enable\": false, "
+                       "\"activation\": {\"mode\": \"activate_immediate\"}}"),
+                 200);
+    DT_ASSERT_EQ(Box.Applied, 2);
+    DT_ASSERT(!RxStarted(Fix.Rx, &Box.Change.IpPars));
+
+    // ST 2110-22, which the FIFO does not decode: refused before the owner is asked.
+    DT_ASSERT(Patch(Fix.Node, &Id,
+                    "{\"master_enable\": true, "
+                    "\"activation\": {\"mode\": \"activate_immediate\"}, "
+                    "\"transport_file\": {\"type\": \"application/sdp\", \"data\": "
+                    "\"v=0\\no=- 1 1 IN IP4 192.168.1.7\\ns=peer\\nt=0 0\\n"
+                    "m=video 5000 RTP/AVP 98\\nc=IN IP4 239.1.1.1/64\\n"
+                    "a=rtpmap:98 jxsv/90000\\n\"}}") != 200);
+    DT_ASSERT_EQ(Box.Applied, 2);
+
+    OsMutex_Lock(Box.Lock);
+    Box.Quit = true;
+    OsMutex_Unlock(Box.Lock);
+    OsEvent_Set(Box.Posted);
+    OsThread_Join(Thread);
+    OsEvent_Destroy(Box.Done);
+    OsEvent_Destroy(Box.Posted);
+    OsMutex_Destroy(Box.Lock);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
 DT_TEST_MAIN("NmosAvFifo", DT_RUN(LinksDtnmos), DT_RUN(RxVideo), DT_RUN(RxVideoFormats),
              DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6),
              DT_RUN(TxVideo), DT_RUN(TxAudio), DT_RUN(TxRefused),
              DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady),
-             DT_RUN(AddDevice), DT_RUN(AddReceiver), DT_RUN(AddSender))
+             DT_RUN(AddDevice), DT_RUN(AddReceiver), DT_RUN(AddSender), DT_RUN(RxChange),
+             DT_RUN(TxChange), DT_RUN(ActivationReachesTheOwner))

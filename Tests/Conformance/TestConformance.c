@@ -639,6 +639,12 @@ DT_TEST(NmosCalls)
     DT_ASSERT_EQ(DtNmosAvFifo_AddSender(NULL, NULL, NULL, NULL, NULL, &Id),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(NULL, &Id, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyRxChange(NULL, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_ApplyTxChange(NULL, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(
+        DtNmosAvFifo_RxChangeFromActivation(NULL, St2110_RxFrameFormat_Raw, NULL),
+        DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_TxChangeFromActivation(NULL, NULL), DTAPI_E_INVALID_ARG);
 #else
     (void)DtFailures;
 #endif
