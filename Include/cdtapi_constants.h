@@ -4,21 +4,22 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Included by cdtapi.h; there is no need to include it directly. It is a header of its
-// own, holding macros only, so that a program can take the constants without the
-// interface.
+// The result codes and the constants the functions of cdtapi.h take, such as I/O
+// standards and video standards. cdtapi.h includes this header; a program that needs only
+// the constants may include it alone.
 
 #pragma once
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Result codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Every call that can fail returns one of these. The values are part of the binary
-// interface CDTAPI shares with DTAPI, including their irregularities: DTAPI_E + 10
-// is unused, and DTAPI_E_NO_DT_OUTPUT/NO_TS_OUTPUT and DTAPI_E_NO_DT_INPUT/NO_TS_INPUT
-// are pairs of names for one value each. Do not renumber, reorder or close the gap.
+// What a function that can fail returns. A result below DTAPI_E is a success, possibly
+// with a warning (e.g. DTAPI_OK_FAILSAFE), so test for failure with Result >= DTAPI_E
+// rather than Result != DTAPI_OK.
 //
-// Results below DTAPI_E are successes, some of which carry a warning, so compare
-// against DTAPI_E rather than against DTAPI_OK.
+// The values are those of DTAPI, so that a program can use either library. That includes
+// their oddities: DTAPI_E + 10 is unused, and DTAPI_E_NO_DT_OUTPUT and _NO_TS_OUTPUT, and
+// DTAPI_E_NO_DT_INPUT and _NO_TS_INPUT, are two names for one value. Never change a
+// value.
 //
 
 // clang-format off
@@ -314,32 +315,29 @@
 #define DTAPI_E_CONFIG_VIDEO_WEAVE  (DTAPI_E + 280)
 #define DTAPI_E_CONFIG_VIDEO_ZEROCOPY (DTAPI_E + 281)
 
-// DTAPI_E_ALREADY_EXCL_ACCESS is what a driver reports when another process holds a
-// port exclusively.
+// DTAPI_E_ALREADY_EXCL_ACCESS: another process has the port to itself.
 #define DTAPI_E_ALREADY_EXCL_ACCESS   (DTAPI_E + 282)
 #define DTAPI_E_DISABLED              (DTAPI_E + 283)
 #define DTAPI_E_CPU_NO_AVX2           (DTAPI_E + 284)
 #define DTAPI_E_INVALID_MIMO          (DTAPI_E + 285)
 #define DTAPI_E_NO_GATEWAY            (DTAPI_E + 286)
 
-// Defined so that code that names it still compiles; nothing here returns it. A failure
-// gives the result that says what went wrong, and the AV FIFO its text through
-// GetLastException.
+// Never returned; defined only so that code that names it compiles. A failure returns
+// the code that says what went wrong, and GetLastException() gives the AV FIFO's text.
 #define DTAPI_E_EXCEPTION (DTAPI_E + 300)
 // clang-format on
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Configuration +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// I/O configuration groups and values, receive and transmit control, video standards,
-// receive and transmit modes, and status flags. Like the result codes, the values are
-// part of the binary interface CDTAPI shares with DTAPI and must not change.
+// The constants the functions take: the settings of a port (DTAPI_IOCONFIG_), the
+// receive and transmit controls and modes, the video standards, and the status flags.
+// Like the result codes, the values are DTAPI's and never change.
 //
-// Each DTAPI_IOCONFIG_ value also has a name, which is what actually travels to the
-// driver: the macro name without its DTAPI_IOCONFIG_ prefix. DTAPI_IOCONFIG_2160P50 is
-// sent as "2160P50"; plan 0002 says why.
+// A video standard has the same number as the I/O standard sub-value of the same name:
+// DTAPI_VIDSTD_1080I50 and DTAPI_IOCONFIG_1080I50 are both 67.
 //
-// Every video standard shares its number with the I/O configuration sub-value of the
-// same name: DTAPI_VIDSTD_1080I50 and DTAPI_IOCONFIG_1080I50 are both 67.
+// The library passes a DTAPI_IOCONFIG_ value to the driver by its name without the
+// prefix: DTAPI_IOCONFIG_2160P50 as "2160P50" (plan 0002).
 //
 
 // clang-format off
