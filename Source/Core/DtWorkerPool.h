@@ -14,79 +14,94 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtWorkerPool +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Some of the library's work divides into pieces that are independent of one another,
-// such as the lines of an SDI frame. A pool is where those pieces run: threads of its
-// own, or the program's threads behind a dispatch function. Any number of channels may
-// share one, and each divides its work over it.
+// Some of the library's work splits into pieces that do not depend on each other, such
+// as the lines of an SDI frame. A worker pool runs those pieces in parallel, on threads
+// of its own or on threads of the program. Several channels can share one pool.
 //
-// A pool is reference counted. The program holds it from DtWorkerPool_Alloc until
-// DtWorkerPool_Free, a DtJobRunner holds it from DtJobRunner_SetPool until it lets go,
-// and the pool goes when the last of them does. So a program may free its pool as soon
-// as it has handed it to its channels.
+// A pool has a reference count. The program holds a reference from DtWorkerPool_Alloc
+// until DtWorkerPool_Free, and each channel and DtJobRunner that uses the pool holds
+// one too. The pool is freed when the last reference goes, so a program may free its
+// pool as soon as it has given it to its channels.
 //
-// DtWorkerPool and the functions a program calls are public, in cdtapi.h; what follows is
-// the library's own.
+// DtWorkerPool and the functions for programs are public, in cdtapi.h. The functions
+// below are for the library itself.
 //
 
-// Adds a reference to the pool, which DtWorkerPool_Free drops as it does the program's;
-// a channel holds the pool it is given this way. Unlike a DtJobRunner's reference, it
-// does not keep the pool from being set again, since it sizes no buffers by it. NULL does
-// nothing.
+// Adds a reference to Pool; DtWorkerPool_Free drops it again. A channel holds the pool
+// it is given this way. Unlike the reference of a DtJobRunner, this one does not stop
+// the program from setting the pool up again. A NULL Pool does nothing.
 void DtWorkerPool_AddRef(DtWorkerPool* Pool);
 
-// How many pieces the pool runs at once: its threads, the NumThreads its dispatch
-// function was given, the most threads of the program's that join it, or 1 with none.
+// Returns how many pieces Pool runs at the same time: the number of threads given to
+// DtWorkerPool_StartThreads, DtWorkerPool_SetDispatch or DtWorkerPool_ExpectThreads, or
+// 1 when the pool is not set up.
 int DtWorkerPool_NumThreads(const DtWorkerPool* Pool);
 
-// How many of the program's threads are in DtWorkerPool_Join now.
+// Returns how many of the program's threads are in DtWorkerPool_Join now.
 int DtWorkerPool_NumJoined(DtWorkerPool* Pool);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtJobRunner +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// What one user of a pool holds: the pool, the number of pieces it divides a job into,
-// and the event its jobs finish on. A DtJobRunner runs one job at a time; a channel's
-// lock or its check for a read in progress sees to that. Without a pool every piece runs
-// in the thread that calls DtJobRunner_Run, which is what costs nothing and is the
-// default.
+// Runs a job of a channel on a worker pool: it splits the job into pieces and waits
+// until all of them are done. Each channel has its own DtJobRunner.
+//
+// The steps are:
+//   1. DtJobRunner_Init. Without a pool, every piece runs in the calling thread, which
+//      costs nothing; this is the default.
+//   2. DtJobRunner_SetPool, to use a pool, and DtJobRunner_NumPieces, to learn how many
+//      sets of working buffers the job needs.
+//   3. DtJobRunner_Run, for each job.
+//   4. DtJobRunner_Free.
+//
+// A DtJobRunner runs one job at a time. The channel's lock, or its check for a read in
+// progress, makes sure of that.
 //
 
 typedef struct DtJobRunner
 {
-    DtWorkerPool* Pool; // NULL: every piece in the thread that calls DtJobRunner_Run
-    OsEvent* Done;      // Set by the piece that finishes a job on the pool's threads
-    int NumPieces;      // What DtJobRunner_Run divides a job into, 1 or more
+    DtWorkerPool* Pool; // The pool, or NULL to run every piece in the calling thread
+    OsEvent* Done;      // Set when the last piece of a job on the pool's threads is done
+    int NumPieces;      // How many pieces DtJobRunner_Run splits a job into; 1 or more
 } DtJobRunner;
 
-// One piece, in the calling thread. A DtJobRunner must be initialised before it is used
-// and freed when it is done with; DtJobRunner_Free leaves it initialised again, so
-// freeing it twice does no harm.
+// Prepares Runner to run every job as one piece, in the calling thread. A DtJobRunner
+// must be initialised before it is used.
 void DtJobRunner_Init(DtJobRunner* Runner);
+
+// Lets go of the pool and frees the event, and prepares Runner again as DtJobRunner_Init
+// does. Calling it twice does no harm.
 void DtJobRunner_Free(DtJobRunner* Runner);
 
-// Divides the jobs over Pool, NULL for the calling thread alone. NumThreads 0 divides a
-// job into as many pieces as the pool runs at once; N into N, but no more than that. The
-// DtJobRunner holds the pool until DtJobRunner_Free or the next DtJobRunner_SetPool.
+// Makes Runner run its jobs on Pool, or in the calling thread for a NULL Pool. The
+// runner holds a reference to Pool until DtJobRunner_Free or the next
+// DtJobRunner_SetPool. While it holds one, the program cannot set the pool up again,
+// because the channel has sized its buffers by it.
 //
-// Returns DTAPI_E_INVALID_ARG below 0, and DTAPI_E_OUT_OF_MEM when the event cannot be
-// had; either way the DtJobRunner is left as it was.
+// NumThreads sets how many pieces a job is split into: 0 for as many as the pool runs at
+// the same time, and N for N, but no more than the pool runs.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG  NumThreads is negative
+//   DTAPI_E_OUT_OF_MEM   the event cannot be created
+// On an error, Runner is unchanged.
 DtapiResult DtJobRunner_SetPool(DtJobRunner* Runner, DtWorkerPool* Pool, int NumThreads);
 
-// How many pieces DtJobRunner_Run divides a job into: how many sets of working buffers a
-// caller of it needs, and how many parts it should cut its work into.
+// Returns how many pieces DtJobRunner_Run splits a job into. The caller needs that many
+// sets of working buffers, and cuts its work into that many parts.
 static inline int DtJobRunner_NumPieces(const DtJobRunner* Runner)
 {
     return Runner->NumPieces;
 }
 
-// Runs Func over DtJobRunner_NumPieces pieces and returns when every one of them has
-// finished.
+// Runs Func once for each piece, with Context, and returns when all pieces are done.
 void DtJobRunner_Run(const DtJobRunner* Runner, DtJobFunc Func, void* Context);
 
-// The half-open range [*First, *End) of Total items that piece PieceIndex of NumPieces
-// takes.
-// Every boundary other than Total is a multiple of Unit, which is 1 where the items are
-// independent one by one and more where they are independent only in groups of that
-// many. The ranges cover the items exactly and are as near equal in length as the unit
-// allows; a range can be empty when there are fewer units than pieces.
+// Computes which of Total items piece PieceIndex of NumPieces works on: items *First up
+// to, not including, *End.
+//
+// Unit is the size of a group of items that must stay together; 1 when every item is
+// independent. Every boundary except Total is a multiple of Unit. The ranges together
+// cover all items once, and are as near equal in length as Unit allows. A range is empty
+// when there are fewer groups than pieces.
 void DtJobRunner_Split(int Total, int PieceIndex, int NumPieces, int Unit, int* First,
                        int* End);

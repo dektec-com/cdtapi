@@ -13,18 +13,19 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Deadline +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// pthread_cond_timedwait takes an absolute deadline as seconds and nanoseconds, so a
-// relative timeout has to be added to the current time. The nanosecond field must stay
-// below one billion; a value at or above it makes the call fail with EINVAL, and the
-// wait then returns immediately instead of waiting.
+// Computes the deadline for a timed wait. pthread_cond_timedwait takes the time at which
+// to stop waiting, in seconds and nanoseconds, so a timeout is added to the current
+// time. The nanoseconds must stay below one billion. Otherwise the call fails with
+// EINVAL, and the wait returns at once instead of waiting.
 //
-// That carry is the whole difficulty, and it is kept here, free of Linux headers, so
-// that it is tested on every platform.
+// The carry from nanoseconds into seconds is easy to get wrong, so it is here, without
+// Linux headers, where the tests check it on every platform.
 //
 
+// The number of nanoseconds in a second.
 #define LIN_NSEC_PER_SEC 1000000000L
 
-// Adds Ms milliseconds to the time (Sec, Nsec) and writes the normalised result, with
-// 0 <= *OutNsec < LIN_NSEC_PER_SEC. Nsec is expected to be normalised already. A
-// negative Ms is treated as zero.
+// Adds Ms milliseconds to the time Sec seconds plus Nsec nanoseconds, and writes the
+// result to *OutSec and *OutNsec, with 0 <= *OutNsec < LIN_NSEC_PER_SEC. Nsec must
+// already be in that range. A negative Ms counts as zero.
 void LinTime_AddMs(int64_t Sec, long Nsec, int Ms, int64_t* OutSec, long* OutNsec);

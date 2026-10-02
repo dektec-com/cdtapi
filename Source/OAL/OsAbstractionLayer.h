@@ -15,102 +15,97 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Seam +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Everything below this line talks to a DtPcie card; everything above it does not know
-// which operating system it is on, or whether there is a card at all.
+// Opens a DtPcie card and sends commands (IOCTLs) to its driver. Only the code below
+// this layer knows the operating system, or whether there is a card at all.
 //
-// Three backends sit behind it: Linux, Windows, and an emulated device. The emulator is
-// what makes the rest of the library testable without hardware, and it is the reason
-// this layer exists as a named boundary rather than as scattered #ifdefs.
+// There are three backends: Linux, Windows, and an emulated device. The emulated device
+// lets the library be tested without hardware. It replaces the driver, not the library:
+// it takes the same IOCTL codes and structures as the real driver, so the tests check
+// those for real.
 //
-// The emulator replaces the driver, not the library. It receives the same IOCTL codes
-// and the same structures the real driver would, so the wire format is exercised for
-// real rather than mocked away. That is where most of the defects are going to be.
+// The device layer uses a device in these steps: OsDrv_Open; OsDrv_Ioctl for each
+// command and OsDrv_MapMemory for memory the driver shares; and OsDrv_Close at the end.
 //
 
-// The driver accepts up to this many devices. The device layer tries every index below
-// it; on Linux index N is /dev/DtPcieN.
+// The most devices the driver accepts. The device layer tries every index below it; on
+// Linux index N is /dev/DtPcieN.
 #define DT_MAX_DEVICES 50
 
 typedef struct OsDrv OsDrv;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Device -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-// Opens the device at Index, or returns NULL when there is none or it cannot be opened.
-// Index runs from zero to DT_MAX_DEVICES - 1. On Linux it is the N of /dev/DtPcieN; on
-// Windows it counts the present devices in the operating system's order, which can
-// change when a card is added or removed.
+// Opens the device with number Index, from 0 to DT_MAX_DEVICES - 1. On Linux Index is
+// the N of /dev/DtPcieN. On Windows it counts the devices present, in the operating
+// system's order, which can change when a card is added or removed.
 //
-// When CDTAPI_SIM is set in the environment, the emulated device is opened instead
-// and no real hardware is touched.
+// When the environment variable CDTAPI_SIM is set, opens the emulated device instead,
+// and no hardware is touched.
+//
+// Returns the device, or NULL when there is no device at Index or it cannot be opened.
 OsDrv* OsDrv_Open(int Index);
 
-// Closes a device. Passing NULL does nothing.
+// Closes a device. A NULL Drv does nothing.
 void OsDrv_Close(OsDrv* Drv);
 
-// True when this handle is the emulated device rather than a card.
+// Returns whether Drv is the emulated device rather than a card.
 //
-// It answers what actually opened. CDTAPI_SIM is read once, the first time a device or
-// the network is used, and every handle follows that answer, so a caller that decides
-// "no card" from its own command line or from the environment later on can disagree with
-// the library and read a real device with the emulator's assumptions.
+// The library reads CDTAPI_SIM once, when a device or the network is first used, and
+// every handle follows that. A caller that decides later, from its own command line or
+// the environment, that there is no card can therefore disagree with the library. Ask
+// this function instead.
 bool OsDrv_IsEmulated(const OsDrv* Drv);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Control -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// Issues one IOCTL.
+// Sends one command (IOCTL) to the driver.
 //
-// Code is the platform's own code, taken straight from the vendored driver ABI header,
-// so the caller writes DT_IOCTL_GET_DEV_INFO2 and this layer does not need to know what
-// that expands to.
+// Code is the platform's IOCTL code, as the driver's ABI header defines it, for example
+// DT_IOCTL_GET_DEV_INFO2. In and InSize are the input structure, Out and OutSize the
+// buffer for the answer. Out and OutSize may both be NULL for a command without an
+// answer.
 //
-// In and InSize describe the input structure. Out and OutSize describe the output
-// buffer. Out may be NULL with OutSize NULL for a command that returns nothing.
+// What *OutSize holds afterwards differs per platform:
+//   Windows   the number of bytes the driver wrote
+//   Linux     unchanged, because the Linux driver does not report how much it wrote
+//   Emulator  the number of bytes written, as on Windows
+// So *OutSize shows a short answer on Windows, but not everywhere.
 //
-// On return *OutSize means different things per platform, because the drivers differ:
+// *DrvStatus gets the driver's DtStatus for OS_IOCTL_DRIVER_STATUS, and DT_STATUS_OK,
+// which is zero, otherwise. DrvStatus may be NULL.
 //
-//   Windows  the number of bytes the driver actually wrote.
-//   Linux    unchanged. The Linux driver writes its answer over the shared buffer and
-//            never reports how much of it is valid, so there is nothing to return.
-//   Emulator the number of bytes written, as on Windows.
-//
-// So a caller can use *OutSize to detect a short answer on Windows, but must not rely on
-// it to do so everywhere.
-//
-// Returns one of the OS_IOCTL_ outcomes below. DrvStatus may be NULL; otherwise it
-// receives the driver's DtStatus when the outcome is OS_IOCTL_DRIVER_STATUS, and
-// DT_STATUS_OK, which is zero, for every other outcome.
+// Returns one of the OS_IOCTL_ outcomes below.
 int OsDrv_Ioctl(OsDrv* Drv, uint32_t Code, const void* In, size_t InSize, void* Out,
                 size_t* OutSize, uint32_t* DrvStatus);
 
-// Outcomes of OsDrv_Ioctl.
+// The outcomes of OsDrv_Ioctl.
 //
-// A driver refuses a command with a DtStatus, and the two platforms deliver it in
-// different ways: on Windows as a GetLastError value with the customer bit (bit 29) set,
-// on Linux as the negated return value of ioctl itself. Each backend recognises its own
-// form, so that the layer above sees one outcome and one status, and translates only the
-// status. Everything else is a failure of the operating system rather than of the
-// driver, and is kept apart because it maps to a different result.
+// A driver refuses a command with a DtStatus. Windows delivers it as a GetLastError
+// value with the customer bit (bit 29) set; Linux as the negated return value of ioctl.
+// Each backend turns its own form into OS_IOCTL_DRIVER_STATUS and the DtStatus, so the
+// layer above handles one form. Any other failure is one of the operating system, not of
+// the driver, and has an outcome of its own because it maps to a different result.
 //
-// On Linux only the backend's own allocation reports OS_IOCTL_NO_RESOURCES; an ioctl
+// On Linux, OS_IOCTL_NO_RESOURCES comes only from the backend's own allocation; an ioctl
 // that fails with ENOMEM is OS_IOCTL_COMMUNICATION.
 //
 #define OS_IOCTL_OK 0             // The driver carried out the command.
 #define OS_IOCTL_DRIVER_STATUS -1 // The driver refused it; see the DtStatus.
-#define OS_IOCTL_NO_RESOURCES -2  // Out of memory or system resources for the call.
+#define OS_IOCTL_NO_RESOURCES -2  // Not enough memory or system resources for the call.
 #define OS_IOCTL_COMMUNICATION -3 // Any other failure to reach the driver.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Memory -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
-// Maps Size bytes of memory the driver offers at Offset into the process, readable and
-// writable and shared with the driver. Returns the address, or NULL when the mapping
-// fails or the platform maps no memory this way: the Windows driver maps memory itself,
-// during the command that asks for it.
+// Maps Size bytes of memory that the driver shares at Offset into the process, for
+// reading and writing. Returns the address, or NULL when the mapping fails or the
+// platform does not map memory this way. The Windows driver does not: it maps the memory
+// itself, in the command that asks for it.
 void* OsDrv_MapMemory(OsDrv* Drv, uint64_t Offset, size_t Size);
 
-// Releases a mapping OsDrv_MapMemory made. Passing NULL does nothing.
+// Removes a mapping that OsDrv_MapMemory made. A NULL Address does nothing.
 void OsDrv_UnmapMemory(OsDrv* Drv, void* Address, size_t Size);
 
-// The error the last failed call on this handle reported, for diagnostics: the driver
-// status for OS_IOCTL_DRIVER_STATUS, otherwise the platform's own error number, errno on
-// Linux and GetLastError on Windows. Zero when nothing has failed.
+// Returns the error of the last failed call on Drv, for diagnostics: the DtStatus after
+// OS_IOCTL_DRIVER_STATUS, and otherwise the platform's error number, errno on Linux and
+// GetLastError on Windows. Returns zero when nothing has failed.
 uint32_t OsDrv_LastError(const OsDrv* Drv);

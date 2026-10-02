@@ -14,54 +14,53 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtBuf +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// A block of bytes with a reference count and an optional release callback, so that a
-// frame can be handed to a consumer that keeps it for as long as it needs, without
-// copying it again. At 12G-SDI a copy per frame is about 1.5 GB/s per stream.
+// A block of bytes with a reference count. It lets the library hand a frame to a
+// consumer without copying it: the consumer keeps a reference for as long as it needs
+// the frame. At 12G-SDI a copy per frame costs about 1.5 GB/s per stream.
 //
-// Two ways to make one:
+// There are two ways to make one:
 //
-//   DtBuf_Alloc  allocates the bytes and frees them when the last reference goes.
-//   DtBuf_Wrap   takes bytes that already exist, and calls the supplied release
-//                function when the last reference goes, for example to return a
-//                frame to a pool rather than free it.
+//   DtBuf_Alloc  allocates the bytes, and frees them when the last reference goes.
+//   DtBuf_Wrap   takes bytes that already exist, and calls a release function when the
+//                last reference goes, for example to return a frame to a pool.
 //
-// The count is atomic, because a buffer made on one thread is routinely released on
-// another.
-//
-// Ownership rule: DtBuf_Alloc and DtBuf_Wrap return a buffer with one reference, which
-// belongs to the caller. Every DtBuf_Ref must be matched by a DtBuf_Unref.
+// The new buffer has one reference, which belongs to the caller. Each DtBuf_Ref must be
+// matched by a DtBuf_Unref. The count is atomic, so a buffer made on one thread can be
+// released on another.
 //
 
 typedef struct DtBuf DtBuf;
 
-// Called once, when the last reference to a wrapped buffer is dropped. Context is the
-// pointer given to DtBuf_Wrap.
+// The function DtBuf_Wrap calls once, when the last reference to the buffer goes.
+// Context is the pointer given to DtBuf_Wrap; Data and Size are the wrapped bytes.
 typedef void (*DtBufReleaseFunc)(void* Context, uint8_t* Data, size_t Size);
 
-// Allocates a buffer of Size bytes with a reference count of one. The contents are
-// uninitialised. Returns NULL when out of memory, or when Size is zero.
+// Allocates a buffer of Size bytes, with one reference. The bytes are not initialised.
+// Returns NULL when Size is zero or there is not enough memory.
 DtBuf* DtBuf_Alloc(size_t Size);
 
-// Wraps bytes the caller already owns, with a reference count of one. Release may be
-// NULL, which means the bytes outlive the buffer and nothing has to be done for them.
-// Returns NULL when out of memory, or when Data is NULL, or when Size is zero.
+// Makes a buffer of bytes the caller already has, with one reference. Release is called
+// when the last reference goes; it may be NULL when the bytes outlive the buffer and
+// nothing needs to be done with them. Returns NULL when Data is NULL, Size is zero, or
+// there is not enough memory.
 DtBuf* DtBuf_Wrap(uint8_t* Data, size_t Size, DtBufReleaseFunc Release, void* Context);
 
-// Adds a reference and returns Buf, so that it can be used in an assignment. Passing
-// NULL returns NULL.
+// Adds a reference to Buf and returns Buf, so that it can be used in an assignment.
+// Returns NULL for a NULL Buf.
 DtBuf* DtBuf_Ref(DtBuf* Buf);
 
-// Drops a reference and clears the caller's pointer. Releases the bytes and the buffer
-// itself when this was the last reference. Passing NULL, or a pointer to NULL, does
-// nothing. The pointer is cleared so that a stale handle cannot be used by accident.
+// Drops the caller's reference and sets *Buf to NULL, so that the caller cannot use it
+// again by mistake. When this was the last reference, the bytes and the buffer are
+// released. A NULL Buf or *Buf does nothing.
 void DtBuf_Unref(DtBuf** Buf);
 
-// The bytes. Valid for as long as the caller holds a reference. NULL when Buf is NULL.
+// Returns the bytes of Buf, which stay valid while the caller holds a reference. Returns
+// NULL for a NULL Buf.
 uint8_t* DtBuf_Data(const DtBuf* Buf);
 
-// The number of bytes. Zero when Buf is NULL.
+// Returns the number of bytes of Buf, or zero for a NULL Buf.
 size_t DtBuf_Size(const DtBuf* Buf);
 
-// The current reference count. Intended for tests and diagnostics; in live code the
-// answer can be stale the moment it is returned. Zero when Buf is NULL.
+// Returns the number of references to Buf, or zero for a NULL Buf. Meant for tests and
+// diagnostics: another thread can change the count straight after.
 int DtBuf_RefCount(const DtBuf* Buf);

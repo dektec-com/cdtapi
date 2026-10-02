@@ -16,23 +16,29 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Classification +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Each backend receives a failure in its platform's own form and turns it into one of
-// the OS_IOCTL_ outcomes. The decision is kept apart from the backends, and free of any
-// platform header, so that both forms are unit-tested on every platform. Neither backend
-// can be run without a card.
+// Turns the way a platform reports a failed IOCTL into one of the OS_IOCTL_ outcomes.
+// The backends call these functions. They use no platform header, so that the tests
+// check the rules of both platforms on every platform; neither backend runs without a
+// card.
 //
 // Both functions set *DrvStatus, which must not be NULL, to the driver's DtStatus for
-// OS_IOCTL_DRIVER_STATUS and to zero otherwise.
+// OS_IOCTL_DRIVER_STATUS, and to zero otherwise.
 //
 
-// GetLastError's value for an exhausted system resource, from winerror.h.
+// The GetLastError value for a lack of system resources, ERROR_NO_SYSTEM_RESOURCES in
+// winerror.h.
 #define OS_WIN_ERROR_NO_SYSTEM_RESOURCES 1450UL
 
-// Classifies the GetLastError value of a failed DeviceIoControl. A driver status has the
-// customer bit, bit 29, set and is passed on unchanged.
+// Returns the outcome of a failed DeviceIoControl, from its GetLastError value Error:
+//   OS_IOCTL_DRIVER_STATUS  Error has the customer bit (bit 29) set; it is the DtStatus
+//   OS_IOCTL_NO_RESOURCES   Error is OS_WIN_ERROR_NO_SYSTEM_RESOURCES
+//   OS_IOCTL_COMMUNICATION  any other Error
 int OsIoctlOutcome_ClassifyWindows(uint32_t Error, uint32_t* DrvStatus);
 
-// Classifies the return value of ioctl. The driver returns a refused command's DtStatus
-// negated, and those values lie outside the range the C library turns into errno, so a
-// return of -1 is a failure of the call itself and anything else nonzero is a status.
+// Returns the outcome of an ioctl, from its return value Rc:
+//   OS_IOCTL_OK             Rc is 0
+//   OS_IOCTL_COMMUNICATION  Rc is -1: the call itself failed, and errno says why
+//   OS_IOCTL_DRIVER_STATUS  any other Rc, which is the DtStatus negated
+// A DtStatus lies outside the range the C library turns into errno, so it never comes
+// back as -1.
 int OsIoctlOutcome_ClassifyLinux(int Rc, uint32_t* DrvStatus);

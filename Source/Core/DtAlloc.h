@@ -13,47 +13,57 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Allocation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Everything in the library allocates through these three calls rather than through
-// malloc directly, so that a test can make an allocation fail on demand.
+// The library allocates all its memory through DtAlloc_Malloc, DtAlloc_Realloc and
+// DtAlloc_Free, never through malloc directly. A test can then make an allocation fail
+// on purpose, and check that the code that handles the failure works: that it leaves
+// the object usable and unchanged.
 //
-// That is not a luxury. Every container has a path that runs only when an allocation
-// fails, and a path that never runs is a path that does not work. Making them reachable
-// is the only way to know that a failed allocation leaves the object usable and unchanged
-// rather than half-modified.
+// A test takes these steps:
+//   1. DtAlloc_ResetCount, to start counting from zero.
+//   2. DtAlloc_FailAfter(N), so that allocation N + 1 from now fails.
+//   3. The operation under test, which must fail cleanly.
+//   4. DtAlloc_NumLive, compared with its value before step 3, to find a leak.
 //
-// The counters are always compiled in. It costs one predictable branch on a path that was
-// about to call malloc anyway, and having the production build take a different route
-// than the tested one would defeat the point.
+// The counting is in every build, the released one too, so that the code a test runs is
+// the code a program runs.
 //
 
+// Allocate, reallocate and free memory, as malloc, realloc and free do. They also count
+// the allocations and the blocks in use, and fail an allocation when a test asks for it.
 void* DtAlloc_Malloc(size_t Size);
 void* DtAlloc_Realloc(void* Ptr, size_t Size);
 void DtAlloc_Free(void* Ptr);
 
-// Lets Count allocations through and fails the one after them: 0 fails the very next
-// one. A negative value disarms the injection, which is the default.
+// Makes an allocation fail: Count allocations succeed, and the one after them fails. 0
+// fails the next one. A negative Count switches the failure off, which is the default.
+// Only one allocation fails; the ones after it succeed again.
 void DtAlloc_FailAfter(int Count);
 
-// How many allocations have been made since the last DtAlloc_ResetCount. Lets a test
-// assert that the path it meant to exercise really did allocate.
+// Returns how many allocations were made since the last DtAlloc_ResetCount, failed ones
+// included. A test uses it to check that the code it meant to test did allocate.
 int DtAlloc_NumAllocations(void);
 
-// Sets the count back to zero and disarms any pending injection.
+// Sets the count of allocations back to zero and switches off a failure that
+// DtAlloc_FailAfter asked for.
 void DtAlloc_ResetCount(void);
 
-// How many blocks allocated through the seam have not been freed. A test compares it
-// before and after an operation to find a leak, which matters on platforms where no leak
-// sanitiser runs. DtAlloc_ResetCount does not change it.
+// Returns how many blocks are allocated and not yet freed. A test compares it before and
+// after an operation to find a leak, also on platforms without a leak sanitiser.
+// DtAlloc_ResetCount does not change it.
 int DtAlloc_NumLive(void);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Growth policy +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Doubling from a minimum, shared by every growable container so that they cannot drift
-// apart. Current is the capacity now, Needed the capacity required.
+// Computes the new capacity of a container that must hold Needed elements of ElemSize
+// bytes and now has room for Current. The capacity doubles, starting at MinCapacity,
+// until it is large enough; every growable container uses this, so that they all grow
+// alike. When Needed is not more than Current, *Out is Current.
 //
-// Returns 0 with *Out set, or -1 for an Out of NULL, an ElemSize of 0, or a grown
-// capacity whose bytes cannot be represented in a size_t. Refusing is the point: a
-// capacity that wraps produces a small allocation followed by writes beyond its end.
-// MinCapacity must not be 0: from a Current of 0 the doubling would never leave it.
+// MinCapacity must not be 0, because doubling from 0 stays 0.
+//
+// Returns 0 with *Out set, or -1 when:
+//   - Out is NULL, or ElemSize is 0
+//   - the new capacity in bytes does not fit in a size_t. Allocating would wrap to a
+//     small block, and the writes after it would run past its end.
 int DtAlloc_GrowCapacity(size_t Current, size_t Needed, size_t ElemSize,
                          size_t MinCapacity, size_t* Out);
