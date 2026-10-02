@@ -429,7 +429,10 @@ DtapiResult DtService_Transfer(DtService* Service, DtServiceCmd Cmd, const char*
     if (Result == DTAPI_OK)
         Result = ParseAnswer(Answer, AnswerSize, Cmd, ResultXml, Exception);
     DtAlloc_Free(Answer);
-    if (Result != DTAPI_OK && Result != DTAPI_E_OUT_OF_MEM)
+
+    // Once the command is on its way, any failure, even of memory for the answer, may
+    // leave part of a message in the pipe.
+    if (Result != DTAPI_OK)
         Service->Failed = true;
     return Result;
 }

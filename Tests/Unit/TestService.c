@@ -391,6 +391,17 @@ static bool FakeStart(FakeService* Fake, FakeBehaviour Behaviour)
 //
 static void FakeStop(FakeService* Fake)
 {
+#ifdef _WIN32
+    // A case that failed before it connected leaves the thread waiting in
+    // ConnectNamedPipe, which has no time limit; a client that comes and goes ends the
+    // wait. Once a client has come, this one finds the pipe busy or gone.
+    char Path[128];
+    snprintf(Path, sizeof(Path), "\\\\.\\pipe\\%s", Fake->PipeName);
+    HANDLE Client =
+        CreateFileA(Path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (Client != INVALID_HANDLE_VALUE)
+        CloseHandle(Client);
+#endif
     OsThread_Join(Fake->Thread);
     Fake->Thread = NULL;
     FakeHangUp(Fake);
