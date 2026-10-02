@@ -13,12 +13,14 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Failures +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Each thread has a text of at most DT_AV_ERROR_SIZE - 1 characters, which
-// GetLastException returns: "<Where>: <What> (<result name>)".
+// Each thread keeps the text of its last failure, which GetLastException returns, in
+// the form "<Where>: <What> (<result name>)". It holds at most DT_AV_ERROR_SIZE - 1
+// characters.
 //
 
 #define DT_AV_ERROR_SIZE 256
 
-// Records a failure on the calling thread and returns Result. Where names the function,
-// such as "AvFifo_RxFifo_Start"; What says what failed.
+// Records a failure as the calling thread's last one, and returns Result, so that a
+// function can write "return DtAvError_Set(...)". Where names the function, e.g.
+// "AvFifo_RxFifo_Start"; What says what failed.
 DtapiResult DtAvError_Set(DtapiResult Result, const char* Where, const char* What);

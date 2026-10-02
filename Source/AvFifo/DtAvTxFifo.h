@@ -17,29 +17,39 @@
 #include "cdtapi_avfifo.h" // The FIFO and its configurations.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Description +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// The NMOS bridge describes a sender's stream from its transmit FIFO. These functions
+// give it what it needs. Each takes the FIFO's lock, works whether the FIFO is started
+// or not, and takes Where, the name of the calling public function, for the text of a
+// failure.
+//
 
-// A transmit FIFO as a description of its stream needs it: what it is configured with,
-// and the addresses Start sends from.
+// What is needed to describe the stream of a transmit FIFO.
 typedef struct DtAvTxFifoDescription
 {
-    DtAvKind Kind;
-    St2110_TxConfigAudio Audio; // Of an audio FIFO
-    St2110_TxConfigVideo Video; // Of a video FIFO
-    AvFifo_IpPars IpPars;
-    uint8_t SourceIp[16]; // Of IpPars's IP version, as Start chooses it
-    uint8_t Mac[6];       // Of the port
+    DtAvKind Kind;              // Whether the FIFO carries audio or video
+    St2110_TxConfigAudio Audio; // The configuration, for an audio FIFO
+    St2110_TxConfigVideo Video; // The configuration, for a video FIFO
+    AvFifo_IpPars IpPars;       // Where the stream is sent
+    uint8_t SourceIp[16];       // The port's IP address the stream is sent from, of
+                                // IpPars's IP version, as Start chooses it
+    uint8_t Mac[6];             // The port's MAC address
 } DtAvTxFifoDescription;
 
-// Describes Fifo, started or not, under its lock: its configuration, its IP parameters,
-// and the port's address and MAC address Start sends from, which it asks the driver and
-// the operating system for. DTAPI_E_NOT_ATTACHED, DTAPI_E_CONFIG before Configure,
-// DTAPI_E_NO_IPPARS before SetIpPars, and what checking the network gives, with the
-// failure text naming Where.
+// Fills in the description of a transmit FIFO. The source address and MAC address are
+// read from the driver and the operating system, the way Start finds them. Returns:
+//
+//   DTAPI_OK                The description is filled in
+//   DTAPI_E_NOT_ATTACHED    The FIFO is not attached
+//   DTAPI_E_CONFIG          The FIFO is not configured yet
+//   DTAPI_E_NO_IPPARS       The FIFO has no IP parameters yet
+//
+// and the errors of checking the network, such as DTAPI_E_NO_LINK.
 DtapiResult DtAvTxFifo_Describe(AvFifo_TxFifo* Fifo, DtAvTxFifoDescription* Description,
                                 const char* Where);
 
-// Gives the IP parameters of Fifo, started or not, under its lock, without checking the
-// network. DTAPI_E_NOT_ATTACHED, and DTAPI_E_NO_IPPARS before SetIpPars, with the
-// failure text naming Where.
+// Gets the IP parameters of a transmit FIFO, without checking the network. Returns
+// DTAPI_OK, DTAPI_E_NOT_ATTACHED when the FIFO is not attached, or DTAPI_E_NO_IPPARS when
+// it has no IP parameters yet.
 DtapiResult DtAvTxFifo_GetIpPars(AvFifo_TxFifo* Fifo, AvFifo_IpPars* IpPars,
                                  const char* Where);

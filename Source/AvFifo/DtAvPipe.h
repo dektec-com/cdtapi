@@ -21,111 +21,143 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipe +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A pipe of the network function, opened by type with a fallback, and its shared buffer,
-// a whole number of the pipe's prefetch size, PrefetchSize pages of
-// DT_AV_PIPE_PAGE_BYTES, page-aligned, with one data word kept free. The process keeps
-// its own offset in the buffer: the read offset of a receive pipe, the write offset of a
-// transmit pipe.
+// A pipe is the path between the network function of an IP port and the process: the
+// card writes received packets into a buffer the process reads, or reads the packets to
+// transmit from a buffer the process writes. The buffer is shared between the process
+// and the card, and its size is a whole number of the pipe's prefetch size (PrefetchSize
+// pages of DT_AV_PIPE_PAGE_BYTES).
+//
+// The card and the process each keep an offset in the buffer. For a receive pipe the
+// process keeps the read offset and asks the driver for the write offset; for a transmit
+// pipe it is the other way round. One data word before the other side's offset always
+// stays free, so that a full buffer and an empty one look different.
 //
 
-// A buffer is rounded to 4 KB pages, whatever the operating system's page size.
+// The page size a buffer is rounded to, whatever the operating system's page size.
 #define DT_AV_PIPE_PAGE_BYTES 4096
 
-// The largest packet a pipe holds: the most words a header counts, 2,047, of 8 bytes.
+// The largest packet a pipe holds, in bytes: a packet header counts at most 2,047 words
+// of 8 bytes.
 #define DT_AV_PIPE_MAX_PACKET (2047 * 8)
 
 typedef struct DtAvPipe
 {
-    OsDrv* Drv;
-    DtDrvObject Nw;     // The network function
-    DtDrvObject Object; // The pipe; its UUID 0 while none is open
-    DtPipeProps Props;
-    OsDmaBuffer SharedBuffer;
-    bool BufferRegistered; // The driver has the buffer
-    uint32_t BufferSize;   // Bytes of the buffer
-    uint32_t Offset;
+    OsDrv* Drv;               // The driver the pipe is opened through
+    DtDrvObject Nw;           // The network function the pipe belongs to
+    DtDrvObject Object;       // The pipe; its UUID is 0 while no pipe is open
+    DtPipeProps Props;        // The pipe's properties, read when it is opened
+    OsDmaBuffer SharedBuffer; // The buffer shared with the card
+    bool BufferRegistered;    // Whether the driver has been given the buffer
+    uint32_t BufferSize;      // The size of the buffer in bytes
+    uint32_t Offset; // The process's offset: read for receive, write for transmit
 } DtAvPipe;
 
-// Opens a pipe of network function Nw, of Type, a DT_PIPE_ value, or of Fallback, -1 for
-// none, when every pipe of Type is in use, and reads its properties. DTAPI_E_DEV_DRIVER
-// for a data width under 8 or not a multiple of 32 bits, or a prefetch size under 1.
+// Opens a pipe of network function Nw and reads its properties. Type is the kind of
+// pipe wanted, a DT_PIPE_ value; when every pipe of that kind is in use, a pipe of kind
+// Fallback is opened instead (-1 for no fallback). Returns DTAPI_OK, DTAPI_E_DEV_DRIVER
+// when the pipe reports a data width that is not a multiple of 32 bits or a prefetch
+// size under 1, or the errors of the driver.
 DtapiResult DtAvPipe_Open(DtAvPipe* Pipe, OsDrv* Drv, DtDrvObject Nw, int Type,
                           int Fallback);
 
-// Idles the pipe and gives it a buffer of at least Size bytes, rounded up to whole
-// prefetch sizes. The offset starts at 0. DTAPI_E_INVALID_ARG for no open pipe, a buffer
-// already given, or a Size of 0 or over INT32_MAX / 2; DTAPI_E_OUT_OF_MEM when the buffer
-// cannot be allocated.
+// Stops the pipe and gives it a shared buffer of at least Size bytes, rounded up to a
+// whole number of prefetch sizes. The process's offset starts at 0. Returns:
+//
+//   DTAPI_OK              The buffer is set
+//   DTAPI_E_INVALID_ARG   No pipe is open, it has a buffer already, or Size is 0 or
+//                         larger than INT32_MAX / 2
+//   DTAPI_E_OUT_OF_MEM    The buffer could not be allocated
+//
+// and the errors of the driver.
 DtapiResult DtAvPipe_SetBuffer(DtAvPipe* Pipe, size_t Size);
 
-// Idles the pipe, takes its buffer back, frees it and closes the pipe; what is not there
-// is skipped. The pipe can be opened again.
+// Stops the pipe, takes its buffer back from the driver, frees it and closes the pipe.
+// Steps that do not apply, such as a buffer that was never set, are skipped. The pipe
+// can be opened again afterwards.
 void DtAvPipe_Close(DtAvPipe* Pipe);
 
-// Whether the pipe is a hardware pipe; whether it takes jumbo frames; the bytes a packet
-// pads to.
+// Return whether the pipe is a hardware pipe, whether it takes jumbo frames, and the
+// size in bytes of its data word, to which every packet is padded.
 bool DtAvPipe_IsHardware(const DtAvPipe* Pipe);
 bool DtAvPipe_IsJumbo(const DtAvPipe* Pipe);
 int DtAvPipe_Alignment(const DtAvPipe* Pipe);
 
-// The bytes the buffer can hold at once: its size less a data word.
+// Returns how many bytes the buffer can hold at once: its size less the data word that
+// always stays free.
 uint32_t DtAvPipe_UsableBytes(const DtAvPipe* Pipe);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A writer is a DtAvTxSink over the buffer: a packet is written in place where it fits
-// before the end of the buffer, and otherwise into WrapPacket, which is copied in two
-// parts around the end. The driver hears of the written packets every
-// DT_AV_WRITER_FLUSH_EVERY_PACKETS packets and at a flush.
+// A writer writes packets into the buffer of a transmit pipe. It offers itself as a
+// DtAvTxSink, so a stream writes its packets straight into the buffer. A packet that does
+// not fit before the end of the buffer is first written into WrapPacket and then copied
+// in two parts, around the end. The writer tells the driver how far it has written every
+// DT_AV_WRITER_FLUSH_EVERY_PACKETS packets, and when it is flushed.
 //
 
 #define DT_AV_WRITER_FLUSH_EVERY_PACKETS 100
 
 typedef struct DtAvWriter
 {
+    // The pipe written to.
     DtAvPipe* Pipe;
-    DtAvTxSink Sink; // Writes through this writer
+
+    // The sink a stream writes its packets through.
+    DtAvTxSink Sink;
+
+    // A packet that wraps around the end of the buffer, and whether the packet being
+    // written is in it.
     uint8_t WrapPacket[DT_AV_PIPE_MAX_PACKET];
     bool IsInWrapPacket;
-    int UnflushedPackets; // Packets the driver has not heard of
-    DtapiResult
-        FirstFlushFailure; // The first failed flush since the last DtAvWriter_Flush
+
+    // The packets written that the driver has not been told of yet.
+    int UnflushedPackets;
+
+    // The first automatic flush that failed since the last DtAvWriter_Flush.
+    DtapiResult FirstFlushFailure;
 } DtAvWriter;
 
-// Sets up a writer on a pipe with a buffer, from the pipe's offset.
+// Sets up a writer on a pipe that has a buffer. Writing starts at the pipe's offset.
 void DtAvWriter_Init(DtAvWriter* Writer, DtAvPipe* Pipe);
 
-// The bytes that can be written now: up to a data word before the pipe's read offset.
-// DTAPI_E_DEV_DRIVER when the driver's read offset lies beyond the buffer.
+// Gets how many bytes can be written now, in *Free: up to one data word before the
+// card's read offset. Returns DTAPI_OK, DTAPI_E_DEV_DRIVER when the driver reports a read
+// offset beyond the buffer, or the errors of the driver.
 DtapiResult DtAvWriter_FreeBytes(DtAvWriter* Writer, uint32_t* Free);
 
-// Tells the driver of every packet written. Returns the first failure since the last
-// flush.
+// Tells the driver how far the writer has written, so that the card sends every packet
+// written so far. Returns the first failure of a flush since the last call, including
+// the automatic ones, or DTAPI_OK.
 DtapiResult DtAvWriter_Flush(DtAvWriter* Writer);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// One pass over the buffer: the packets between the process's read offset and the pipe's
-// write offset, each in one piece, a packet around the end of the buffer copied into
-// WrapPacket. A header that does not check, or a packet larger than a pipe holds,
-// means the process lost the packet boundaries: the read offset jumps to the write
-// offset and the pass reports it. The read offset moves on after the pass.
+// A reader takes the received packets out of the buffer of a receive pipe. Each pass
+// hands every complete packet between the process's read offset and the card's write
+// offset to a function, then moves the read offset past them. A packet that wraps around
+// the end of the buffer is copied into WrapPacket first, so the function always gets it
+// in one piece.
+//
+// A packet header that is not valid, or that gives a size larger than a pipe holds, means
+// the reader has lost track of where packets start. The pass then skips everything up to
+// the write offset and reports that it lost sync.
 //
 
 typedef struct DtAvReader
 {
-    DtAvPipe* Pipe;
-    uint8_t WrapPacket[DT_AV_PIPE_MAX_PACKET];
+    DtAvPipe* Pipe;                            // The pipe read from
+    uint8_t WrapPacket[DT_AV_PIPE_MAX_PACKET]; // A packet that wraps around the end
 } DtAvReader;
 
-// Takes one packet of Size bytes.
+// Handles one received packet of Size bytes.
 typedef void (*DtAvPacketFunc)(void* Context, const uint8_t* Packet, int Size);
 
-// Sets up a reader on a pipe with a buffer, from the pipe's offset.
+// Sets up a reader on a pipe that has a buffer. Reading starts at the pipe's offset.
 void DtAvReader_Init(DtAvReader* Reader, DtAvPipe* Pipe);
 
-// Hands every whole packet in the buffer to Func. *Packets receives their number and
-// *LostSync whether the boundaries were lost. DTAPI_E_DEV_DRIVER when the driver's write
-// offset lies beyond the buffer.
+// Hands every complete packet in the buffer to Func, and moves the read offset past them.
+// *Packets gets how many packets were handed over, and *LostSync whether the reader lost
+// track of the packet boundaries. Returns DTAPI_OK, DTAPI_E_DEV_DRIVER when the driver
+// reports a write offset beyond the buffer, or the errors of the driver.
 DtapiResult DtAvReader_Pass(DtAvReader* Reader, DtAvPacketFunc Func, void* Context,
                             int* Packets, bool* LostSync);

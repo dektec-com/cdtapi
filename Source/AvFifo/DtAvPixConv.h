@@ -36,30 +36,32 @@ typedef void (*DtAvPixConvFunc)(const uint8_t* Src, uint8_t* Dst, size_t NumPgro
 typedef void (*DtAvPixConvPlanarFunc)(const uint8_t* Src, size_t NumPgroups, uint8_t* Y,
                                       uint8_t* U, uint8_t* V);
 
-// A set of conversions.
+// One implementation of every conversion: portable C, SSSE3 or AVX2.
 typedef struct DtAvPixConvTable
 {
-    DtAvPixConvFunc Pg10ToUyvy10;
-    DtAvPixConvFunc Pg10ToUyvy8;
-    DtAvPixConvFunc Uyvy10ToPg10;
-    DtAvPixConvPlanarFunc Uyvy8ToYuv422p;
+    DtAvPixConvFunc Pg10ToUyvy10;         // Pgroup 10 to UYVY 10
+    DtAvPixConvFunc Pg10ToUyvy8;          // Pgroup 10 to UYVY 8
+    DtAvPixConvFunc Uyvy10ToPg10;         // UYVY 10 to pgroup 10
+    DtAvPixConvPlanarFunc Uyvy8ToYuv422p; // UYVY 8 to YUV 4:2:2p
 } DtAvPixConvTable;
 
-// The conversions in portable C.
+// Returns the conversions written in portable C, which run everywhere.
 const DtAvPixConvTable* DtAvPixConv_C(void);
 
-// The conversions with SSSE3, or NULL when the library was built without them or the
-// processor lacks SSSE3.
+// Returns the conversions that use SSSE3, or NULL when the library was built without
+// them or the processor has no SSSE3.
 const DtAvPixConvTable* DtAvPixConv_Ssse3(void);
 
-// The conversions with AVX2 for 10-bit video and SSSE3 for planar video, or NULL when the
-// library was built without them, or the processor or the operating system lacks AVX2.
+// Returns the conversions that use AVX2 for 10-bit video and SSSE3 for planar video, or
+// NULL when the library was built without them, or the processor or the operating system
+// does not support AVX2.
 const DtAvPixConvTable* DtAvPixConv_Avx2(void);
 
-// The fastest conversions the processor runs: AVX2, SSSE3 or portable C.
+// Returns the fastest conversions the processor can run: AVX2, SSSE3 or portable C.
 const DtAvPixConvTable* DtAvPixConv_Best(void);
 
-// The SSSE3 and the AVX2 conversions without the processor check; defined only in an
-// x86 build. Other code calls DtAvPixConv_Ssse3 or DtAvPixConv_Avx2, which check first.
+// Return the SSSE3 and the AVX2 conversions without checking the processor; they exist
+// only in an x86 build, each in a source file compiled for its instruction set. Other
+// code calls DtAvPixConv_Ssse3 or DtAvPixConv_Avx2, which check first.
 const DtAvPixConvTable* DtAvPixConv_Ssse3Unchecked(void);
 const DtAvPixConvTable* DtAvPixConv_Avx2Unchecked(void);

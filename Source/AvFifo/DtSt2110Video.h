@@ -18,123 +18,139 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmission +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A frame, or a field of interlaced and PsF video, is cut into rows of pixel groups and
-// the rows into packets: one row or less per packet, or up to three rows when the
-// payload holds them. The last packet carries the marker. The first packet is sent the
-// transmit offset after the frame's time, less the card's output delay, and the others
-// follow at equal spacing over the frame period, or over its active part for gapped
-// scheduling. The second field of PsF video repeats the first field's RTP timestamp.
+// The video packetizer sends a frame, or one field of interlaced or PsF video, as rows
+// of pixel groups split over packets. A packet holds segments of at most three rows: a
+// long row is split over several packets, short rows share one. The last packet of the
+// frame or field has the RTP marker bit set.
+//
+// The packets are spread over the frame period: the first one leaves the transmit offset
+// after the frame's time, and the others follow at equal intervals. With gapped
+// scheduling they are spread over only the active part of the frame period. Like audio,
+// every packet is scheduled the card's output delay earlier. The second field of PsF
+// video gets the same RTP timestamp as the first.
 //
 
-// The headers in a video packet's UDP datagram: the UDP and RTP headers and a payload
-// header of three rows. The rest of the datagram is video.
+// The bytes of a video packet's UDP datagram that are not video: the UDP and RTP headers,
+// the extended sequence number, and room for three row headers.
 #define DT_ST2110_VIDEO_HEADERS                                                          \
     (DT_AV_UDP_HEADER_SIZE + DT_AV_RTP_HEADER_SIZE + DT_AV_ESN_SIZE + 3 * DT_AV_SRD_SIZE)
 
 typedef struct DtSt2110VideoTx
 {
-    // From the configuration.
-    bool Is420;
-    bool IsInterlaced;
-    bool IsPsf;
-    int NumRows;      // Rows of a frame
-    int RowSize;      // Bytes of a row in the packets, whole pixel groups
-    int RowSizeFrame; // Bytes of a row in the application's frame
-    int PgroupBytes;
-    int PgroupPixels;
-    St2110_VideoPacking Packing;
-    St2110_Scheduling Scheduling;
-    FrameRate Rate;    // Of frames: half the field rate of interlaced and PsF video
-    Ratio ActiveVideo; // The active part of the frame period
-    int TrOffsetNs;
-    DtAvPixConvFunc Convert; // From the frame to the packets, or NULL to copy
+    // Set by Configure.
+    bool Is420;                   // Whether the video is 4:2:0, with rows numbered by two
+    bool IsInterlaced;            // Whether the video is interlaced
+    bool IsPsf;                   // Whether the video is progressive segmented frame
+    int NumRows;                  // The rows of a whole frame
+    int RowSize;                  // The bytes of a row in the packets: whole pixel groups
+    int RowSizeFrame;             // The bytes of a row in the application's frame
+    int PgroupBytes;              // The bytes of a pixel group
+    int PgroupPixels;             // The pixels in a pixel group
+    St2110_VideoPacking Packing;  // How rows are split over packets
+    St2110_Scheduling Scheduling; // Whether packets spread over the whole frame period
+    FrameRate Rate;               // The rate of what is sent as one frame: the field rate
+                                  // for interlaced and PsF video
+    Ratio ActiveVideo;            // The active part of the frame period
+    int TrOffsetNs;               // The transmit offset, in nanoseconds
+    DtAvPixConvFunc Convert;      // Converts the frame's pixels into packets; NULL copies
 
-    // From the start.
-    int PayloadSize;          // Bytes of video per packet
-    int PacketsPerFrame;      // Of a whole frame, both fields
-    uint64_t PacketSpacingPs; // Between packets, in picoseconds
-    uint32_t PrevRtpTime;
+    // Set by Start.
+    int PayloadSize;          // The bytes of video in a packet
+    int PacketsPerFrame;      // The packets of a whole frame, both fields
+    uint64_t PacketSpacingPs; // The time between two packets, in picoseconds
+    uint32_t PrevRtpTime;     // The RTP timestamp of the last first field, for PsF
 } DtSt2110VideoTx;
 
-// Configures a packetizer for 8-bit or 10-bit UYVY, with the transmit offset and active
-// part for the resolution, scanning and rate. DTAPI_E_INVALID_ARG for a rate or
-// format that is not valid, a resolution that is not a positive even width and positive
-// height, or a transmit offset that does not fit an int.
+// Sets up a packetizer for 8-bit or 10-bit UYVY video. The transmit offset and the active
+// part of the frame period follow from the resolution, scanning and rate. Returns
+// DTAPI_OK, or DTAPI_E_INVALID_ARG when the rate or format is not valid, the width is not
+// positive and even, the height is not positive, or the transmit offset does not fit in
+// an int.
 DtapiResult DtSt2110VideoTx_Configure(DtSt2110VideoTx* Tx,
                                       const St2110_TxConfigVideo* Config,
                                       const DtAvPixConvTable* Conv);
 
-// Configures a packetizer for rows of pixel groups as the application gives them.
-// DTAPI_E_INVALID_ARG for a pixel group, row, row count, rate or active part that is not
-// valid.
+// Sets up a packetizer for raw video: rows of pixel groups the application has already
+// made, which are sent as they are. Returns DTAPI_OK, or DTAPI_E_INVALID_ARG when the
+// pixel group, row size, number of rows, rate or active part is not valid.
 DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
                                          const St2110_TxConfigRawVideo* Config);
 
-// Sizes the packets for the stream, counts those of a frame and spaces them over the
-// frame period, or its active part for gapped scheduling. A payload size of -1 gives
-// the most a standard packet holds, on a jumbo pipe too. DTAPI_E_INVALID_ARG for a
-// configured payload size that is not a positive multiple of the pixel group, of 180
-// bytes for block packing, or larger than a packet holds.
+// Prepares the packetizer to send on Stream: chooses the payload size, counts the
+// packets of a frame and works out the time between them. A configured payload size of
+// -1 takes the most a standard packet holds, also on a pipe with jumbo frames. Returns
+// DTAPI_OK, or DTAPI_E_INVALID_ARG when the configured payload size is not positive, not
+// a multiple of the pixel group (of 180 bytes for block packing), or larger than a packet
+// holds.
 DtapiResult DtSt2110VideoTx_Start(DtSt2110VideoTx* Tx, const DtAvTxStream* Stream);
 
-// The bytes the packets of a frame take in the pipe at most, padding included.
+// Returns the most bytes the packets of one frame take in the pipe, padding included.
 int DtSt2110VideoTx_FrameBytes(const DtSt2110VideoTx* Tx, const DtAvTxStream* Stream);
 
-// The valid bytes a frame, or a field, must have.
+// Returns the number of valid bytes a frame must have; for interlaced and PsF video, the
+// field Field must have.
 int DtSt2110VideoTx_FrameSize(const DtSt2110VideoTx* Tx, int Field);
 
-// Hands the packets of Frame to Sink. DTAPI_E_INVALID_FORMAT, sending nothing, when its
-// valid bytes are not those of DtSt2110VideoTx_FrameSize or exceed its size.
+// Writes the packets of Frame to Sink. Returns DTAPI_OK, or DTAPI_E_INVALID_FORMAT,
+// sending nothing, when the frame's number of valid bytes is not what
+// DtSt2110VideoTx_FrameSize gives, or larger than the frame.
 DtapiResult DtSt2110VideoTx_Packetize(DtSt2110VideoTx* Tx, DtAvTxStream* Stream,
                                       const AvFifo_Frame* Frame, const DtAvTxSink* Sink);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Reception +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The parser learns the frame's size from the stream: waiting for a marker, it counts
-// the rows and bytes of a frame that starts at row 0, and reads the last row number and
-// a row's length from the row headers; an interlaced frame, a field, gets room for one
-// row more. From the first marker on, a frame is the packets up to the next marker, with
-// the RTP timestamp and time of arrival of its first packet.
+// The video parser does not know the size of the frames in advance; it learns it from
+// the stream. Until the first marker it only watches: it counts the bytes and rows of a
+// frame that starts at row 0, and reads the highest row number and the length of a row
+// from the row headers. A field gets room for one row more than it has.
 //
-//   a gap in the sequence numbers inside a frame    an incomplete frame, skipped
-//   a gap before a frame's first packet             a gap, and the frame is received
-//   more than three row headers in a packet         an IP packet error, and the frame
-//                                                   skipped
-//   more bytes than the learned size, or the        a size error, and the size learned
-//   field bit appearing once the size is known      again
+// After that first marker, every packet up to and including the next marker makes one
+// frame, with the RTP timestamp and the time of arrival of its first packet. What goes
+// wrong is counted in the statistics:
+//
+//   Problem                                   Counted as        And then
+//   Packets missing inside a frame            FramesIncomplete  The frame is skipped
+//   Packets missing before a frame's start    Gaps              The frame is received
+//   A packet with more than three row         IpPacketErrors    The frame is skipped
+//   headers, or headers that do not fit
+//   A frame larger than the learned size,     FramesSizeError   The size is learned
+//   or a field bit in progressive video                         again
 //
 
 typedef struct DtSt2110VideoRx
 {
-    St2110_RxFrameFormat Format;
-    const DtAvPixConvTable* Conv;
-    DtAvRxSink Sink;
-    RxStatistics Stats;
+    St2110_RxFrameFormat Format;  // The pixel format the frames are converted to
+    const DtAvPixConvTable* Conv; // The conversions used
+    DtAvRxSink Sink;              // Where the frames go
+    RxStatistics Stats;           // The counts of frames and errors
 
-    // What the stream taught.
-    int CalculatedFrameSize; // Bytes of pixel groups a frame gets room for, or -1
-    int CountedFrameSize;    // Bytes of a frame from row 0 counted, or -1
-    int CountedNumRows;      // Last row number plus one of the rows counted
-    bool IsInterlaced;
-    bool Is420;
-    int RowSizeFrame; // Bytes of pixel groups of a row, or -1
-    int NumRowsFrame; // Last row number plus one, or -1
-    int PrevNumRows;  // The previous packet's NumRowsFrame, or -1
+    // What the parser has learned of the stream.
+    int CalculatedFrameSize; // The bytes a frame gets room for, or -1 when not yet known
+    int CountedFrameSize;    // The bytes counted of a frame from row 0, or -1
+    int CountedNumRows;      // The highest row number counted, plus one
+    bool IsInterlaced;       // Whether a field bit was seen
+    bool Is420;              // Whether rows are numbered by two
+    int RowSizeFrame;        // The bytes of a row, or -1 when not yet known
+    int NumRowsFrame;        // The highest row number seen, plus one, or -1
+    int PrevNumRows;         // NumRowsFrame of the previous packet, or -1
 
     // The frame being received.
-    uint32_t LastSeqNum;
-    bool IsWaitingForMarker;
-    DtAvFrame* PartialFrame;
-    int InputNumBytes;  // Bytes of pixel groups taken into it
-    int OutputNumBytes; // Bytes written into it
+    uint32_t LastSeqNum;     // The extended sequence number of the last packet
+    bool IsWaitingForMarker; // Whether packets are skipped until the next marker
+    DtAvFrame* PartialFrame; // The frame being filled, or NULL
+    int InputNumBytes;       // The bytes of the packets put into it so far
+    int OutputNumBytes;      // The bytes written into it so far, after conversion
 } DtSt2110VideoRx;
 
-// Sets up a parser that converts to Format with Conv and delivers to Target.
+// Sets up a parser that converts the video to Format with Conv and delivers the frames to
+// Target.
 void DtSt2110VideoRx_Init(DtSt2110VideoRx* Rx, St2110_RxFrameFormat Format,
                           const DtAvPixConvTable* Conv, const DtAvRxSink* Target);
 
-// Returns the frame being received to the pool and forgets what the stream taught.
+// Starts the parser afresh: puts the frame being received back in the pool and forgets
+// what it learned of the stream.
 void DtSt2110VideoRx_Reset(DtSt2110VideoRx* Rx);
 
-// Parses one packet of the pipe.
+// Adds one packet from the pipe to the frame being received, and delivers the frame when
+// the packet has the marker bit.
 void DtSt2110VideoRx_Parse(DtSt2110VideoRx* Rx, const uint8_t* Packet, int Size);
