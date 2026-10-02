@@ -40,10 +40,10 @@ typedef struct ExampleOption
 bool Example_CheckArguments(int Argc, char** Argv, const char* Usage,
                             const ExampleOption* Options, int NumOptions);
 
-// True when the lone option Name is on the command line.
+// Returns whether the option Name, which takes no value, is on the command line.
 bool Example_HasFlag(int Argc, char** Argv, const char* Name);
 
-// The value of option Name, or NULL when it is not given.
+// Returns the value of option Name, or NULL when it is not given.
 const char* Example_Value(int Argc, char** Argv, const char* Name);
 
 // Reads option Name as a decimal integer into *Value, which is left alone when the option
@@ -52,33 +52,35 @@ bool Example_Int64(int Argc, char** Argv, const char* Name, int64_t* Value);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Ports +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// What a program needs of a port it picks.
+// A program's test of whether a port can do what it needs, e.g. be an SDI input.
 typedef bool (*ExampleSuits)(const DtHwFuncDesc* Port);
 
-// Scans the hardware functions and returns in *Found the first port that is on the
-// device with this serial number, 0 for any; that has this number, 0 for any; and that
-// suits, NULL for any port. Returns DTAPI_OK, DTAPI_E_NOT_FOUND when no port matches,
-// DTAPI_E_OUT_OF_MEM, or the scan's failure.
+// Finds the port a program will use: the first port, in the order of DtapiHwFuncScan(),
+// on the card with serial number Serial (0: any card), with number Port (0: any port),
+// for which Suits returns true (NULL: any port). Fills *Found with its description.
+//
+// Returns DTAPI_OK, DTAPI_E_NOT_FOUND when no port matches, DTAPI_E_OUT_OF_MEM, or the
+// error of the scan.
 unsigned int Example_FindPort(int64_t Serial, int Port, ExampleSuits Suits,
                               DtHwFuncDesc* Found);
 
 // Prints "What: RESULT_NAME" for a failed call and returns EXAMPLE_FAILED.
 int Example_Failed(const char* What, unsigned int Result);
 
-// True for DTAPI_OK and the DTAPI_OK_ results that carry a warning.
+// Returns whether Result is a success: DTAPI_OK, or a DTAPI_OK_ result with a warning.
 bool Example_Succeeded(unsigned int Result);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Names +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The name of a video standard, its DTAPI_VIDSTD_ macro without the prefix, such as
-// "1080I50", or "UNKNOWN"; NULL for a number that is not a video standard.
+// Returns the name of a video standard: its DTAPI_VIDSTD_ macro without the prefix, e.g.
+// "1080I50", or "UNKNOWN". Returns NULL for a number that is not a video standard.
 const char* Example_VidStdName(int VidStd);
 
-// The video standard with Name, compared without regard to case. False when there is
-// none.
+// Sets *VidStd to the video standard called Name, ignoring case, e.g. "1080i50". Returns
+// false when there is no such standard.
 bool Example_VidStdFromName(const char* Name, int* VidStd);
 
-// The name of an I/O standard value, such as "3GSDI" or "ASI"; "?" for any other.
+// Returns the name of an I/O standard value, e.g. "3GSDI" or "ASI", or "?" for another.
 const char* Example_IoStdName(int Value);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -86,5 +88,6 @@ const char* Example_IoStdName(int Value);
 // Sleeps for about Ms milliseconds.
 void Example_SleepMs(int Ms);
 
-// Milliseconds on a clock that only goes forward, from an arbitrary start.
+// Returns the time in milliseconds on a clock that never goes back, from an arbitrary
+// start; for measuring how long something takes.
 int64_t Example_NowMs(void);

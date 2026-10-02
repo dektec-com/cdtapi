@@ -4,14 +4,14 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches to the device and detects the video standard on the port, once, or with
-// --timeout until a standard is found or the time has passed. Prints the port and what
-// was found:
+// Detects the video standard of the signal on an SDI input: once, or with --timeout
+// repeatedly until a standard is found or the time is up. Prints the port and the
+// standard:
 //
 //     9217800001:1  1080I50
 //     9217800001:1  no video standard
 //
-// The port must be configured as an input; DtConfigPort does that. Exits with 0 when a
+// The port must be set to be an input; DtConfigPort does that. Exits with 0 when a
 // standard is found, 2 when none is, and 1 when detection fails or the command line is
 // wrong.
 
@@ -36,6 +36,8 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Whether a port can be an SDI input, for Example_FindPort().
+//
 static bool IsSdiInput(const DtHwFuncDesc* Port)
 {
     return Port->IsSdi && Port->IsInput;
@@ -43,9 +45,9 @@ static bool IsSdiInput(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtDevice_DetectVidStd returns DTAPI_OK with DTAPI_VIDSTD_UNKNOWN while there is no
-// signal, so waiting is detecting again after a pause. DtDevice_WaitForSignalTimeout
-// waits with a time limit in one call; this loop shows the detection it is built from.
+// While there is no signal, DtDevice_DetectVidStd returns DTAPI_OK with
+// DTAPI_VIDSTD_UNKNOWN, so to wait the program detects again after a short pause. The
+// loop shows how; DtDevice_WaitForSignalTimeout does the same in one call.
 //
 int main(int Argc, char** Argv)
 {

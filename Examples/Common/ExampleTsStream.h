@@ -14,17 +14,18 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Numbered packets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// Packets of 188 or 204 bytes that say which they are, for a receiver to check one by
-// one: on PID 0x0100, with the continuity counter counting, the packet's number as eight
-// bytes from offset 4, most significant first, and from offset 12 to the end of the
-// packet, the 16 bytes of a 204-byte packet included, each byte the number plus its
-// offset.
+// Transport stream packets that carry their own number, so that a receiver can check
+// that none is lost or changed. A numbered packet of 188 or 204 bytes is on PID 0x0100,
+// with a continuity counter that counts. From offset 4 it holds its number in eight
+// bytes, most significant first. Every byte from offset 12 to the end of the packet
+// (also the 16 extra bytes of a 204-byte packet) is the number plus its offset.
 //
 
 // Writes packet Number of Size bytes, 188 or 204, into Packet.
 void ExampleTs_Numbered(uint64_t Number, int Size, uint8_t* Packet);
 
-// True when Packet, of Size bytes, is a numbered packet; *Number is then its number.
+// Returns whether Packet, of Size bytes, is an intact numbered packet, and if so sets
+// *Number to its number.
 bool ExampleTs_IsNumbered(const uint8_t* Packet, int Size, uint64_t* Number);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The service +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -42,30 +43,32 @@ bool ExampleTs_IsNumbered(const uint8_t* Packet, int Size, uint64_t* Number);
 // always give the same packet.
 //
 
-// The lowest rate the stream fits in, in bits a second, and the highest, about what ASI
-// carries.
+// The lowest and highest rate of the stream, in bits per second. The highest is about
+// what ASI carries.
 #define EXAMPLE_TS_MIN_RATE 3000000
 #define EXAMPLE_TS_MAX_RATE 210000000
 
+// The state of the test stream. ExampleTsStream_Init() sets it up; the program only
+// reads Rate and Packet.
 typedef struct ExampleTsStream
 {
-    int64_t Rate;      // Bits a second of 188-byte packets
+    int64_t Rate;      // Bits per second of 188-byte packets
     uint64_t Packet;   // Number of the next packet, from 0
     int64_t Frame;     // Number of the frame being sent
-    uint64_t FrameEnd; // First packet of the next frame
-    uint8_t* Es;       // The frame's PES packet
-    int EsCapacity;
-    int EsSize;
-    int EsSent;
-    int PsiSent;   // Tables sent in this frame: PAT, PMT, SDT
-    uint8_t Cc[4]; // Continuity counters: PAT, PMT, SDT, video
+    uint64_t FrameEnd; // Number of the first packet of the next frame
+    uint8_t* Es;       // The PES packet of the frame: its coded picture
+    int EsCapacity;    // Bytes Es has room for
+    int EsSize;        // Bytes of Es in use
+    int EsSent;        // Bytes of Es sent so far
+    int PsiSent;       // Tables sent in this frame: PAT, PMT, SDT, in that order
+    uint8_t Cc[4];     // Continuity counters: PAT, PMT, SDT, video
 } ExampleTsStream;
 
-// Prepares a stream at Rate bits a second. False for a rate outside the limits above, or
-// when memory runs out.
+// Sets up Stream to run at Rate bits per second. Returns false for a rate outside
+// EXAMPLE_TS_MIN_RATE and EXAMPLE_TS_MAX_RATE, or when there is not enough memory.
 bool ExampleTsStream_Init(ExampleTsStream* Stream, int64_t Rate);
 
-// Frees what Init allocated.
+// Frees the memory ExampleTsStream_Init() took.
 void ExampleTsStream_Close(ExampleTsStream* Stream);
 
 // Writes the next 188-byte packet into Packet.

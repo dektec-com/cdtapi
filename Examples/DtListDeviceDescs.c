@@ -4,9 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Uses DtapiDeviceScan, which describes devices rather than ports. Prints one block per
-// device, every field of its descriptor by name except the network addresses Ip, IpV6 and
-// MacAddr, then the number of devices:
+// Lists the DekTec cards with DtapiDeviceScan, which describes cards rather than ports.
+// Prints a block per card, with every field of its DtDeviceDesc by name except the
+// network addresses Ip, IpV6 and MacAddr, and then the number of cards:
 //
 //     Device 1
 //       Category: 0
@@ -15,9 +15,9 @@
 //       PcieMaxSlotPower: 25000
 //     1 devices
 //
-// The lines are those Scripts/Compare/DtapiDeviceScanRef.cpp prints from DTAPI, so that
-// the two can be compared line by line. Exits with 0 when devices are found, 2 when there
-// are none, and 1 when the scan fails.
+// Scripts/Compare/DtapiDeviceScanRef.cpp prints the same lines from DTAPI, so that the
+// output of the two can be compared line by line. Exits with 0 when cards are found, 2
+// when there are none, and 1 when the scan fails.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -35,6 +35,8 @@ static const ExampleOption g_Options[] = {
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintDevice -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Prints card Number's block: one field of Desc per line.
 //
 static void PrintDevice(int Number, const DtDeviceDesc* Desc)
 {
@@ -72,8 +74,8 @@ static void PrintDevice(int Number, const DtDeviceDesc* Desc)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtapiDeviceScan with no room reports how many devices there are, with
-// DTAPI_E_BUF_TOO_SMALL; the second call fills a buffer of that size.
+// The first DtapiDeviceScan, without a buffer, asks how many cards there are; it returns
+// DTAPI_E_BUF_TOO_SMALL when there are any. The second call fills a buffer of that size.
 //
 int main(int Argc, char** Argv)
 {

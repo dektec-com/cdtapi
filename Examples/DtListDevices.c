@@ -4,9 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Prints one line per port: its device name, which is the serial number and the port
-// number; its description; what it is: SDI, ASI, AVFIFO, INPUT, OUTPUT; and for a
-// network port its MAC address and IPv4 address. Then the number of ports found.
+// Lists the ports of all DekTec cards, one line per port: its name (serial number and
+// port number), its description, what it can do (SDI, ASI, AVFIFO, INPUT, OUTPUT), and
+// for an IP port its MAC address and IPv4 address. Then the number of ports.
 //
 //     9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT
 //     ...
@@ -33,7 +33,7 @@ static const ExampleOption g_Options[] = {
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Prints Name when the port Is it, after a comma when an earlier kind was printed.
+// Prints Name if Is is true, after a comma when a name was printed before it.
 //
 static void PrintKind(int Is, const char* Name, int* Printed)
 {
@@ -45,7 +45,7 @@ static void PrintKind(int Is, const char* Name, int* Printed)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintKinds -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// What a port is, as a comma-separated list, or "-" when it is none of these.
+// Prints what a port can do, separated by commas, or "-" when it can do none of these.
 //
 static void PrintKinds(const DtHwFuncDesc* Port)
 {
@@ -61,8 +61,8 @@ static void PrintKinds(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The MAC address and the IPv4 address of a network port, as the scan found them; a
-// port without a MAC address is no network port, and prints nothing.
+// Prints the MAC address and IPv4 address of an IP port, as the scan found them. A port
+// without a MAC address is not an IP port, and nothing is printed for it.
 //
 static void PrintAddress(const DtHwFuncDesc* Port)
 {
@@ -80,8 +80,8 @@ static void PrintAddress(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtapiHwFuncScan with no room reports how many ports there are, with
-// DTAPI_E_BUF_TOO_SMALL; the second call fills a buffer of that size.
+// The first DtapiHwFuncScan, without a buffer, asks how many ports there are; it returns
+// DTAPI_E_BUF_TOO_SMALL when there are any. The second call fills a buffer of that size.
 //
 int main(int Argc, char** Argv)
 {

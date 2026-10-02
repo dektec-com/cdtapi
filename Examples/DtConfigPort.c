@@ -4,16 +4,16 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Attaches to the device, then makes the port an input with --input or an output with
-// --output, and with --vidstd sets its I/O standard to the one that carries that video
-// standard, or with --asi to DVB-ASI. Prints one line per step with its result:
+// Sets up a port of a card: --input or --output makes it an input or an output, --vidstd
+// sets it to carry an SDI video standard, and --asi sets it to DVB-ASI. Prints one line
+// per step with its result:
 //
 //     9217800001:1  IODIR INPUT  DTAPI_OK
 //     9217800001:1  IOSTD HDSDI 1080I50  DTAPI_OK
 //     9217800001:5  IOSTD ASI  DTAPI_OK
 //
-// The configuration stays on the device after the program ends. Exits with 0 when every
-// step succeeds, 1 when one fails or the command line is wrong, and 2 when no port suits.
+// The card keeps the settings after the program ends. Exits with 0 when every step
+// succeeds, 1 when one fails or the command line is wrong, and 2 when no port suits.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -39,6 +39,9 @@ static const ExampleOption g_Options[] = {
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiInput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Whether a port can do what the command line asks, for Example_FindPort(): this and
+// the five functions below.
 //
 static bool IsSdiInput(const DtHwFuncDesc* Port)
 {
@@ -82,9 +85,9 @@ static bool IsAsi(const DtHwFuncDesc* Port)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// DtapiVidStd2IoStd turns a video standard into the value and sub-value of the IOSTD
-// group. The sub-value is a video standard: the one given, or for 4K over four links the
-// 1080p standard each link carries.
+// DtapiVidStd2IoStd finds the I/O standard (value and sub-value) that sets a port to a
+// video standard. The sub-value is the video standard itself, or, for 4K on four links,
+// the 1080p standard that each link carries.
 //
 int main(int Argc, char** Argv)
 {

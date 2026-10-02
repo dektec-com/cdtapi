@@ -1,7 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#* ExampleTsStream.c *#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Test transport streams: numbered packets, and one MPEG-2 video service -
-// Implementation
+// CDTAPI - Test transport streams: numbered packets, and one MPEG-2 video service
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -142,6 +141,9 @@ static void DrawText(Colour Picture[MB_ROWS][MB_COLS], int Col, int Row, const c
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrawPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Draws frame Frame: the colour bars, "CDTAPI", the frame's time code and the
+// bouncing block, one colour per macroblock.
+//
 static void DrawPicture(Colour Picture[MB_ROWS][MB_COLS], int64_t Frame)
 {
     for (int Row = 0; Row < MB_ROWS; Row++)
@@ -189,6 +191,8 @@ typedef struct BitWriter
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Put -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Writes the NumBits lowest bits of Value, most significant first.
+//
 static void Put(BitWriter* W, uint32_t Value, int NumBits)
 {
     for (int i = NumBits - 1; i >= 0; i--)
@@ -200,6 +204,8 @@ static void Put(BitWriter* W, uint32_t Value, int NumBits)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutStartCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes start code Code, from the next whole byte on.
 //
 static void PutStartCode(BitWriter* W, uint8_t Code)
 {
@@ -336,6 +342,8 @@ static uint32_t Crc32(const uint8_t* Data, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Writes the four-byte header of a transport stream packet into P.
+//
 static void PutHeader(uint8_t* P, int Pid, bool Start, int AdaptationControl, uint8_t Cc)
 {
     P[0] = 0x47;
@@ -346,9 +354,9 @@ static void PutHeader(uint8_t* P, int Pid, bool Start, int AdaptationControl, ui
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPsi -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A packet with one section: Body is the section from its table_id up to the CRC, with
-// section_length not yet set. This sets it and appends the CRC, so Body needs four bytes
-// of room after Size.
+// Writes a packet with one table section into P. Body is the section from its table_id
+// up to the CRC, with section_length not yet set; PutPsi sets it and adds the CRC, so
+// Body needs four bytes of room after Size.
 //
 static void PutPsi(uint8_t* P, int Pid, uint8_t* Cc, uint8_t* Body, size_t Size)
 {
@@ -368,6 +376,8 @@ static void PutPsi(uint8_t* P, int Pid, uint8_t* Cc, uint8_t* Body, size_t Size)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutTable -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes table Table of the service into P: 0 the PAT, 1 the PMT, 2 the SDT.
 //
 static void PutTable(ExampleTsStream* Stream, int Table, uint8_t* P)
 {
@@ -426,7 +436,7 @@ static void PutTable(ExampleTsStream* Stream, int Table, uint8_t* P)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FirstPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The first packet of frame Frame, as the constant rate places frames.
+// Returns the number of the first packet of frame Frame, at a constant Rate.
 //
 static uint64_t FirstPacket(int64_t Rate, int64_t Frame)
 {
@@ -434,6 +444,9 @@ static uint64_t FirstPacket(int64_t Rate, int64_t Frame)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NextFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Moves Stream to the next frame: draws and codes its picture into a new PES
+// packet.
 //
 static void NextFrame(ExampleTsStream* Stream)
 {
@@ -462,7 +475,8 @@ static void NextFrame(ExampleTsStream* Stream)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutVideo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The next packet of the frame's PES packet; the first carries the PCR of its own time.
+// Writes the next packet of the frame's PES packet into P. The first packet of a frame
+// carries the PCR, the time of that packet.
 //
 static void PutVideo(ExampleTsStream* Stream, uint8_t* P)
 {

@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleAvFifo.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - What the SMPTE ST 2110 examples share - Implementation
+// CDTAPI - What the SMPTE ST 2110 examples share: the stream, frames and pipes
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -24,7 +24,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadIp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The four numbers of an IPv4 address, each from 0 to 255. False for anything else.
+// Reads an IPv4 address, four numbers from 0 to 255, from Text into Ip. Returns false
+// for anything else.
 //
 static bool ReadIp(const char* Text, uint8_t* Ip)
 {

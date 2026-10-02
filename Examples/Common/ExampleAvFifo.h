@@ -16,71 +16,75 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The stream +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The help of --pipe.
+// The help text of the --pipe option.
 #define EXAMPLE_PIPE_HELP "auto, hw, sw or prefer; auto without it"
 
-// What the examples send or receive, from the command line.
+// The stream an example sends or receives, as the command line describes it.
 typedef struct ExampleAvConfig
 {
     uint8_t Ip[4];       // Destination or group address
     int UdpPort;         // Destination UDP port
-    int Width;           // Video: pixels a row
-    int Height;          // Video: rows a frame
-    int Rate;            // Video: whole frames a second
+    int Width;           // Video: pixels per row
+    int Height;          // Video: rows per frame
+    int Rate;            // Video: frames per second, a whole number
     bool EightBit;       // Video: 8-bit rather than 10-bit samples
-    int Channels;        // Audio when above 0: channels of L24
-    int SampleRate;      // Audio: samples a second
+    int Channels;        // Audio: channels of L24; 0 for video
+    int SampleRate;      // Audio: samples per second
     int SamplesPerFrame; // Audio: samples per channel in one frame
-    HwOrSwPipe Pipe;     // Which pipe to use
+    HwOrSwPipe Pipe;     // Which pipe the FIFO uses
 } ExampleAvConfig;
 
-// Fills *Config from the command line, with the width rounded down to an even number,
-// whole pixel groups. Prints what is wrong and returns false for a value that is not an
-// address, a number or a pipe, or that is out of range.
+// Fills *Config from the command line options --ip, --udp, --width, --height, --rate,
+// --8bit, --audio and --pipe, with defaults for those not given. The width is rounded
+// down to an even number, a whole number of pixel groups. Returns false, after printing
+// what is wrong, for a value that is not valid or out of range.
 bool ExampleAv_Config(int Argc, char** Argv, ExampleAvConfig* Config);
 
-// True for a port with an AV FIFO.
+// Returns whether a port has an AV FIFO, for Example_FindPort().
 bool ExampleAv_IsIpPort(const DtHwFuncDesc* Port);
 
-// The IP parameters of the stream: the destination, the payload type, and IPv4, a time
-// to live of 32, DiffServ 0x88 and RTP over UDP.
+// Fills *Pars with the IP parameters of the stream: its destination and port, and
+// IPv4, RTP over UDP, a time to live of 32 and DiffServ 0x88.
 void ExampleAv_IpPars(const ExampleAvConfig* Config, AvFifo_IpPars* Pars);
 
-// Prints "<serial>:<port>  <pipe>  <address>:<port>  <format>". The format of video is
-// "video as <RxFormat>" for a receiver, which learns the rest from the stream, and the
-// size, rate and sample width of Config for a transmitter, whose RxFormat is NULL.
+// Prints a line that describes the stream: "<serial>:<port>  <pipe>  <address>:<port>
+// <format>". For a receiver, pass the name of its frame format in RxFormat; the format
+// then reads "video as <RxFormat>", as the receiver learns the rest from the stream. For
+// a sender, pass NULL; the format then gives the size, rate and bits of Config.
 void ExampleAv_PrintStream(const DtHwFuncDesc* Port, const char* Pipe,
                            const ExampleAvConfig* Config, const char* RxFormat);
 
-// As Example_Failed, and then the failure's text from GetLastException.
+// Prints the failed call as Example_Failed() does, then the text of GetLastException(),
+// and returns EXAMPLE_FAILED.
 int ExampleAv_Failed(const char* What, unsigned int Result);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// The bytes of one row of video, of a whole frame of video, or of one frame of audio.
+// Return the bytes of one row of video, and of one frame of video or audio.
 int ExampleAv_RowBytes(const ExampleAvConfig* Config);
 int ExampleAv_FrameBytes(const ExampleAvConfig* Config);
 
-// The nanoseconds between two frames.
+// Returns the time between two frames, in nanoseconds.
 int64_t ExampleAv_PeriodNs(const ExampleAvConfig* Config);
 
-// A time of day as nanoseconds since the epoch, and the other way about.
+// Convert a time of day to nanoseconds since the epoch, and back.
 int64_t ExampleAv_ToNs(const DtTimeOfDay* ToD);
 DtTimeOfDay ExampleAv_FromNs(int64_t Ns);
 
-// Writes one pixel group, two pixels of the same luma, into a row of video.
+// Writes pixel group Index (two pixels with the same luma) into a row of video, in the
+// sample size of Config.
 void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Index,
                            int Blue, int Luma, int Red);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Attaches the FIFO to the port, counted from 1, with the pipe the configuration asks
-// for.
+// Attach a FIFO to port Port (from 1) of Device, with the pipe Config asks for.
 unsigned int ExampleAv_AttachTx(AvFifo_TxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config);
 unsigned int ExampleAv_AttachRx(AvFifo_RxFifo* Fifo, const DtDevice* Device, int Port,
                                 const ExampleAvConfig* Config);
 
-// "hardware pipe" or "software pipe"; "pipe" where the FIFO does not tell.
+// Return "hardware pipe" or "software pipe" for the pipe the FIFO uses, or "pipe" when
+// it does not say.
 const char* ExampleAv_TxPipeKind(const AvFifo_TxFifo* Fifo);
 const char* ExampleAv_RxPipeKind(const AvFifo_RxFifo* Fifo);

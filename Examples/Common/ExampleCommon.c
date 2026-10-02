@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# ExampleCommon.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - What the example programs share - Implementation
+// CDTAPI - What the example programs share: arguments, ports, names and time
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -35,6 +35,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindOption -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Returns the option called Name among Options, or NULL when the program has none.
+//
 static const ExampleOption* FindOption(const char* Name, const ExampleOption* Options,
                                        int NumOptions)
 {
@@ -47,6 +49,8 @@ static const ExampleOption* FindOption(const char* Name, const ExampleOption* Op
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintUsage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Prints what the program does and its options, for --help.
 //
 static void PrintUsage(const char* Program, const char* Usage,
                        const ExampleOption* Options, int NumOptions)
