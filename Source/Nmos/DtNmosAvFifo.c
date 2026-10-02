@@ -17,6 +17,7 @@
 
 // CDTAPI includes
 #include "AvFifo/DtAvError.h"  // The failure text.
+#include "AvFifo/DtAvRxFifo.h" // The port of a receive FIFO.
 #include "AvFifo/DtAvTxFifo.h" // What a transmit FIFO is configured with.
 #include "Device/DtDevice.h"   // A device's ports.
 #include "DtNmosAddr.h"        // Addresses.
@@ -94,6 +95,20 @@ static DtapiResult CheckFlow(const DtNmosFlow* Flow, const char* Where)
                  Flow->Format.Other.Encoding);
         return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ChildId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The ID the bridge makes for a sender or receiver, Kind, of the device DeviceId with the
+// label Label: the name-based UUID of "<kind>/<label>" in the device's ID, as dtcore
+// makes its own, the same each time.
+//
+static DtNmosResult ChildId(const DtNmosId* DeviceId, const char* Kind, const char* Label,
+                            DtNmosId* Id)
+{
+    char Name[256];
+    snprintf(Name, sizeof(Name), "%s/%s", Kind, Label);
+    return DtNmosId_FromName(DeviceId, Name, Id);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FailAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -193,6 +208,31 @@ static DtapiResult IpParsOf(const DtNmosFlow* Flow, AvFifo_IpPars* IpPars,
     IpPars->DiffServ = DT_NMOS_DIFFSERV;
     IpPars->TimeToLive = DT_NMOS_TIME_TO_LIVE;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PortAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The address of a port Desc describes as text into Text, of Size bytes: its IPv4
+// address when it has one, else its first IPv6 address. DTAPI_E_NO_ADAPTER_IP_ADDR when
+// it has neither.
+//
+static DtapiResult PortAddress(const DtHwFuncDesc* Desc, char* Text, size_t Size,
+                               const char* Where)
+{
+    static const uint8_t None[16] = {0};
+    if (memcmp(Desc->Ip, None, sizeof(Desc->Ip)) != 0)
+    {
+        uint8_t Ip[16] = {0};
+        memcpy(Ip, Desc->Ip, sizeof(Desc->Ip));
+        return DtNmosAddr_Format(false, Ip, Text, Size);
+    }
+    for (int i = 0; i < MAX_IPV6_ADDR; i++)
+    {
+        if (memcmp(Desc->IpV6[i], None, 16) != 0)
+            return DtNmosAddr_Format(true, Desc->IpV6[i], Text, Size);
+    }
+    return DtAvError_Set(DTAPI_E_NO_ADAPTER_IP_ADDR, Where,
+                         "The FIFO's port has no IP address");
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxFormatName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -443,6 +483,116 @@ DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device, int
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddReceiver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
+                                     const DtNmosReceiverConfig* Config,
+                                     DtNmosReceiverActivateFunc Activate, void* User,
+                                     DtNmosId* Id)
+{
+    static const char* const Where = "DtNmosAvFifo_AddReceiver";
+    if (Node == NULL || Fifo == NULL || Config == NULL || Id == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No node, FIFO, config or ID");
+    if (Config->Size < sizeof(DtNmosReceiverConfig))
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The config's Size is smaller than sizeof(DtNmosReceiverConfig)");
+    if (Config->DeviceId.Text[0] == '\0')
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The config has no DeviceId, as DtNmosAvFifo_AddDevice gives");
+    const bool HasLabel = Config->Label != NULL && Config->Label[0] != '\0';
+    if (Config->Id.Text[0] == '\0' && !HasLabel)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "A receiver without an ID needs a label to make one from");
+
+    DtNmosReceiverConfig Filled = *Config;
+    Filled.Size = sizeof(Filled);
+    if (Filled.Id.Text[0] == '\0')
+    {
+        const DtNmosResult Made =
+            ChildId(&Filled.DeviceId, "receiver", Filled.Label, &Filled.Id);
+        if (Made != DTNMOS_OK)
+            return FailDtNmos(Made, Where);
+    }
+    DtapiResult Result = DTAPI_OK;
+    char InterfaceIp[DT_NMOS_ADDR_SIZE];
+    if (Filled.InterfaceIp == NULL || Filled.InterfaceIp[0] == '\0')
+    {
+        DtHwFuncDesc Desc;
+        Result = DtAvRxFifo_DescribePort(Fifo, &Desc, Where);
+        if (Result == DTAPI_OK)
+            Result = PortAddress(&Desc, InterfaceIp, sizeof(InterfaceIp), Where);
+        Filled.InterfaceIp = InterfaceIp;
+    }
+    if (Result != DTAPI_OK)
+        return Result;
+    if (Filled.Description == NULL)
+        Filled.Description = "";
+
+    const DtNmosResult Added = DtNmosNode_AddReceiver(Node, &Filled, Activate, User);
+    if (Added != DTNMOS_OK)
+        return FailDtNmos(Added, Where);
+    *Id = Filled.Id;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddSender -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
+                                   const DtNmosSenderConfig* Config,
+                                   DtNmosSenderActivateFunc Activate, void* User,
+                                   DtNmosId* Id)
+{
+    static const char* const Where = "DtNmosAvFifo_AddSender";
+    if (Node == NULL || Fifo == NULL || Config == NULL || Id == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No node, FIFO, config or ID");
+    if (Config->Size < sizeof(DtNmosSenderConfig))
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The config's Size is smaller than sizeof(DtNmosSenderConfig)");
+    if (Config->DeviceId.Text[0] == '\0')
+        return DtAvError_Set(
+            DTAPI_E_INVALID_ARG, Where,
+            "The config has no DeviceId, as DtNmosAvFifo_AddDevice gives");
+    const bool HasLabel = Config->Label != NULL && Config->Label[0] != '\0';
+    if (Config->Id.Text[0] == '\0' && !HasLabel)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "A sender without an ID needs a label to make one from");
+
+    DtNmosSenderConfig Filled = *Config;
+    Filled.Size = sizeof(Filled);
+    if (Filled.Id.Text[0] == '\0')
+    {
+        const DtNmosResult Made =
+            ChildId(&Filled.DeviceId, "sender", Filled.Label, &Filled.Id);
+        if (Made != DTNMOS_OK)
+            return FailDtNmos(Made, Where);
+    }
+
+    // The flow of the FIFO, which gives the address Start sends from as its source.
+    DtNmosFlow Flow;
+    const bool MakesFlow = Filled.Flow == NULL;
+    const bool MakesSource = Filled.SourceIp == NULL || Filled.SourceIp[0] == '\0';
+    DtapiResult Result = DTAPI_OK;
+    if (MakesFlow || MakesSource)
+        Result = DtNmosAvFifo_FlowFromTxFifo(Fifo, &Flow);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (MakesFlow)
+        Filled.Flow = &Flow;
+    if (MakesSource)
+        Filled.SourceIp = Flow.SourceIp;
+    if (Filled.Description == NULL)
+        Filled.Description = "";
+
+    const DtNmosResult Added = DtNmosNode_AddSender(Node, &Filled, Activate, User);
+    if (Added != DTNMOS_OK)
+        return FailDtNmos(Added, Where);
+    *Id = Filled.Id;
+    return DTAPI_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -650,4 +800,20 @@ DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
         *Audio = AudioConfig;
     *IpPars = Pars;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_UpdateSender -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
+                                      AvFifo_TxFifo* Fifo)
+{
+    static const char* const Where = "DtNmosAvFifo_UpdateSender";
+    if (Node == NULL || Id == NULL || Fifo == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No node, ID or FIFO");
+    DtNmosFlow Flow;
+    const DtapiResult Result = DtNmosAvFifo_FlowFromTxFifo(Fifo, &Flow);
+    if (Result != DTAPI_OK)
+        return Result;
+    const DtNmosResult Updated = DtNmosNode_UpdateSender(Node, Id, &Flow);
+    return Updated == DTNMOS_OK ? DTAPI_OK : FailDtNmos(Updated, Where);
 }

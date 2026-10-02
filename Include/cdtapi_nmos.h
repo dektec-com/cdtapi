@@ -54,6 +54,36 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* 
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
 
+// Adds to Node a receiver of Fifo, which is attached and need not be configured yet, and
+// writes its ID into *Id. Config gives Size, the DeviceId of DtNmosAvFifo_AddDevice(),
+// a Label, the Media and ActivationLeadMs; what it leaves empty the bridge fills: the ID,
+// one the bridge makes from the device and the label, the same each time, and the
+// InterfaceIp, the address of the FIFO's port, IPv4 when it has one. Node calls Activate
+// with User when a controller activates the receiver; the callback does not touch the
+// FIFO, but hands the activation to the thread that owns it.
+// DTAPI_E_INVALID_ARG for a null argument, a Config whose Size is smaller than
+// DtNmosReceiverConfig, one without a DeviceId, or without both an Id and a Label;
+// DTAPI_E_NOT_ATTACHED; DTAPI_E_NO_ADAPTER_IP_ADDR for a port without an address; and
+// what dtnmos gives.
+CDTAPI_API DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
+                                                const DtNmosReceiverConfig* Config,
+                                                DtNmosReceiverActivateFunc Activate,
+                                                void* User, DtNmosId* Id);
+
+// Adds to Node a sender of Fifo, which is attached, and writes its ID into *Id. Config
+// gives Size, the DeviceId, a Label and ActivationLeadMs, and may give the Flow; what it
+// leaves empty the bridge fills: the ID, as for a receiver, the Flow, made by
+// DtNmosAvFifo_FlowFromTxFifo() for a FIFO configured and with its IP parameters, and
+// the SourceIp, the address Start sends from. A Flow the program gives is taken as it
+// is, so that the program may change what DtNmosAvFifo_FlowFromTxFifo() made: HDR, a
+// reference clock of PTP, a channel order.
+// Fails as DtNmosAvFifo_AddReceiver() does, and as DtNmosAvFifo_FlowFromTxFifo() does
+// when the bridge makes the flow.
+CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
+                                              const DtNmosSenderConfig* Config,
+                                              DtNmosSenderActivateFunc Activate,
+                                              void* User, DtNmosId* Id);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The flow of a transmit FIFO that is configured and has its IP parameters, started or
@@ -112,6 +142,14 @@ CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_TxConfigVideo* Video,
                                                      St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
+
+// Gives the sender Id of Node the flow of Fifo, as DtNmosAvFifo_FlowFromTxFifo() makes
+// it, after the owner of the FIFO changed its format. A new destination needs no update,
+// as the node follows an activation itself; a program that changed the flow it gave
+// calls DtNmosNode_UpdateSender() with it instead. Fails as
+// DtNmosAvFifo_FlowFromTxFifo() does, and with what dtnmos gives.
+CDTAPI_API DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
+                                                 AvFifo_TxFifo* Fifo);
 
 #ifdef __cplusplus
 }

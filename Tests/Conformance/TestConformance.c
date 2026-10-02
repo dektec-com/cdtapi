@@ -635,6 +635,11 @@ DT_TEST(NmosCalls)
     DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, &Flow), DTAPI_E_INVALID_ARG);
     DtNmosId Id;
     DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(NULL, NULL, 1, NULL, &Id), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(NULL, NULL, NULL, NULL, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddSender(NULL, NULL, NULL, NULL, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(NULL, &Id, NULL), DTAPI_E_INVALID_ARG);
 #else
     (void)DtFailures;
 #endif

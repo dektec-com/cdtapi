@@ -19,6 +19,7 @@
 #include "Core/DtAtomic.h" // The thread's stop flag.
 #include "DtAvError.h"     // Failure texts.
 #include "DtAvPort.h"      // The port, its network and pipes.
+#include "DtAvRxFifo.h"    // The description of its port.
 #include "DtPcieAbi.h"     // Pipe modes and filter flags.
 #include "DtSt2110Audio.h" // Audio packets.
 #include "DtSt2110Video.h" // Video packets.
@@ -611,6 +612,25 @@ DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo, bool* UsesHwPipe
             ? DtAvPort_UsesHwPipe(&Fifo->Port, Fifo->Started, &Fifo->Pipe, UsesHwPipe,
                                   Where)
             : DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "RxFifo not attached");
+    OsMutex_Unlock(Fifo->Lock);
+    return Result;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Description +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvRxFifo_DescribePort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtAvRxFifo_DescribePort(AvFifo_RxFifo* Fifo, DtHwFuncDesc* Desc,
+                                    const char* Where)
+{
+    if (Fifo == NULL || Desc == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or description");
+    OsMutex_Lock(Fifo->Lock);
+    DtapiResult Result = DTAPI_OK;
+    if (!Fifo->Attached)
+        Result = DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "RxFifo not attached");
+    else
+        DtDevice_DescribeHwFunc(&Fifo->Port.Device, Fifo->Port.PortIndex + 1, Desc);
     OsMutex_Unlock(Fifo->Lock);
     return Result;
 }

@@ -58,6 +58,7 @@ typedef struct Fixture
     DtNmosNode* Node;
     DtDevice* Device;
     AvFifo_TxFifo* Tx;
+    AvFifo_RxFifo* Rx;
 } Fixture;
 
 static void FreeFixture(void* Context)
@@ -67,6 +68,7 @@ static void FreeFixture(void* Context)
     Fix->Sdp = NULL;
     DtNmosNode_Freep(&Fix->Node);
     AvFifo_TxFifo_Freep(&Fix->Tx);
+    AvFifo_RxFifo_Freep(&Fix->Rx);
     DtDevice_Freep(&Fix->Device);
 }
 
@@ -487,6 +489,26 @@ DT_TEST(TxRefused)
     DtTest_SetCleanup(NULL, NULL);
 }
 
+// Whether the answer of Node to a GET of Url has Text in its body.
+static bool Answers(DtNmosNode* Node, const char* Url, const char* Text)
+{
+    DtNmosHttpRequest Request;
+    memset(&Request, 0, sizeof(Request));
+    Request.Size = sizeof(Request);
+    Request.Method = "GET";
+    Request.Url = Url;
+    DtNmosHttpResponse* Response = DtNmosHttpResponse_Alloc();
+    bool Has = false;
+    if (Response != NULL && DtNmosNode_Handle(Node, &Request, Response) == DTNMOS_OK)
+    {
+        size_t Length = 0;
+        const char* Body = DtNmosHttpResponse_Body(Response, &Length);
+        Has = Body != NULL && strstr(Body, Text) != NULL;
+    }
+    DtNmosHttpResponse_Free(Response);
+    return Has;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- From a FIFO, and back -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // The emulated DTA-2110 attached in the fixture, with a transmit FIFO on its port.
@@ -725,8 +747,179 @@ DT_TEST(AddDevice)
     DtTest_SetCleanup(NULL, NULL);
 }
 
+// The fixture's node with the device of the DTA-2110's port 1 and a transmit FIFO
+// configured for 1080p25 of 10 bits to 239.1.2.3:5004, and a receive FIFO attached to
+// the same port; false, failing the case, when not.
+static bool OpenPort(Fixture* Fix, DtNmosId* DeviceId, int* DtFailures)
+{
+    if (!OpenTx(Fix, DtFailures) || !OpenNode(Fix, DtFailures))
+        return false;
+    St2110_TxConfigVideo Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Format = St2110_TxFrameFormat_Uyvy422_10b;
+    Config.Resolution.Width = 1920;
+    Config.Resolution.Height = 1080;
+    Config.Timing.Rate.Numerator = 25;
+    Config.Timing.Rate.Denominator = 1;
+    AvFifo_IpPars IpPars;
+    memset(&IpPars, 0, sizeof(IpPars));
+    IpPars.IpAddr[0] = 239;
+    IpPars.IpAddr[1] = 1;
+    IpPars.IpAddr[2] = 2;
+    IpPars.IpAddr[3] = 3;
+    IpPars.Port = 5004;
+    IpPars.RtpPayloadType = 96;
+    Fix->Rx = AvFifo_RxFifo_Alloc();
+    if (AvFifo_TxFifo_ConfigureVideo(Fix->Tx, &Config) != DTAPI_OK ||
+        AvFifo_TxFifo_SetIpPars(Fix->Tx, &IpPars) != DTAPI_OK || Fix->Rx == NULL ||
+        AvFifo_RxFifo_Attach(Fix->Rx, Fix->Device, 1) != DTAPI_OK ||
+        DtNmosAvFifo_AddDevice(Fix->Node, Fix->Device, 1, NULL, DeviceId) != DTAPI_OK)
+    {
+        printf("    FAIL: no port: %s\n", GetLastException());
+        (*DtFailures)++;
+        return false;
+    }
+    return true;
+}
+
+// Takes every activation.
+static DtNmosResult TakeRx(void* User, const DtNmosId* Receiver,
+                           const DtNmosReceiverActivation* Activation)
+{
+    (void)User;
+    (void)Receiver;
+    (void)Activation;
+    return DTNMOS_OK;
+}
+
+static DtNmosResult TakeTx(void* User, const DtNmosId* Sender,
+                           const DtNmosSenderActivation* Activation)
+{
+    (void)User;
+    (void)Sender;
+    (void)Activation;
+    return DTNMOS_OK;
+}
+
+// A receiver of the FIFO: its ID made from the device's and the label, the same each
+// time, or the config's; its interface the port's. A config without a device, without
+// an ID or label, or too small, and a FIFO not attached, are refused.
+DT_TEST(AddReceiver)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    DtNmosId DeviceId;
+    if (!OpenPort(&Fix, &DeviceId, DtFailures))
+        return;
+    DtNmosReceiverConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Size = sizeof(Config);
+    Config.DeviceId = DeviceId;
+    Config.Label = "camera 1";
+    Config.Media = DTNMOS_MEDIA_VIDEO;
+    DtNmosId Id;
+    DT_ASSERT_OK(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id));
+    DtNmosId Want;
+    DT_ASSERT(DtNmosId_FromName(&DeviceId, "receiver/camera 1", &Want) == DTNMOS_OK);
+    DT_ASSERT_STR(Id.Text, Want.Text);
+    char Url[128];
+    snprintf(Url, sizeof(Url), "/x-nmos/node/v1.3/receivers/%s", Id.Text);
+    DT_ASSERT(Answers(Fix.Node, Url, "camera 1"));
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+
+    snprintf(Config.Id.Text, sizeof(Config.Id.Text), "%s",
+             "aaaaaaaa-0000-4000-8000-0000000000e1");
+    Config.Label = NULL;
+    DT_ASSERT_OK(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id));
+    DT_ASSERT_STR(Id.Text, "aaaaaaaa-0000-4000-8000-0000000000e1");
+
+    Config.Id.Text[0] = '\0';
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    Config.Label = "camera 2";
+    Config.Size = sizeof(Config) - 1;
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    Config.Size = sizeof(Config);
+    Config.DeviceId.Text[0] = '\0';
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, Fix.Rx, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    Config.DeviceId = DeviceId;
+    AvFifo_RxFifo* Loose = AvFifo_RxFifo_Alloc();
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, Loose, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_NOT_ATTACHED);
+    AvFifo_RxFifo_Freep(&Loose);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(Fix.Node, NULL, &Config, TakeRx, NULL, &Id),
+                 DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// A sender of the FIFO: its flow and source the FIFO's, in the SDP the node serves, or a
+// flow the program gives; a FIFO not configured has no flow to give. After the FIFO's
+// format changed, UpdateSender gives the node the new flow.
+DT_TEST(AddSender)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    DtNmosId DeviceId;
+    if (!OpenPort(&Fix, &DeviceId, DtFailures))
+        return;
+    DtNmosSenderConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Size = sizeof(Config);
+    Config.DeviceId = DeviceId;
+    Config.Label = "program out";
+    DtNmosId Id;
+    DT_ASSERT_OK(DtNmosAvFifo_AddSender(Fix.Node, Fix.Tx, &Config, TakeTx, NULL, &Id));
+    DtNmosId Want;
+    DT_ASSERT(DtNmosId_FromName(&DeviceId, "sender/program out", &Want) == DTNMOS_OK);
+    DT_ASSERT_STR(Id.Text, Want.Text);
+    char Url[160];
+    snprintf(Url, sizeof(Url), "/x-nmos/connection/v1.1/single/senders/%s/transportfile",
+             Id.Text);
+    DT_ASSERT(
+        Answers(Fix.Node, Url, "a=source-filter: incl IN IP4 239.1.2.3 192.168.1.10"));
+    DT_ASSERT(Answers(Fix.Node, Url, "depth=10"));
+
+    St2110_TxConfigVideo Video;
+    memset(&Video, 0, sizeof(Video));
+    Video.Format = St2110_TxFrameFormat_Uyvy422_8b;
+    Video.Resolution.Width = 1920;
+    Video.Resolution.Height = 1080;
+    Video.Timing.Rate.Numerator = 25;
+    Video.Timing.Rate.Denominator = 1;
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Video));
+    DT_ASSERT_OK(DtNmosAvFifo_UpdateSender(Fix.Node, &Id, Fix.Tx));
+    DT_ASSERT(Answers(Fix.Node, Url, "depth=8"));
+
+    // A flow of the program's, with HDR the FIFO does not know.
+    DtNmosFlow Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    snprintf(Flow.Format.Video.Tcs, sizeof(Flow.Format.Video.Tcs), "%s",
+             DtNmosTcs_Text(DTNMOS_TCS_HLG));
+    Config.Label = "program out HLG";
+    Config.Flow = &Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_AddSender(Fix.Node, Fix.Tx, &Config, TakeTx, NULL, &Id));
+    snprintf(Url, sizeof(Url), "/x-nmos/connection/v1.1/single/senders/%s/transportfile",
+             Id.Text);
+    DT_ASSERT(Answers(Fix.Node, Url, "TCS=HLG"));
+
+    AvFifo_TxFifo* Bare = AvFifo_TxFifo_Alloc();
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Bare, Fix.Device, 1));
+    Config.Flow = NULL;
+    Config.Label = "not configured";
+    DT_ASSERT_EQ(DtNmosAvFifo_AddSender(Fix.Node, Bare, &Config, TakeTx, NULL, &Id),
+                 DTAPI_E_CONFIG);
+    DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(Fix.Node, &Id, Bare), DTAPI_E_CONFIG);
+    AvFifo_TxFifo_Freep(&Bare);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
 DT_TEST_MAIN("NmosAvFifo", DT_RUN(LinksDtnmos), DT_RUN(RxVideo), DT_RUN(RxVideoFormats),
              DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6),
              DT_RUN(TxVideo), DT_RUN(TxAudio), DT_RUN(TxRefused),
              DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady),
-             DT_RUN(AddDevice))
+             DT_RUN(AddDevice), DT_RUN(AddReceiver), DT_RUN(AddSender))

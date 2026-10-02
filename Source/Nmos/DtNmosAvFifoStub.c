@@ -19,16 +19,29 @@
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The types of dtnmos the bridge's functions take, as cdtapi_nmos.h has them through
-// dtnmos's headers; here only their names, as only pointers to them are passed.
+// dtnmos's headers; here only their names, as only pointers to them are passed. The
+// callbacks are passed on and never called, so any function pointer stands for them.
 typedef struct DtNmosFlow DtNmosFlow;
 typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
 typedef struct DtNmosId DtNmosId;
 typedef struct DtNmosNode DtNmosNode;
+typedef struct DtNmosReceiverConfig DtNmosReceiverConfig;
+typedef struct DtNmosSenderConfig DtNmosSenderConfig;
+typedef void (*DtNmosReceiverActivateFunc)(void);
+typedef void (*DtNmosSenderActivateFunc)(void);
 
 // The declarations of cdtapi_nmos.h, which this build does not install.
 CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
+                                                const DtNmosReceiverConfig* Config,
+                                                DtNmosReceiverActivateFunc Activate,
+                                                void* User, DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
+                                              const DtNmosSenderConfig* Config,
+                                              DtNmosSenderActivateFunc Activate,
+                                              void* User, DtNmosId* Id);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -39,6 +52,8 @@ CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_TxConfigVideo* Video,
                                                      St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
+                                                 AvFifo_TxFifo* Fifo);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoNmos -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -70,6 +85,38 @@ DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device, int
     (void)Config;
     (void)Id;
     return NoNmos("DtNmosAvFifo_AddDevice");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddReceiver -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
+                                     const DtNmosReceiverConfig* Config,
+                                     DtNmosReceiverActivateFunc Activate, void* User,
+                                     DtNmosId* Id)
+{
+    (void)Node;
+    (void)Fifo;
+    (void)Config;
+    (void)Activate;
+    (void)User;
+    (void)Id;
+    return NoNmos("DtNmosAvFifo_AddReceiver");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_AddSender -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
+                                   const DtNmosSenderConfig* Config,
+                                   DtNmosSenderActivateFunc Activate, void* User,
+                                   DtNmosId* Id)
+{
+    (void)Node;
+    (void)Fifo;
+    (void)Config;
+    (void)Activate;
+    (void)User;
+    (void)Id;
+    return NoNmos("DtNmosAvFifo_AddSender");
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -111,4 +158,15 @@ DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
     (void)Audio;
     (void)IpPars;
     return NoNmos("DtNmosAvFifo_TxConfigFromFlow");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_UpdateSender -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
+                                      AvFifo_TxFifo* Fifo)
+{
+    (void)Node;
+    (void)Id;
+    (void)Fifo;
+    return NoNmos("DtNmosAvFifo_UpdateSender");
 }

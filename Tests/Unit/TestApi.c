@@ -45,9 +45,21 @@ typedef struct DtNmosFlow DtNmosFlow;
 typedef struct DtNmosDeviceConfig DtNmosDeviceConfig;
 typedef struct DtNmosId DtNmosId;
 typedef struct DtNmosNode DtNmosNode;
+typedef struct DtNmosReceiverConfig DtNmosReceiverConfig;
+typedef struct DtNmosSenderConfig DtNmosSenderConfig;
+typedef void (*DtNmosReceiverActivateFunc)(void);
+typedef void (*DtNmosSenderActivateFunc)(void);
 CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
+                                                const DtNmosReceiverConfig* Config,
+                                                DtNmosReceiverActivateFunc Activate,
+                                                void* User, DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
+                                              const DtNmosSenderConfig* Config,
+                                              DtNmosSenderActivateFunc Activate,
+                                              void* User, DtNmosId* Id);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -58,6 +70,8 @@ CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_TxConfigVideo* Video,
                                                      St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
+                                                 AvFifo_TxFifo* Fifo);
 
 #endif
 
@@ -78,6 +92,11 @@ DT_TEST(NmosStubsFail)
     DT_ASSERT(strstr(GetLastException(), "without NMOS") != NULL);
     DT_ASSERT_EQ(DtNmosAvFifo_TxConfigFromFlow(NULL, NULL, NULL, &IpPars),
                  DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(NULL, NULL, NULL, NULL, NULL, NULL),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_AddSender(NULL, NULL, NULL, NULL, NULL, NULL),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(NULL, NULL, NULL), DTAPI_E_NOT_SUPPORTED);
 #endif
 }
 
