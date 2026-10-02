@@ -15,25 +15,26 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The object a card carries that its firmware waits for before it does any work. It is
-// ready once it has been given the data the card's own EEPROM holds behind its sections,
-// unless those were never written, and each later check decides again.
+// The card's firmware does no work until its activation object is ready. The object
+// becomes ready when a check gives it the data stored in the card's EEPROM behind the VPD
+// sections. On a card where that data was never written, no check succeeds. Every check
+// decides again: a wrong one makes the object not ready.
 //
 
-// Forgets that the object was given anything, as a card does when it loses power, and
-// the busy count a test set.
+// Makes the object forget what it was given, as a card does when it loses power, and
+// clears the busy count a test set.
 void SimActivate_Reset(void);
 
-// True once the object has what it needs.
+// Returns true when the object is ready.
 bool SimActivate_IsReady(void);
 
-// How long the object says it is busy after it is given its data: that many status
-// requests answer busy before one answers ready. None unless a test asks for it.
+// Makes the object busy for a while after a successful check: the next Count status
+// requests answer busy, and only then does one answer ready. After a reset, Count is 0.
 void SimActivate_SetBusyCount(int Count);
 
-// True for the function code the object answers.
+// Returns true for the function code the object answers.
 bool SimActivate_Handles(int FunctionCode);
 
-// Handles one command, and gives its DT_STATUS_ outcome.
+// Carries out one command, and returns its DT_STATUS_ result.
 uint32_t SimActivate_Cmd(int Cmd, const void* In, size_t InSize, void* Out,
                          size_t* OutSize);

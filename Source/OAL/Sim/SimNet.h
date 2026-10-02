@@ -17,33 +17,34 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Network +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The network OsNet.h gives while the emulator is asked for: tables of interfaces with
-// their addresses, gateways and routes, and of neighbours, which the tests set, and
-// sockets that remember the groups they join. It answers at once, as an operating system
-// does that knows every neighbour:
+// The network that OsNet.h shows when the emulator is used. Tests fill its tables: the
+// interfaces, with their addresses, gateways and routes, and the neighbours. Its sockets
+// remember the groups they join. It answers at once, as an operating system that knows
+// every neighbour would:
 //
-//   interfaces  in the order of the table, which is the order they were added until one
-//               is removed; a new one then takes the first free place
-//   routes      a destination in the subnet of one of the interface's addresses of its
-//               family, or IPv6 link-local or IPv4 link-local, is reached directly;
-//               otherwise the route with the longest matching prefix gives the gateway,
-//               then the default gateway; without either there is no route
-//   neighbours  known or not found
-//   binding     to the any address, or to an address of an interface, IPv6 link-local
-//               ones only with that interface's index; a port of 0 gets the next port
-//               from 49152 up, and a port may be bound twice
-//   groups      joining needs a multicast group of the socket's family and an existing
-//               interface; joining a group twice, or leaving one that was not joined,
-//               with the same source, fails, as on Linux; closing leaves every group
+//   interfaces  are listed in the order of the table: the order they were added in,
+//               until one is removed. A new interface then takes the first free place.
+//   routes      A destination is reached directly when it lies in the subnet of one of
+//               the interface's addresses of its family, or is link-local (IPv4 or IPv6).
+//               Otherwise, the route with the longest matching prefix gives the gateway,
+//               and then the default gateway. Without either, there is no route.
+//   neighbours  are known, or not found.
+//   binding     is to the any address, or to an address of an interface. An IPv6
+//               link-local address needs that interface's index. Port 0 gets the next
+//               port from 49152 up. A port may be bound twice.
+//   groups      Joining needs a multicast group of the socket's family and an existing
+//               interface. Joining a group twice, or leaving one that was not joined,
+//               with the same source, fails, as on Linux. Closing a socket leaves all its
+//               groups.
 //
-// The DTA-2110 comes with an interface, as a card whose network driver is installed: see
-// the SIM_NET_DTA2110_ values below. SimNet_Reset takes it and every other interface
-// away, and the emulator's reset puts it back when CDTAPI_SIM_DTA2110 places the
+// The DTA-2110 comes with an interface, as a card whose network driver is installed (see
+// the SIM_NET_DTA2110_ values below). SimNet_Reset() removes it with every other
+// interface. The emulator's reset adds it again when CDTAPI_SIM_DTA2110 places a
 // DTA-2110.
 //
 
-// The DTA-2110's interface: its index and name, its addresses and gateways, and the
-// neighbours the gateways are.
+// The DTA-2110's interface: its index and name, its addresses and gateways, and the MAC
+// address of the neighbours that are its gateways.
 #define SIM_NET_DTA2110_INDEX 5
 #define SIM_NET_DTA2110_NAME "dta2110"
 #define SIM_NET_DTA2110_IPV4 {192, 168, 1, 10}
@@ -58,74 +59,77 @@
     {0xFE, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
 #define SIM_NET_GATEWAY_MAC {0x00, 0x00, 0x5E, 0x00, 0x01, 0x01}
 
-// Room in the tables.
+// The sizes of the tables.
 #define SIM_NET_MAX_INTERFACES 16
 #define SIM_NET_MAX_ADDRESSES 8
 #define SIM_NET_MAX_ROUTES 8
 #define SIM_NET_MAX_NEIGHBOURS 32
 #define SIM_NET_MAX_MEMBERSHIPS 64
 
-// Takes every interface, neighbour, group and control back to the power-on state,
-// without taking the emulator's lock. Open sockets stay open and counted.
+// Restores the power-on state of every interface, neighbour, group and control. Does
+// not take the emulator's lock. Open sockets stay open, and are still counted.
 void SimNet_Reset(void);
 
-// Adds the DTA-2110's interface with the MAC address Mac, or takes it away, without
-// taking the emulator's lock.
+// Adds the DTA-2110's interface, with MAC address Mac, when Present is true, and removes
+// it otherwise. Does not take the emulator's lock.
 void SimNet_SetDta2110Interface(bool Present, const uint8_t* Mac);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Adds an interface with index Index and returns true; false when Index is 0 or in use,
-// Mac is NULL, or the table is full. A VLAN interface has a VlanId and the ParentIndex
-// of the interface it is on. It starts enabled and connected, without addresses.
+// Adds an interface with index Index. It starts enabled and connected, without
+// addresses. A VLAN interface has a VlanId, and the ParentIndex of the interface it is
+// on. Returns false when Index is 0 or in use, Mac is NULL, or the table is full.
 bool SimDtPcie_AddNetInterface(uint32_t Index, const uint8_t* Mac, int VlanId,
                                uint32_t ParentIndex, const char* Name);
 
-// Takes an interface away with its routes and neighbours.
+// Removes an interface, with its routes and neighbours.
 void SimDtPcie_RemoveNetInterface(uint32_t Index);
 
-// Makes an interface enabled or not, and, while enabled, connected or not.
+// Enables or disables an interface (AdminUp), and connects or disconnects it (LinkUp).
+// LinkUp counts only while the interface is enabled.
 void SimDtPcie_SetNetInterfaceUp(uint32_t Index, bool AdminUp, bool LinkUp);
 
-// Adds an address to an interface; false when Addr is NULL, there is no such interface,
-// or there is no room.
+// Adds an address to an interface. Returns false when Addr is NULL, there is no such
+// interface, or there is no room.
 bool SimDtPcie_AddNetAddress(uint32_t Index, const OsNetAddr* Addr);
 
-// Takes the IPv4 or IPv6 addresses of an interface away.
+// Removes the IPv6 addresses of an interface when IpV6 is true, and its IPv4 addresses
+// otherwise.
 void SimDtPcie_ClearNetAddresses(uint32_t Index, bool IpV6);
 
-// Sets the default gateway of an interface for a family, or takes it away with NULL.
+// Sets the default gateway of an interface for one family. NULL removes it.
 void SimDtPcie_SetNetGateway(uint32_t Index, bool IpV6, const uint8_t* Gateway);
 
-// Adds a route to the subnet Dst of PrefixLength bits through Gateway; false when there
-// is no such interface, Dst or Gateway is NULL, or there is no room.
+// Adds a route to the subnet Dst, of PrefixLength bits, through Gateway. Returns false
+// when there is no such interface, Dst or Gateway is NULL, or there is no room.
 bool SimDtPcie_AddNetRoute(uint32_t Index, bool IpV6, const uint8_t* Dst,
                            int PrefixLength, const uint8_t* Gateway);
 
-// Makes Ip a known neighbour with MAC address Mac on an interface, which need not exist;
-// false when Ip or Mac is NULL or there is no room.
+// Adds Ip as a known neighbour with MAC address Mac on an interface, which need not
+// exist. Returns false when Ip or Mac is NULL, or there is no room.
 bool SimDtPcie_AddNetNeighbour(uint32_t Index, bool IpV6, const uint8_t* Ip,
                                const uint8_t* Mac);
 
-// Makes binding, or joining and leaving, fail from now on when true.
+// Make binding, or joining and leaving groups, fail from now on when Fail is true.
 void SimDtPcie_FailNetBind(bool Fail);
 void SimDtPcie_FailNetJoin(bool Fail);
 
 // A group a socket joined.
 typedef struct SimNetMembership
 {
-    uint32_t IfIndex;
-    bool IpV6;
-    uint8_t Group[16];
-    bool HasSource;
-    uint8_t Source[16];
-    uint16_t Port; // The port the socket is bound to
+    uint32_t IfIndex;   // The interface it was joined on
+    bool IpV6;          // The group is an IPv6 group
+    uint8_t Group[16];  // The group's address
+    bool HasSource;     // The join names a source
+    uint8_t Source[16]; // The source's address, when HasSource
+    uint16_t Port;      // The port the socket is bound to
 } SimNetMembership;
 
-// The number of groups the open sockets joined, and the one at Index, in the order they
-// were joined; false when there is none.
+// SimDtPcie_NetMembershipCount() returns the number of groups the open sockets joined.
+// SimDtPcie_GetNetMembership() returns the one at Index, in the order they were joined,
+// and false when there is none.
 int SimDtPcie_NetMembershipCount(void);
 bool SimDtPcie_GetNetMembership(int Index, SimNetMembership* Membership);
 
-// The number of open sockets.
+// Returns the number of open sockets.
 int SimDtPcie_OpenNetSocketCount(void);
