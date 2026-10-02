@@ -112,6 +112,7 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
     Source/OAL/Sim/SimVpd.c
+    Source/Service/DtService.c
     Source/Ts/DtAsiEnc.c
     Source/Ts/DtTsTrp.c
     Source/Video/DtFrameProps.c
@@ -139,18 +140,20 @@ else()
     set(CDTAPI_HAVE_SSSE3 OFF)
 endif()
 
-# Threads, events, mutexes, DMA memory and the network belong to the operating system
-# rather than to a device, so they are built for the host platform whether or not the
-# driver backend is.
+# Threads, events, mutexes, DMA memory, the network and pipes belong to the operating
+# system rather than to a device, so they are built for the host platform whether or not
+# the driver backend is.
 if(WIN32)
     list(APPEND CDTAPI_SOURCES
         Source/OAL/Windows/WinMemory.c
         Source/OAL/Windows/WinNet.c
+        Source/OAL/Windows/WinPipe.c
         Source/OAL/Windows/WinThread.c)
 else()
     list(APPEND CDTAPI_SOURCES
         Source/OAL/Linux/LinMemory.c
         Source/OAL/Linux/LinNet.c
+        Source/OAL/Linux/LinPipe.c
         Source/OAL/Linux/LinThread.c)
 endif()
 
