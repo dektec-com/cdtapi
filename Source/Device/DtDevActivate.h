@@ -13,15 +13,18 @@
 #include "cdtapi.h"                 // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activation +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-
-// Activates the device behind Drv: until this is done its firmware carries no data at
-// all, so a card that has the object neither receives nor sends. The data the device is
-// activated with is its own, held in its EEPROM; a device that has no object to activate
-// needs none, and gives DTAPI_OK. An object that is already ready is left alone, and
-// gives DTAPI_OK too. Otherwise the result is the first failure, such as DTAPI_E_IN_USE
-// when exclusive access cannot be had after repeated tries, or DTAPI_E_INVALID when the
-// object is not ready afterwards.
 //
-// Attaching calls this once. Its failure is not a reason to refuse the attach: the device
-// is there and answers for itself, so the result is for the caller to log or ignore.
+// Some cards must be activated before their firmware carries any data: until then such a
+// card neither receives nor sends. The card activates itself with data from its own
+// EEPROM, when the library asks it to.
+//
+
+// Activates the device behind Drv, if it has an object to activate. Attaching calls this
+// once. A failure is no reason to refuse the attach, as the device is there and answers
+// for itself; the caller logs or ignores the result.
+//
+// Returns DTAPI_OK when the device has no such object, when it was ready already, or when
+// it is activated now; otherwise the first failure, e.g.:
+//   DTAPI_E_IN_USE   exclusive access could not be had after repeated tries
+//   DTAPI_E_INVALID  the object is still not ready afterwards
 DtapiResult DtDevActivate_OnAttach(OsDrv* Drv);

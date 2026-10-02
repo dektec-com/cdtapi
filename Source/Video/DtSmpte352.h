@@ -14,11 +14,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Payload fields +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// A VPID is the four bytes of the payload identifier as the SDI receiver reports them,
-// the first byte in the least significant bits.
+// These functions read the fields of a VPID, the SMPTE ST 352 payload identifier that
+// an SDI signal carries. The VPID is passed as the SDI receiver reports it: four bytes,
+// with byte 1 in the least significant bits.
 //
 
-// The payload identifiers, byte 1, that are recognised.
+// The payload identifiers (byte 1) that the library recognises.
 #define DT_S352_ID_S259 0x81          // 525 and 625 lines, SMPTE ST 259
 #define DT_S352_ID_S292_720 0x84      // 720 lines, SMPTE ST 292
 #define DT_S352_ID_S292_1080 0x85     // 1080 lines, SMPTE ST 292
@@ -29,20 +30,21 @@
 #define DT_S352_ID_S2081_2160 0xC0    // 2160 lines on 6G, SMPTE ST 2081-10
 #define DT_S352_ID_S2082_2160 0xCE    // 2160 lines on 12G, SMPTE ST 2082-10
 
-// The payload identifier.
+// Returns the payload identifier: byte 1 of the VPID.
 int DtSmpte352_PayloadId(uint32_t Vpid);
 
-// The picture rate as a reduced fraction; 0/0 for a rate code that is not recognised.
+// Returns the picture rate in *Num / *Den, as a reduced fraction. Returns 0/0 for a rate
+// code the library does not recognise.
 void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den);
 
-// Whether the transport is interlaced, and whether the picture structure is. Progressive
-// pictures in an interlaced transport are PsF.
+// Return whether the transport is interlaced, and whether the picture is. A progressive
+// picture in an interlaced transport is PsF.
 bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid);
 bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid);
 
-// Whether the picture aspect ratio is 16:9; otherwise it is 4:3.
+// Returns whether the picture aspect ratio is 16:9; false means 4:3.
 bool DtSmpte352_Is16x9(uint32_t Vpid);
 
-// The zero-based number of the link that carries this VPID, for the payloads that have
-// more than one link; 0 for all others.
+// Returns the number, from 0, of the link that carries this VPID, for a payload that has
+// more than one link. Returns 0 for any other payload.
 int DtSmpte352_LinkNumber(uint32_t Vpid);

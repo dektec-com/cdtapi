@@ -21,56 +21,54 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtRxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// An input channel keeps one side that receives, chosen by the port's I/O standard:
-// DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. The side is a DtRx, a struct that each
-// side's own begins with, and its function table is the side's backend, a DtRxBackend.
-// DtInpChannel.c keeps the checks that do not depend on the side, the lock, detaching and
-// the waits of a read, and calls these with the lock held, except where a function says
-// otherwise (plan 0011).
+// An input channel receives through one "side", chosen by the port's I/O standard:
+// DtAsiRx.c for ASI, DtSdiRx.c for raw SDI frames. Each side's struct begins with a DtRx,
+// whose Backend is the side's table of functions.
 //
-// A function that is NULL gives the default the function says.
+// DtInpChannel.c does what is the same for every side: the argument checks, the lock,
+// detaching and waiting in a read. It calls the side's functions with the lock held,
+// unless a function says otherwise. A function may be NULL where the comment says what
+// that gives.
 //
 
 typedef struct DtRxBackend DtRxBackend;
 
-// The port the channel attached to. Device is the channel's own, and lives as long as the
-// side does.
+// The port the channel is attached to.
 typedef struct DtRxAttachedPort
 {
-    DtDevice* Device;
-    int Port;      // From 1
-    uint64_t Caps; // DT_CAP_ flags of the port
+    DtDevice* Device; // The channel's own device; it lives as long as the side does
+    int Port;         // From 1
+    uint64_t Caps;    // The port's DT_CAP_ flags
 } DtRxAttachedPort;
 
-// What every side has: its backend, its port, and the receive mode and control, which
-// the checks in DtInpChannel.c read.
+// The part that every side has. DtInpChannel.c reads it for its checks.
 typedef struct DtRx
 {
-    const DtRxBackend* Backend;
-    DtRxAttachedPort Port;
-    int RxMode;
-    int RxControl;
-    bool IsAsi; // The side is DtAsiRx.c, and Read delivers a transport stream
+    const DtRxBackend* Backend; // The side's functions
+    DtRxAttachedPort Port;      // The port
+    int RxMode;                 // The receive mode, a DTAPI_RXMODE_ value
+    int RxControl;              // DTAPI_RXCTRL_IDLE or DTAPI_RXCTRL_RCV
+    bool IsAsi; // True: the side is DtAsiRx.c, and Read delivers a transport stream
 } DtRx;
 
-// What a read waits with, copied from the side while the lock is held, so that the wait
-// needs nothing the lock guards.
+// What a read needs to wait without the lock. The side fills it while the lock is held.
 typedef struct DtRxWaitState
 {
-    const DtRxBackend* Backend; // Of the side that prepared the wait
-    OsDrv* Drv;
-    DtDrvObject WaitObject; // What the side waits on
-    int MaxMs;              // The longest a wait lasts
-    bool EventOutOfSync;    // What the event reported, for AfterWait
+    const DtRxBackend* Backend; // The side that filled it
+    OsDrv* Drv;                 // The driver handle to wait through
+    DtDrvObject WaitObject;     // The object the side waits on
+    int MaxMs;                  // The longest one wait may last
+    bool EventOutOfSync;        // True when the event Wait received says the signal
+                                // is out of sync; read by AfterWait
 } DtRxWaitState;
 
+// The functions of a side.
 struct DtRxBackend
 {
-    // Lets go of what the side holds, ignoring failures, and frees Rx.
+    // Stops what the side does, frees what it holds, and frees Rx. Failures are ignored.
     void (*Release)(DtRx* Rx);
 
-    // The side's part of SetRxMode, SetRxControl, ClearFifo, ClearFlags, GetFlags,
-    // GetFifoLoad and GetMaxFifoSize.
+    // The side's part of the channel functions of the same name.
     DtapiResult (*SetRxMode)(DtRx* Rx, int RxMode);
     DtapiResult (*SetRxControl)(DtRx* Rx, int RxControl);
     DtapiResult (*ClearFifo)(DtRx* Rx);
@@ -79,43 +77,48 @@ struct DtRxBackend
     DtapiResult (*GetFifoLoad)(DtRx* Rx, int* FifoLoad);
     DtapiResult (*GetMaxFifoSize)(DtRx* Rx, int* MaxFifoSize);
 
-    // What the side does after DtInpChannel.c has set Config on the port, the side
-    // staying the same.
+    // Updates the side after DtInpChannel.c has set Config on the port, when the new
+    // configuration keeps the same side.
     DtapiResult (*ApplyIoConfig)(DtRx* Rx, const DtIoConfig* Config);
 
-    // DetectIoStd; NULL gives DTAPI_E_NOT_SUPPORTED.
+    // DetectIoStd. NULL gives DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*DetectIoStd)(DtRx* Rx, int* Value, int* SubValue);
 
-    // Divides the side's work over Pool, NULL for the reading thread alone, in NumThreads
-    // pieces, or with 0 in as many as the signal calls for. The channel holds the pool
-    // and gives it again to every side it attaches, and calls this with no read going on.
-    // DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces, after
-    // which the side works in the reading thread. NULL where the side has nothing to
-    // divide, which gives DTAPI_OK.
+    // Splits the side's work over the threads of Pool, in NumThreads pieces; with 0, in
+    // as many as the signal needs. With a NULL Pool, the reading thread does all the
+    // work. The channel keeps the pool and passes it to every side it attaches. It calls
+    // this only while no read is busy. NULL, for a side with nothing to split, gives
+    // DTAPI_OK.
+    //
+    // Returns DTAPI_OK, or DTAPI_E_OUT_OF_MEM when there is not enough memory for the
+    // pieces' buffers; the reading thread then does all the work.
     DtapiResult (*SetWorkerPool)(DtRx* Rx, DtWorkerPool* Pool, int NumThreads);
 
-    // ReadFrame: CheckFrameBuffer checks a buffer of FrameSize bytes and gives the size
-    // of a frame, DeliverFrame delivers one when there is one. NULL gives
-    // DTAPI_E_NOT_SDI_MODE.
+    // The two halves of ReadFrame. NULL gives DTAPI_E_NOT_SDI_MODE.
+    // - CheckFrameBuffer checks that a buffer of FrameSize bytes can hold a frame, and
+    //   returns the size of a frame in *RawSize.
+    // - DeliverFrame copies one frame into Buffer if one is there, and sets *Delivered.
     DtapiResult (*CheckFrameBuffer)(DtRx* Rx, int FrameSize, size_t* RawSize);
     DtapiResult (*DeliverFrame)(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
                                 bool* Delivered);
 
-    // A read's wait while receiving: PrepareWait fills Wait, Wait waits up to Ms without
-    // the lock, and AfterWait, with the lock and while no detach waits, deals with what
-    // the wait saw.
+    // How a read waits while the channel receives:
+    // - PrepareWait fills *Wait, with the lock held.
+    // - Wait waits up to Ms milliseconds, without the lock.
+    // - AfterWait handles what the wait saw, with the lock held again. It is called only
+    //   when Wait succeeded and no detach is waiting.
     void (*PrepareWait)(DtRx* Rx, DtRxWaitState* Wait);
     DtapiResult (*Wait)(DtRxWaitState* Wait, int Ms);
     DtapiResult (*AfterWait)(DtRx* Rx, const DtRxWaitState* Wait);
 
-    // Read: GetDeliverableBytes gives the bytes a read would deliver now, and
-    // DeliverBytes delivers Size of them, which that count holds. NULL gives
-    // DTAPI_E_NOT_SUPPORTED.
+    // The two halves of Read. NULL gives DTAPI_E_NOT_SUPPORTED.
+    // - GetDeliverableBytes returns in *Load how many bytes a read can deliver now.
+    // - DeliverBytes copies Size of those bytes to Out; Size is at most that count.
     DtapiResult (*GetDeliverableBytes)(DtRx* Rx, size_t* Load);
     DtapiResult (*DeliverBytes)(DtRx* Rx, uint8_t* Out, size_t Size);
 
-    // GetStatus, GetTsRateBps, GetViolCount and PolarityControl. NULL gives
-    // DTAPI_E_NOT_SUPPORTED.
+    // The side's part of GetStatus, GetTsRateBps, GetViolCount and PolarityControl. NULL
+    // gives DTAPI_E_NOT_SUPPORTED.
     DtapiResult (*GetStatus)(DtRx* Rx, int* PacketSize, int* NumInv, int* ClkDet,
                              int* AsiLock, int* RateOk, int* AsiInv);
     DtapiResult (*GetTsRateBps)(DtRx* Rx, int* TsRate);

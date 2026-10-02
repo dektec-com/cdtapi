@@ -13,14 +13,16 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Clocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// The public functions DtDevice_GetGenlockState, GetTimeOfDayState, GetTxClockCount,
-// GetTxClockOffset, GetTxClockProperties and SetTxClockOffset are implemented beside
-// this, with the objects it finds.
+// The clock functions of the public API (DtDevice_GetGenlockState, GetTimeOfDayState,
+// GetTxClockCount, GetTxClockOffset, GetTxClockProperties and SetTxClockOffset) are in
+// the same source file. They use the objects this function finds.
 //
 
-// Looks for the genlock controller, the time-of-day clock control and the two
-// transmit-clock counters of a Device just attached, and keeps in Device what it finds,
-// as DtDevObject describes. A device without them is attached as well; only the functions
-// that need them fail. Returns DTAPI_E_OUT_OF_MEM when looking cannot be done for want of
-// memory, and DTAPI_OK otherwise: any other failure to read an object is its absence.
+// Finds the clock objects of a Device that was just attached: the genlock controller,
+// the time-of-day clock control and the two transmit-clock counters. Keeps what it finds
+// in Device, as DtDevObject describes. A device without them is attached all the same;
+// only the functions that need them fail.
+//
+// Returns DTAPI_OK, or DTAPI_E_OUT_OF_MEM when there is not enough memory to look. Any
+// other failure to read an object counts as the object not being there.
 DtapiResult DtDevClock_OnAttach(DtDevice* Device);

@@ -18,64 +18,71 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The hardware of a DtPcie card is reached through API functions, such as the ASI/SDI
-// receiver of a port. The driver describes each as properties of the port: instances
-// AF_<name>#1, #2 and so on, each with a role; and per instance its objects, #<n>.1, .2
-// and so on, each a driver function (DF_) or building block (BC_) with a role, a type
-// and a UUID that commands are addressed to.
+// The library reaches the hardware of a DtPcie card through API functions, such as the
+// ASI/SDI receiver of a port. The driver describes each as properties of the port:
+// - an API function has instances, AF_<name>#1, #2 and so on, each with a role;
+// - an instance has objects, #<n>.1, .2 and so on. Each object is a driver function (DF_)
+//   or a building block (BC_), and has a role, a type and a UUID to address commands to.
 //
-// Here an object is plain data, and what a driver command is addressed to is its
-// DtDrvObject. What is then done with an object is the business of the device layer that
-// needs it.
+// These functions find an instance and its objects. What is done with an object is up to
+// the part of the device layer that needs it.
 //
 
+// One object of an instance: a driver function or a building block.
 typedef struct DtFuncObject
 {
-    char Name[DT_PROPERTY_STR_SIZE]; // Such as DF_SDIRX#1
-    char Role[DT_PROPERTY_STR_SIZE]; // Empty for the object's plain role
-    bool IsDriverFunction;           // A driver function, otherwise a building block
-    int FuncOrBlockType;             // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value,
-                                     // whichever IsDriverFunction says
-    DtDrvObject Object;              // What commands to the object go to
+    char Name[DT_PROPERTY_STR_SIZE]; // e.g. "DF_SDIRX#1"
+    char Role[DT_PROPERTY_STR_SIZE]; // "" for the object's plain role
+    bool IsDriverFunction;           // True: a driver function; false: a building block
+    int FuncOrBlockType;             // A DT_FUNC_TYPE_ or DT_BLOCK_TYPE_ value, as
+                                     // IsDriverFunction says
+    DtDrvObject Object;              // Where commands to the object go
 } DtFuncObject;
 
+// One instance of an API function, with its objects.
 typedef struct DtFuncInstance
 {
     DtVec Objects; // DtFuncObject, in the order the driver lists them
 } DtFuncInstance;
 
-// Finds the instance of API function Name, such as "AF_ASISDIRX", with role Role on the
-// port at PortIndex, and reads its objects.
+// Finds the instance of API function Name (e.g. "AF_ASISDIRX") with role Role on port
+// PortIndex (from 0), and reads its objects into *Instance. Release them with
+// DtFunc_Release() afterwards. After a failure *Instance is empty.
 //
-// Instances are read until one has the role; failing to read one is returned, so a
-// function without an instance of the role ends in DTAPI_E_NOT_FOUND. Objects are read
-// until one is not found; any other failure to read an object's name is returned. An
-// object whose name starts neither with DF_ nor BC_, or whose role, type or UUID cannot
-// be read, is left out. Returns DTAPI_E_OUT_OF_MEM when the objects do not fit in memory,
-// and DTAPI_E_BUF_TOO_SMALL when a property name does not fit.
+// The instances are read until one has the role; the objects until one is not found. An
+// object whose name starts with neither DF_ nor BC_, or whose role, type or UUID cannot
+// be read, is left out.
 //
-// Instance is empty after a failure. Release it with DtFunc_Release after a success.
+// Returns DTAPI_OK, or:
+//   DTAPI_E_NOT_FOUND      no instance has the role (as reading the next one fails)
+//   DTAPI_E_OUT_OF_MEM     not enough memory for the objects
+//   DTAPI_E_BUF_TOO_SMALL  a property name does not fit
+// and the errors of reading an instance or an object's name.
 DtapiResult DtFunc_Find(OsDrv* Drv, int PortIndex, const char* Name, const char* Role,
                         DtFuncInstance* Instance);
 
-// Frees the objects of an instance, which is then empty.
+// Frees the objects of Instance, which is then empty.
 void DtFunc_Release(DtFuncInstance* Instance);
 
-// The object of the instance that is a driver function when IsDriverFunction, or a
-// building block otherwise, of Type and with Role; NULL when there is none. The objects
-// are walked from the back, so a later object of the same type and role wins.
+// Returns the object of Instance with type FuncOrBlockType and role Role: a driver
+// function when IsDriverFunction, a building block otherwise. Returns NULL when there is
+// none. When several match, the last one in the driver's order wins.
 const DtFuncObject* DtFunc_FindObject(const DtFuncInstance* Instance,
                                       bool IsDriverFunction, int FuncOrBlockType,
                                       const char* Role);
 
-// Issues exclusive access command Cmd, a DT_EXCLUSIVE_ACCESS_CMD_ value, for every object
-// of the instance. An object that does not support it is passed over. The first other
-// failure stops the command and is returned; when acquiring, the objects acquired before
-// it are released again. Releasing goes on past failures, and returns the first.
+// Acquires or releases exclusive access to every object of Instance: Cmd is a
+// DT_EXCLUSIVE_ACCESS_CMD_ value. Objects that do not support it are skipped.
+//
+// Acquiring stops at the first other failure, releases the objects acquired before it,
+// and returns that failure. Releasing goes on past failures, and returns the first.
 DtapiResult DtFunc_ExclAccess(OsDrv* Drv, const DtFuncInstance* Instance, int Cmd);
 
-// Checks that the driver is new enough for an object before it is used: DTAPI_OK,
-// DTAPI_E_DRIVER_INCOMP when it is older, and DTAPI_E_INTERNAL for a type the table does
-// not have. The table holds the types CDTAPI uses.
+// Checks that the driver is new enough for an object of Type before it is used. The
+// table of minimum versions holds the types CDTAPI uses.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_DRIVER_INCOMP  the driver is older
+//   DTAPI_E_INTERNAL       the table does not have the type
 DtapiResult DtFunc_CheckDriverVersion(const DtDriverVersion* Version,
                                       bool IsDriverFunction, int Type);

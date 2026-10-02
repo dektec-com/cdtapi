@@ -13,19 +13,23 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtSdiTx +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The transmitting side of a port whose I/O standard is SDI, with no software FIFO of its
-// own. The side drives the port's transmit blocks and encodes the raw frames a write
-// takes straight into the DMA buffer: it aligns the stream on frames, encodes each line
-// into its place behind the frame's header, and moves the write offset on when a frame
-// is complete.
-// A thread keeps the signal while sending by writing a black frame whenever less than a
-// frame is left. Plan 0008 holds where it departs from DTAPI.
+// The side of an output channel that sends raw SDI frames (see DtTxBackend.h). It has no
+// FIFO of its own: a write encodes the raw frame straight into the DMA buffer. The side
+// keeps the stream aligned on frames, encodes each line into its place after the frame's
+// header, and moves the write offset on once the frame is complete.
+//
+// While the channel sends, a thread keeps the signal going: whenever less than one frame
+// is left to send, it writes a black frame. Plan 0008 lists where the side differs from
+// DTAPI.
 //
 
-// Attaches the side to the port, whose I/O configuration IoStd is an SDI standard: sets
-// DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B and clears the flags, applies the I/O
-// standard again, takes the transmitter and the DMA exclusively, sets every block idle
-// and the encoder's corrections on, and sets the channel up for the standard. *Tx is the
-// side after a success, NULL otherwise.
+// Creates the SDI side for the port, and returns it in *Tx (NULL after a failure). IoStd
+// is the port's I/O configuration, with an SDI standard. Attaching sets the I/O standard
+// on the port again, takes the transmitter and the DMA exclusively, sets every block
+// idle, turns the encoder's corrections on, and sets the channel up for the standard.
+// The side starts idle, in DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B.
+//
+// Returns DTAPI_OK, or DTAPI_E_OUT_OF_MEM, or the failure of finding the port's blocks,
+// taking exclusive access or setting them up.
 DtapiResult DtSdiTx_Attach(const DtTxAttachedPort* Port, const DtIoConfig* IoStd,
                            DtTx** Tx);

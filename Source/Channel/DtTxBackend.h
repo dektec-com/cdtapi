@@ -22,16 +22,16 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= DtTxBackend +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// An output channel keeps one side that transmits, chosen by the port's I/O standard:
-// DtAsiTx.c for ASI, DtSdiTx.c for raw SDI frames. The side is a DtTx, a struct that each
-// side's own begins with, and its function table is the side's backend, a DtTxBackend,
-// as DtRxBackend.h describes for the input. DtOutpChannel.c keeps the checks that do not
-// depend on the side, the lock and detaching, and calls these with the lock held. A side
-// may release the lock while it waits, and has the channel's lock and its count of
-// waiting detaches for that; after a wait it gives DTAPI_E_CANCELLED while a detach
-// waits.
+// An output channel transmits through one "side", chosen by the port's I/O standard:
+// DtAsiTx.c for ASI, DtSdiTx.c for raw SDI frames. Each side's struct begins with a DtTx,
+// whose Backend is the side's table of functions. This is the output's counterpart of
+// DtRxBackend.h.
 //
-// A function that is NULL gives the default the function says.
+// DtOutpChannel.c does what is the same for every side: the argument checks, the lock
+// and detaching. It calls the side's functions with the lock held. A side may unlock
+// while it waits; DtTxAttachedPort gives it the lock and the count of waiting detaches
+// for that. After such a wait, the side returns DTAPI_E_CANCELLED if a detach is waiting.
+// A function may be NULL where the comment says what that gives.
 //
 
 // The deadline of a wait without a time limit.
@@ -39,35 +39,33 @@
 
 typedef struct DtTxBackend DtTxBackend;
 
-// The port the channel attached to, and what a side needs of the channel to wait. Device
-// is the channel's own, and lives as long as the side does.
+// The port the channel is attached to, and what a side needs of the channel to wait.
 typedef struct DtTxAttachedPort
 {
-    DtDevice* Device;
-    int Port;                   // From 1
-    uint64_t Caps;              // DT_CAP_ flags of the port
-    OsMutex* Lock;              // The channel's
-    const int* WaitingDetaches; // Detaches waiting for a write to return
+    DtDevice* Device; // The channel's own device; it lives as long as the side does
+    int Port;         // From 1
+    uint64_t Caps;    // The port's DT_CAP_ flags
+    OsMutex* Lock;    // The channel's lock
+    const int* WaitingDetaches; // The number of detaches waiting for a write to return
 } DtTxAttachedPort;
 
-// What every side has: its backend, its port, and the transmit mode and control, which
-// the checks in DtOutpChannel.c read.
+// The part that every side has. DtOutpChannel.c reads it for its checks.
 typedef struct DtTx
 {
-    const DtTxBackend* Backend;
-    DtTxAttachedPort Port;
-    int TxMode;
-    int TxControl;
-    bool IsAsi; // The side is DtAsiTx.c, and Write takes a transport stream
+    const DtTxBackend* Backend; // The side's functions
+    DtTxAttachedPort Port;      // The port
+    int TxMode;                 // The transmit mode, a DTAPI_TXMODE_ value
+    int TxControl;              // A DTAPI_TXCTRL_ value
+    bool IsAsi; // True: the side is DtAsiTx.c, and Write takes a transport stream
 } DtTx;
 
+// The functions of a side.
 struct DtTxBackend
 {
-    // Lets go of what the side holds, ignoring failures, and frees Tx.
+    // Stops what the side does, frees what it holds, and frees Tx. Failures are ignored.
     void (*Release)(DtTx* Tx);
 
-    // The side's part of SetTxControl, ClearFifo, GetFifoLoad, GetFifoSize,
-    // GetMaxFifoSize and GetFlags.
+    // The side's part of the channel functions of the same name.
     DtapiResult (*SetTxControl)(DtTx* Tx, int TxControl);
     DtapiResult (*ClearFifo)(DtTx* Tx);
     DtapiResult (*GetFifoLoad)(DtTx* Tx, int* FifoLoad);
@@ -75,16 +73,18 @@ struct DtTxBackend
     DtapiResult (*GetMaxFifoSize)(DtTx* Tx, int* MaxFifoSize);
     DtapiResult (*GetFlags)(DtTx* Tx, int* Status, int* Latched);
 
-    // SetTxMode once DtOutpChannel.c has checked what does not depend on the side.
+    // SetTxMode, after DtOutpChannel.c has done the checks that are the same for every
+    // side.
     DtapiResult (*SetTxMode)(DtTx* Tx, int TxMode, int StuffMode);
 
     // ClearFlags.
     DtapiResult (*ClearFlags)(DtTx* Tx, int Latched);
 
-    // What the side does around DtOutpChannel.c setting Config on the port, the side
-    // staying the same: BeforeIoConfig first, when there is one, and ApplyIoConfig with
-    // the result of that or of the setting, which it returns when it is a failure, and
-    // its own result otherwise.
+    // Update the side around a new I/O configuration that keeps the same side.
+    // DtOutpChannel.c calls BeforeIoConfig first, if there is one, and then sets Config
+    // on the port if that succeeded. It then always calls ApplyIoConfig, with in
+    // SetResult the failure so far or DTAPI_OK. ApplyIoConfig returns SetResult when that
+    // is a failure, and its own result otherwise.
     DtapiResult (*BeforeIoConfig)(DtTx* Tx);
     DtapiResult (*ApplyIoConfig)(DtTx* Tx, const DtIoConfig* Config,
                                  DtapiResult SetResult);
@@ -96,26 +96,28 @@ struct DtTxBackend
     DtapiResult (*GetTsRateBps)(DtTx* Tx, int* TsRate);
     DtapiResult (*SetTsRateBps)(DtTx* Tx, int TsRate);
 
-    // Divides the side's work over Pool, NULL for the writing thread alone, in NumThreads
-    // pieces, or with 0 in as many as the signal calls for. The channel holds the pool
-    // and gives it again to every side it attaches, and calls this with no write going
-    // on. DTAPI_E_OUT_OF_MEM when the working buffers cannot be had for those pieces,
-    // after which the side works in the writing thread. NULL where the side has nothing
-    // to divide, which gives DTAPI_OK.
+    // Splits the side's work over the threads of Pool, in NumThreads pieces; with 0, in
+    // as many as the signal needs. With a NULL Pool, the writing thread does all the
+    // work. The channel keeps the pool and passes it to every side it attaches. It calls
+    // this only while no write is busy. NULL, for a side with nothing to split, gives
+    // DTAPI_OK.
+    //
+    // Returns DTAPI_OK, or DTAPI_E_OUT_OF_MEM when there is not enough memory for the
+    // pieces' buffers; the writing thread then does all the work.
     DtapiResult (*SetWorkerPool)(DtTx* Tx, DtWorkerPool* Pool, int NumThreads);
 
-    // Write, while not idle and with no other write going on.
+    // Write. Called only while the channel is not idle and no other write is busy.
     DtapiResult (*Write)(DtTx* Tx, const uint8_t* Data, size_t Size);
 
-    // WriteFrame, likewise, waiting for room until the monotonic clock reaches Deadline.
-    // NULL gives DTAPI_E_NOT_SDI_MODE.
+    // WriteFrame, called as Write. Waits for room until the monotonic clock reaches
+    // Deadline (DT_TX_NO_DEADLINE: no limit). NULL gives DTAPI_E_NOT_SDI_MODE.
     DtapiResult (*WriteFrame)(DtTx* Tx, const uint8_t* Frame, int FrameSize,
                               uint64_t Deadline);
 
-    // Wakes a write that waits for room, for a detach.
+    // Wakes a write that waits for room, so that a detach can go ahead.
     void (*WakeWaitingWrite)(DtTx* Tx);
 
-    // A detach with DTAPI_WAIT_UNTIL_SENT while sending: returns when what was written
-    // has gone out, or when it stalls.
+    // For a detach with DTAPI_WAIT_UNTIL_SENT while the channel sends: returns when all
+    // that was written has been sent, or when sending stalls.
     void (*WaitUntilSent)(DtTx* Tx);
 };

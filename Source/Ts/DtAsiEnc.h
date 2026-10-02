@@ -18,105 +18,115 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbols +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// A DtPcie card sends what its DMA buffer holds as 10-bit 8b/10b symbols, one in each
-// 16-bit word, at the ASI line rate of 27 M symbols a second; the library makes them.
-// Every byte of the transport stream becomes its 8b/10b code for the running disparity,
-// and K28.5 comma symbols fill the line so that the stream has the rate asked for.
+// A DtPcie card sends its DMA buffer as 10-bit 8b/10b symbols, one in each 16-bit word,
+// at the ASI line rate of 27 million symbols a second. The library makes those symbols
+// with the functions below:
+// - Each byte of the transport stream becomes its 8b/10b code for the running disparity.
+// - K28.5 comma symbols fill the line, so that the stream has the rate asked for.
 //
-// The rate is kept as an accumulator over an interval of 188 x 8 seconds, so that the
-// bytes a rate in whole bits a second sends in it are a whole number. Before each packet
-// go two K28.5, one when the rate leaves no room for two, none when it leaves none. In
-// burst mode a packet's bytes go together and the fill between packets; in normal mode
-// the fill is spread between the bytes. With DTAPI_TXMODE_TXONTIME every packet is
-// preceded by a 32-bit little-endian time in 54 MHz ticks, and goes out when that time
-// comes, counted from the first packet's.
+// The rate is kept with an accumulator over an interval of 188 x 8 seconds, so that a
+// rate in whole bits a second sends a whole number of bytes per interval. Two K28.5 go
+// before each packet; one when the rate leaves room for only one, none when it leaves
+// none. In burst mode, a packet's bytes go out together, with the fill between packets;
+// in normal mode, the fill is spread between the bytes.
 //
-// A byte where a packet should start that is not 0x47 sets the synchronisation error,
-// and bytes are skipped up to the next 0x47; DTAPI_TXMODE_RAW has no packets and checks
+// With DTAPI_TXMODE_TXONTIME, each packet is preceded by a 32-bit little-endian time in
+// 54 MHz ticks. The packet goes out at that time, counted from the first packet's time.
+//
+// When a byte where a packet should start is not 0x47, the synchronisation error is set,
+// and bytes are skipped up to the next 0x47. DTAPI_TXMODE_RAW has no packets and checks
 // nothing.
 //
 
-// The symbols of the transmission character K28.5, for a negative and a positive
-// running disparity.
+// The symbol K28.5, for a negative and for a positive running disparity.
 #define DT_ASI_K28_5_RDNEG 0x17C
 #define DT_ASI_K28_5_RDPOS 0x283
 
-// The ASI line rate in symbols a second.
+// The ASI line rate, in symbols a second.
 #define DT_ASI_SYMBOL_RATE 27000000
 
-// The code of Byte for running disparity Rd, 0 for negative and 1 for positive; *NextRd
-// receives the running disparity after it.
+// Returns the 8b/10b code of Byte for running disparity Rd (0 negative, 1 positive).
+// *NextRd receives the running disparity after it.
 uint16_t DtAsiEnc_EncodeByte(uint8_t Byte, int Rd, int* NextRd);
 
+// The state of one encoded stream.
 typedef struct DtAsiEnc
 {
-    // What the mode sets.
-    int InSize;      // Bytes of a packet written: 188 or 204
-    int InUsed;      // Of which sent: 188 or 204
-    int OutSize;     // Bytes of a packet sent, zeros after InUsed
+    // Set by the transmit mode.
+    int InSize;      // Bytes per packet written: 188 or 204
+    int InUsed;      // ... of which sent: 188 or 204
+    int OutSize;     // Bytes per packet sent; zeros follow the InUsed bytes
     bool IsRaw;      // DTAPI_TXMODE_RAW
     bool IsBurst;    // DTAPI_TXMODE_BURST
     bool IsTxOnTime; // DTAPI_TXMODE_TXONTIME
-    int64_t Rate;    // Bits a second, of 188-byte packets
+    int64_t Rate;    // The rate in bits a second, counted in 188-byte packets
 
-    // What the rate sets.
-    int NumK28BeforePacket;
-    // The stream's bytes in an interval, a symbol each, and the symbols the interval has,
-    // less the K28.5 before packets.
+    // Set by the rate.
+    int NumK28BeforePacket; // The K28.5 symbols before each packet: 0, 1 or 2
+    // The stream's bytes per interval (one symbol each), and the symbols the interval
+    // has for them: all, less the K28.5 before packets.
     int64_t SymbolsNeededPerInterval;
     int64_t SymbolsAvailablePerInterval;
 
     // The state of the stream.
-    int Rd;
-    int64_t RateAccumulator;
-    int ByteIndex;   // Of the packet being sent
-    int NumK28Sent;  // Before the packet being sent
-    int BytesToSkip; // Bytes still to drop after the packet, for MIN16
-    bool SyncErr, SyncErrLatched;
+    int Rd;                       // The running disparity: 0 negative, 1 positive
+    int64_t RateAccumulator;      // Keeps the rate over the interval
+    int ByteIndex;                // The next byte of the packet being sent
+    int NumK28Sent;               // K28.5 sent before the packet being sent
+    int BytesToSkip;              // Bytes still to drop after the packet, for MIN16
+    bool SyncErr, SyncErrLatched; // The synchronisation error, now and latched
 
-    // DTAPI_TXMODE_TXONTIME.
-    int OnTimeState;
-    uint8_t TimeBytes[4];
-    uint32_t NowTicks;        // In 54 MHz ticks
+    // For DTAPI_TXMODE_TXONTIME.
+    int OnTimeState;          // Which part of a timed packet comes next
+    uint8_t TimeBytes[4];     // The time bytes read so far
+    uint32_t NowTicks;        // The stream's time, in 54 MHz ticks
     uint32_t PacketTimeTicks; // When the packet being sent goes out
-    bool IsFirstPacket;
+    bool IsFirstPacket;       // True until the first packet's time is read
 } DtAsiEnc;
 
-// A stream with the default settings: DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST at 10 Mbit/s.
+// Sets *Enc to the defaults: DTAPI_TXMODE_188 | DTAPI_TXMODE_BURST at 10 Mbit/s.
 void DtAsiEnc_Init(DtAsiEnc* Enc);
 
-// Sets the transmit mode, a DTAPI_TXMODE_ of the transport-stream group with
-// DTAPI_TXMODE_BURST or DTAPI_TXMODE_TXONTIME. Returns DTAPI_E_NOT_IMPLEMENTED for
-// DTAPI_TXMODE_RAWASI and DTAPI_E_INVALID_ARG for another mode, and then changes
-// nothing. A rate the new packet size does not fit is not refused here but by Start.
+// Sets the transmit mode: a transport-stream DTAPI_TXMODE_ value, optionally with
+// DTAPI_TXMODE_BURST or DTAPI_TXMODE_TXONTIME. A rate that the new packet size cannot
+// carry is not refused here, but by DtAsiEnc_Start.
+//
+// Returns DTAPI_OK, or, changing nothing:
+//   DTAPI_E_NOT_IMPLEMENTED  DTAPI_TXMODE_RAWASI
+//   DTAPI_E_INVALID_ARG      any other mode
 DtapiResult DtAsiEnc_SetTxMode(DtAsiEnc* Enc, int TxMode);
 
 // Sets the rate in bits a second, counted in 188-byte packets whatever the packet size.
-// Returns DTAPI_E_INVALID_RATE for a rate of 0 or less, or one whose packets need more
-// symbols than the line has, and then changes nothing.
+//
+// Returns DTAPI_OK, or DTAPI_E_INVALID_RATE, changing nothing, when Rate is 0 or less,
+// or its packets need more symbols than the line has.
 DtapiResult DtAsiEnc_SetRate(DtAsiEnc* Enc, int64_t Rate);
 
-// Starts a stream: positive running disparity, an empty accumulator, no packet begun,
-// the synchronisation error cleared. Returns DTAPI_E_INVALID_RATE, and starts nothing,
-// when the rate does not fit the packet size, except with DTAPI_TXMODE_TXONTIME, whose
-// packets go out at their times whatever the rate.
+// Starts the stream: positive running disparity, an empty accumulator, no packet begun,
+// and the synchronisation error cleared.
+//
+// Returns DTAPI_OK, or DTAPI_E_INVALID_RATE, starting nothing, when the packet size
+// cannot carry the rate. With DTAPI_TXMODE_TXONTIME the rate is not checked, as packets
+// go out at their own times.
 DtapiResult DtAsiEnc_Start(DtAsiEnc* Enc);
 
-// Encodes from In, InSize bytes, into Out, room for OutSymbols symbols, until either is
-// used up. *BytesTaken receives the bytes taken and *SymbolsWritten the symbols written.
-// A packet or a time stamp that is cut off continues in the next call.
+// Encodes the InSize bytes at In into symbols at Out, which has room for OutSymbols,
+// until either is used up. Returns the bytes taken in *BytesTaken and the symbols
+// written in *SymbolsWritten. A packet or time stamp that is cut off continues in the
+// next call.
 void DtAsiEnc_Encode(DtAsiEnc* Enc, const uint8_t* In, size_t InSize, uint16_t* Out,
                      size_t OutSymbols, size_t* BytesTaken, size_t* SymbolsWritten);
 
-// Writes Symbols K28.5 symbols into Out, keeping the running disparity, to fill the
-// card's last data word.
+// Writes Symbols K28.5 symbols to Out, keeping the running disparity. Used to fill up
+// the card's last data word.
 void DtAsiEnc_Pad(DtAsiEnc* Enc, uint16_t* Out, size_t Symbols);
 
-// The bytes, in packets of OutSize as sent, that Symbols symbols carry at the current
-// rate, rounded down.
+// Returns how many bytes Symbols symbols carry at the current rate, rounded down,
+// counted in packets of OutSize as sent.
 int64_t DtAsiEnc_BytesInSymbols(const DtAsiEnc* Enc, int64_t Symbols);
 
-// DTAPI_TX_SYNC_ERR in *Flags and *Latched when set; ClearFlags clears it when Flags has
-// it.
+// DtAsiEnc_GetFlags sets DTAPI_TX_SYNC_ERR in *Flags and *Latched when the
+// synchronisation error is set. DtAsiEnc_ClearFlags clears it when Flags has
+// DTAPI_TX_SYNC_ERR.
 void DtAsiEnc_GetFlags(const DtAsiEnc* Enc, int* Flags, int* Latched);
 void DtAsiEnc_ClearFlags(DtAsiEnc* Enc, int Flags);

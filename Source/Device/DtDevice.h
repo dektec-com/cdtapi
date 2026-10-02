@@ -20,12 +20,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Device +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// What is kept of an attached device: the driver handle and its version, the device's
-// identity, its port counts and, per port, the capabilities CDTAPI looks at. Everything
-// is read once, at attach; the capabilities do not depend on the I/O configuration.
+// A DtDevice holds what the library keeps of an attached card: the driver handle and
+// version, the card's identity, its port counts, and the capabilities of each port. All
+// of it is read once, when the card is attached. The capabilities do not depend on the
+// I/O configuration.
 //
-// A port's channel type, which follows the I/O direction and would have to be re-read
-// after every configuration change, is not kept here.
+// A port's channel type is not kept here: it follows the I/O direction, so it would have
+// to be read again after every configuration change.
 //
 
 // The SDI rates, the AV FIFO and the direction.
@@ -40,7 +41,7 @@
 
 // The receiver: internal inputs, the Matrix API, SDI, HDMI and 12G-to-3G scaling.
 #define DT_CAP_INTINPUT                                                                  \
-    UINT64_C(0x100) // Internal input, such as a link of a quad-link input
+    UINT64_C(0x100) // Internal input, e.g. one link of a quad-link input
 #define DT_CAP_MATRIX2 UINT64_C(0x200) // The high-level Matrix API can use the port
 #define DT_CAP_SDIRX UINT64_C(0x400)   // SDI receiver
 #define DT_CAP_HDMI UINT64_C(0x800)    // HDMI
@@ -50,7 +51,7 @@
 #define DT_CAP_IP UINT64_C(0x2000) // Transport-stream-over-IP port
 
 // ASI, the transport-stream receive modes, and per-port hardware: relay, SPI, quad link.
-#define DT_CAP_ASI UINT64_C(0x4000)      // ASI, which the ASI/SDI receiver implies
+#define DT_CAP_ASI UINT64_C(0x4000)      // ASI; an ASI/SDI receiver has it too
 #define DT_CAP_MATRIX UINT64_C(0x8000)   // The frame-buffer Matrix API of older cards
 #define DT_CAP_TS UINT64_C(0x10000)      // Transport-stream receive modes
 #define DT_CAP_HUFFMAN UINT64_C(0x20000) // Compressed SDI
@@ -58,7 +59,7 @@
 #define DT_CAP_TRPMODE UINT64_C(0x80000) // Transparent-packet receive mode
 #define DT_CAP_TIMESTAMP64 UINT64_C(0x100000) // 64-bit time stamps
 #define DT_CAP_SDI10BNBO UINT64_C(0x200000)   // 10-bit SDI in network byte order
-#define DT_CAP_DMATESTMODE UINT64_C(0x400000) // A DMA-rate test mode to switch off
+#define DT_CAP_DMATESTMODE UINT64_C(0x400000) // A DMA-rate test mode, to switch off
 #define DT_CAP_FAILSAFE UINT64_C(0x800000)    // A fail-safe relay
 #define DT_CAP_SPI UINT64_C(0x1000000)        // SPI
 #define DT_CAP_SPISDI UINT64_C(0x2000000)     // SDI over SPI
@@ -74,25 +75,26 @@
 #define DT_CAP_ANY_SDI                                                                   \
     (DT_CAP_12GSDI | DT_CAP_3GSDI | DT_CAP_6GSDI | DT_CAP_HDSDI | DT_CAP_SDI)
 
-// An object of the device's own that a public function needs, looked for once, when the
-// application attaches: LookupResult is DTAPI_OK with Object what its commands go to,
-// DTAPI_E_NOT_SUPPORTED when the device does not have it or it was not looked for, and
-// DTAPI_E_DRIVER_INCOMP when the driver is too old for it.
+// An object of the card that a public function needs, such as the genlock controller.
+// The library looks for it once, when the card is attached.
 typedef struct DtDevObject
 {
+    // DTAPI_OK               found; Object is where its commands go
+    // DTAPI_E_NOT_SUPPORTED  the card does not have it, or it was not looked for
+    // DTAPI_E_DRIVER_INCOMP  the driver is too old for it
     DtapiResult LookupResult;
-    DtDrvObject Object;
+    DtDrvObject Object; // Where commands to the object go, when found
 } DtDevObject;
 
 struct DtDevice
 {
-    OsDrv* Drv;      // NULL while detached
-    int DriverIndex; // The index the driver numbers the device by
-    DtDriverVersion DriverVersion;
-    DtDeviceInfo Info;
-    int NumPorts;       // All ports, PORT_COUNT
-    int NumPublicPorts; // The ports an application sees, MAIN_PORT_COUNT
-    uint64_t* PortCaps; // DT_CAP_ flags per port index, for the larger count
+    OsDrv* Drv;                    // The driver handle; NULL while detached
+    int DriverIndex;               // The number the driver gives the card
+    DtDriverVersion DriverVersion; // The driver's version
+    DtDeviceInfo Info;             // The card's identity, as the driver reports it
+    int NumPorts;                  // All ports, PORT_COUNT
+    int NumPublicPorts;            // The ports an application sees, MAIN_PORT_COUNT
+    uint64_t* PortCaps; // DT_CAP_ flags per port index, for the larger of the two counts
 
     // The clocks, which DtDevClock_OnAttach looks for.
     DtDevObject Genlock;    // The genlock controller
@@ -100,66 +102,77 @@ struct DtDevice
     DtDevObject ClkCnt[2];  // The transmit-clock counters, per DTAPI_TXCLK_ type
 };
 
-// Attaches Device, which must be detached, to the device the driver numbers Index, when
-// MatchSerial is false or the device's serial number is Serial. Returns DTAPI_OK,
-// DTAPI_E_NO_SUCH_DEVICE when there is no such device or it cannot be read,
-// DTAPI_E_DRIVER_INCOMP for a driver that is too old, and DTAPI_E_OUT_OF_MEM. An attached
-// device is activated too, as DtDevActivate_OnAttach describes, which can take tens of
-// milliseconds; the result of that does not decide the attach.
+// Attaches Device, which must be detached, to the card the driver numbers Index. When
+// MatchSerial is true, the card must also have serial number Serial. Then activates the
+// card (see DtDevActivate_OnAttach), which can take tens of milliseconds; whether that
+// works does not change the result.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_NO_SUCH_DEVICE  there is no such card, its serial number differs, or it
+//                           cannot be read
+//   DTAPI_E_DRIVER_INCOMP   the driver is too old
+//   DTAPI_E_OUT_OF_MEM      not enough memory
 DtapiResult DtDevice_AttachToIndex(DtDevice* Device, int Index, bool MatchSerial,
                                    int64_t Serial);
 
-// Releases what an attached Device holds and leaves it detached.
+// Frees what an attached Device holds, and leaves it detached.
 void DtDevice_Release(DtDevice* Device);
 
-// DTAPI_E_OBSOLETE_FW or DTAPI_E_TAINTED_FW for obsolete or tainted firmware, else
-// DTAPI_OK.
+// Checks that the firmware of an attached Device can be used.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_OBSOLETE_FW  the card's firmware is obsolete
+//   DTAPI_E_TAINTED_FW   the card's firmware is an unsupported version
 DtapiResult DtDevice_CheckFirmware(const DtDevice* Device);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Port capabilities +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// What a port can do is what its capabilities say. Code that needs a port to be able to
-// do something asks these functions, and the flags of DtHwFuncDesc are filled from
-// them for the application's convenience; the library does not read those flags.
+// A port can do what its capabilities say. Code that needs a port to do something asks
+// these functions. The flags of DtHwFuncDesc are filled from them, for the application;
+// the library itself does not read those flags.
 //
 
-// Whether port Port, numbered from 1, of an attached Device has every capability in
-// Caps, a set of DT_CAP_ flags. False for a port the device does not have or that has
-// no capability at all.
+// Returns whether port Port (from 1) of an attached Device has every capability in Caps,
+// a set of DT_CAP_ flags. Returns false for a port the card does not have, or one with
+// no capabilities at all.
 bool DtDevice_PortHasAllCaps(const DtDevice* Device, int Port, uint64_t Caps);
 
-// Whether the port has at least one capability in Caps. False for a port the device
-// does not have, and for an empty Caps.
+// Returns whether the port has at least one capability in Caps. Returns false for a port
+// the card does not have, and for an empty Caps.
 bool DtDevice_PortHasAnyCap(const DtDevice* Device, int Port, uint64_t Caps);
 
-// Whether the port has the capabilities ASI needs in CDTAPI: DT_CAP_ASI, and
-// DT_CAP_INPUT or DT_CAP_OUTPUT, so that it can receive or send it.
+// Returns whether the port can receive or send ASI: it has DT_CAP_ASI, and DT_CAP_INPUT
+// or DT_CAP_OUTPUT.
 bool DtDevice_PortHasAsiCaps(const DtDevice* Device, int Port);
 
-// Whether the port has the capabilities of I/O standard IoStd, a value of
-// DTAPI_IOCONFIG_IOSTD: those of ASI for DTAPI_IOCONFIG_ASI, and for DTAPI_IOCONFIG_SDI,
-// HDSDI, 3GSDI, 6GSDI and 12GSDI the capability of that rate with the others SDI needs.
-// False for any other standard, which the input and output channels do not carry.
+// Returns whether the port can carry I/O standard IoStd, a DTAPI_IOCONFIG_IOSTD value:
+// - DTAPI_IOCONFIG_ASI: as DtDevice_PortHasAsiCaps;
+// - DTAPI_IOCONFIG_SDI, HDSDI, 3GSDI, 6GSDI and 12GSDI: that SDI rate, and the other
+//   capabilities SDI needs (see DtDevice_PortHasSdiCaps).
+// Returns false for any other standard, as the input and output channels carry no other.
 bool DtDevice_PortHasIoStdCaps(const DtDevice* Device, int Port, int IoStd);
 
-// Whether the port has the capabilities SDI needs in CDTAPI: one of the SDI rates,
-// DT_CAP_MATRIX2, and DT_CAP_INPUT or DT_CAP_OUTPUT, so that it can receive or send it.
+// Returns whether the port can receive or send SDI: it has one of the SDI rates,
+// DT_CAP_MATRIX2, and DT_CAP_INPUT or DT_CAP_OUTPUT.
 bool DtDevice_PortHasSdiCaps(const DtDevice* Device, int Port);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hardware functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// Writes the description of a port in the type-and-port format of a PCI device: "DTA-"
-// and the type number, the sub-type as a letter, and " port " with the port number, as
-// "DTA-2178 port 1" or "DTA-2172A port 3". A DTA-2178 with sub-type 1 is the
-// DTA-2178-ASI: "DTA-2178-ASI port 1". Returns DTAPI_E_INVALID_BUF for a Buf of NULL or a
-// Size of 0, and DTAPI_E_BUF_TOO_SMALL, with an empty Buf, when Size cannot hold it.
+// Writes the name of a port into Buf, e.g. "DTA-2178 port 1" or "DTA-2172A port 3": the
+// type number, the sub-type as a letter, and the port number. A DTA-2178 with sub-type 1
+// is written as "DTA-2178-ASI".
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_BUF    Buf is NULL or Size is 0
+//   DTAPI_E_BUF_TOO_SMALL  the name does not fit in Size bytes; Buf is then empty
 DtapiResult DtDevice_FormatPortName(int TypeNumber, int SubType, int Port, char* Buf,
                                     size_t Size);
 
-// Fills Desc for a port of an attached Device, numbered from 1.
+// Fills *Desc with the description of port Port (from 1) of an attached Device.
 void DtDevice_DescribeHwFunc(const DtDevice* Device, int Port, DtHwFuncDesc* Desc);
 
-// Fills Desc for an attached Device. Reads the I/O direction of each public port that is
-// not only an input, only an output or an IP port; the channel counts stop at the first
-// port whose direction cannot be read.
+// Fills *Desc with the description of an attached Device. To count the input and output
+// channels, it reads the I/O direction of each public port that can be both input and
+// output and is not an IP port. Counting stops at the first port whose direction cannot
+// be read.
 void DtDevice_DescribeDevice(const DtDevice* Device, DtDeviceDesc* Desc);
