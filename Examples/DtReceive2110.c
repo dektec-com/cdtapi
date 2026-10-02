@@ -15,10 +15,19 @@
 //     9211000001:1  ok 3  incomplete 0  gaps 0  packet errors 0  dropped 0  sync 0
 //
 // The video's format follows --format, which is what the FIFO converts the pixel groups
-// to. Exits with 0 when every frame arrives, 2 when a frame does not arrive in time or
-// there is no IP port, and 1 when a call fails or the command line is wrong.
+// to. With --sdp, in a library built with the NMOS bridge, the stream is the first video
+// or audio flow of an SDP file, which the bridge turns into the FIFO's configuration and
+// IP parameters; --ip, --udp and --audio then have no say. Exits with 0 when every frame
+// arrives, 2 when a frame does not arrive in time or there is no IP port, and 1 when a
+// call fails or the command line is wrong.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// MSVC deprecates fopen in favour of fopen_s, which other C libraries do not have. Asked
+// for before any header.
+#ifdef _MSC_VER
+    #define _CRT_SECURE_NO_WARNINGS
+#endif
 
 // Standard includes
 #include <stdio.h>
@@ -28,6 +37,15 @@
 // Example includes
 #include "Common/ExampleAvFifo.h" // The AV FIFO header and what the 2110 examples share.
 #include "Common/ExampleCommon.h" // The API and what the examples share.
+
+// The NMOS bridge, in a library built with it; the build says so in
+// CDTAPI_EXAMPLE_WITH_NMOS.
+#if CDTAPI_EXAMPLE_WITH_NMOS
+    #include "cdtapi_nmos.h"
+#endif
+
+// The largest SDP file read.
+#define MAX_SDP_SIZE 65536
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -41,6 +59,7 @@ static const ExampleOption g_Options[] = {
     {"--format", true, "raw, 8b, 10b, 10bto8b or planar; 10b without it"},
     {"--audio", true, "Receive audio of this many channels instead of video"},
     {"--pipe", true, EXAMPLE_PIPE_HELP},
+    {"--sdp", true, "An SDP file whose first video or audio flow to receive; with NMOS"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -121,21 +140,123 @@ static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Coun
     return Exit;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+#if CDTAPI_EXAMPLE_WITH_NMOS
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
-                            const DtHwFuncDesc* Port, const ExampleAvConfig* Config,
-                            St2110_RxFrameFormat Format, const char* FormatName,
-                            int Count, int TimeoutMs)
+// Reads the file Path into Text, of Size bytes, with its null. False, saying why, when
+// it cannot be read or is larger than that.
+//
+static bool ReadSdp(const char* Path, char* Text, size_t Size)
 {
-    unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
-    if (Result != DTAPI_OK)
-        return Example_Failed("DtDevice_AttachToSerial", Result);
+    FILE* File = fopen(Path, "rb");
+    if (File == NULL)
+    {
+        printf("Cannot open %s\n", Path);
+        return false;
+    }
+    size_t Length = fread(Text, 1, Size - 1, File);
+    bool TooLarge = Length == Size - 1 && fgetc(File) != EOF;
+    fclose(File);
+    if (TooLarge)
+    {
+        printf("%s is larger than %d bytes\n", Path, (int)Size - 1);
+        return false;
+    }
+    Text[Length] = '\0';
+    return true;
+}
 
-    Result = ExampleAv_AttachRx(Fifo, Device, Port->Port, Config);
-    if (Result != DTAPI_OK)
-        return ExampleAv_Failed("AvFifo_RxFifo_Attach", Result);
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Configures Fifo for the first video or audio flow of the SDP file Path, in Format for
+// video, as the bridge turns the flow into a configuration and IP parameters, and sets
+// what Config says of the stream to print. EXAMPLE_OK, or the exit of the failure.
+//
+static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
+                            St2110_RxFrameFormat Format, ExampleAvConfig* Config)
+{
+    static char Text[MAX_SDP_SIZE];
+    if (!ReadSdp(Path, Text, sizeof(Text)))
+        return EXAMPLE_FAILED;
+    DtNmosSdp* Sdp = NULL;
+    if (DtNmosSdp_Parse(Text, strlen(Text), &Sdp) != DTNMOS_OK)
+    {
+        printf("%s: %s\n", Path, DtNmos_GetLastError());
+        return EXAMPLE_FAILED;
+    }
+    const DtNmosFlow* Flow = NULL;
+    for (size_t i = 0; i < DtNmosSdp_FlowCount(Sdp) && Flow == NULL; i++)
+    {
+        const DtNmosFlow* Candidate = DtNmosSdp_Flow(Sdp, i);
+        if (Candidate->Media == DTNMOS_MEDIA_VIDEO ||
+            Candidate->Media == DTNMOS_MEDIA_AUDIO)
+            Flow = Candidate;
+    }
+    if (Flow == NULL)
+    {
+        printf("%s has no video or audio flow\n", Path);
+        DtNmosSdp_Free(Sdp);
+        return EXAMPLE_FAILED;
+    }
 
+    St2110_RxConfigVideo Video;
+    St2110_RxConfigAudio Audio;
+    AvFifo_IpPars Pars;
+    int Exit = EXAMPLE_OK;
+    unsigned int Result =
+        DtNmosAvFifo_RxConfigFromFlow(Flow, Format, &Video, &Audio, &Pars);
+    if (Result != DTAPI_OK)
+        Exit = ExampleAv_Failed("DtNmosAvFifo_RxConfigFromFlow", Result);
+    else if (Flow->Media == DTNMOS_MEDIA_AUDIO &&
+             (Result = AvFifo_RxFifo_ConfigureAudio(Fifo, &Audio)) != DTAPI_OK)
+        Exit = ExampleAv_Failed("AvFifo_RxFifo_ConfigureAudio", Result);
+    else if (Flow->Media == DTNMOS_MEDIA_VIDEO &&
+             (Result = AvFifo_RxFifo_ConfigureVideo(Fifo, &Video)) != DTAPI_OK)
+        Exit = ExampleAv_Failed("AvFifo_RxFifo_ConfigureVideo", Result);
+    else if ((Result = AvFifo_RxFifo_SetIpPars(Fifo, &Pars)) != DTAPI_OK)
+        Exit = ExampleAv_Failed("AvFifo_RxFifo_SetIpPars", Result);
+    else
+    {
+        // What is printed of the stream; an IPv6 group prints as its first four bytes.
+        memcpy(Config->Ip, Pars.IpAddr, sizeof(Config->Ip));
+        Config->UdpPort = Pars.Port;
+        Config->Channels =
+            Flow->Media == DTNMOS_MEDIA_AUDIO ? (int)Flow->Format.Audio.Channels : 0;
+        Config->SampleRate = Audio.SampleRate;
+    }
+    DtNmosSdp_Free(Sdp);
+    return Exit;
+}
+
+#else
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromSdp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A library built without the NMOS bridge reads no SDP.
+//
+static int ConfigureFromSdp(AvFifo_RxFifo* Fifo, const char* Path,
+                            St2110_RxFrameFormat Format, ExampleAvConfig* Config)
+{
+    (void)Fifo;
+    (void)Path;
+    (void)Format;
+    (void)Config;
+    printf("--sdp needs a library built with the NMOS bridge, CDTAPI_WITH_NMOS\n");
+    return EXAMPLE_FAILED;
+}
+
+#endif
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureFromCommandLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Configures Fifo for the stream Config describes, in Format for video. EXAMPLE_OK, or
+// the exit of the failure.
+//
+static int ConfigureFromCommandLine(AvFifo_RxFifo* Fifo, const ExampleAvConfig* Config,
+                                    St2110_RxFrameFormat Format)
+{
+    unsigned int Result = DTAPI_OK;
     if (Config->Channels > 0)
     {
         St2110_RxConfigAudio Audio;
@@ -161,13 +282,37 @@ static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
     Result = AvFifo_RxFifo_SetIpPars(Fifo, &Pars);
     if (Result != DTAPI_OK)
         return ExampleAv_Failed("AvFifo_RxFifo_SetIpPars", Result);
+    return EXAMPLE_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Receives the stream of the SDP file SdpPath, or of the command line when it is NULL.
+//
+static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
+                            const DtHwFuncDesc* Port, ExampleAvConfig* Config,
+                            const char* SdpPath, St2110_RxFrameFormat Format,
+                            const char* FormatName, int Count, int TimeoutMs)
+{
+    unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
+    if (Result != DTAPI_OK)
+        return Example_Failed("DtDevice_AttachToSerial", Result);
+
+    Result = ExampleAv_AttachRx(Fifo, Device, Port->Port, Config);
+    if (Result != DTAPI_OK)
+        return ExampleAv_Failed("AvFifo_RxFifo_Attach", Result);
+
+    int Exit = SdpPath != NULL ? ConfigureFromSdp(Fifo, SdpPath, Format, Config)
+                               : ConfigureFromCommandLine(Fifo, Config, Format);
+    if (Exit != EXAMPLE_OK)
+        return Exit;
 
     Result = AvFifo_RxFifo_Start(Fifo);
     if (Result != DTAPI_OK)
         return ExampleAv_Failed("AvFifo_RxFifo_Start", Result);
 
     ExampleAv_PrintStream(Port, ExampleAv_RxPipeKind(Fifo), Config, FormatName);
-    int Exit = ReceiveFrames(Fifo, Port, Count, TimeoutMs);
+    Exit = ReceiveFrames(Fifo, Port, Count, TimeoutMs);
     AvFifo_RxFifo_Stop(Fifo);
     return Exit;
 }
@@ -219,7 +364,8 @@ int main(int Argc, char** Argv)
     else if (Device == NULL || Fifo == NULL)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
-        Exit = AttachAndReceive(Device, Fifo, &Port, &Config, Format, FormatName,
+        Exit = AttachAndReceive(Device, Fifo, &Port, &Config,
+                                Example_Value(Argc, Argv, "--sdp"), Format, FormatName,
                                 (int)Count, (int)Timeout);
 
     AvFifo_RxFifo_Free(Fifo);

@@ -58,6 +58,13 @@ foreach(Program IN LISTS ExamplePrograms)
     cdtapi_add_example(${Program})
 endforeach()
 
+# DtReceive2110 reads an SDP file through the NMOS bridge, in a library built with it.
+if(CDTAPI_WITH_NMOS)
+    target_compile_definitions(DtReceive2110 PRIVATE CDTAPI_EXAMPLE_WITH_NMOS=1)
+else()
+    target_compile_definitions(DtReceive2110 PRIVATE CDTAPI_EXAMPLE_WITH_NMOS=0)
+endif()
+
 # +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+ Smoke tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 #
 # Each program runs against the emulated DTA-2178, and passes when its output matches.
@@ -239,6 +246,22 @@ cdtapi_example_test(Receive2110Audio DtReceive2110
     "2 channels L24 48000 Hz" --audio 2 --count 1 --timeout 20)
 cdtapi_example_test(Receive2110BadFormat DtReceive2110
     "^Unknown receive format: 12b" --format 12b)
+
+# The stream of an SDP file, through the NMOS bridge, or a word that the build has none.
+set(ExampleSdp "${CMAKE_CURRENT_SOURCE_DIR}/Sdp/Video1080p25.sdp")
+if(CDTAPI_WITH_NMOS)
+    cdtapi_example_test(Receive2110FromSdp DtReceive2110
+        "9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b\n9211000001:1  no frame within 20 ms"
+        --sdp "${ExampleSdp}" --count 1 --timeout 20)
+    cdtapi_example_test(Receive2110FromSdpRefused DtReceive2110
+        "DtNmosAvFifo_RxConfigFromFlow: DTAPI_E_NOT_SUPPORTED\n.*the flow has 10; use Uyvy422_10b"
+        --sdp "${ExampleSdp}" --format 8b)
+    cdtapi_example_test(Receive2110FromMissingSdp DtReceive2110
+        "^Cannot open .*Missing.sdp" --sdp "${CMAKE_CURRENT_SOURCE_DIR}/Sdp/Missing.sdp")
+else()
+    cdtapi_example_test(Receive2110FromSdpWithoutNmos DtReceive2110
+        "^--sdp needs a library built with the NMOS bridge" --sdp "${ExampleSdp}")
+endif()
 
 set(ExampleExtraEnv "")
 
