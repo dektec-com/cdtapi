@@ -10,9 +10,11 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDTAPI includes
-#include "DtTest.h"           // Test framework.
-#include "cdtapi_constants.h" // Result codes.
-#include "cdtapi_nmos.h"      // Functions under test.
+#include "DtTest.h"             // Test framework.
+#include "OAL/Sim/SimDtPcie.h"  // The emulated devices.
+#include "OAL/Sim/SimDta2110.h" // The emulated DTA-2110's serial number.
+#include "cdtapi_constants.h"   // Result codes.
+#include "cdtapi_nmos.h"        // Functions under test.
 
 // dtnmos includes
 #include "dtnmos_node.h" // DtNmos_HasServer, through the library's own link.
@@ -26,16 +28,20 @@
     "s=Test\r\n"                                                                         \
     "t=0 0\r\n"
 
-// A video flow to 239.1.2.3:5004 from 192.168.39.10, of the sampling and depth given.
-#define VIDEO(Sampling, Depth)                                                           \
+// A video flow to 239.1.2.3:5004 from 192.168.39.10, with the a=fmtp given.
+#define VIDEO_FMTP(Fmtp)                                                                 \
     SESSION "m=video 5004 RTP/AVP 96\r\n"                                                \
             "c=IN IP4 239.1.2.3/64\r\n"                                                  \
             "a=source-filter: incl IN IP4 239.1.2.3 192.168.39.10\r\n"                   \
             "a=rtpmap:96 raw/90000\r\n"                                                  \
-            "a=fmtp:96 sampling=" Sampling "; width=1920; height=1080; "                 \
-            "exactframerate=25; depth=" Depth "; TCS=SDR; colorimetry=BT709; "           \
-            "PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPN\r\n"                             \
+            "a=fmtp:96 " Fmtp "\r\n"                                                     \
             "a=mediaclk:direct=0\r\n"
+
+// A 1080p25 video flow of the sampling and depth given.
+#define VIDEO(Sampling, Depth)                                                           \
+    VIDEO_FMTP("sampling=" Sampling "; width=1920; height=1080; exactframerate=25; "     \
+               "depth=" Depth "; TCS=SDR; colorimetry=BT709; PM=2110GPM; "               \
+               "SSN=ST2110-20:2017; TP=2110TPN")
 
 // An audio flow of two channels at 48 kHz to 239.1.2.4:5006, of the encoding given.
 #define AUDIO(Encoding)                                                                  \
@@ -45,9 +51,12 @@
             "a=ptime:1\r\n"                                                              \
             "a=mediaclk:direct=0\r\n"
 
+// What a case holds: an SDP, and the emulated DTA-2110 with a transmit FIFO.
 typedef struct Fixture
 {
     DtNmosSdp* Sdp;
+    DtDevice* Device;
+    AvFifo_TxFifo* Tx;
 } Fixture;
 
 static void FreeFixture(void* Context)
@@ -55,12 +64,15 @@ static void FreeFixture(void* Context)
     Fixture* Fix = (Fixture*)Context;
     DtNmosSdp_Free(Fix->Sdp);
     Fix->Sdp = NULL;
+    AvFifo_TxFifo_Freep(&Fix->Tx);
+    DtDevice_Freep(&Fix->Device);
 }
 
 // Parses Text into the fixture and returns its flow at Index, or NULL.
 static const DtNmosFlow* FlowOf(Fixture* Fix, const char* Text, size_t Index)
 {
-    FreeFixture(Fix);
+    DtNmosSdp_Free(Fix->Sdp);
+    Fix->Sdp = NULL;
     if (DtNmosSdp_Parse(Text, strlen(Text), &Fix->Sdp) != DTNMOS_OK)
         return NULL;
     return DtNmosSdp_Flow(Fix->Sdp, Index);
@@ -296,5 +308,302 @@ DT_TEST(RxIpV6)
     DT_ASSERT_EQ(IpPars.SrcFlt[0].IpAddr[15], 0x10);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmit +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// 1080i50 of depth 8 in block packing and linear scheduling: the frame rate doubled into
+// the field rate, the frame format of the depth, no source filter.
+DT_TEST(TxVideo)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    const DtNmosFlow* Flow =
+        FlowOf(&Fix,
+               VIDEO_FMTP("sampling=YCbCr-4:2:2; width=1920; height=1080; "
+                          "exactframerate=25; depth=8; interlace; PM=2110BPM; "
+                          "TP=2110TPNL"),
+               0);
+    DT_ASSERT(Flow != NULL);
+    St2110_TxConfigVideo Video;
+    AvFifo_IpPars IpPars;
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(Flow, &Video, NULL, &IpPars));
+    DT_ASSERT_EQ(Video.Format, St2110_TxFrameFormat_Uyvy422_8b);
+    DT_ASSERT_EQ(Video.Resolution.Width, 1920);
+    DT_ASSERT_EQ(Video.Resolution.Height, 1080);
+    DT_ASSERT_EQ(Video.Timing.Rate.Numerator, 50);
+    DT_ASSERT_EQ(Video.Timing.Rate.Denominator, 1);
+    DT_ASSERT_EQ(Video.Timing.VideoScanning, St2110_VideoScanning_Interlaced);
+    DT_ASSERT_EQ(Video.Timing.Scheduling, St2110_Scheduling_Linear);
+    DT_ASSERT_EQ(Video.Packing.PackingMode, St2110_PackingMode_Block);
+    DT_ASSERT_EQ(Video.Packing.PayloadSize, -1);
+    DT_ASSERT_EQ(IpPars.Port, 5004);
+    DT_ASSERT_EQ(IpPars.NSrcFlt, 0);
+
+    // A wide sender's type is sent narrow, gapped.
+    Flow = FlowOf(&Fix,
+                  VIDEO_FMTP("sampling=YCbCr-4:2:2; width=1280; height=720; "
+                             "exactframerate=60000/1001; depth=10; TP=2110TPW"),
+                  0);
+    DT_ASSERT(Flow != NULL);
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(Flow, &Video, NULL, &IpPars));
+    DT_ASSERT_EQ(Video.Format, St2110_TxFrameFormat_Uyvy422_10b);
+    DT_ASSERT_EQ(Video.Timing.Rate.Numerator, 60000);
+    DT_ASSERT_EQ(Video.Timing.Rate.Denominator, 1001);
+    DT_ASSERT_EQ(Video.Timing.Scheduling, St2110_Scheduling_Gapped);
+    DT_ASSERT_EQ(Video.Packing.PackingMode, St2110_PackingMode_General);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// L24 and L16 at the packet times of ST 2110-30, 1 ms when the SDP gives none.
+DT_TEST(TxAudio)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    St2110_TxConfigAudio Audio;
+    AvFifo_IpPars IpPars;
+    const DtNmosFlow* Flow = FlowOf(&Fix, AUDIO("L24"), 0);
+    DT_ASSERT(Flow != NULL);
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(Flow, NULL, &Audio, &IpPars));
+    DT_ASSERT_EQ(Audio.Format, St2110_AudioFormat_L24BE);
+    DT_ASSERT_EQ(Audio.NumChannels, 2);
+    DT_ASSERT_EQ(Audio.SampleRate, 48000);
+    DT_ASSERT_EQ(Audio.NumSamplesPerIpPacket, 48);
+
+    DtNmosFlow Hand = *Flow;
+    Hand.Format.Audio.PacketTimeNs = 125000;
+    snprintf(Hand.Format.Audio.Encoding, sizeof(Hand.Format.Audio.Encoding), "L16");
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(&Hand, NULL, &Audio, &IpPars));
+    DT_ASSERT_EQ(Audio.Format, St2110_AudioFormat_L16BE);
+    DT_ASSERT_EQ(Audio.NumSamplesPerIpPacket, 6);
+    Hand.Format.Audio.PacketTimeNs = 0;
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(&Hand, NULL, &Audio, &IpPars));
+    DT_ASSERT_EQ(Audio.NumSamplesPerIpPacket, 48);
+    Hand.Format.Audio.PacketTimeNs = 333333;
+    DT_ASSERT_EQ(DtNmosAvFifo_TxConfigFromFlow(&Hand, NULL, &Audio, &IpPars),
+                 DTAPI_E_NOT_SUPPORTED);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// What the FIFO does not send: another sampling or depth, AM824, a PM or TP it has not,
+// and a flow without a raster.
+DT_TEST(TxRefused)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    St2110_TxConfigVideo Video;
+    St2110_TxConfigAudio Audio;
+    AvFifo_IpPars IpPars;
+    static const char* const Sdps[] = {
+        VIDEO("YCbCr-4:4:4", "10"), VIDEO("YCbCr-4:2:2", "12"),
+        VIDEO_FMTP("sampling=YCbCr-4:2:2; width=1920; height=1080; exactframerate=25; "
+                   "depth=10; PM=2110XPM"),
+        VIDEO_FMTP("sampling=YCbCr-4:2:2; width=1920; height=1080; exactframerate=25; "
+                   "depth=10; TP=2110TPX"),
+        AUDIO("AM824")};
+    for (size_t i = 0; i < sizeof(Sdps) / sizeof(Sdps[0]); i++)
+    {
+        const DtNmosFlow* Flow = FlowOf(&Fix, Sdps[i], 0);
+        DT_ASSERT(Flow != NULL);
+        if (DtNmosAvFifo_TxConfigFromFlow(Flow, &Video, &Audio, &IpPars) !=
+            DTAPI_E_NOT_SUPPORTED)
+        {
+            DT_FAIL("case %zu was not refused: %s", i, GetLastException());
+        }
+    }
+    DtNmosFlow Hand = HandFlow(DTNMOS_MEDIA_VIDEO);
+    snprintf(Hand.Format.Video.Sampling, sizeof(Hand.Format.Video.Sampling),
+             "YCbCr-4:2:2");
+    Hand.Format.Video.Depth = 10;
+    DT_ASSERT_EQ(DtNmosAvFifo_TxConfigFromFlow(&Hand, &Video, NULL, &IpPars),
+                 DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- From a FIFO, and back -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// The emulated DTA-2110 attached in the fixture, with a transmit FIFO on its port.
+static bool OpenTx(Fixture* Fix, int* DtFailures)
+{
+    SimDtPcie_Reset();
+    SimDtPcie_SetDta2110Index(1);
+    Fix->Device = DtDevice_Alloc();
+    Fix->Tx = AvFifo_TxFifo_Alloc();
+    if (Fix->Device == NULL || Fix->Tx == NULL ||
+        DtDevice_AttachToSerial(Fix->Device, (int64_t)SIM_DTA2110_SERIAL) != DTAPI_OK ||
+        AvFifo_TxFifo_Attach(Fix->Tx, Fix->Device, 1) != DTAPI_OK)
+    {
+        printf("    FAIL: no emulated DTA-2110; is CDTAPI_SIM=1 set?\n");
+        (*DtFailures)++;
+        return false;
+    }
+    return true;
+}
+
+// A flow from a configured FIFO, written as an SDP and read back, gives the FIFO's
+// configuration again; its source is the port's address, its reference clock the port's
+// MAC address, and its colorimetry that of its raster.
+static void RoundTripVideo(Fixture* Fix, const St2110_TxConfigVideo* Config,
+                           const char* Colorimetry, int* DtFailures)
+{
+    AvFifo_IpPars IpPars;
+    memset(&IpPars, 0, sizeof(IpPars));
+    IpPars.IpAddr[0] = 239;
+    IpPars.IpAddr[1] = 1;
+    IpPars.IpAddr[2] = 2;
+    IpPars.IpAddr[3] = 3;
+    IpPars.Port = 5004;
+    IpPars.RtpPayloadType = 96;
+    IpPars.TimeToLive = 64;
+    IpPars.DiffServ = 0x88;
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix->Tx, Config));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix->Tx, &IpPars));
+
+    DtNmosFlow Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix->Tx, &Flow));
+    DT_ASSERT_STR(Flow.DestinationIp, "239.1.2.3");
+    DT_ASSERT_STR(Flow.SourceIp, "192.168.1.10");
+    DT_ASSERT_EQ(Flow.RefClock.Kind, DTNMOS_REFCLOCK_LOCALMAC);
+    DT_ASSERT(strlen(Flow.RefClock.LocalMac) == 17);
+    DT_ASSERT_STR(Flow.Format.Video.Colorimetry, Colorimetry);
+    DT_ASSERT_STR(Flow.Format.Video.Tcs, "SDR");
+    DT_ASSERT_STR(Flow.Format.Video.Range, "");
+
+    DtNmosSession Session;
+    memset(&Session, 0, sizeof(Session));
+    Session.Size = sizeof(Session);
+    Session.Name = "RoundTrip";
+    snprintf(Session.OriginIp, sizeof(Session.OriginIp), "%s", Flow.SourceIp);
+    char Text[2048];
+    size_t Size = sizeof(Text);
+    DT_ASSERT(DtNmosSdp_Write(&Session, &Flow, 1, Text, &Size) == DTNMOS_OK);
+    const DtNmosFlow* Read = FlowOf(Fix, Text, 0);
+    DT_ASSERT(Read != NULL);
+
+    St2110_TxConfigVideo Back;
+    AvFifo_IpPars BackPars;
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(Read, &Back, NULL, &BackPars));
+    DT_ASSERT_EQ(Back.Format, Config->Format);
+    DT_ASSERT_EQ(Back.Resolution.Width, Config->Resolution.Width);
+    DT_ASSERT_EQ(Back.Resolution.Height, Config->Resolution.Height);
+    DT_ASSERT_EQ(Back.Timing.Rate.Numerator * Config->Timing.Rate.Denominator,
+                 Config->Timing.Rate.Numerator * Back.Timing.Rate.Denominator);
+    DT_ASSERT_EQ(Back.Timing.VideoScanning, Config->Timing.VideoScanning);
+    DT_ASSERT_EQ(Back.Timing.Scheduling, Config->Timing.Scheduling);
+    DT_ASSERT_EQ(Back.Packing.PackingMode, Config->Packing.PackingMode);
+    DT_ASSERT_MEM(BackPars.IpAddr, IpPars.IpAddr, 16);
+    DT_ASSERT_EQ(BackPars.Port, IpPars.Port);
+    DT_ASSERT_EQ(BackPars.RtpPayloadType, IpPars.RtpPayloadType);
+}
+
+// Video of each scanning, both depths and both packing modes and schedules, around the
+// SDP and back, of SD, HD and UHD.
+DT_TEST(TxRoundTripVideo)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures))
+        return;
+    static const struct
+    {
+        St2110_TxFrameFormat Format;
+        int Width, Height, Numerator, Denominator;
+        St2110_VideoScanning Scanning;
+        St2110_Scheduling Scheduling;
+        St2110_PackingMode Packing;
+        const char* Colorimetry;
+    } Cases[] = {
+        {St2110_TxFrameFormat_Uyvy422_10b, 1920, 1080, 25, 1,
+         St2110_VideoScanning_Progressive, St2110_Scheduling_Gapped,
+         St2110_PackingMode_General, "BT709"},
+        {St2110_TxFrameFormat_Uyvy422_8b, 1920, 1080, 50, 1,
+         St2110_VideoScanning_Interlaced, St2110_Scheduling_Linear,
+         St2110_PackingMode_Block, "BT709"},
+        {St2110_TxFrameFormat_Uyvy422_10b, 1920, 1080, 50, 1, St2110_VideoScanning_PsF,
+         St2110_Scheduling_Gapped, St2110_PackingMode_General, "BT709"},
+        {St2110_TxFrameFormat_Uyvy422_10b, 720, 486, 60000, 1001,
+         St2110_VideoScanning_Interlaced, St2110_Scheduling_Gapped,
+         St2110_PackingMode_General, "BT601"},
+        {St2110_TxFrameFormat_Uyvy422_10b, 3840, 2160, 50, 1,
+         St2110_VideoScanning_Progressive, St2110_Scheduling_Gapped,
+         St2110_PackingMode_General, "BT2020"},
+    };
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        St2110_TxConfigVideo Config;
+        memset(&Config, 0, sizeof(Config));
+        Config.Format = Cases[i].Format;
+        Config.Packing.PackingMode = Cases[i].Packing;
+        Config.Packing.PayloadSize = -1;
+        Config.Resolution.Width = Cases[i].Width;
+        Config.Resolution.Height = Cases[i].Height;
+        Config.Timing.Rate.Numerator = Cases[i].Numerator;
+        Config.Timing.Rate.Denominator = Cases[i].Denominator;
+        Config.Timing.Scheduling = Cases[i].Scheduling;
+        Config.Timing.VideoScanning = Cases[i].Scanning;
+        RoundTripVideo(&Fix, &Config, Cases[i].Colorimetry, DtFailures);
+    }
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// Audio around the SDP and back; audio of Raw has no encoding to name.
+DT_TEST(TxRoundTripAudio)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures))
+        return;
+    AvFifo_IpPars IpPars;
+    memset(&IpPars, 0, sizeof(IpPars));
+    IpPars.IpAddr[0] = 239;
+    IpPars.IpAddr[3] = 4;
+    IpPars.Port = 5006;
+    IpPars.RtpPayloadType = 97;
+    const St2110_TxConfigAudio Config = {St2110_AudioFormat_L16BE, 8, 6, 48000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &Config));
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &IpPars));
+
+    DtNmosFlow Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    DT_ASSERT_EQ(Flow.Media, DTNMOS_MEDIA_AUDIO);
+    DT_ASSERT_STR(Flow.Format.Audio.Encoding, "L16");
+    DT_ASSERT_EQ(Flow.Format.Audio.Channels, 8);
+    DT_ASSERT_EQ(Flow.Format.Audio.PacketTimeNs, 125000);
+    St2110_TxConfigAudio Back;
+    AvFifo_IpPars BackPars;
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(&Flow, NULL, &Back, &BackPars));
+    DT_ASSERT_EQ(Back.Format, Config.Format);
+    DT_ASSERT_EQ(Back.NumChannels, Config.NumChannels);
+    DT_ASSERT_EQ(Back.NumSamplesPerIpPacket, Config.NumSamplesPerIpPacket);
+    DT_ASSERT_EQ(Back.SampleRate, Config.SampleRate);
+
+    const St2110_TxConfigAudio Raw = {St2110_AudioFormat_Raw, 2, 48, 48000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &Raw));
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow), DTAPI_E_NOT_SUPPORTED);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// A FIFO not configured, or without IP parameters, has no flow yet.
+DT_TEST(TxFifoNotReady)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures))
+        return;
+    DtNmosFlow Flow;
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow), DTAPI_E_CONFIG);
+    const St2110_TxConfigAudio Config = {St2110_AudioFormat_L24BE, 2, 48, 48000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &Config));
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow), DTAPI_E_NO_IPPARS);
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, &Flow), DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
 DT_TEST_MAIN("NmosAvFifo", DT_RUN(LinksDtnmos), DT_RUN(RxVideo), DT_RUN(RxVideoFormats),
-             DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6))
+             DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6),
+             DT_RUN(TxVideo), DT_RUN(TxAudio), DT_RUN(TxRefused),
+             DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady))

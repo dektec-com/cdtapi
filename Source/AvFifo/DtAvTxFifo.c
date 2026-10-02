@@ -19,6 +19,7 @@
 #include "Core/DtAtomic.h" // The thread's stop flag and the statistics.
 #include "DtAvError.h"     // Failure texts.
 #include "DtAvPort.h"      // The port, its network and pipes.
+#include "DtAvTxFifo.h"    // The description of a FIFO.
 #include "DtPcieAbi.h"     // Pipe modes.
 #include "DtSt2110Audio.h" // Audio packets.
 #include "DtSt2110Video.h" // Video packets.
@@ -680,6 +681,55 @@ DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo, int* UsesHwPipe)
             ? DtAvPort_UsesHwPipe(&Fifo->Port, DtAtomic_Load(&Fifo->Started) != 0,
                                   &Fifo->Pipe, UsesHwPipe, Where)
             : DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "TxFifo not attached");
+    OsMutex_Unlock(Fifo->Lock);
+    return Result;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Description +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvTxFifo_Describe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The source address is chosen as StartTransmitting chooses it, from the MAC address
+// that checking the network reads, so that a description made before Start names the
+// address Start sends from.
+//
+DtapiResult DtAvTxFifo_Describe(AvFifo_TxFifo* Fifo, DtAvTxFifoDescription* Description,
+                                const char* Where)
+{
+    if (Fifo == NULL || Description == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or description");
+    memset(Description, 0, sizeof(*Description));
+    OsMutex_Lock(Fifo->Lock);
+    DtapiResult Result = DTAPI_OK;
+    if (!Fifo->Attached)
+        Result = DtAvError_Set(DTAPI_E_NOT_ATTACHED, Where, "TxFifo not attached");
+    else if (Fifo->Kind == DT_AV_KIND_NONE)
+        Result = DtAvError_Set(DTAPI_E_CONFIG, Where, "Configure the TxFifo first");
+    else if (!Fifo->HasIpPars)
+        Result = DtAvError_Set(DTAPI_E_NO_IPPARS, Where,
+                               "Set the TxFifo's IP parameters first");
+    else
+        Result = DtAvPort_CheckNetwork(&Fifo->Port, &Fifo->IpPars, Where);
+    if (Result == DTAPI_OK)
+    {
+        DtNetOwnAddress Own;
+        const AvFifo_IpPars* Pars = &Fifo->IpPars;
+        Result = DtNet_ChooseOutputAddress(Fifo->Port.Mac, Pars->Vlan.Id,
+                                           DtAvIpPars_IsIpV6(Pars), Pars->IpAddr, &Own);
+        if (Result != DTAPI_OK)
+        {
+            DtAvError_Set(Result, Where, "The port has no address to send from");
+        }
+        else
+        {
+            Description->Kind = Fifo->Kind;
+            Description->Audio = Fifo->AudioConfig;
+            Description->Video = Fifo->VideoConfig;
+            Description->IpPars = *Pars;
+            memcpy(Description->SourceIp, Own.Ip, 16);
+            memcpy(Description->Mac, Fifo->Port.Mac, 6);
+        }
+    }
     OsMutex_Unlock(Fifo->Lock);
     return Result;
 }

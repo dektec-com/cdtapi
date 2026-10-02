@@ -34,6 +34,21 @@ extern "C"
 // DTAPI_E_NOT_SUPPORTED, as the bridge looks no name up.
 //
 
+// The flow of a transmit FIFO that is configured and has its IP parameters, started or
+// not, for its SDP and its NMOS sender: its format, its destination, port and payload
+// type, and as its source the port's address Start sends from, which the program need
+// not give. A video flow is YCbCr-4:2:2 of the FIFO's depth, its packing mode, 2110TPN
+// for gapped and 2110TPNL for linear scheduling, SSN ST2110-20:2017, and the
+// colorimetry and SDR of DtNmosVideoFormat_SetDefaults; RANGE is left out, narrow. Every
+// flow has a=ts-refclk localmac with the port's MAC address and a=mediaclk direct=0.
+// What the FIFO does not know is the program's to overwrite in *Flow: HDR, another
+// range, a reference clock of PTP, an audio flow's channel order. *Flow owns no strings.
+//
+// DTAPI_E_NOT_ATTACHED, DTAPI_E_CONFIG before Configure, DTAPI_E_NO_IPPARS before
+// SetIpPars, the failures of checking the port's network, and DTAPI_E_NOT_SUPPORTED for
+// audio of St2110_AudioFormat_Raw, whose encoding the FIFO does not know.
+CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
+
 // The configuration of a receiving FIFO for Flow, in the frame format Format: *Video for
 // a video flow, *Audio for an audio flow, and *IpPars for either. The pointer of the
 // other media may be null. The format decides which video flows a FIFO takes: Raw takes
@@ -55,6 +70,25 @@ CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
                                                      St2110_RxConfigVideo* Video,
                                                      St2110_RxConfigAudio* Audio,
+                                                     AvFifo_IpPars* IpPars);
+
+// The configuration of a transmitting FIFO for Flow, as DtNmosAvFifo_FlowFromTxFifo
+// writes it: *Video for a video flow, *Audio for an audio flow, and *IpPars for either;
+// the pointer of the other media may be null. Video is YCbCr-4:2:2 of depth 8 or 10,
+// which gives the frame format; exactframerate is doubled into the field rate of
+// interlaced and PsF video; PM 2110GPM, or none, is General and 2110BPM Block; TP
+// 2110TPNL is Linear, and 2110TPN, 2110TPW or none Gapped. Audio is L16 or L24, with
+// NumSamplesPerIpPacket from a=ptime, 1 ms when the flow has none. *IpPars are those of
+// DtNmosAvFifo_RxConfigFromFlow without a source filter: a sender's SourceIp is its own
+// address, which the FIFO chooses.
+//
+// DTAPI_E_NOT_SUPPORTED, naming the reason, for what DtNmosAvFifo_RxConfigFromFlow
+// refuses, for another sampling or depth, AM824, and a PM or TP the FIFO does not have;
+// DTAPI_E_INVALID_ARG as DtNmosAvFifo_RxConfigFromFlow, and for video without width,
+// height or frame rate and audio without sample rate or channels.
+CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
+                                                     St2110_TxConfigVideo* Video,
+                                                     St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
 
 #ifdef __cplusplus

@@ -97,6 +97,8 @@ cdtapi_add_test(Vec Unit/TestVec.c)
 if(CDTAPI_WITH_NMOS)
     cdtapi_add_test(NmosAddr Nmos/TestNmosAddr.c)
     cdtapi_add_test(NmosAvFifo Nmos/TestNmosAvFifo.c)
+    set_property(TEST NmosAvFifo APPEND PROPERTY
+        ENVIRONMENT_MODIFICATION "CDTAPI_SIM=set:1")
 endif()
 cdtapi_add_test(VidStd Unit/TestVidStd.c)
 cdtapi_add_test(WorkerPool Unit/TestWorkerPool.c)

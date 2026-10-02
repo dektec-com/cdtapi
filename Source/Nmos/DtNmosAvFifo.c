@@ -5,7 +5,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // A build without the option compiles DtNmosAvFifoStub.c instead, which exports the same
-// functions, so that every build of the library has the same exports.
+// functions, so that every build of the library has the same exports. The mapping of a
+// flow and a FIFO's configuration follows gst-dektec's, so that the two write the same
+// SDP for the same stream.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -14,10 +16,11 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "AvFifo/DtAvError.h" // The failure text.
-#include "DtNmosAddr.h"       // Addresses.
-#include "cdtapi_constants.h" // Result codes.
-#include "cdtapi_nmos.h"      // Interface being implemented.
+#include "AvFifo/DtAvError.h"  // The failure text.
+#include "AvFifo/DtAvTxFifo.h" // What a transmit FIFO is configured with.
+#include "DtNmosAddr.h"        // Addresses.
+#include "cdtapi_constants.h"  // Result codes.
+#include "cdtapi_nmos.h"       // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -26,6 +29,14 @@
 
 // The time to live of every flow, as dtnmos writes it into the c= line of an SDP.
 #define DT_NMOS_TIME_TO_LIVE 64
+
+// The packet time of an audio flow whose SDP gives none: 1 ms, level A of ST 2110-30.
+#define DT_NMOS_DEFAULT_PACKET_TIME_NS 1000000
+
+#define DT_NMOS_NS_PER_SEC UINT64_C(1000000000)
+
+// The only sampling a FIFO converts or sends.
+#define DT_NMOS_SAMPLING_422 "YCbCr-4:2:2"
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AudioFormatOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -43,6 +54,42 @@ static bool AudioFormatOf(const char* Encoding, St2110_AudioFormat* Format)
     else
         return false;
     return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// What no FIFO takes, receiving or sending: a flow smaller than the bridge's, the
+// second path of ST 2022-7, and a media other than video and audio.
+//
+static DtapiResult CheckFlow(const DtNmosFlow* Flow, const char* Where)
+{
+    if (Flow->Size < sizeof(DtNmosFlow))
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "The flow's Size is smaller than sizeof(DtNmosFlow)");
+    if (Flow->Leg != 0)
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
+                             "The flow is the second path of ST 2022-7, which the FIFO "
+                             "does not receive or send");
+    char Why[160];
+    switch (Flow->Media)
+    {
+    case DTNMOS_MEDIA_VIDEO:
+    case DTNMOS_MEDIA_AUDIO:
+        return DTAPI_OK;
+    case DTNMOS_MEDIA_COMPRESSED_VIDEO:
+        return DtAvError_Set(
+            DTAPI_E_NOT_SUPPORTED, Where,
+            "The flow is ST 2110-22, which the FIFO does not encode or decode");
+    case DTNMOS_MEDIA_ANC:
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
+                             "The flow is ST 2110-40, which the FIFO does not receive or "
+                             "send");
+    default:
+        snprintf(Why, sizeof(Why),
+                 "The flow's encoding %.64s is one the FIFO does not know",
+                 Flow->Format.Other.Encoding);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FailAddress -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -148,7 +195,7 @@ static bool RxVideoTakes(St2110_RxFrameFormat Format, const DtNmosVideoFormat* V
         Depth = 10;
         break;
     }
-    if (strcmp(Video->Sampling, "YCbCr-4:2:2") != 0)
+    if (strcmp(Video->Sampling, DT_NMOS_SAMPLING_422) != 0)
     {
         snprintf(Why, Size, "%s takes YCbCr-4:2:2, and the flow is %.32s; use Raw",
                  RxFormatName(Format), Video->Sampling);
@@ -167,14 +214,112 @@ static bool RxVideoTakes(St2110_RxFrameFormat Format, const DtNmosVideoFormat* V
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SizeOfFlowIsKnown -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TxAudioOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Whether the caller's DtNmosFlow is at least as large as the one the bridge was built
-// with, so that every field it reads is there.
+// The configuration of a transmitting FIFO for the audio of Flow, or the failure.
 //
-static bool SizeOfFlowIsKnown(const DtNmosFlow* Flow)
+static DtapiResult TxAudioOf(const DtNmosFlow* Flow, St2110_TxConfigAudio* Audio,
+                             const char* Where)
 {
-    return Flow->Size >= sizeof(DtNmosFlow);
+    const DtNmosAudioFormat* Format = &Flow->Format.Audio;
+    char Why[160];
+    St2110_AudioFormat AudioFormat = St2110_AudioFormat_Raw;
+    if (!AudioFormatOf(Format->Encoding, &AudioFormat) ||
+        AudioFormat == St2110_AudioFormat_Raw)
+    {
+        snprintf(Why, sizeof(Why), "The FIFO sends L16 and L24, and the flow is %.16s",
+                 Format->Encoding);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
+    if (Format->SampleRate == 0 || Format->Channels == 0)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "The flow has no sample rate or no channels");
+    const uint64_t PacketTimeNs =
+        Format->PacketTimeNs != 0 ? Format->PacketTimeNs : DT_NMOS_DEFAULT_PACKET_TIME_NS;
+    const uint64_t Product = (uint64_t)Format->SampleRate * PacketTimeNs;
+    if (Product % DT_NMOS_NS_PER_SEC != 0 || Product / DT_NMOS_NS_PER_SEC == 0)
+    {
+        snprintf(Why, sizeof(Why),
+                 "A packet time of %llu ns at %u Hz is no whole number of samples",
+                 (unsigned long long)PacketTimeNs, Format->SampleRate);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
+    memset(Audio, 0, sizeof(*Audio));
+    Audio->Format = AudioFormat;
+    Audio->NumChannels = (int)Format->Channels;
+    Audio->NumSamplesPerIpPacket = (int)(Product / DT_NMOS_NS_PER_SEC);
+    Audio->SampleRate = (int)Format->SampleRate;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TxVideoOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The configuration of a transmitting FIFO for the video of Flow, or the failure. The
+// frame rate of interlaced and PsF video is doubled into the field rate CDTAPI has.
+//
+static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video,
+                             const char* Where)
+{
+    const DtNmosVideoFormat* Format = &Flow->Format.Video;
+    char Why[160];
+    if (strcmp(Format->Sampling, DT_NMOS_SAMPLING_422) != 0 ||
+        (Format->Depth != 8 && Format->Depth != 10))
+    {
+        snprintf(Why, sizeof(Why),
+                 "The FIFO sends YCbCr-4:2:2 of depth 8 or 10, and the flow is %.32s of "
+                 "depth %u",
+                 Format->Sampling, Format->Depth);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
+    if (Format->Width == 0 || Format->Height == 0 || Format->RateNumerator == 0 ||
+        Format->RateDenominator == 0)
+    {
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                             "The flow has no width, height or frame rate");
+    }
+
+    St2110_PackingMode Packing = St2110_PackingMode_General;
+    if (strcmp(Format->PackingMode, "2110BPM") == 0)
+        Packing = St2110_PackingMode_Block;
+    else if (Format->PackingMode[0] != '\0' &&
+             strcmp(Format->PackingMode, "2110GPM") != 0)
+    {
+        snprintf(Why, sizeof(Why), "The flow's PM %.16s is no packing mode of the FIFO",
+                 Format->PackingMode);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
+
+    St2110_Scheduling Scheduling = St2110_Scheduling_Gapped;
+    if (strcmp(Format->TransmitterType, "2110TPNL") == 0)
+        Scheduling = St2110_Scheduling_Linear;
+    else if (Format->TransmitterType[0] != '\0' &&
+             strcmp(Format->TransmitterType, "2110TPN") != 0 &&
+             strcmp(Format->TransmitterType, "2110TPW") != 0)
+    {
+        snprintf(Why, sizeof(Why), "The flow's TP %.16s is no sender type of the FIFO",
+                 Format->TransmitterType);
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
+    }
+
+    St2110_VideoScanning Scanning = St2110_VideoScanning_Progressive;
+    if (Format->Segmented)
+        Scanning = St2110_VideoScanning_PsF;
+    else if (Format->Interlaced)
+        Scanning = St2110_VideoScanning_Interlaced;
+    const uint32_t Fields = Scanning == St2110_VideoScanning_Progressive ? 1 : 2;
+
+    memset(Video, 0, sizeof(*Video));
+    Video->Format = Format->Depth == 10 ? St2110_TxFrameFormat_Uyvy422_10b
+                                        : St2110_TxFrameFormat_Uyvy422_8b;
+    Video->Packing.PackingMode = Packing;
+    Video->Packing.PayloadSize = -1;
+    Video->Resolution.Width = (int)Format->Width;
+    Video->Resolution.Height = (int)Format->Height;
+    Video->Timing.Rate.Numerator = (int)(Format->RateNumerator * Fields);
+    Video->Timing.Rate.Denominator = (int)Format->RateDenominator;
+    Video->Timing.Scheduling = Scheduling;
+    Video->Timing.VideoScanning = Scanning;
+    return DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Build +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -188,6 +333,94 @@ int DtapiHasNmos(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The frame rate of interlaced and PsF video is half the field rate CDTAPI has: the
+// numerator halved when it is even, the denominator doubled when not.
+//
+DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
+{
+    static const char* const Where = "DtNmosAvFifo_FlowFromTxFifo";
+    if (Fifo == NULL || Flow == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or flow");
+    DtAvTxFifoDescription Description;
+    DtapiResult Result = DtAvTxFifo_Describe(Fifo, &Description, Where);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (Description.Kind == DT_AV_KIND_AUDIO &&
+        Description.Audio.Format == St2110_AudioFormat_Raw)
+        return DtAvError_Set(
+            DTAPI_E_NOT_SUPPORTED, Where,
+            "The FIFO sends audio of Raw, whose encoding it does not know");
+
+    DtNmosFlow Made;
+    memset(&Made, 0, sizeof(Made));
+    Made.Size = sizeof(Made);
+    const bool IpV6 = Description.IpPars.IpVersion == IpProtocolVersion_IPv6;
+    DtNmosAddr_Format(IpV6, Description.IpPars.IpAddr, Made.DestinationIp,
+                      sizeof(Made.DestinationIp));
+    DtNmosAddr_Format(IpV6, Description.SourceIp, Made.SourceIp, sizeof(Made.SourceIp));
+    Made.DestinationPort = (uint16_t)Description.IpPars.Port;
+    Made.PayloadType = (uint8_t)Description.IpPars.RtpPayloadType;
+    Made.RefClock.Kind = DTNMOS_REFCLOCK_LOCALMAC;
+    Made.RefClock.Domain = -1;
+    const uint8_t* Mac = Description.Mac;
+    snprintf(Made.RefClock.LocalMac, sizeof(Made.RefClock.LocalMac),
+             "%02X-%02X-%02X-%02X-%02X-%02X", Mac[0], Mac[1], Mac[2], Mac[3], Mac[4],
+             Mac[5]);
+    Made.MediaClockDirect = 1;
+
+    if (Description.Kind == DT_AV_KIND_VIDEO)
+    {
+        const St2110_TxConfigVideo* Config = &Description.Video;
+        DtNmosVideoFormat* Video = &Made.Format.Video;
+        Made.Media = DTNMOS_MEDIA_VIDEO;
+        Made.ClockRate = 90000;
+        Video->Width = (uint32_t)Config->Resolution.Width;
+        Video->Height = (uint32_t)Config->Resolution.Height;
+        uint32_t Numerator = (uint32_t)Config->Timing.Rate.Numerator;
+        uint32_t Denominator = (uint32_t)Config->Timing.Rate.Denominator;
+        const St2110_VideoScanning Scanning = Config->Timing.VideoScanning;
+        if (Scanning != St2110_VideoScanning_Progressive)
+        {
+            if (Numerator % 2 == 0)
+                Numerator /= 2;
+            else
+                Denominator *= 2;
+            Video->Interlaced = 1;
+            Video->Segmented = Scanning == St2110_VideoScanning_PsF ? 1 : 0;
+        }
+        Video->RateNumerator = Numerator;
+        Video->RateDenominator = Denominator;
+        Video->Depth = Config->Format == St2110_TxFrameFormat_Uyvy422_10b ? 10 : 8;
+        snprintf(Video->Sampling, sizeof(Video->Sampling), DT_NMOS_SAMPLING_422);
+        snprintf(Video->PackingMode, sizeof(Video->PackingMode), "%s",
+                 Config->Packing.PackingMode == St2110_PackingMode_Block ? "2110BPM"
+                                                                         : "2110GPM");
+        snprintf(Video->TransmitterType, sizeof(Video->TransmitterType), "%s",
+                 Config->Timing.Scheduling == St2110_Scheduling_Linear ? "2110TPNL"
+                                                                       : "2110TPN");
+        snprintf(Video->Ssn, sizeof(Video->Ssn), "ST2110-20:2017");
+        DtNmosVideoFormat_SetDefaults(Video);
+    }
+    else
+    {
+        const St2110_TxConfigAudio* Config = &Description.Audio;
+        DtNmosAudioFormat* Audio = &Made.Format.Audio;
+        Made.Media = DTNMOS_MEDIA_AUDIO;
+        Made.ClockRate = (uint32_t)Config->SampleRate;
+        snprintf(Audio->Encoding, sizeof(Audio->Encoding), "%s",
+                 Config->Format == St2110_AudioFormat_L16BE ? "L16" : "L24");
+        Audio->SampleRate = (uint32_t)Config->SampleRate;
+        Audio->Channels = (uint32_t)Config->NumChannels;
+        Audio->PacketTimeNs =
+            (uint32_t)((uint64_t)Config->NumSamplesPerIpPacket * DT_NMOS_NS_PER_SEC /
+                       (uint64_t)Config->SampleRate);
+    }
+    *Flow = Made;
+    return DTAPI_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_RxConfigFromFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
@@ -199,19 +432,14 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
     static const char* const Where = "DtNmosAvFifo_RxConfigFromFlow";
     if (Flow == NULL || IpPars == NULL)
         return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No flow or IP parameters");
-    if (!SizeOfFlowIsKnown(Flow))
-        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
-                             "The flow's Size is smaller than sizeof(DtNmosFlow)");
-    if (Flow->Leg != 0)
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
-                             "The flow is the second path of ST 2022-7, which the FIFO "
-                             "does not receive");
+    DtapiResult Result = CheckFlow(Flow, Where);
+    if (Result != DTAPI_OK)
+        return Result;
 
     char Why[160];
     St2110_AudioFormat AudioFormat = St2110_AudioFormat_Raw;
-    switch (Flow->Media)
+    if (Flow->Media == DTNMOS_MEDIA_VIDEO)
     {
-    case DTNMOS_MEDIA_VIDEO:
         if (Video == NULL)
             return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
                                  "A video flow and no video configuration");
@@ -219,8 +447,9 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
             return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "Invalid frame format");
         if (!RxVideoTakes(Format, &Flow->Format.Video, Why, sizeof(Why)))
             return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
-        break;
-    case DTNMOS_MEDIA_AUDIO:
+    }
+    else
+    {
         if (Audio == NULL)
             return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
                                  "An audio flow and no audio configuration");
@@ -231,22 +460,10 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                      Flow->Format.Audio.Encoding);
             return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
         }
-        break;
-    case DTNMOS_MEDIA_COMPRESSED_VIDEO:
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
-                             "The flow is ST 2110-22, which the FIFO does not decode");
-    case DTNMOS_MEDIA_ANC:
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
-                             "The flow is ST 2110-40, which the FIFO does not receive");
-    default:
-        snprintf(Why, sizeof(Why),
-                 "The flow's encoding %.64s is one the FIFO does not know",
-                 Flow->Format.Other.Encoding);
-        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where, Why);
     }
 
     AvFifo_IpPars Pars;
-    DtapiResult Result = IpParsOf(Flow, &Pars, Where);
+    Result = IpParsOf(Flow, &Pars, Where);
     if (Result != DTAPI_OK)
         return Result;
 
@@ -260,6 +477,58 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
         Audio->Format = AudioFormat;
         Audio->SampleRate = (int)Flow->Format.Audio.SampleRate;
     }
+    *IpPars = Pars;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_TxConfigFromFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A sender's SourceIp is its own address, which the FIFO chooses, so the IP parameters
+// get no source filter.
+//
+DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
+                                          St2110_TxConfigVideo* Video,
+                                          St2110_TxConfigAudio* Audio,
+                                          AvFifo_IpPars* IpPars)
+{
+    static const char* const Where = "DtNmosAvFifo_TxConfigFromFlow";
+    if (Flow == NULL || IpPars == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No flow or IP parameters");
+    DtapiResult Result = CheckFlow(Flow, Where);
+    if (Result != DTAPI_OK)
+        return Result;
+
+    St2110_TxConfigVideo VideoConfig = {0};
+    St2110_TxConfigAudio AudioConfig = {0};
+    if (Flow->Media == DTNMOS_MEDIA_VIDEO)
+    {
+        if (Video == NULL)
+            return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                                 "A video flow and no video configuration");
+        Result = TxVideoOf(Flow, &VideoConfig, Where);
+    }
+    else
+    {
+        if (Audio == NULL)
+            return DtAvError_Set(DTAPI_E_INVALID_ARG, Where,
+                                 "An audio flow and no audio configuration");
+        Result = TxAudioOf(Flow, &AudioConfig, Where);
+    }
+    if (Result != DTAPI_OK)
+        return Result;
+
+    DtNmosFlow WithoutSource = *Flow;
+    WithoutSource.SourceIp[0] = '\0';
+    AvFifo_IpPars Pars;
+    Result = IpParsOf(&WithoutSource, &Pars, Where);
+    if (Result != DTAPI_OK)
+        return Result;
+
+    // Nothing is written before everything has been checked.
+    if (Flow->Media == DTNMOS_MEDIA_VIDEO)
+        *Video = VideoConfig;
+    else
+        *Audio = AudioConfig;
     *IpPars = Pars;
     return DTAPI_OK;
 }

@@ -23,10 +23,15 @@
 typedef struct DtNmosFlow DtNmosFlow;
 
 // The declarations of cdtapi_nmos.h, which this build does not install.
+CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
                                                      St2110_RxConfigVideo* Video,
                                                      St2110_RxConfigAudio* Audio,
+                                                     AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
+                                                     St2110_TxConfigVideo* Video,
+                                                     St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoNmos -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -48,6 +53,15 @@ int DtapiHasNmos(void)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
+{
+    (void)Fifo;
+    (void)Flow;
+    return NoNmos("DtNmosAvFifo_FlowFromTxFifo");
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_RxConfigFromFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
@@ -62,4 +76,18 @@ DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
     (void)Audio;
     (void)IpPars;
     return NoNmos("DtNmosAvFifo_RxConfigFromFlow");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_TxConfigFromFlow -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
+                                          St2110_TxConfigVideo* Video,
+                                          St2110_TxConfigAudio* Audio,
+                                          AvFifo_IpPars* IpPars)
+{
+    (void)Flow;
+    (void)Video;
+    (void)Audio;
+    (void)IpPars;
+    return NoNmos("DtNmosAvFifo_TxConfigFromFlow");
 }

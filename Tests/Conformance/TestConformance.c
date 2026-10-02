@@ -621,6 +621,19 @@ DT_TEST(NmosCalls)
     DT_ASSERT_OK(DtNmosAvFifo_RxConfigFromFlow(&Flow, St2110_RxFrameFormat_Raw, &Video,
                                                NULL, &IpPars));
     DT_ASSERT_EQ(IpPars.Port, 5004);
+
+    snprintf(Flow.Format.Video.Sampling, sizeof(Flow.Format.Video.Sampling),
+             "YCbCr-4:2:2");
+    Flow.Format.Video.Depth = 10;
+    Flow.Format.Video.Width = 1920;
+    Flow.Format.Video.Height = 1080;
+    Flow.Format.Video.RateNumerator = 25;
+    Flow.Format.Video.RateDenominator = 1;
+    St2110_TxConfigVideo TxVideo;
+    DT_ASSERT_OK(DtNmosAvFifo_TxConfigFromFlow(&Flow, &TxVideo, NULL, &IpPars));
+    DT_ASSERT_EQ(TxVideo.Format, St2110_TxFrameFormat_Uyvy422_10b);
+
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, &Flow), DTAPI_E_INVALID_ARG);
 #else
     (void)DtFailures;
 #endif

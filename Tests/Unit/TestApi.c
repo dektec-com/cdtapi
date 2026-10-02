@@ -42,10 +42,15 @@ DT_TEST(HasNmosAsBuilt)
 // The bridge's functions as a build without it exports them: the header that declares
 // them is not installed, so they are declared here as the stubs define them.
 typedef struct DtNmosFlow DtNmosFlow;
+CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
                                                      St2110_RxConfigVideo* Video,
                                                      St2110_RxConfigAudio* Audio,
+                                                     AvFifo_IpPars* IpPars);
+CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
+                                                     St2110_TxConfigVideo* Video,
+                                                     St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
 
 #endif
@@ -57,10 +62,14 @@ DT_TEST(NmosStubsFail)
     (void)DtFailures;
 #else
     AvFifo_IpPars IpPars;
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT(strstr(GetLastException(), "DtNmosAvFifo_FlowFromTxFifo") != NULL);
     DT_ASSERT_EQ(DtNmosAvFifo_RxConfigFromFlow(NULL, St2110_RxFrameFormat_Raw, NULL, NULL,
                                                &IpPars),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT(strstr(GetLastException(), "without NMOS") != NULL);
+    DT_ASSERT_EQ(DtNmosAvFifo_TxConfigFromFlow(NULL, NULL, NULL, &IpPars),
+                 DTAPI_E_NOT_SUPPORTED);
 #endif
 }
 
