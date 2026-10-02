@@ -15,6 +15,7 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
 | `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
 | `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
+| `DtNmos2110` | An NMOS node whose receiver or sender is an AV FIFO, which a controller connects through IS-05; built with the NMOS bridge only |
 
 Every program lists its options with `--help`. Without `--serial` a program uses the
 first device that has a port that suits, and without `--port` the first such port.
@@ -127,6 +128,18 @@ parameters, its source filter among them. A flow the format cannot take is refus
 the formats that would; `Sdp/Video1080p25.sdp` is an example.
 
     DtReceive2110 --sdp Sdp/Video1080p25.sdp --count 250 --format 10b
+
+`DtNmos2110` makes the port an NMOS node instead, registered with a registry such as
+nmos-cpp's, with a receiver (`--receive`) or a sender (`--send`) of a FIFO that a
+controller connects. The node calls a callback on a thread of its own when a controller
+activates the receiver or sender; the callback turns the activation into a change with
+`DtNmosAvFifo_RxChangeFromActivation` or `DtNmosAvFifo_TxChangeFromActivation`, which
+refuses what the FIFO cannot take, posts it in a mailbox and waits, and the main thread,
+which owns the FIFO, applies it between two frames with `DtNmosAvFifo_ApplyRxChange` or
+`DtNmosAvFifo_ApplyTxChange` and answers. Each change is printed:
+
+    DtNmos2110 --receive --registry http://registry:8010 --seconds 600
+    DtNmos2110 --send --registry http://registry:8010 --seconds 600
 
 Each frame is given a time of day a little after the card's clock, one frame period
 after the one before, and the card's scheduler sends it at that time. So the scheduler

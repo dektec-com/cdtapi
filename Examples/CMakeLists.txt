@@ -11,6 +11,14 @@ set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
 # Programs of SMPTE ST 2110, which also take ExampleAvFifo.c and the AV FIFO header.
 set(ExampleAvPrograms DtReceive2110 DtTransmit2110)
 
+# DtNmos2110 needs the NMOS bridge, and is built only with it. It is a program of ST 2110,
+# and also takes the mailbox of ExampleMailbox.c.
+if(CDTAPI_WITH_NMOS)
+    list(APPEND ExamplePrograms DtNmos2110)
+    list(APPEND ExampleAvPrograms DtNmos2110)
+endif()
+set(ExampleMailboxPrograms DtNmos2110)
+
 # Programs of DVB-ASI, which also take the test streams of ExampleTsStream.c.
 set(ExampleTsPrograms DtReceiveTs DtTransmitTs)
 
@@ -27,6 +35,11 @@ function(cdtapi_add_example Program)
         list(APPEND Sources
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleAvFifo.h")
+    endif()
+    if(Program IN_LIST ExampleMailboxPrograms)
+        list(APPEND Sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleMailbox.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleMailbox.h")
     endif()
     if(Program IN_LIST ExampleTsPrograms)
         list(APPEND Sources
@@ -261,6 +274,24 @@ if(CDTAPI_WITH_NMOS)
 else()
     cdtapi_example_test(Receive2110FromSdpWithoutNmos DtReceive2110
         "^--sdp needs a library built with the NMOS bridge" --sdp "${ExampleSdp}")
+endif()
+
+# A node with a receiver or a sender of a FIFO, for a second, on its own address, with a
+# registry that is not there: it serves, and nothing connects it.
+if(CDTAPI_WITH_NMOS)
+    set(ExampleRegistry --registry http://127.0.0.1:9 --host 127.0.0.1 --seconds 1)
+    cdtapi_example_test(Nmos2110Receive DtNmos2110
+        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  receiver [0-9a-f-]+  video as 10b"
+        --receive ${ExampleRegistry})
+    cdtapi_example_test(Nmos2110ReceiveAudio DtNmos2110
+        "9211000001:1  receiver [0-9a-f-]+  audio" --receive --audio 2 ${ExampleRegistry})
+    cdtapi_example_test(Nmos2110Send DtNmos2110
+        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  sender [0-9a-f-]+"
+        --send --width 320 --height 240 --rate 25 ${ExampleRegistry})
+    cdtapi_example_test(Nmos2110NeitherWay DtNmos2110
+        "^Give one of --receive and --send" --registry http://127.0.0.1:9)
+    cdtapi_example_test(Nmos2110WithoutRegistry DtNmos2110
+        "^Give the registry with --registry" --receive)
 endif()
 
 set(ExampleExtraEnv "")
