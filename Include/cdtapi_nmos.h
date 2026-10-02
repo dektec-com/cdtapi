@@ -4,12 +4,21 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The bridge is built into the library with CDTAPI_WITH_NMOS, and this header is
-// installed with it; it needs dtnmos's headers. A library built without the option
-// exports the same functions, which fail with DTAPI_E_NOT_SUPPORTED; DtapiHasNmos says
-// which build a program has. The bridge never changes a FIFO by itself: its helpers turn
-// a flow, as an SDP or an IS-05 activation describes it, into a FIFO's configuration,
-// for the thread that owns the FIFO to apply.
+// The NMOS bridge connects the AV FIFOs of a DekTec IP port to NMOS. With it, a program
+// registers a FIFO as an NMOS sender or receiver, lets an NMOS controller connect it, and
+// converts between SDP flows and FIFO configurations. The node itself, and everything
+// else NMOS, comes from dtnmos.
+//
+// The bridge never changes a FIFO on its own. It converts; the program decides, and
+// applies the result on the thread that owns the FIFO.
+//
+// The bridge is part of the library when it is built with CDTAPI_WITH_NMOS, and this
+// header is installed only then. A library built without it exports the same functions,
+// which return DTAPI_E_NOT_SUPPORTED; DtapiHasNmos() tells which build a program has.
+//
+// When a function fails, GetLastException() says why. Addresses must be literal IP
+// addresses: the bridge does not look up host names, and returns DTAPI_E_NOT_SUPPORTED
+// for one.
 
 #pragma once
 
@@ -28,57 +37,77 @@ extern "C"
 {
 #endif
 
-// A function of the bridge that fails returns its error and sets the text
-// GetLastException returns: naming what the FIFO cannot do, or with the message of
-// dtnmos when dtnmos failed. Addresses are literal: a domain name is
-// DTAPI_E_NOT_SUPPORTED, as the bridge looks no name up.
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The program opens the node with dtnmos, and adds the NMOS device of each port it uses
-// through the bridge. It gives the dtnmos config of a device, sender or receiver, and
-// the bridge fills in what it leaves empty. An ID the bridge makes is the same each
-// time the program runs, so that a registry and its controllers know the device, sender
-// or receiver again after a restart.
+// In NMOS, a node (the program) holds devices, and each device holds the senders and
+// receivers of one piece of equipment. The bridge represents each IP port of a DekTec
+// card as one NMOS device. So a program:
+//
+// 1. opens a node with dtnmos (DtNmosNode_Open);
+// 2. registers each IP port it uses with DtNmosAvFifo_AddDevice;
+// 3. registers each FIFO of that port with DtNmosAvFifo_AddSender or
+//    DtNmosAvFifo_AddReceiver.
+//
+// The configs are those of dtnmos. Fields the program leaves empty, such as IDs and
+// labels, the bridge fills in. The IDs it makes are the same every time the program
+// runs, so that a registry and its controllers recognize the port after a restart.
 //
 
-// Adds to Node the NMOS device of port Port of Device, which is attached, and writes
-// its ID into *Id: the Id of Config, or when Config is null or gives none, one the
-// bridge makes. An empty Label becomes "DTA-2110 2110000076 port 1". The program gives
-// the ID to the senders and receivers of the port, and removes the device with
-// DtNmosNode_Remove(). DTAPI_E_DEVICE for a device not attached, DTAPI_E_NO_SUCH_PORT,
-// DTAPI_E_NOT_SUPPORTED for a port without an AV FIFO, DTAPI_E_INVALID_ARG for a
-// Config whose Size is smaller than DtNmosDeviceConfig, and what dtnmos gives: the node
-// not open, or having the ID already.
+// Registers an IP port of a DekTec card with an NMOS node, as an NMOS device. Its senders
+// and receivers are added to this device later.
+//
+// Device must be attached, and Port (counted from 1) must be an IP port. Config may be
+// NULL; if it gives no ID or label, the bridge makes them, e.g. the label
+// "DTA-2110 2110000076 port 1". The device's ID is returned in *Id: pass it to
+// DtNmosAvFifo_AddSender() and DtNmosAvFifo_AddReceiver(). To unregister the port, call
+// DtNmosNode_Remove() with the ID.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_DEVICE         Device is not attached
+//   DTAPI_E_NO_SUCH_PORT   Device has no such port
+//   DTAPI_E_NOT_SUPPORTED  the port has no AV FIFO
+//   DTAPI_E_INVALID_ARG    Config->Size is too small, or the node already has the ID
+//   DTAPI_E_STATE          the node is not open
 CDTAPI_API DtapiResult DtNmosAvFifo_AddDevice(DtNmosNode* Node, const DtDevice* Device,
                                               int Port, const DtNmosDeviceConfig* Config,
                                               DtNmosId* Id);
 
-// Adds to Node a receiver of Fifo, which is attached and need not be configured yet, and
-// writes its ID into *Id. Config gives Size, the DeviceId of DtNmosAvFifo_AddDevice(),
-// a Label, the Media and ActivationLeadMs; what it leaves empty the bridge fills: the ID,
-// one the bridge makes from the device and the label, the same each time, and the
-// InterfaceIp, the address of the FIFO's port, IPv4 when it has one. Node calls Activate
-// with User when a controller activates the receiver; the callback does not touch the
-// FIFO, but hands the activation to the thread that owns it.
-// DTAPI_E_INVALID_ARG for a null argument, a Config whose Size is smaller than
-// DtNmosReceiverConfig, one without a DeviceId, or without both an Id and a Label;
-// DTAPI_E_NOT_ATTACHED; DTAPI_E_NO_ADAPTER_IP_ADDR for a port without an address; and
-// what dtnmos gives.
+// Adds an NMOS receiver for Fifo to Node, and returns its ID in *Id.
+//
+// Fifo must be attached; it need not be configured yet. In Config, set DeviceId to the
+// ID DtNmosAvFifo_AddDevice() returned, and set Label and Media. If Id is empty, the
+// bridge makes one from the device and the label. If InterfaceIp is empty, the bridge
+// uses the address of the FIFO's port.
+//
+// The node calls Activate, with User, when a controller connects or disconnects the
+// receiver. Activate runs on a thread of the node and must not touch the FIFO; see
+// "Activations" below.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG         an argument is NULL, Config->Size is too small, or
+//                               Config has no DeviceId, or neither an Id nor a Label
+//   DTAPI_E_NOT_ATTACHED        Fifo is not attached
+//   DTAPI_E_NO_ADAPTER_IP_ADDR  the port has no IP address
+// and the errors of DtNmosNode_AddReceiver().
 CDTAPI_API DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo* Fifo,
                                                 const DtNmosReceiverConfig* Config,
                                                 DtNmosReceiverActivateFunc Activate,
                                                 void* User, DtNmosId* Id);
 
-// Adds to Node a sender of Fifo, which is attached, and writes its ID into *Id. Config
-// gives Size, the DeviceId, a Label and ActivationLeadMs, and may give the Flow; what it
-// leaves empty the bridge fills: the ID, as for a receiver, the Flow, made by
-// DtNmosAvFifo_FlowFromTxFifo() for a FIFO configured and with its IP parameters, and
-// the SourceIp, the address Start sends from. A Flow the program gives is taken as it
-// is, so that the program may change what DtNmosAvFifo_FlowFromTxFifo() made: HDR, a
-// reference clock of PTP, a channel order.
-// Fails as DtNmosAvFifo_AddReceiver() does, and as DtNmosAvFifo_FlowFromTxFifo() does
-// when the bridge makes the flow.
+// Adds an NMOS sender for Fifo to Node, and returns its ID in *Id.
+//
+// In Config, set DeviceId and Label as for a receiver. If Config->Flow is NULL, the
+// bridge describes the stream with DtNmosAvFifo_FlowFromTxFifo(); Fifo must then be
+// configured and have IP parameters. To change the description, e.g. to add HDR or a
+// PTP reference clock, make the flow with DtNmosAvFifo_FlowFromTxFifo(), change it, and
+// pass it in Config->Flow. If SourceIp is empty, the bridge uses the address the FIFO
+// sends from.
+//
+// The node calls Activate, with User, when a controller enables, disables or redirects
+// the sender. Activate runs on a thread of the node and must not touch the FIFO.
+//
+// Returns DTAPI_OK, or the errors of DtNmosAvFifo_AddReceiver() and, when the bridge
+// describes the stream, of DtNmosAvFifo_FlowFromTxFifo().
 CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
                                               const DtNmosSenderConfig* Config,
                                               DtNmosSenderActivateFunc Activate,
@@ -86,150 +115,174 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* F
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// A controller's activation reaches the program in the callback of a sender or receiver,
-// on a thread of the node, while the FIFO belongs to the thread that reads or writes it.
-// The callback turns the activation into a change, with
-// DtNmosAvFifo_RxChangeFromActivation or DtNmosAvFifo_TxChangeFromActivation, which
-// refuses what the FIFO cannot do; hands the change to the FIFO's owner, e.g. through a
-// mailbox of its own; and waits for the owner's result, which it returns, so that the
-// controller learns whether the FIFO took it. The owner applies the change with
-// DtNmosAvFifo_ApplyRxChange or DtNmosAvFifo_ApplyTxChange between two frames. A change
-// holds values only, and is copied with =.
+// When a controller connects, disconnects or redirects a sender or receiver, the node
+// calls its Activate callback on a thread of the node. The FIFO, however, belongs to the
+// program's thread that reads or writes it, and only that thread may change it. So:
 //
-// AtNs is when the controller wants the change active, in nanoseconds of TAI since the
-// epoch of PTP. A callback is called ActivationLeadMs early for a scheduled activation;
-// the program that wants the change to take place no sooner waits until AtNs before it
-// applies it.
+// 1. In the callback, convert the activation into a change with
+//    DtNmosAvFifo_RxChangeFromActivation() or DtNmosAvFifo_TxChangeFromActivation().
+//    This fails for a stream the FIFO cannot handle; return the failure to the node.
+// 2. Pass the change to the FIFO's thread, e.g. through a queue, and wait for the result.
+// 3. On the FIFO's thread, apply it with DtNmosAvFifo_ApplyRxChange() or
+//    DtNmosAvFifo_ApplyTxChange(), and return the result to the callback.
+// 4. The callback returns the result to the node, which reports it to the controller.
+//
+// A change contains no pointers, so it can be copied with =. Examples/DtNmos2110.c shows
+// the whole sequence.
 //
 
-// What an activation changes of a receiving FIFO. MasterEnable false stops the FIFO and
-// changes nothing else. HasConfig is true when the activation gives the flow's format, in
-// Video or Audio as Media says; false when it gives the transport alone, Media is then
-// DTNMOS_MEDIA_NONE and the FIFO keeps its configuration. IpPars are the new stream's.
+// A change to a receive FIFO, made from a controller's activation.
 typedef struct DtNmosAvFifoRxChange
 {
-    size_t Size; // sizeof(DtNmosAvFifoRxChange), as the bridge writes it
-    bool MasterEnable;
-    bool HasConfig;
-    DtNmosMedia Media;
+    size_t Size;       // Set by the bridge
+    bool MasterEnable; // False: stop receiving; the other fields are not used
+    bool HasConfig;    // True: Video or Audio holds a new configuration; false: keep
+                       // the FIFO's configuration and change only IpPars
+    DtNmosMedia Media; // Which of Video and Audio is valid, when HasConfig
     St2110_RxConfigVideo Video;
     St2110_RxConfigAudio Audio;
-    AvFifo_IpPars IpPars;
-    uint64_t AtNs;
+    AvFifo_IpPars IpPars; // The stream to receive
+    uint64_t AtNs;        // When the controller wants the change to take effect, in
+                          // nanoseconds of TAI since the PTP epoch
 } DtNmosAvFifoRxChange;
 
-// What an activation changes of a transmitting FIFO: whether it sends, and where to. The
-// FIFO keeps its format, its payload type and its other IP parameters, and sends from
-// its port's address, whatever source the activation names.
+// A change to a transmit FIFO, made from a controller's activation. Only the destination
+// changes: the FIFO keeps its format, payload type and other IP parameters, and always
+// sends from its port's own address.
 typedef struct DtNmosAvFifoTxChange
 {
-    size_t Size; // sizeof(DtNmosAvFifoTxChange), as the bridge writes it
-    bool MasterEnable;
-    uint8_t DestinationIp[16]; // as AvFifo_IpPars has it
-    IpProtocolVersion IpVersion;
-    int DestinationPort;
-    uint64_t AtNs;
+    size_t Size;                 // Set by the bridge
+    bool MasterEnable;           // False: stop sending; the other fields are not used
+    uint8_t DestinationIp[16];   // 4 bytes for IPv4, 16 for IPv6, as in AvFifo_IpPars
+    IpProtocolVersion IpVersion; // Of DestinationIp
+    int DestinationPort;         // UDP port
+    uint64_t AtNs;               // As in DtNmosAvFifoRxChange
 } DtNmosAvFifoTxChange;
 
-// Applies Change to Fifo, on the thread that owns it: stops it, and unless MasterEnable
-// is false, configures it when HasConfig, sets its IP parameters and starts it. Frames
-// the program holds stay valid, as Stop keeps them. Fails as those calls do, leaving the
-// FIFO stopped, and with DTAPI_E_INVALID_ARG for a null argument or a change whose Size
-// is smaller than this header's.
+// Applies Change to Fifo. Call it on the thread that owns the FIFO.
+//
+// Stops the FIFO. Then, unless MasterEnable is false, configures it if HasConfig is true,
+// sets the new IP parameters and starts it again. Frames the program still holds stay
+// valid. If a step fails, the FIFO stays stopped.
+//
+// Returns DTAPI_OK, DTAPI_E_INVALID_ARG for a NULL argument or a Size that is too small,
+// or the error of the FIFO call that failed.
 CDTAPI_API DtapiResult DtNmosAvFifo_ApplyRxChange(AvFifo_RxFifo* Fifo,
                                                   const DtNmosAvFifoRxChange* Change);
 
-// Applies Change to Fifo, on the thread that owns it: stops it, and unless MasterEnable
-// is false, sets the destination and port in the FIFO's IP parameters and starts it.
-// Fails as those calls do, leaving the FIFO stopped; with DTAPI_E_NO_IPPARS, leaving it
-// as it is, for a FIFO that has no IP parameters to change; and with DTAPI_E_INVALID_ARG
-// as DtNmosAvFifo_ApplyRxChange.
+// Applies Change to Fifo. Call it on the thread that owns the FIFO.
+//
+// If MasterEnable is false, stops the FIFO. Otherwise, stops it, replaces the
+// destination address and port in its IP parameters, and starts it again. If a step
+// fails, the FIFO stays stopped.
+//
+// Returns DTAPI_OK, DTAPI_E_INVALID_ARG for a NULL argument or a Size that is too small,
+// DTAPI_E_NO_IPPARS if the FIFO has no IP parameters yet (it is then left as it was), or
+// the error of the FIFO call that failed.
 CDTAPI_API DtapiResult DtNmosAvFifo_ApplyTxChange(AvFifo_TxFifo* Fifo,
                                                   const DtNmosAvFifoTxChange* Change);
 
-// Makes *Change of the activation of a receiver, in the callback, for a FIFO that
-// delivers frames of Format: of the flow, as DtNmosAvFifo_RxConfigFromFlow makes the
-// configuration, when the activation gives a transport file, or of its transport alone.
-// An activation with MasterEnable false needs neither. Fails as
-// DtNmosAvFifo_RxConfigFromFlow does, so that the callback refuses a flow the FIFO
-// cannot take before the owner is asked; the transport alone fails as its IP parameters
-// do there, for a destination or source that is not an address, a domain name, no
-// destination port, or a source of another IP version. DTAPI_E_INVALID_ARG for a null
-// argument.
+// Converts the activation of a receiver into *Change. Call it in the callback.
+//
+// Format is the frame format the program wants the FIFO to deliver. If the activation
+// carries an SDP, *Change gets the FIFO configuration for it, as
+// DtNmosAvFifo_RxConfigFromFlow() makes it. If it carries only a new address and port,
+// *Change keeps the FIFO's configuration and changes only the IP parameters.
+//
+// Returns DTAPI_OK, DTAPI_E_INVALID_ARG for a NULL argument or an invalid address or
+// port, or the errors of DtNmosAvFifo_RxConfigFromFlow(); a stream the FIFO cannot
+// receive in Format is DTAPI_E_NOT_SUPPORTED.
 CDTAPI_API DtapiResult DtNmosAvFifo_RxChangeFromActivation(
     const DtNmosReceiverActivation* Activation, St2110_RxFrameFormat Format,
     DtNmosAvFifoRxChange* Change);
 
-// Makes *Change of the activation of a sender, in the callback. DTAPI_E_INVALID_ARG for
-// a null argument, and for a destination or port that is not one, when MasterEnable is
-// true; DTAPI_E_NOT_SUPPORTED for a domain name.
+// Converts the activation of a sender into *Change. Call it in the callback.
+//
+// Returns DTAPI_OK, DTAPI_E_INVALID_ARG for a NULL argument or an invalid address or
+// port, or DTAPI_E_NOT_SUPPORTED for a host name.
 CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
     const DtNmosSenderActivation* Activation, DtNmosAvFifoTxChange* Change);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-
-// The flow of a transmit FIFO that is configured and has its IP parameters, started or
-// not, for its SDP and its NMOS sender: its format, its destination, port and payload
-// type, and as its source the port's address Start sends from, which the program need
-// not give. A video flow is YCbCr-4:2:2 of the FIFO's depth, its packing mode, 2110TPN
-// for gapped and 2110TPNL for linear scheduling, SSN ST2110-20:2017, and the
-// colorimetry and SDR of DtNmosVideoFormat_SetDefaults; RANGE is left out, narrow. Every
-// flow has a=ts-refclk localmac with the port's MAC address and a=mediaclk direct=0.
-// What the FIFO does not know is the program's to overwrite in *Flow: HDR, another
-// range, a reference clock of PTP, an audio flow's channel order. *Flow owns no strings.
 //
-// DTAPI_E_NOT_ATTACHED, DTAPI_E_CONFIG before Configure, DTAPI_E_NO_IPPARS before
-// SetIpPars, the failures of checking the port's network, and DTAPI_E_NOT_SUPPORTED for
-// audio of St2110_AudioFormat_Raw, whose encoding the FIFO does not know.
+// A flow (DtNmosFlow) describes one RTP stream, as an SDP media section does: its format,
+// destination, source and timing. These functions convert between flows and FIFO
+// configurations, without a node; DtNmosSdp_Parse() and DtNmosSdp_Write() of dtnmos
+// convert between flows and SDP text.
+//
+
+// Fills *Flow with a description of the stream Fifo sends, e.g. to write an SDP file or
+// to register an NMOS sender.
+//
+// Fifo must be configured and have IP parameters; it need not be started. The source
+// address is the address the FIFO sends from. Fields the FIFO does not know get common
+// defaults: the colorimetry follows the frame size (BT601 for SD, BT709 for HD, BT2020
+// for UHD), the transfer characteristic is SDR, and the reference clock is named by the
+// port's MAC address (localmac). Change those in *Flow for HDR or a PTP clock. *Flow
+// owns no memory.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_NOT_ATTACHED   Fifo is not attached
+//   DTAPI_E_CONFIG         Fifo is not configured
+//   DTAPI_E_NO_IPPARS      Fifo has no IP parameters
+//   DTAPI_E_NOT_SUPPORTED  Fifo sends raw audio, whose encoding it does not know
+// and the errors of checking the port's network.
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 
-// The configuration of a receiving FIFO for Flow, in the frame format Format: *Video for
-// a video flow, *Audio for an audio flow, and *IpPars for either. The pointer of the
-// other media may be null. The format decides which video flows a FIFO takes: Raw takes
-// any uncompressed ST 2110-20 flow, delivering its pixel groups as they come;
-// Uyvy422_8b and Yuv422p_8b take YCbCr-4:2:2 of depth 8, and Uyvy422_10b and
-// Uyvy422_10b_to_8b of depth 10. Audio of L16 and L24 is L16BE and L24BE, and AM824 is
-// Raw, which delivers each packet's bytes. Every RANGE and every TP is taken.
+// Converts Flow into the configuration of a receive FIFO that delivers frames in Format.
 //
-// *IpPars are the flow's destination and port, a source filter of its SourceIp with any
-// port when it has one, its payload type over RTP, DiffServ 0x88 (AF41), a time to live
-// of 64, and gateway and VLAN 0.
+// Fills *Video for a video flow or *Audio for an audio flow; the other may be NULL.
+// Fills *IpPars with the destination, port and payload type, and, if the flow names a
+// source, a source filter for it.
 //
-// DTAPI_E_NOT_SUPPORTED, naming the reason, for the second path of ST 2022-7, for JPEG
-// XS, ancillary data and another media, and for a flow the format does not take;
-// DTAPI_E_INVALID_ARG for a null flow or IP parameters, a flow whose Size is smaller
-// than this header's DtNmosFlow, a missing configuration of the flow's media, and an
-// address that is not one.
+// Which video flows a format accepts:
+//   Raw                             any ST 2110-20 video, delivered as it arrives
+//   Uyvy422_8b, Yuv422p_8b          YCbCr-4:2:2, 8 bits
+//   Uyvy422_10b, Uyvy422_10b_to_8b  YCbCr-4:2:2, 10 bits
+// Format does not apply to audio: L16 and L24 are delivered as L16BE and L24BE, and
+// AM824 as raw bytes.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_NOT_SUPPORTED  the FIFO cannot receive the flow in Format, or the flow is
+//                          compressed video, ancillary data, or the second path of an
+//                          ST 2022-7 pair; GetLastException() names a format that works
+//   DTAPI_E_INVALID_ARG    an argument is NULL, Flow->Size is too small, the
+//                          configuration for the flow's media is NULL, or an address is
+//                          invalid
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
                                                      St2110_RxConfigVideo* Video,
                                                      St2110_RxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
 
-// The configuration of a transmitting FIFO for Flow, as DtNmosAvFifo_FlowFromTxFifo
-// writes it: *Video for a video flow, *Audio for an audio flow, and *IpPars for either;
-// the pointer of the other media may be null. Video is YCbCr-4:2:2 of depth 8 or 10,
-// which gives the frame format; exactframerate is doubled into the field rate of
-// interlaced and PsF video; PM 2110GPM, or none, is General and 2110BPM Block; TP
-// 2110TPNL is Linear, and 2110TPN, 2110TPW or none Gapped. Audio is L16 or L24, with
-// NumSamplesPerIpPacket from a=ptime, 1 ms when the flow has none. *IpPars are those of
-// DtNmosAvFifo_RxConfigFromFlow without a source filter: a sender's SourceIp is its own
-// address, which the FIFO chooses.
+// Converts Flow into the configuration of a transmit FIFO that sends it.
 //
-// DTAPI_E_NOT_SUPPORTED, naming the reason, for what DtNmosAvFifo_RxConfigFromFlow
-// refuses, for another sampling or depth, AM824, and a PM or TP the FIFO does not have;
-// DTAPI_E_INVALID_ARG as DtNmosAvFifo_RxConfigFromFlow, and for video without width,
-// height or frame rate and audio without sample rate or channels.
+// Fills *Video for a video flow or *Audio for an audio flow; the other may be NULL.
+// Fills *IpPars with the destination, port and payload type. The source address is not
+// part of it: a FIFO always sends from its port's own address.
+//
+// The FIFO sends YCbCr-4:2:2 video of 8 or 10 bits, and L16 or L24 audio. For interlaced
+// and PsF video, the configured rate is the field rate, twice the flow's frame rate.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_NOT_SUPPORTED  the FIFO cannot send the flow, e.g. 4:4:4 or 12-bit video,
+//                          AM824 audio, or what DtNmosAvFifo_RxConfigFromFlow() refuses
+//   DTAPI_E_INVALID_ARG    as for DtNmosAvFifo_RxConfigFromFlow(), or the flow has no
+//                          frame size, frame rate, sample rate or channel count
 CDTAPI_API DtapiResult DtNmosAvFifo_TxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_TxConfigVideo* Video,
                                                      St2110_TxConfigAudio* Audio,
                                                      AvFifo_IpPars* IpPars);
 
-// Gives the sender Id of Node the flow of Fifo, as DtNmosAvFifo_FlowFromTxFifo() makes
-// it, after the owner of the FIFO changed its format. A new destination needs no update,
-// as the node follows an activation itself; a program that changed the flow it gave
-// calls DtNmosNode_UpdateSender() with it instead. Fails as
-// DtNmosAvFifo_FlowFromTxFifo() does, and with what dtnmos gives.
+// Updates the description of sender Id in Node after the program changed the format of
+// Fifo. The node re-registers the sender with the new flow, as
+// DtNmosAvFifo_FlowFromTxFifo() makes it.
+//
+// A new destination set by a controller needs no update: the node already knows it. If
+// the program registered a flow of its own, it calls DtNmosNode_UpdateSender() instead.
+//
+// Returns DTAPI_OK, or the errors of DtNmosAvFifo_FlowFromTxFifo() and
+// DtNmosNode_UpdateSender().
 CDTAPI_API DtapiResult DtNmosAvFifo_UpdateSender(DtNmosNode* Node, const DtNmosId* Id,
                                                  AvFifo_TxFifo* Fifo);
 

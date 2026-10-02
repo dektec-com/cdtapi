@@ -109,14 +109,40 @@ The names the driver's interface itself uses — the commands, structures and pr
 `Source/DtPcie/Abi/` that travel over the wire — are this library's own vocabulary and
 belong wherever they are needed.
 
+### How a comment is written
+
+A comment is written for a programmer who has not seen the source and wants to use the
+function. Before anything else, it tells what the function is for.
+
+- **The first sentence says what the function does, in ordinary words**, starting with
+  a verb: "Registers an IP port of a DekTec card with an NMOS node, as an NMOS device",
+  not "Adds the NMOS device of a port of Device to Node". It names the purpose, not the
+  parameters in the order of the signature.
+- **Then what the caller must know to use it**: what must be true before the call, what
+  each parameter means when its name does not say it, what the function fills in or
+  returns, who owns what, and on which thread to call it.
+- **Short sentences with a subject and a verb.** No chains of "of" ("the flow of the
+  activation of a receiver"), no noun phrase where a sentence belongs, and no word made
+  to do the work of a clause ("the program's to overwrite").
+- **Only what a user needs.** How the function does its work, constants it uses inside
+  and the reasons behind its design belong in the `.c` file or a design document.
+- **The results as a short table**: the code, then when it occurs. "And the errors of
+  X()" stands for those of a function called underneath.
+- **A field of a struct has its own comment**, saying what it holds and when it is used.
+- **A section of a header starts by explaining the concept** before its functions: what
+  the parts are, how they relate, and the steps a program takes.
+
+Read the comment back as someone who does not know the code. If a sentence needs
+reading twice, rewrite it.
+
 ### What a comment says, and where
 
 - **One place per fact.** A function's contract — its parameters, units, results and side
   effects — stands above its declaration in the header. The `.c` file says how and why
   the body works, not the contract again. A static function is described where it is
   defined.
-- **A result list is complete and in the order the code checks.** It names every code the
-  function can return, successes other than `DTAPI_OK` included. It says "in DTAPI's
+- **A result list names every code the function can return**, successes other than
+  `DTAPI_OK` included, directly or through "the errors of X()". It says "in DTAPI's
   order" only where a test holds it to that.
 - **Units and origins are stated once, on the declaration**: bytes, symbols, raw or coded
   lines, sections; milliseconds or microseconds; counting from 0 or from 1. A name that
