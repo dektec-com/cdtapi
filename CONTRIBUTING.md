@@ -14,7 +14,8 @@
    `while`, `switch` and struct definitions.
 7. **A value whose width matters has a fixed-width type** from `<stdint.h>` — `uint8_t`,
    `int32_t`, `uint32_t`, `int64_t` and the like — also in `cdtapi.h`. Counters,
-   indices and port numbers stay `int`; sizes stay `size_t`, text `char`. `long` and
+   indices and port numbers stay `int`; sizes stay `size_t`, text `char`; a value that
+   is true or false is `bool`, a field, a parameter and a result alike. `long` and
    `unsigned long` appear only where an operating-system interface defines them, such
    as `timespec.tv_nsec`. The result code, `DtapiResult`, is `uint32_t`, which is
    DTAPI's `unsigned int` on every platform CDTAPI supports, and the vendored driver ABI

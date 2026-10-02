@@ -155,14 +155,14 @@ DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool IsRx,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtAvPort_UsesHwPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPipe* Pipe,
-                                int* UsesHwPipe, const char* Where)
+                                bool* UsesHwPipe, const char* Where)
 {
     if (Started)
-        *UsesHwPipe = DtAvPipe_IsHardware(Pipe) ? 1 : 0;
+        *UsesHwPipe = DtAvPipe_IsHardware(Pipe);
     else if (Port->PipePreference == HwOrSwPipe_ForceHwPipe)
-        *UsesHwPipe = 1;
+        *UsesHwPipe = true;
     else if (Port->PipePreference == HwOrSwPipe_UseSwPipe)
-        *UsesHwPipe = 0;
+        *UsesHwPipe = false;
     else
         return DtAvError_Set(DTAPI_E_NOT_STARTED, Where,
                              "The FIFO must be started before the pipe type is known");

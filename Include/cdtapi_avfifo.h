@@ -9,6 +9,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -108,7 +109,7 @@ typedef enum St2110_Scheduling
 // Video packetization parameters.
 typedef struct St2110_VideoPacking
 {
-    int OneLinePerPacket;
+    bool OneLinePerPacket;
     St2110_PackingMode PackingMode;
     int PayloadSize; // Bytes of video per packet, whole pixel groups; -1 for the most a
                      // standard-size packet holds. Checked when the FIFO starts.
@@ -141,7 +142,7 @@ typedef struct St2110_VideoTiming
 typedef struct St2110_TxConfigRawVideo
 {
     Ratio ActiveVideo;           // Active-video fraction of the frame period
-    int Is420;                   // 4:2:0 chroma subsampling
+    bool Is420;                  // 4:2:0 chroma subsampling
     int NumRows;                 // Number of rows in a frame
     St2110_VideoPacking Packing; // Packetization parameters
     struct
@@ -227,7 +228,7 @@ typedef struct AvFifo_Frame
     size_t Size;       // Size of the Data buffer in bytes.
 
     // Valid for received ST 2110-20 video only.
-    int Is420;   // 4:2:0 chroma subsampling
+    bool Is420;  // 4:2:0 chroma subsampling
     int NumRows; // Rows in the frame
 } AvFifo_Frame;
 
@@ -266,14 +267,14 @@ typedef enum ChromaSubsampling
 // the complete picture.
 typedef struct FrameProperties
 {
-    int Is420;
+    bool Is420;
     int NLines;
     int BytesPerLine;
     int BytesPerFrame;
 
     int Width;
     int Height;
-    int IsInterlaced;
+    bool IsInterlaced;
     ChromaSubsampling Subsampling;
     int BitDepth;
 } FrameProperties;
@@ -420,7 +421,7 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_Stop(AvFifo_RxFifo* Fifo);
 // Reports whether the FIFO receives through a hardware pipe. The result is known after
 // Start, and also before Start for HwOrSwPipe_ForceHwPipe and HwOrSwPipe_UseSwPipe.
 CDTAPI_API DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo,
-                                                int* UsesHwPipe);
+                                                bool* UsesHwPipe);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmitting -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
@@ -479,7 +480,7 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_Start(AvFifo_TxFifo* Fifo);
 CDTAPI_API DtapiResult AvFifo_TxFifo_Stop(AvFifo_TxFifo* Fifo);
 
 CDTAPI_API DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo,
-                                                int* UsesHwPipe);
+                                                bool* UsesHwPipe);
 
 // Queues a frame obtained from GetFromMemPool for transmission. Once the frame is sent,
 // or determined to be unsendable, it is returned to the pool. NumValidBytes must match

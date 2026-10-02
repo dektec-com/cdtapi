@@ -57,7 +57,7 @@ DtapiResult DtAvPort_OpenPipe(DtAvPort* Port, DtAvPipe* Pipe, bool IsRx,
 // Whether a FIFO uses a hardware pipe: from the pipe when started, else from the
 // preference, and DTAPI_E_NOT_STARTED when that leaves it open.
 DtapiResult DtAvPort_UsesHwPipe(const DtAvPort* Port, bool Started, const DtAvPipe* Pipe,
-                                int* UsesHwPipe, const char* Where);
+                                bool* UsesHwPipe, const char* Where);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= IP parameters +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

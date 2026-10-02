@@ -670,7 +670,7 @@ TxStatistics AvFifo_TxFifo_GetStatistics(const AvFifo_TxFifo* Fifo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_TxFifo_UsesHwPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo, int* UsesHwPipe)
+DtapiResult AvFifo_TxFifo_UsesHwPipe(const AvFifo_TxFifo* Fifo, bool* UsesHwPipe)
 {
     static const char* const Where = "AvFifo_TxFifo_UsesHwPipe";
     if (Fifo == NULL || UsesHwPipe == NULL)

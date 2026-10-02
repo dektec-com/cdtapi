@@ -34,7 +34,7 @@ DT_TEST(VersionMacrosAgreeWithString)
 // own build is told which, CDTAPI_TEST_WITH_NMOS, from the same option.
 DT_TEST(HasNmosAsBuilt)
 {
-    DT_ASSERT_EQ(DtapiHasNmos(), CDTAPI_TEST_WITH_NMOS);
+    DT_ASSERT(DtapiHasNmos() == (CDTAPI_TEST_WITH_NMOS != 0));
 }
 
 #if !CDTAPI_TEST_WITH_NMOS

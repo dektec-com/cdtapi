@@ -261,20 +261,20 @@ unsigned int ExampleAv_AttachRx(AvFifo_RxFifo* Fifo, const DtDevice* Device, int
 //
 const char* ExampleAv_TxPipeKind(const AvFifo_TxFifo* Fifo)
 {
-    int UsesHwPipe = 0;
+    bool UsesHwPipe = false;
 
     if (AvFifo_TxFifo_UsesHwPipe(Fifo, &UsesHwPipe) != DTAPI_OK)
         return "pipe";
-    return UsesHwPipe != 0 ? "hardware pipe" : "software pipe";
+    return UsesHwPipe ? "hardware pipe" : "software pipe";
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_RxPipeKind -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const char* ExampleAv_RxPipeKind(const AvFifo_RxFifo* Fifo)
 {
-    int UsesHwPipe = 0;
+    bool UsesHwPipe = false;
 
     if (AvFifo_RxFifo_UsesHwPipe(Fifo, &UsesHwPipe) != DTAPI_OK)
         return "pipe";
-    return UsesHwPipe != 0 ? "hardware pipe" : "software pipe";
+    return UsesHwPipe ? "hardware pipe" : "software pipe";
 }

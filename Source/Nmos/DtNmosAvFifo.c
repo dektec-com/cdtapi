@@ -326,9 +326,9 @@ static DtapiResult TxVideoOf(const DtNmosFlow* Flow, St2110_TxConfigVideo* Video
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHasNmos -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtapiHasNmos(void)
+bool DtapiHasNmos(void)
 {
-    return 1;
+    return true;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

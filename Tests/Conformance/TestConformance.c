@@ -138,7 +138,7 @@ DT_TEST(EveryPublicFunctionIsThere)
 DT_TEST(LibraryCalls)
 {
     DT_ASSERT(DtapiGetVersion() != NULL && DtapiGetVersion()[0] != '\0');
-    DT_ASSERT(DtapiHasNmos() == 0 || DtapiHasNmos() == 1);
+    DT_ASSERT(DtapiHasNmos() == (CDTAPI_TEST_WITH_NMOS != 0));
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_OK), "DTAPI_OK");
     DT_ASSERT_STR(DtapiResult2Str(DTAPI_E_NOT_ATTACHED), "DTAPI_E_NOT_ATTACHED");
 
@@ -478,9 +478,8 @@ DT_TEST(ReceiveFifoCalls)
     DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fifo, &Pars));
     DT_ASSERT_OK(AvFifo_RxFifo_Start(Fifo));
 
-    int UsesHwPipe = -1;
+    bool UsesHwPipe = false;
     DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fifo, &UsesHwPipe));
-    DT_ASSERT(UsesHwPipe == 0 || UsesHwPipe == 1);
 
     DT_ASSERT_EQ(AvFifo_RxFifo_GetFifoLoad(Fifo), 0);
     DT_ASSERT(AvFifo_RxFifo_Read(Fifo) == NULL);
@@ -539,9 +538,9 @@ DT_TEST(TransmitFifoCalls)
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fifo, &Pars));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Fifo));
 
-    int UsesHwPipe = -1;
+    bool UsesHwPipe = true;
     DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fifo, &UsesHwPipe));
-    DT_ASSERT_EQ(UsesHwPipe, 0);
+    DT_ASSERT(!UsesHwPipe);
     DT_ASSERT_EQ(AvFifo_TxFifo_GetFifoLoad(Fifo), 0);
 
     const int FrameNumBytes = 320 / 2 * 5 * 240;

@@ -96,7 +96,7 @@ static DtNmosFlow HandFlow(DtNmosMedia Media)
 // library, which a program gets from linking CDTAPI alone.
 DT_TEST(LinksDtnmos)
 {
-    DT_ASSERT_EQ(DtapiHasNmos(), 1);
+    DT_ASSERT(DtapiHasNmos());
     DT_ASSERT(DtNmos_HasServer() == 0 || DtNmos_HasServer() == 1);
 }
 

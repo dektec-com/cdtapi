@@ -600,7 +600,7 @@ RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_RxFifo_UsesHwPipe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo, int* UsesHwPipe)
+DtapiResult AvFifo_RxFifo_UsesHwPipe(const AvFifo_RxFifo* Fifo, bool* UsesHwPipe)
 {
     static const char* const Where = "AvFifo_RxFifo_UsesHwPipe";
     if (Fifo == NULL || UsesHwPipe == NULL)

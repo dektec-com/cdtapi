@@ -46,9 +46,9 @@ static DtapiResult NoNmos(const char* Where)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtapiHasNmos -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-int DtapiHasNmos(void)
+bool DtapiHasNmos(void)
 {
-    return 0;
+    return false;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

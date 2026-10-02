@@ -223,7 +223,7 @@ DT_TEST(ResultsOfTheLifecycle)
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_CONFIG);
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fix.Rx, &RxVideo));
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_NO_IPPARS);
-    int UsesHw = -1;
+    bool UsesHw = false;
     DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
     // IP parameters that are refused.
@@ -244,7 +244,7 @@ DT_TEST(ResultsOfTheLifecycle)
     DT_ASSERT(AvFifo_TxFifo_GetFromMemPool(Fix.Tx, 100) == NULL);
     DT_ASSERT_OK(AvFifo_TxFifo_Attach2(Fix.Tx, Fix.Device, 1, HwOrSwPipe_UseSwPipe));
     DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fix.Tx, &UsesHw));
-    DT_ASSERT_EQ(UsesHw, 0);
+    DT_ASSERT(!UsesHw);
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &TxVideo));
     AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, WIDTH * 2 * HEIGHT);
     DT_ASSERT(Frame != NULL);
@@ -335,7 +335,7 @@ DT_TEST(StartFailures)
     DT_ASSERT(strstr(GetLastException(), "multicast") != NULL);
     DT_ASSERT_EQ(PipeInUse(SIM_NW_FIRST_RX_HWP, SIM_NW_FIRST_SWP + 8, &State), 0);
     DT_ASSERT_EQ(SimDtPcie_OpenNetSocketCount(), 0);
-    int UsesHw = -1;
+    bool UsesHw = false;
     DT_ASSERT_EQ(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw), DTAPI_E_NOT_STARTED);
 
     // An unknown unicast destination has no MAC address.
@@ -356,7 +356,7 @@ DT_TEST(StartFailures)
         DT_ASSERT(Fix.Hw[i] != NULL);
         DT_ASSERT_OK(StartRx(Fix.Hw[i], Fix.Device, HwOrSwPipe_ForceHwPipe, &P));
         DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Hw[i], &UsesHw));
-        DT_ASSERT_EQ(UsesHw, 1);
+        DT_ASSERT(UsesHw);
     }
     DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fix.Rx));
     DT_ASSERT_EQ(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_ForceHwPipe, &P),
@@ -364,7 +364,7 @@ DT_TEST(StartFailures)
     DT_ASSERT_OK(AvFifo_RxFifo_Detach(Fix.Rx));
     DT_ASSERT_OK(StartRx(Fix.Rx, Fix.Device, HwOrSwPipe_PreferHwPipe, &P));
     DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw));
-    DT_ASSERT_EQ(UsesHw, 0);
+    DT_ASSERT(!UsesHw);
     DT_ASSERT_EQ(AvFifo_RxFifo_Start(Fix.Rx), DTAPI_E_STARTED);
     DT_ASSERT_EQ(AvFifo_RxFifo_Clear(Fix.Rx), DTAPI_E_STARTED);
 
@@ -479,9 +479,9 @@ DT_TEST(PacketsOnTheWire)
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureVideo(Fix.Tx, &Video));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
-    int UsesHw = -1;
+    bool UsesHw = false;
     DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fix.Tx, &UsesHw));
-    DT_ASSERT_EQ(UsesHw, 1);
+    DT_ASSERT(UsesHw);
 
     AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, WIDTH * 2 * HEIGHT);
     DT_ASSERT(Frame != NULL);
@@ -712,9 +712,9 @@ static void CheckAudio(St2110_AudioFormat Format, int SampleBytes, int* DtFailur
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &TxAudio));
     DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
     DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
-    int UsesHw = -1;
+    bool UsesHw = false;
     DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw));
-    DT_ASSERT_EQ(UsesHw, 0);
+    DT_ASSERT(!UsesHw);
 
     int FrameNumBytes = 480 * 2 * SampleBytes;
     uint8_t Sent[5 * 480 * 2 * 3];

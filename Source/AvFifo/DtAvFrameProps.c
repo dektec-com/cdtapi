@@ -37,7 +37,7 @@ static FrameProperties MakeProperties(const Format* Fmt, int BitDepth)
 {
     FrameProperties Props;
 
-    Props.Is420 = 0;
+    Props.Is420 = false;
     Props.NLines = Fmt->IsInterlaced ? Fmt->Height / 2 : Fmt->Height;
     Props.BytesPerLine = Fmt->Width * 2 * BitDepth / 8;
     Props.BytesPerFrame = Props.BytesPerLine * Props.NLines;

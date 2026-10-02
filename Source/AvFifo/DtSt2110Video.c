@@ -117,7 +117,7 @@ DtapiResult DtSt2110VideoTx_ConfigureRaw(DtSt2110VideoTx* Tx,
     {
         return DTAPI_E_INVALID_ARG;
     }
-    Tx->Is420 = Config->Is420 != 0;
+    Tx->Is420 = Config->Is420;
     Tx->IsInterlaced = Config->Timing.VideoScanning == St2110_VideoScanning_Interlaced;
     Tx->IsPsf = Config->Timing.VideoScanning == St2110_VideoScanning_PsF;
     Tx->NumRows = Config->NumRows;
@@ -592,7 +592,7 @@ static void DeliverFrame(DtSt2110VideoRx* Rx, bool IsSecondField)
     Frame->Frame.NumRows = Rx->IsInterlaced && LineSize > 0
                                ? Rx->OutputNumBytes / LineSize
                                : Rx->NumRowsFrame;
-    Frame->Frame.Is420 = Rx->Is420 ? 1 : 0;
+    Frame->Frame.Is420 = Rx->Is420;
     Rx->PartialFrame = NULL;
     Rx->InputNumBytes = 0;
     Rx->OutputNumBytes = 0;
