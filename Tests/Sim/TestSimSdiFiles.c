@@ -151,7 +151,9 @@ static uint8_t* PatternFrame(int VidStd, uint32_t FrameNumber, size_t* Size,
         return NULL;
 
     uint16_t* Symbols = (uint16_t*)malloc(SIM_LINE_SYMBOLS * sizeof(uint16_t));
-    size_t Symbol = 0;
+    uint8_t* Out = Frame;
+    uint32_t Bits = 0; // Bits not yet written, the first in the lowest bit
+    int NumBits = 0;
 
     if (Symbols == NULL)
     {
@@ -159,20 +161,20 @@ static uint8_t* PatternFrame(int VidStd, uint32_t FrameNumber, size_t* Size,
         *Size = *Padded = 0;
         return NULL;
     }
+    // Each symbol's ten bits follow the previous symbol's, lowest bit first.
     for (int Line = 1; Line <= Layout.NumLines; Line++)
     {
         int Count = SimChSdiRx_Line(VidStd, FrameNumber, Line, Symbols);
 
-        for (int i = 0; i < Count; i++, Symbol++)
+        for (int i = 0; i < Count; i++)
         {
-            for (int b = 0; b < 10; b++)
-            {
-                if ((Symbols[i] >> b & 1) != 0)
-                    Frame[(Symbol * 10 + (size_t)b) / 8] |=
-                        (uint8_t)(1u << ((Symbol * 10 + (size_t)b) % 8));
-            }
+            Bits |= (uint32_t)(Symbols[i] & 0x3FF) << NumBits;
+            for (NumBits += 10; NumBits >= 8; NumBits -= 8, Bits >>= 8)
+                *Out++ = (uint8_t)Bits;
         }
     }
+    if (NumBits > 0)
+        *Out = (uint8_t)Bits;
     free(Symbols);
     return Frame;
 }
