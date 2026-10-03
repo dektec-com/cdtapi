@@ -666,6 +666,23 @@ DT_TEST(ServiceCalls)
 
     DT_ASSERT_OK(DtDevice_GetPtpStatus(Device, Port.Port, &Status));
     DT_ASSERT_EQ(Status.LockStatus, DT_PTP_LOCK_LOCKED);
+
+    // The typed slave: set the domain alone, read it back, and its status and masters.
+    DtPtpSlave* Slave = NULL;
+    DT_ASSERT_OK(DtPtpSlave_Attach(Device, Port.Port, true, &Slave));
+    DT_ASSERT(DtPtpSlave_Proxy(Slave) != NULL);
+    DtPtpConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Fields = DT_PTP_CONFIG_DOMAIN;
+    Config.Domain = 7;
+    DT_ASSERT_OK(DtPtpSlave_SetConfig(Slave, &Config));
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Slave, &Config));
+    DT_ASSERT_EQ(Config.Domain, 7);
+    DT_ASSERT_OK(DtPtpSlave_SaveSettings(Slave));
+    DT_ASSERT_OK(DtPtpSlave_GetStatus(Slave, &Status));
+    DT_ASSERT_OK(DtPtpSlave_GetMasters(Slave, &Heard, &NumHeard));
+    DtPtp_FreeMasterInfo(Heard);
+    DtPtpSlave_Detach(Slave);
     DtDevice_Free(Device);
 }
 

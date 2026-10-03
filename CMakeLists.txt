@@ -114,6 +114,7 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimService.c
     Source/OAL/Sim/SimVpd.c
     Source/Service/DtPtp.c
+    Source/Service/DtPtpSlave.c
     Source/Service/DtService.c
     Source/Service/DtServiceProxy.c
     Source/Service/DtXml.c

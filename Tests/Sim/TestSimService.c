@@ -405,8 +405,190 @@ DT_TEST(PortsWithoutTheSlaveAreRefused)
     FINISH(Fix);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= PTP slave +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+typedef struct SlaveFixture
+{
+    Fixture Base;
+    DtPtpSlave* Slave;
+} SlaveFixture;
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeSlave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Frees what a slave's case made when an assertion fails before SLAVE_FINISH does.
+//
+static void FreeSlave(void* Context)
+{
+    SlaveFixture* Fix = (SlaveFixture*)Context;
+    DtPtpSlave_Detach(Fix->Slave);
+    Fix->Slave = NULL;
+    FreeAll(&Fix->Base);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenSlave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Opens the DTA-2110 and attaches to its slave, with exclusive access when Exclusive.
+//
+static bool OpenSlave(SlaveFixture* Fix, bool Exclusive, int* DtFailures)
+{
+    Fix->Slave = NULL;
+    if (!Open(&Fix->Base, DtFailures))
+        return false;
+    DtTest_SetCleanup(FreeSlave, Fix);
+    if (DtPtpSlave_Attach(Fix->Base.Device, PORT, Exclusive, &Fix->Slave) != DTAPI_OK)
+    {
+        printf("    FAIL: cannot attach to the emulated slave\n");
+        (*DtFailures)++;
+        DtTest_Cleanup();
+        return false;
+    }
+    return true;
+}
+
+// Detaches the slave, frees the device and checks that nothing is left.
+#define SLAVE_FINISH(Fix)                                                                \
+    do                                                                                   \
+    {                                                                                    \
+        DtPtpSlave_Detach((Fix).Slave);                                                  \
+        (Fix).Slave = NULL;                                                              \
+        FINISH((Fix).Base);                                                              \
+    } while (0)
+
+DT_TEST(SlaveConfigStartsAtTheDefaults)
+{
+    SlaveFixture Fix;
+    if (!OpenSlave(&Fix, false, DtFailures))
+        return;
+    DtPtpConfig Config;
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Fix.Slave, &Config));
+    DT_ASSERT_EQ(Config.Fields, DT_PTP_CONFIG_ALL);
+    DT_ASSERT(!Config.Enable);
+    DT_ASSERT_EQ(Config.Domain, 127);
+    DT_ASSERT_EQ(Config.DelayMechanism, DT_PTP_DELAY_AUTO);
+    DT_ASSERT_EQ(Config.NetworkProtocol, DT_PTP_PROTOCOL_IPV4);
+    DT_ASSERT_EQ(Config.IpV6Scope, DT_PTP_IPV6_SCOPE_SITE_LOCAL);
+    DT_ASSERT_STR(Config.PeerAddress, "0.0.0.0");
+    DT_ASSERT(DtPtpSlave_Proxy(Fix.Slave) != NULL);
+    DT_ASSERT(DtPtpSlave_Proxy(NULL) == NULL);
+
+    // Without exclusive access it reads, and does not set or save.
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtPtpSlave_SaveSettings(Fix.Slave), DTAPI_E_IN_USE);
+    SLAVE_FINISH(Fix);
+}
+
+DT_TEST(SlaveSetsOnlyTheFieldsNamed)
+{
+    SlaveFixture Fix;
+    if (!OpenSlave(&Fix, true, DtFailures))
+        return;
+
+    // A struct of zeros but for the domain sets the domain alone.
+    DtPtpConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Fields = DT_PTP_CONFIG_DOMAIN;
+    Config.Domain = 5;
+    DT_ASSERT_OK(DtPtpSlave_SetConfig(Fix.Slave, &Config));
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Fix.Slave, &Config));
+    DT_ASSERT_EQ(Config.Domain, 5);
+    DT_ASSERT_EQ(Config.IpV6Scope, DT_PTP_IPV6_SCOPE_SITE_LOCAL);
+    DT_ASSERT_STR(Config.PeerAddress, "0.0.0.0");
+
+    // Read, change and write back.
+    Config.Enable = true;
+    Config.DelayMechanism = DT_PTP_DELAY_PEER_TO_PEER;
+    Config.NetworkProtocol = DT_PTP_PROTOCOL_IPV6;
+    Config.IpV6Scope = DT_PTP_IPV6_SCOPE_GLOBAL;
+    snprintf(Config.PeerAddress, sizeof(Config.PeerAddress), "%s", "fe80::1");
+    DT_ASSERT_OK(DtPtpSlave_SetConfig(Fix.Slave, &Config));
+    DtPtpConfig Read;
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Fix.Slave, &Read));
+    DT_ASSERT_MEM(&Read, &Config, sizeof(Config));
+    DT_ASSERT_OK(DtPtpSlave_SaveSettings(Fix.Slave));
+    DT_ASSERT(SimService_WasSaved());
+
+    // Switched on, the slave follows the emulated grandmaster in its domain, 5.
+    DtPtpStatus Status;
+    DT_ASSERT_OK(DtPtpSlave_GetStatus(Fix.Slave, &Status));
+    DT_ASSERT_EQ(Status.LockStatus, DT_PTP_LOCK_LOCKED);
+    DT_ASSERT_EQ(Status.Domain, 5);
+    DtPtpMasterInfo* Masters = NULL;
+    int NumMasters = 0;
+    DT_ASSERT_OK(DtPtpSlave_GetMasters(Fix.Slave, &Masters, &NumMasters));
+    bool Ok = NumMasters == 1 &&
+              Masters[0].GrandmasterIdentity == SIM_SERVICE_GRANDMASTER &&
+              Masters[0].DomainNumber == 5;
+    DtPtp_FreeMasterInfo(Masters);
+    DT_ASSERT(Ok);
+    SLAVE_FINISH(Fix);
+}
+
+DT_TEST(SlaveRefusesBadConfigsItself)
+{
+    SlaveFixture Fix;
+    if (!OpenSlave(&Fix, true, DtFailures))
+        return;
+    DtPtpConfig Good;
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Fix.Slave, &Good));
+
+    DtPtpConfig Config = Good;
+    Config.Fields = 0;
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+    Config.Fields = DT_PTP_CONFIG_ALL | 0x40u;
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+
+    // Out of range, not a value of the enumeration, and an address without its end; the
+    // service is not asked, so its last exception stays none.
+    Config = Good;
+    Config.Domain = 128;
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+    DT_ASSERT(strstr(GetLastException(), "DomainNumber 128") != NULL);
+    Config = Good;
+    Config.DelayMechanism = (DtPtpDelayMechanism)7;
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+    Config = Good;
+    Config.IpV6Scope = (DtPtpIpV6Scope)0;
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+    Config = Good;
+    memset(Config.PeerAddress, 'x', sizeof(Config.PeerAddress));
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(Fix.Slave, &Config), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtServiceProxy_LastException(DtPtpSlave_Proxy(Fix.Slave)),
+                 DT_SERVICE_EXC_NONE);
+
+    // Nothing was set.
+    DtPtpConfig Read;
+    DT_ASSERT_OK(DtPtpSlave_GetConfig(Fix.Slave, &Read));
+    DT_ASSERT_MEM(&Read, &Good, sizeof(Good));
+    DT_ASSERT_EQ(DtPtpSlave_SetConfig(NULL, &Good), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtPtpSlave_GetConfig(NULL, &Read), DTAPI_E_INVALID_ARG);
+    SLAVE_FINISH(Fix);
+}
+
+DT_TEST(SlaveAttachIsChecked)
+{
+    Fixture Fix;
+    if (!Open(&Fix, DtFailures))
+        return;
+    DtPtpSlave* Slave = NULL;
+    DT_ASSERT_EQ(DtPtpSlave_Attach(Fix.Device, 2, false, &Slave), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(DtPtpSlave_Attach(NULL, PORT, false, &Slave), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(DtPtpSlave_Attach(Fix.Device, PORT, false, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT(Slave == NULL);
+
+    // A slave with exclusive access keeps DtDevice_GetPtpStatus out, as a proxy does.
+    DT_ASSERT_OK(DtPtpSlave_Attach(Fix.Device, PORT, true, &Slave));
+    DtPtpStatus Status;
+    DtapiResult Result = DtDevice_GetPtpStatus(Fix.Device, PORT, &Status);
+    DtPtpSlave_Detach(Slave);
+    DtPtpSlave_Detach(NULL);
+    DT_ASSERT_EQ(Result, DTAPI_E_IN_USE);
+    FINISH(Fix);
+}
+
 DT_TEST_MAIN("SimService", DT_RUN(SlaveStartsOff),
              DT_RUN(DescriptionsHaveTypesEnumsAndDefaults), DT_RUN(SlaveSwitchedOnLocks),
              DT_RUN(MasterListHasTheGrandmaster), DT_RUN(PeerAddressIsAString),
              DT_RUN(SettingNeedsExclusiveAccess), DT_RUN(ExclusiveAccessKeepsOthersOut),
-             DT_RUN(BadValuesAreRefused), DT_RUN(PortsWithoutTheSlaveAreRefused))
+             DT_RUN(BadValuesAreRefused), DT_RUN(PortsWithoutTheSlaveAreRefused),
+             DT_RUN(SlaveConfigStartsAtTheDefaults), DT_RUN(SlaveSetsOnlyTheFieldsNamed),
+             DT_RUN(SlaveRefusesBadConfigsItself), DT_RUN(SlaveAttachIsChecked))

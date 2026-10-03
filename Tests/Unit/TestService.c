@@ -44,7 +44,7 @@
 #include "DtTest.h"                 // Test framework.
 #include "OAL/OsPipe.h"             // Interface under test.
 #include "OAL/OsThread.h"           // The fake service's thread.
-#include "Service/DtPtp.h"          // Interface under test.
+#include "Service/DtPtpSlave.h"     // Interface under test.
 #include "Service/DtService.h"      // Interface under test.
 #include "Service/DtServiceProxy.h" // Interface under test.
 #include "Service/DtXml.h"          // The fake PTP slave's XML.
@@ -407,9 +407,12 @@ typedef struct FakePar
     int Type; // The place in Variant::Type: 2 Int, 3 UInt64, 4 Bool, 5 String
 } FakePar;
 static const FakePar FakePars[] = {
-    {"ClockOffset", 1, 2},          {"Enable", 5, 4},        {"SlaveState", 40, 2},
-    {"MasterLockingStatus", 41, 2}, {"DomainNumber", 42, 2}, {"MasterIdentity", 43, 3},
-    {"MasterInfo", 44, 5},
+    {"ClockOffset", 1, 2},         {"Enable", 5, 4},
+    {"SlaveState", 40, 2},         {"MasterLockingStatus", 41, 2},
+    {"DomainNumber", 42, 2},       {"MasterIdentity", 43, 3},
+    {"MasterInfo", 44, 5},         {"DelayMechanism", 45, 2},
+    {"NetworkProtocol", 46, 2},    {"IpV6Scope", 47, 2},
+    {"PeerUnicastAddress", 48, 5},
 };
 #define FAKE_NUM_PARS (int)(sizeof(FakePars) / sizeof(FakePars[0]))
 
@@ -1031,8 +1034,8 @@ static void InitPtp(FakePtp* Ptp)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadFakePtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Starts a fake PTP slave as Ptp describes it, attaches a proxy to it without exclusive
-// access, and reads its status.
+// Starts a fake PTP slave as Ptp describes it, attaches to it without exclusive access,
+// and reads its status.
 //
 static DtapiResult ReadFakePtp(FakePtp* Ptp, DtPtpStatus* Status)
 {
@@ -1040,13 +1043,12 @@ static DtapiResult ReadFakePtp(FakePtp* Ptp, DtPtpStatus* Status)
     memset(Status, 0, sizeof(*Status));
     if (!FakeStart(&Fake, FAKE_PTP, Ptp))
         return DTAPI_E_INTERNAL;
-    DtServiceProxy* Proxy = NULL;
+    DtPtpSlave* Slave = NULL;
     DtapiResult Result =
-        DtServiceProxy_AttachTo(Fake.PipeName, PTP_SERIAL, PTP_PORT_INDEX,
-                                DT_SERVICE_PTP_CLOCK_SLAVE, false, &Proxy);
+        DtPtpSlave_AttachTo(Fake.PipeName, PTP_SERIAL, PTP_PORT_INDEX, false, &Slave);
     if (Result == DTAPI_OK)
-        Result = DtPtp_ReadStatus(Proxy, Status);
-    DtServiceProxy_Detach(Proxy);
+        Result = DtPtpSlave_GetStatus(Slave, Status);
+    DtPtpSlave_Detach(Slave);
     FakeStop(&Fake);
     return Result;
 }

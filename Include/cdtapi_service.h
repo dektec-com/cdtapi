@@ -349,9 +349,9 @@ typedef struct DtPtpStatus
 } DtPtpStatus;
 
 // Reads the PTP clock slave of the port Port, counted from 1, of Device: its state, and
-// the grandmaster it follows. It attaches a proxy without exclusive access, reads and
-// detaches. The traceability, clock class and steps removed are those the slave has
-// heard the grandmaster announce; false and 0 while it has not.
+// the grandmaster it follows. It attaches a DtPtpSlave without exclusive access, gets
+// its status and detaches. The traceability, clock class and steps removed are those
+// the slave has heard the grandmaster announce; false and 0 while it has not.
 CDTAPI_API DtapiResult DtDevice_GetPtpStatus(const DtDevice* Device, int Port,
                                              DtPtpStatus* Status);
 
@@ -362,6 +362,80 @@ CDTAPI_API void DtPtp_FreeMasterInfo(DtPtpMasterInfo* Masters);
 // to be freed with DtPtp_FreeMasterInfo. An empty Xml lists no masters.
 CDTAPI_API DtapiResult DtPtp_ParseMasterInfo(const char* Xml, DtPtpMasterInfo** Masters,
                                              int* NumMasters);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PTP slave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A DtPtpSlave is a proxy to the PTP clock slave that knows its parameters: it finds them
+// by name when it attaches, and gets and sets the six writable ones as a DtPtpConfig,
+// whose Fields say which of them count. For the other parameters, DtPtpSlave_Proxy hands
+// out its proxy. Exclusive access is as the proxy's: a slave attached without it reads,
+// and setting or saving gives DTAPI_E_IN_USE.
+//
+
+// The settings of a DtPtpConfig, as the bits of its Fields.
+#define DT_PTP_CONFIG_ENABLE 0x01u
+#define DT_PTP_CONFIG_DOMAIN 0x02u
+#define DT_PTP_CONFIG_DELAY_MECHANISM 0x04u
+#define DT_PTP_CONFIG_NETWORK_PROTOCOL 0x08u
+#define DT_PTP_CONFIG_IPV6_SCOPE 0x10u
+#define DT_PTP_CONFIG_PEER_ADDRESS 0x20u
+#define DT_PTP_CONFIG_ALL 0x3Fu
+
+// The size of DtPtpConfig's PeerAddress, with its terminating zero.
+#define DT_PTP_PEER_ADDRESS_SIZE 64
+
+// The writable settings of the slave. The enumerations are the service's own, whose 0
+// is a value: Fields says which settings count, so a struct of zeros sets nothing.
+typedef struct DtPtpConfig
+{
+    uint32_t Fields; // The settings that count: DT_PTP_CONFIG_ bits
+    bool Enable;     // Whether the slave runs
+    int Domain;      // The PTP domain it listens in, 0 to 127
+    DtPtpDelayMechanism DelayMechanism;
+    DtPtpNetworkProtocol NetworkProtocol;
+    DtPtpIpV6Scope IpV6Scope;
+    char PeerAddress[DT_PTP_PEER_ADDRESS_SIZE]; // In peer-to-peer mode; empty: multicast
+} DtPtpConfig;
+
+typedef struct DtPtpSlave DtPtpSlave;
+
+// Attaches to the PTP clock slave of the port Port, counted from 1, of Device, which must
+// be attached, and finds its parameters. With Exclusive true it may set them, and the
+// service refuses every other attach until it detaches. *Slave is NULL after a failure;
+// DTAPI_E_SERVICE_INCOMP when the service lacks a parameter the slave needs.
+CDTAPI_API DtapiResult DtPtpSlave_Attach(const DtDevice* Device, int Port, bool Exclusive,
+                                         DtPtpSlave** Slave);
+
+// Detaches from the slave and frees Slave, with its proxy. A NULL Slave does nothing.
+CDTAPI_API void DtPtpSlave_Detach(DtPtpSlave* Slave);
+
+// Reads the six settings into *Config, and sets its Fields to DT_PTP_CONFIG_ALL;
+// DTAPI_E_BUF_TOO_SMALL when the service's peer address does not fit PeerAddress.
+CDTAPI_API DtapiResult DtPtpSlave_GetConfig(DtPtpSlave* Slave, DtPtpConfig* Config);
+
+// Reads the masters the slave has heard into a new *Masters of *NumMasters, to be freed
+// with DtPtp_FreeMasterInfo, as DtPtp_ParseMasterInfo does with its MasterInfo.
+CDTAPI_API DtapiResult DtPtpSlave_GetMasters(DtPtpSlave* Slave, DtPtpMasterInfo** Masters,
+                                             int* NumMasters);
+
+// Reads the slave's state and the grandmaster it follows, as DtDevice_GetPtpStatus does.
+CDTAPI_API DtapiResult DtPtpSlave_GetStatus(DtPtpSlave* Slave, DtPtpStatus* Status);
+
+// Returns the slave's proxy, for the parameters DtPtpConfig does not have. It stays the
+// slave's: the program does not detach it. NULL for a NULL Slave.
+CDTAPI_API DtServiceProxy* DtPtpSlave_Proxy(DtPtpSlave* Slave);
+
+// Saves the service's current settings, as DtServiceProxy_SaveSettings does. Needs
+// exclusive access.
+CDTAPI_API DtapiResult DtPtpSlave_SaveSettings(DtPtpSlave* Slave);
+
+// Sets the settings of *Config that its Fields name, in one message. Needs exclusive
+// access. Each value is first checked against the service's description of its
+// parameter, and refused with DTAPI_E_INVALID_ARG when it is out of range, not one of an
+// enumeration's values, or a PeerAddress without its terminating zero; so is Fields of 0
+// or with other bits. The service sets the values in order and keeps those it set before
+// one it refuses.
+CDTAPI_API DtapiResult DtPtpSlave_SetConfig(DtPtpSlave* Slave, const DtPtpConfig* Config);
 
 #ifdef __cplusplus
 }
