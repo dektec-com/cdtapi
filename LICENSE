@@ -29,7 +29,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-Third-party and vendored components
+Files under another licence
 
-Source/DtPcie/Abi/DtCommon.h is copied verbatim from the DekTec SDK and is covered
-by the BSD-2-Clause notice contained in that file. See Source/DtPcie/Abi/VENDORED.md.
+DtCommon.h, DtPcieCommon.h and DtStatusCodes.h in Source/DtPcie/Abi are the headers of
+DekTec's drivers, copied verbatim from the DekTec SDK, and are covered by the notice of
+DekTec Digital Video B.V. contained in each file. See Source/DtPcie/Abi/VENDORED.md.
