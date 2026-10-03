@@ -5,11 +5,16 @@ byte-identical to their originals. Do not reformat them and do not apply the pro
 coding rules to them: a clean `diff` against the SDK copy is what makes a future
 driver-ABI update a copy rather than a merge.
 
-| File | Copied from | Licence |
-|---|---|---|
-| `DtCommon.h` | `SDK/Common/Source/DtCommon.h` | BSD-2-Clause, DekTec Digital Video B.V. |
-| `DtPcieCommon.h` | `SDK/Common/Source/DtPcieCommon.h` | BSD-2-Clause, DekTec Digital Video B.V. |
-| `DtStatusCodes.h` | `SDK/Common/Source/DtStatusCodes.h` | BSD-2-Clause, DekTec Digital Video B.V. |
+| File | Copied from |
+|---|---|
+| `DtCommon.h` | `SDK/Common/Source/DtCommon.h` |
+| `DtPcieCommon.h` | `SDK/Common/Source/DtPcieCommon.h` |
+| `DtStatusCodes.h` | `SDK/Common/Source/DtStatusCodes.h` |
+
+They are DekTec's own, and each is covered by the notice of DekTec Digital Video B.V. it
+contains rather than by CDTAPI's BSD-3-Clause licence: redistribution in source and
+binary form is permitted provided the copyright notice is kept, and reproduced in the
+documentation of a binary. `LICENSE` names them for that reason.
 
 `.clang-format` in this directory sets `DisableFormat: true`, and the coding rules of
 `Scripts/check_style.sh` skip the directory. What that script does check here is that
