@@ -7,13 +7,17 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <inttypes.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h" // Allocation seam.
-#include "DtService.h"    // Interface being implemented.
-#include "OAL/OsPipe.h"   // The pipe.
+#include "Core/DtAlloc.h"       // Allocation seam.
+#include "DtService.h"          // Interface being implemented.
+#include "OAL/OsBackend.h"      // Whether the emulator is asked for.
+#include "OAL/OsPipe.h"         // The pipe.
+#include "OAL/Sim/SimService.h" // The emulated service.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -36,8 +40,9 @@
 
 struct DtService
 {
-    OsPipe* Pipe;
-    bool Failed; // A transfer failed: the stream may be out of step
+    OsPipe* Pipe;    // The pipe, or NULL for the emulated service
+    SimService* Sim; // The emulated service, or NULL for the pipe
+    bool Failed;     // A transfer failed: the stream may be out of step
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetLe32 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -245,13 +250,14 @@ void DtService_Close(DtService* Service)
 {
     if (Service == NULL)
         return;
-    if (!Service->Failed)
+    if (!Service->Failed && Service->Pipe != NULL)
     {
         uint8_t Cleanup[DT_SERVICE_CMD_HEADER];
         PutLe32(Cleanup, DT_SERVICE_CMD_CLEANUP_CONNECTION);
         SendMsg(Service, Cleanup, sizeof(Cleanup));
     }
     OsPipe_Close(Service->Pipe);
+    SimService_Close(Service->Sim);
     DtAlloc_Free(Service);
 }
 
@@ -261,14 +267,28 @@ DtapiResult DtService_Connect(const char* PipeName, DtService** Service)
 {
     if (Service != NULL)
         *Service = NULL;
-    if (PipeName == NULL || Service == NULL)
+    if (Service == NULL)
         return DTAPI_E_INVALID_ARG;
 
     DtService* New = (DtService*)DtAlloc_Malloc(sizeof(DtService));
     if (New == NULL)
         return DTAPI_E_OUT_OF_MEM;
     New->Failed = false;
-    int Outcome = OsPipe_Connect(PipeName, DT_SERVICE_CONNECT_MS, &New->Pipe);
+    New->Pipe = NULL;
+    New->Sim = NULL;
+    if (PipeName == NULL && OsSim_IsRequested())
+    {
+        New->Sim = SimService_Connect();
+        if (New->Sim == NULL)
+        {
+            DtAlloc_Free(New);
+            return DTAPI_E_OUT_OF_MEM;
+        }
+        *Service = New;
+        return DTAPI_OK;
+    }
+    int Outcome = OsPipe_Connect(PipeName != NULL ? PipeName : DT_SERVICE_PIPE_NAME,
+                                 DT_SERVICE_CONNECT_MS, &New->Pipe);
     if (Outcome != OS_PIPE_OK)
     {
         DtAlloc_Free(New);
@@ -294,6 +314,60 @@ size_t DtService_EncodeLength(uint32_t Length, uint8_t* Prefix)
     Prefix[3] = 0;
     PutLe32(Prefix + 4, Length);
     return 8;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtService_ReadVariant -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+bool DtService_ReadVariant(const DtXmlElem* Elem, const char* Prefix, DtVariant* Value)
+{
+    if (Value != NULL)
+        memset(Value, 0, sizeof(*Value));
+    if (Elem == NULL || Prefix == NULL || Value == NULL || strlen(Prefix) > 16)
+        return false;
+    char TypeName[24];
+    char ValueName[24];
+    snprintf(TypeName, sizeof(TypeName), "%sVT", Prefix);
+    snprintf(ValueName, sizeof(ValueName), "%sVV", Prefix);
+    int64_t Type = -1;
+    int64_t Int = 0;
+    if (!DtXml_AttrInt(Elem, TypeName, &Type))
+        return false;
+    bool Read = false;
+    switch (Type)
+    {
+    case DT_VARIANT_EMPTY:
+        Read = true;
+        break;
+    case DT_VARIANT_DOUBLE:
+        Read = DtXml_AttrDouble(Elem, ValueName, &Value->Double);
+        break;
+    case DT_VARIANT_INT:
+        Read =
+            DtXml_AttrInt(Elem, ValueName, &Int) && Int >= INT32_MIN && Int <= INT32_MAX;
+        Value->Int = (int)Int;
+        break;
+    case DT_VARIANT_UINT64:
+        Read = DtXml_AttrUInt(Elem, ValueName, &Value->UInt64);
+        break;
+    case DT_VARIANT_BOOL:
+        Read = DtXml_AttrBool(Elem, ValueName, &Value->Bool);
+        break;
+    case DT_VARIANT_STRING:
+        Value->String = DtXml_Attr(Elem, ValueName);
+        if (Value->String == NULL)
+            Value->String = "";
+        Read = true;
+        break;
+    default:
+        break;
+    }
+    if (!Read)
+    {
+        memset(Value, 0, sizeof(*Value));
+        return false;
+    }
+    Value->Type = (DtVariantType)Type;
+    return true;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtService_TextFromWire -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -420,12 +494,23 @@ DtapiResult DtService_Transfer(DtService* Service, DtServiceCmd Cmd, const char*
     memcpy(Msg + DT_SERVICE_CMD_HEADER, Wire, WireSize);
     DtAlloc_Free(Wire);
 
-    Result = SendMsg(Service, Msg, DT_SERVICE_CMD_HEADER + WireSize);
-    DtAlloc_Free(Msg);
     uint8_t* Answer = NULL;
     size_t AnswerSize = 0;
-    if (Result == DTAPI_OK)
-        Result = ReceiveMsg(Service, &Answer, &AnswerSize);
+    if (Service->Sim != NULL)
+    {
+        Result = SimService_Transfer(Service->Sim, Msg, DT_SERVICE_CMD_HEADER + WireSize,
+                                     &Answer, &AnswerSize)
+                     ? DTAPI_OK
+                     : DTAPI_E_OUT_OF_MEM;
+        DtAlloc_Free(Msg);
+    }
+    else
+    {
+        Result = SendMsg(Service, Msg, DT_SERVICE_CMD_HEADER + WireSize);
+        DtAlloc_Free(Msg);
+        if (Result == DTAPI_OK)
+            Result = ReceiveMsg(Service, &Answer, &AnswerSize);
+    }
     if (Result == DTAPI_OK)
         Result = ParseAnswer(Answer, AnswerSize, Cmd, ResultXml, Exception);
     DtAlloc_Free(Answer);
@@ -435,4 +520,39 @@ DtapiResult DtService_Transfer(DtService* Service, DtServiceCmd Cmd, const char*
     if (Result != DTAPI_OK)
         Service->Failed = true;
     return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtService_WriteVariant -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtService_WriteVariant(DtXmlOut* Out, const char* Prefix, const DtVariant* Value)
+{
+    if (Out == NULL || Prefix == NULL || Value == NULL || strlen(Prefix) > 16)
+        return;
+    char TypeName[24];
+    char ValueName[24];
+    char Number[24];
+    snprintf(TypeName, sizeof(TypeName), "%sVT", Prefix);
+    snprintf(ValueName, sizeof(ValueName), "%sVV", Prefix);
+    DtXmlOut_AttrInt(Out, TypeName, Value->Type);
+    switch (Value->Type)
+    {
+    case DT_VARIANT_DOUBLE:
+        DtXmlOut_AttrDouble(Out, ValueName, Value->Double);
+        break;
+    case DT_VARIANT_INT:
+        DtXmlOut_AttrInt(Out, ValueName, Value->Int);
+        break;
+    case DT_VARIANT_UINT64:
+        snprintf(Number, sizeof(Number), "%" PRIu64, Value->UInt64);
+        DtXmlOut_Attr(Out, ValueName, Number);
+        break;
+    case DT_VARIANT_BOOL:
+        DtXmlOut_AttrBool(Out, ValueName, Value->Bool);
+        break;
+    case DT_VARIANT_STRING:
+        DtXmlOut_Attr(Out, ValueName, Value->String != NULL ? Value->String : "");
+        break;
+    default:
+        break;
+    }
 }

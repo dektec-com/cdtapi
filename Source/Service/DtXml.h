@@ -46,6 +46,11 @@ const char* DtXml_Attr(const DtXmlElem* Elem, const char* Name);
 // in capitals. Returns false when it is absent or something else.
 bool DtXml_AttrBool(const DtXmlElem* Elem, const char* Name, bool* Value);
 
+// Reads the attribute Name of Elem as a decimal number with a point, as "-2.5", "1e-06"
+// or "16", whatever the program's locale. Returns false when it is absent or not such
+// a number.
+bool DtXml_AttrDouble(const DtXmlElem* Elem, const char* Name, double* Value);
+
 // Reads the attribute Name of Elem as a decimal integer, with a minus sign or without.
 // Returns false when it is absent, not such a number, or outside the range of int64_t.
 bool DtXml_AttrInt(const DtXmlElem* Elem, const char* Name, int64_t* Value);
@@ -91,6 +96,10 @@ void DtXmlOut_Attr(DtXmlOut* Out, const char* Name, const char* Value);
 
 // Adds the attribute Name with Value as true or false.
 void DtXmlOut_AttrBool(DtXmlOut* Out, const char* Name, bool Value);
+
+// Adds the attribute Name with Value as a decimal number with a point, whatever the
+// program's locale, in as many digits as it takes to read it back unchanged.
+void DtXmlOut_AttrDouble(DtXmlOut* Out, const char* Name, double Value);
 
 // Adds the attribute Name with the decimal Value.
 void DtXmlOut_AttrInt(DtXmlOut* Out, const char* Name, int64_t Value);

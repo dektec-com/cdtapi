@@ -156,7 +156,8 @@ target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Gene
 # build where warnings are errors.
 set(PublicHeaders
     "${CMAKE_SOURCE_DIR}/Include/cdtapi.h"
-    "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h")
+    "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h"
+    "${CMAKE_SOURCE_DIR}/Include/cdtapi_service.h")
 if(CDTAPI_WITH_NMOS)
     list(APPEND PublicHeaders "${CMAKE_SOURCE_DIR}/Include/cdtapi_nmos.h")
 endif()
@@ -253,7 +254,7 @@ endif()
 # variable is appended rather than set, so that the AddressSanitizer PATH change is kept.
 foreach(SimSuite SimDevice SimCommands SimSdiRx SimFunc SimApi SimDetect SimDeviceScan
                  SimChSdiRx SimInpChannel SimSdiTx SimOutpChannel SimAsi SimAsiRx SimAsiTx SimNw SimNet
-                 SimAvPipe SimAvFifo SimSdiFiles SimActivate SimClocks)
+                 SimAvPipe SimAvFifo SimSdiFiles SimActivate SimClocks SimService)
     cdtapi_add_test(${SimSuite} Sim/Test${SimSuite}.c)
     set_property(TEST ${SimSuite} APPEND PROPERTY
         ENVIRONMENT_MODIFICATION "CDTAPI_SIM=set:1")

@@ -13,7 +13,9 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "cdtapi.h" // DtapiResult.
+#include "DtXml.h"          // The XML of the messages.
+#include "cdtapi.h"         // DtapiResult.
+#include "cdtapi_service.h" // Variants.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Service +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -69,18 +71,26 @@ typedef struct DtService DtService;
 // the pipe. A NULL Service does nothing.
 void DtService_Close(DtService* Service);
 
-// Connects to DtapiService through the pipe PipeName, DT_SERVICE_PIPE_NAME but for
-// tests. *Service is NULL after a failure.
+// Connects to DtapiService. With a NULL PipeName, to the service: the emulated one in
+// the program when CDTAPI_SIM asks for the emulator, and otherwise the one listening
+// on DT_SERVICE_PIPE_NAME. With a PipeName, always through that pipe, as the tests
+// do. *Service is NULL after a failure.
 // Returns:
 //   DTAPI_OK
 //   DTAPI_E_CONNECT_TO_SERVICE  no service listens, or it does not accept in time
-//   DTAPI_E_INVALID_ARG         a NULL argument
+//   DTAPI_E_INVALID_ARG         a NULL Service
 //   DTAPI_E_OUT_OF_MEM
 DtapiResult DtService_Connect(const char* PipeName, DtService** Service);
 
 // Writes the length prefix of a message of Length bytes into Prefix, which has room for
 // 8, and returns the number of bytes written: 2 or 8.
 size_t DtService_EncodeLength(uint32_t Length, uint8_t* Prefix);
+
+// Reads the variant in the attributes <Prefix>VT, its type, and <Prefix>VV, its value,
+// of Elem into *Value. A string's value points into Elem, and lives as long as it does;
+// a string without VV is empty, as DTAPI writes one. Returns false for a missing type,
+// an unknown one, or a value that is not of it.
+bool DtService_ReadVariant(const DtXmlElem* Elem, const char* Prefix, DtVariant* Value);
 
 // Converts Wire, WireSize bytes of the service's text in characters of CharSize bytes,
 // 2 or 4, to UTF-8 in a new *Text, to be freed with DtAlloc_Free. The text ends at its
@@ -119,3 +129,7 @@ DtapiResult DtService_TextToWire(const char* Text, int CharSize, uint8_t** Wire,
 //   DTAPI_E_OUT_OF_MEM
 DtapiResult DtService_Transfer(DtService* Service, DtServiceCmd Cmd, const char* Xml,
                                char** ResultXml, int* Exception);
+
+// Writes *Value into the attributes <Prefix>VT and <Prefix>VV of the element just opened,
+// as DtService_ReadVariant reads them. An empty variant has VT alone.
+void DtService_WriteVariant(DtXmlOut* Out, const char* Prefix, const DtVariant* Value);

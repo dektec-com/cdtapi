@@ -8,7 +8,9 @@
 
 // Standard includes
 #include <inttypes.h>
+#include <locale.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -415,6 +417,43 @@ bool DtXml_AttrBool(const DtXmlElem* Elem, const char* Name, bool* Value)
     return true;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtXml_AttrDouble -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool DtXml_AttrDouble(const DtXmlElem* Elem, const char* Name, double* Value)
+{
+    const char* Text = DtXml_Attr(Elem, Name);
+    if (Text == NULL || Value == NULL || Text[0] == '\0' || strlen(Text) >= 64)
+        return false;
+
+    // strtod reads the decimal point of the locale, so the point is replaced by it.
+    // Only the characters of a number in the C locale are accepted.
+    char Local[80];
+    const char* Point = localeconv()->decimal_point;
+    size_t Length = 0;
+    for (const char* Next = Text; *Next != '\0'; Next++)
+    {
+        if (*Next == '.')
+        {
+            size_t PointLength = strlen(Point);
+            if (Length + PointLength >= sizeof(Local))
+                return false;
+            memcpy(Local + Length, Point, PointLength);
+            Length += PointLength;
+            continue;
+        }
+        if (strchr("0123456789+-eE", *Next) == NULL)
+            return false;
+        Local[Length++] = *Next;
+    }
+    Local[Length] = '\0';
+    char* End = NULL;
+    double Number = strtod(Local, &End);
+    if (End == Local || *End != '\0')
+        return false;
+    *Value = Number;
+    return true;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtXml_AttrInt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 bool DtXml_AttrInt(const DtXmlElem* Elem, const char* Name, int64_t* Value)
@@ -558,6 +597,24 @@ void DtXmlOut_Attr(DtXmlOut* Out, const char* Name, const char* Value)
 void DtXmlOut_AttrBool(DtXmlOut* Out, const char* Name, bool Value)
 {
     DtXmlOut_Attr(Out, Name, Value ? "true" : "false");
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtXmlOut_AttrDouble -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtXmlOut_AttrDouble(DtXmlOut* Out, const char* Name, double Value)
+{
+    // The locale's decimal point, which snprintf writes, becomes a point.
+    char Number[64];
+    snprintf(Number, sizeof(Number), "%.17g", Value);
+    const char* Point = localeconv()->decimal_point;
+    char* Found = strstr(Number, Point);
+    if (Found != NULL && strcmp(Point, ".") != 0)
+    {
+        size_t PointLength = strlen(Point);
+        *Found = '.';
+        memmove(Found + 1, Found + PointLength, strlen(Found + PointLength) + 1);
+    }
+    DtXmlOut_Attr(Out, Name, Number);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtXmlOut_AttrInt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

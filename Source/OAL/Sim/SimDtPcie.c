@@ -31,6 +31,7 @@
 #include "SimNet.h"                 // The DTA-2110's interface in the network.
 #include "SimNw.h"                  // The DTA-2110's network function.
 #include "SimSdiTx.h"               // The transmit blocks.
+#include "SimService.h"             // The emulated DtapiService.
 #include "SimVpd.h"                 // The card's own EEPROM.
 #include "Video/DtFrameProps.h"     // The signal of a file source's standard.
 #include "Video/DtVidStd.h"         // Its level and I/O standard.
@@ -1240,6 +1241,7 @@ void SimDtPcie_Reset(void)
     SimVpd_Reset();
     SimActivate_Reset();
     SimClocks_Reset();
+    SimService_Reset();
 
     for (j = 0; j < SIM_MAX_FAULTS; j++)
         g_Sim.Faults[j].FunctionCode = -1;

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // An application sees the library through its public headers and nothing else, and this
-// file is written that way: it includes the two public headers and the test framework,
+// file is written that way: it includes the public headers and the test framework,
 // and no header of the library's own. Two things are checked.
 //
 // Completeness: PublicFunctions.inc, which CMake writes from the headers at configure
@@ -31,6 +31,7 @@
 #include "DtTest.h"
 #include "cdtapi.h"
 #include "cdtapi_avfifo.h"
+#include "cdtapi_service.h"
 #if CDTAPI_TEST_WITH_NMOS
     #include "cdtapi_nmos.h"
 #endif
@@ -601,6 +602,73 @@ DT_TEST(FramePropertiesAndTimingCalls)
     DT_ASSERT(GetLastException() != NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Services +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The PTP clock slave of the DTA-2110's port, through the emulated DtapiService: read it,
+// switch it on with exclusive access, and read it locked.
+DT_TEST(ServiceCalls)
+{
+    DtHwFuncDesc Port;
+    DT_ASSERT(FindPort(IsAvFifo, &Port));
+    DtDevice* Device = AttachTo(&Port);
+    DT_ASSERT(Device != NULL);
+
+    DtPtpStatus Status;
+    DT_ASSERT_OK(DtDevice_GetPtpStatus(Device, Port.Port, &Status));
+
+    DtServiceProxy* Proxy = NULL;
+    DT_ASSERT_OK(DtServiceProxy_Attach(Device, Port.Port, DT_SERVICE_PTP_CLOCK_SLAVE,
+                                       true, &Proxy));
+    char** Groups = NULL;
+    int NumGroups = 0;
+    DT_ASSERT_OK(DtServiceProxy_GetParGroups(Proxy, &Groups, &NumGroups));
+    DT_ASSERT(NumGroups == 1 && strcmp(Groups[0], "General") == 0);
+    DtServiceProxy_FreeParGroups(Groups, NumGroups);
+
+    DtServiceParDesc* Descs = NULL;
+    int NumDescs = 0;
+    DT_ASSERT_OK(DtServiceProxy_GetParDescs(Proxy, "General", &Descs, &NumDescs));
+    int Enable = DtServiceProxy_FindParId(Descs, NumDescs, "Enable");
+    int Domain = DtServiceProxy_FindParId(Descs, NumDescs, "DomainNumber");
+    int Masters = DtServiceProxy_FindParId(Descs, NumDescs, "MasterInfo");
+    DtServiceProxy_FreeParDescs(Descs, NumDescs);
+    DT_ASSERT(Enable >= 0 && Domain >= 0 && Masters >= 0);
+
+    DtServiceParVal Settings[2];
+    memset(Settings, 0, sizeof(Settings));
+    Settings[0].ParId = Domain;
+    Settings[0].Value.Type = DT_VARIANT_INT;
+    Settings[0].Value.Int = 0;
+    Settings[1].ParId = Enable;
+    Settings[1].Value.Type = DT_VARIANT_BOOL;
+    Settings[1].Value.Bool = true;
+    DT_ASSERT_OK(DtServiceProxy_SetParVals(Proxy, Settings, 2));
+    DT_ASSERT_OK(DtServiceProxy_SetParVal(Proxy, Enable, &Settings[1].Value));
+    DT_ASSERT_OK(DtServiceProxy_SaveSettings(Proxy));
+    DT_ASSERT_EQ(DtServiceProxy_LastException(Proxy), DT_SERVICE_EXC_NONE);
+
+    DtVariant List;
+    DT_ASSERT_OK(DtServiceProxy_GetParVal(Proxy, Masters, &List));
+    DtPtpMasterInfo* Heard = NULL;
+    int NumHeard = 0;
+    DT_ASSERT_OK(DtPtp_ParseMasterInfo(List.String, &Heard, &NumHeard));
+    DT_ASSERT_EQ(NumHeard, 1);
+    DtPtp_FreeMasterInfo(Heard);
+    DtVariant_Clear(&List);
+
+    DtServiceParVal Read[1];
+    memset(Read, 0, sizeof(Read));
+    Read[0].ParId = Domain;
+    DT_ASSERT_OK(DtServiceProxy_GetParVals(Proxy, Read, 1));
+    DT_ASSERT_EQ(Read[0].Value.Int, 0);
+    DtVariant_Clear(&Read[0].Value);
+    DtServiceProxy_Detach(Proxy);
+
+    DT_ASSERT_OK(DtDevice_GetPtpStatus(Device, Port.Port, &Status));
+    DT_ASSERT_EQ(Status.LockStatus, DT_PTP_LOCK_LOCKED);
+    DtDevice_Free(Device);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= NMOS +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The bridge's functions, in a build that has them and installs their header; a build
@@ -653,4 +721,5 @@ DT_TEST(NmosCalls)
 DT_TEST_MAIN("Conformance", DT_RUN(EveryPublicFunctionIsThere), DT_RUN(LibraryCalls),
              DT_RUN(DeviceCalls), DT_RUN(InputChannelCalls), DT_RUN(OutputChannelCalls),
              DT_RUN(ReceiveFifoCalls), DT_RUN(TransmitFifoCalls),
-             DT_RUN(FramePropertiesAndTimingCalls), DT_RUN(NmosCalls))
+             DT_RUN(FramePropertiesAndTimingCalls), DT_RUN(ServiceCalls),
+             DT_RUN(NmosCalls))
