@@ -6,7 +6,7 @@
 
 set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
     DtTransmitFrames DtReceive2110 DtTransmit2110 DtListDeviceDescs DtReceiveTs
-    DtTransmitTs)
+    DtTransmitTs DtPtpSlave)
 
 # Programs of SMPTE ST 2110, which also take ExampleAvFifo.c and the AV FIFO header.
 set(ExampleAvPrograms DtReceive2110 DtTransmit2110)
@@ -114,6 +114,28 @@ cdtapi_example_test(ListDevices DtListDevices
     "9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT.*9217800001:9  DTA-2178 port 9  -\n.*10 ports")
 cdtapi_example_test(ListDevicesOfNoDevice DtListDevices "^0 ports" --serial 1)
 cdtapi_example_test(ListDevicesHelp DtListDevices "^Usage: .*--serial" --help)
+
+# The PTP clock slave of the emulated DTA-2110, through the emulated DtapiService, which
+# starts afresh in each run, with the slave off.
+set(ExampleExtraEnv "CDTAPI_SIM_DTA2110=set:1")
+cdtapi_example_test(ListDevicesWithPtp DtListDevices
+    "9211000001:1  DTA-2110 port 1  AVFIFO  [^\n]*  PTP DISABLED NOT_IN_USE\n")
+cdtapi_example_test(PtpSlave DtPtpSlave
+    "^9211000001:1  config  enable no  domain 127  delay auto  protocol IPv4  scope 5  peer 0.0.0.0\n9211000001:1  status  DISABLED  NOT_IN_USE  no master\n$")
+cdtapi_example_test(PtpSlaveEnable DtPtpSlave
+    "^9211000001:1  set  ENABLE,DOMAIN  DTAPI_OK\n9211000001:1  saved  DTAPI_OK\n9211000001:1  config  enable yes  domain 0 .*\n9211000001:1  status  SLAVE  LOCKED  grandmaster 00-1B-19-FF-FE-00-00-01  domain 0  traceable  class 6  steps 1\n9211000001:1  master  00-1B-19-FF-FE-00-00-01  domain 0  class 6  priority 128/128  steps 1  traceable  192.168.0.1\n9211000001:1  1 masters"
+    --enable --domain 0 --save --masters)
+cdtapi_example_test(PtpSlavePeer DtPtpSlave
+    "^9211000001:1  set  DELAY,PROTOCOL,SCOPE,PEER  DTAPI_OK\n9211000001:1  config  enable no  domain 127  delay p2p  protocol IPv6  scope 2  peer fe80::1\n"
+    --delay p2p --protocol ipv6 --scope 2 --peer fe80::1)
+cdtapi_example_test(PtpSlaveDomainOutOfRange DtPtpSlave
+    "^9211000001:1  set  DOMAIN  DTAPI_E_INVALID_ARG\n9211000001:1  DtPtpSlave_SetConfig: DomainNumber 200 is not allowed"
+    --domain 200)
+cdtapi_example_test(PtpSlaveBadDelay DtPtpSlave "^Unknown delay mechanism: soon" --delay soon)
+cdtapi_example_test(PtpSlaveEnableAndDisable DtPtpSlave
+    "^Give --enable or --disable, not both" --enable --disable)
+set(ExampleExtraEnv "")
+cdtapi_example_test(PtpSlaveWithoutIpPort DtPtpSlave "^No IP port that suits")
 
 cdtapi_example_test(ListDeviceDescs DtListDeviceDescs
     "^Device 1\n  Category: 0\n  Serial: 9217800001\n.*  PcieMaxSlotPower: 25000\n1 devices")

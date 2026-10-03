@@ -286,6 +286,26 @@ const char* Example_IoStdName(int Value)
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_PtpLockName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+const char* Example_PtpLockName(int Lock)
+{
+    static const char* const Names[] = {"NOT_IN_USE", "FREE_RUN", "COLD_LOCKING",
+                                        "WARM_LOCKING", "LOCKED"};
+    int Count = (int)(sizeof(Names) / sizeof(Names[0]));
+    return Lock >= 0 && Lock < Count ? Names[Lock] : "?";
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_PtpStateName -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+const char* Example_PtpStateName(int State)
+{
+    static const char* const Names[] = {"DISABLED", "INITIALIZING", "LISTENING",
+                                        "FAULTY",   "UNCALIBRATED", "SLAVE"};
+    int Count = (int)(sizeof(Names) / sizeof(Names[0]));
+    return State >= 0 && State < Count ? Names[State] : "?";
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_SleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

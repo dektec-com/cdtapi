@@ -14,6 +14,7 @@
 
 // The API.
 #include "cdtapi.h"
+#include "cdtapi_service.h"
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Exit codes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -82,6 +83,14 @@ bool Example_VidStdFromName(const char* Name, int* VidStd);
 
 // Returns the name of an I/O standard value, e.g. "3GSDI" or "ASI", or "?" for another.
 const char* Example_IoStdName(int Value);
+
+// Returns the name of a PTP slave's lock, its DT_PTP_LOCK_ macro without the prefix,
+// e.g. "LOCKED", or "?" for another value.
+const char* Example_PtpLockName(int Lock);
+
+// Returns the name of a PTP slave's state, its DT_PTP_SLAVE_ macro without the
+// prefix, e.g. "SLAVE", or "?" for another value.
+const char* Example_PtpStateName(int State);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

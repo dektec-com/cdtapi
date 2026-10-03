@@ -40,7 +40,7 @@ DekTec's SDK distribution ships CDTAPI built, under `DTAPI`:
 
 | Path | Holds |
 |---|---|
-| `DTAPI/Include` | `cdtapi.h`, `cdtapi_constants.h`, `cdtapi_avfifo.h`, `cdtapi_version.h` |
+| `DTAPI/Include` | `cdtapi.h`, `cdtapi_constants.h`, `cdtapi_avfifo.h`, `cdtapi_service.h`, `cdtapi_version.h` |
 | `DTAPI/Lib` | The static libraries, and on Windows the DLL's import library |
 | `DTAPI/Bin` | On Windows, `cdtapi64.dll` and its `.pdb` |
 
@@ -109,7 +109,9 @@ To install the headers and the library somewhere of your own:
     }
 
 `cdtapi.h` is the only header to include; it brings in the constants and the version.
-`cdtapi_avfifo.h` comes on top of it for SMPTE ST 2110.
+`cdtapi_avfifo.h` comes on top of it for SMPTE ST 2110, and `cdtapi_service.h` for the
+PTP clock slave of an IP port, which DtapiService runs: `Examples/DtPtpSlave.c` shows it
+and sets it.
 
 ## Building it
 

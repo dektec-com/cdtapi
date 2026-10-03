@@ -15,6 +15,7 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
 | `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
 | `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
+| `DtPtpSlave` | Shows the PTP clock slave of an IP port, its settings, state and grandmaster, and with `--masters` every master it hears; with `--enable`, `--domain` and the like sets those settings alone, and with `--save` keeps them; needs DtapiService |
 | `DtNmos2110` | An NMOS node whose receiver or sender is an AV FIFO, which a controller connects through IS-05; built with the NMOS bridge only |
 
 Every program lists its options with `--help`. Without `--serial` a program uses the
@@ -41,6 +42,10 @@ side:
     CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtTransmit2110 --count 2 --width 320 \
         --height 240 --rate 25
     CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtReceive2110 --count 1 --timeout 100
+    CDTAPI_SIM=1 CDTAPI_SIM_DTA2110=1 DtPtpSlave --enable --domain 0 --masters
+
+With the emulator, `DtPtpSlave` talks to an emulated DtapiService in the program, whose
+slave starts off and locks to a fixed grandmaster as soon as it is switched on.
 
 Each program has an emulated card of its own, so one cannot receive what another sends;
 the `SimAvFifo` test suite is where transmission and reception meet.
@@ -157,8 +162,9 @@ included, and 2 when it found nothing, such as no ports or no signal.
 
 ## The headers they use
 
-Every program includes `cdtapi.h`, and the two ST 2110 programs `cdtapi_avfifo.h` as
-well, through `Common/ExampleCommon.h` and `Common/ExampleAvFifo.h`. The ASI programs
+Every program includes `cdtapi.h` and `cdtapi_service.h`, and the ST 2110 programs
+`cdtapi_avfifo.h` as well, through `Common/ExampleCommon.h` and
+`Common/ExampleAvFifo.h`. The ASI programs
 make and check their streams with `Common/ExampleTsStream.c`. None of the library's
 internal headers is used, so what a program does, an application can do. CTest runs every
 program against the emulator.

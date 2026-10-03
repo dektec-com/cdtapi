@@ -6,12 +6,16 @@
 //
 // Lists the ports of all DekTec cards, one line per port: its name (serial number and
 // port number), its description, what it can do (SDI, ASI, AVFIFO, INPUT, OUTPUT), and
-// for an IP port its MAC address and IPv4 address. Then the number of ports.
+// for an IP port its MAC address and IPv4 address, and the state and lock of its PTP
+// clock slave when DtapiService runs one. Then the number of ports.
 //
 //     9217800001:1  DTA-2178 port 1  SDI,ASI,INPUT,OUTPUT
 //     ...
 //     9211000001:1  DTA-2110 port 1  AVFIFO,INPUT,OUTPUT  00:14:F4:08:00:01 192.168.1.10
+//         PTP SLAVE LOCKED
 //     10 ports
+//
+// (The DTA-2110's line is one line.)
 //
 // Exits with 0 when ports are found, 2 when there are none, and 1 when the scan fails.
 
@@ -78,6 +82,27 @@ static void PrintAddress(const DtHwFuncDesc* Port)
         printf(" no IPv4 address");
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintPtp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Prints the state and lock of the PTP clock slave of an IP port. The device is attached
+// for it, and the slave read through DtapiService; when either fails, as on a computer
+// without the service, nothing is printed.
+//
+static void PrintPtp(const DtHwFuncDesc* Port)
+{
+    if (!Port->IsAvFifo)
+        return;
+    DtDevice* Device = DtDevice_Alloc();
+    if (Device == NULL)
+        return;
+    DtPtpStatus Status;
+    if (DtDevice_AttachToSerial(Device, Port->SerialNumber) == DTAPI_OK &&
+        DtDevice_GetPtpStatus(Device, Port->Port, &Status) == DTAPI_OK)
+        printf("  PTP %s %s", Example_PtpStateName(Status.SlaveState),
+               Example_PtpLockName(Status.LockStatus));
+    DtDevice_Free(Device);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The first DtapiHwFuncScan, without a buffer, asks how many ports there are; it returns
@@ -120,6 +145,7 @@ int main(int Argc, char** Argv)
         printf("%s  %s  ", Ports[i].DeviceName, Ports[i].Description);
         PrintKinds(&Ports[i]);
         PrintAddress(&Ports[i]);
+        PrintPtp(&Ports[i]);
         printf("\n");
         Listed++;
     }
