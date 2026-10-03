@@ -301,7 +301,7 @@ endif()
 # The bridge's header includes dtnmos's, so a program that includes it needs dtnmos's
 # include directory, and a static library leaves dtnmos to the program's link.
 if(CDTAPI_WITH_NMOS)
-    find_package(dtnmos 0.5 CONFIG REQUIRED)
+    find_package(dtnmos 0.5.2 CONFIG REQUIRED)
     target_link_libraries(cdtapi PUBLIC dtnmos::dtnmos)
 endif()
 
@@ -404,7 +404,7 @@ if(NOT (CDTAPI_SDK_LAYOUT AND WIN32))
 
     # With the bridge, a program needs dtnmos's flags and libraries too.
     if(CDTAPI_WITH_NMOS)
-        set(CDTAPI_REQUIRES "dtnmos >= 0.5.0")
+        set(CDTAPI_REQUIRES "dtnmos >= 0.5.2")
     else()
         set(CDTAPI_REQUIRES "")
     endif()

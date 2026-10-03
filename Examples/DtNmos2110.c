@@ -9,9 +9,11 @@
 // sender (--send) of an AV FIFO. An NMOS controller can then connect them (IS-05):
 // the receiver receives the stream the controller names, and the sender sends a moving
 // test pattern, or with --audio a tone, to where the controller says. The program runs
-// for --seconds, and prints each change:
+// for --seconds, and prints each change. The node's clock is that of the port's PTP
+// clock slave, which it checks once a second:
 //
 //     9211000001:1  node 0b5c3a1e-... at http://192.168.1.20:41005
+//     9211000001:1  clock PTP 00-1b-19-ff-fe-00-00-01 locked
 //     9211000001:1  receiver 7d1f20c4-...  video as 10b
 //     9211000001:1  receive 239.1.1.1:5000
 //     9211000001:1  received 250 frames
@@ -337,13 +339,22 @@ static void Send(Owner* O)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Run -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The main thread's loop, for Seconds: applies each change the callback posts, and in
-// between receives or sends frames.
+// between receives or sends frames. Once a second it gives the node the clock of the
+// port's PTP slave, which registers the node again only when the clock changed.
 //
-static void Run(Owner* O, ExampleMailbox* Mailbox, int64_t Seconds)
+static void Run(Owner* O, DtNmosNode* Node, ExampleMailbox* Mailbox, int64_t Seconds)
 {
     const int64_t EndMs = Example_NowMs() + Seconds * 1000;
+    int64_t ClockMs = Example_NowMs() + 1000;
     while (Example_NowMs() < EndMs)
     {
+        if (Example_NowMs() >= ClockMs)
+        {
+            DtNmosClock Clock;
+            DtNmosAvFifo_ClockFromPort(O->Device, O->Port->Port, &Clock);
+            DtNmosNode_SetClock(Node, &Clock);
+            ClockMs += 1000;
+        }
         Posted Change;
         if (ExampleMailbox_Take(Mailbox, &Change, sizeof(Change)))
             Apply(O, Mailbox, &Change);
@@ -397,10 +408,13 @@ static unsigned int ConfigureTx(AvFifo_TxFifo* Fifo, const ExampleAvConfig* Conf
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenNode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Opens the node and serves its APIs. Its ID is made from the port and the direction,
-// so that it is the same each run. Returns EXAMPLE_OK, or the exit code of the failure.
+// so that it is the same each run. Its clock is the port's PTP grandmaster, and internal
+// without one, also when DtapiService does not run. Returns EXAMPLE_OK, or the exit
+// code of the failure.
 //
-static int OpenNode(DtNmosNode* Node, const DtHwFuncDesc* Port, bool Receives,
-                    const char* Registry, const char* Host, int64_t ApiPort)
+static int OpenNode(DtNmosNode* Node, const DtDevice* Device, const DtHwFuncDesc* Port,
+                    bool Receives, const char* Registry, const char* Host,
+                    int64_t ApiPort)
 {
     char Name[128];
     snprintf(Name, sizeof(Name), "%lld:%d %s", (long long)Port->SerialNumber, Port->Port,
@@ -416,6 +430,9 @@ static int OpenNode(DtNmosNode* Node, const DtHwFuncDesc* Port, bool Receives,
     Config.ApiPort = (uint16_t)ApiPort;
     Config.RegistrationUrl = Registry;
     Config.Http = DtNmos_CurlHttp;
+    DtNmosClock Clock;
+    DtNmosAvFifo_ClockFromPort(Device, Port->Port, &Clock);
+    Config.Clock = &Clock;
     if (DtNmosNode_Open(Node, &Config) != DTNMOS_OK ||
         DtNmosNode_Serve(Node) != DTNMOS_OK)
     {
@@ -428,6 +445,11 @@ static int OpenNode(DtNmosNode* Node, const DtHwFuncDesc* Port, bool Receives,
         snprintf(Url, sizeof(Url), "?");
     printf("%lld:%d  node %s at %s\n", (long long)Port->SerialNumber, Port->Port,
            Config.Id.Text, Url);
+    if (Clock.Kind == DTNMOS_CLOCK_PTP)
+        printf("%lld:%d  clock PTP %s%s\n", (long long)Port->SerialNumber, Port->Port,
+               Clock.Grandmaster, Clock.Locked ? " locked" : "");
+    else
+        printf("%lld:%d  clock internal\n", (long long)Port->SerialNumber, Port->Port);
     return EXAMPLE_OK;
 }
 
@@ -500,13 +522,13 @@ static int AttachAndRun(Owner* O, Program* Prog, DtNmosNode* Node, int Argc, cha
             return ExampleAv_Failed("Configuring the TxFifo", Result);
     }
 
-    int Exit =
-        OpenNode(Node, O->Port, O->Rx != NULL, Example_Value(Argc, Argv, "--registry"),
-                 Example_Value(Argc, Argv, "--host"), ApiPort);
+    int Exit = OpenNode(Node, O->Device, O->Port, O->Rx != NULL,
+                        Example_Value(Argc, Argv, "--registry"),
+                        Example_Value(Argc, Argv, "--host"), ApiPort);
     if (Exit == EXAMPLE_OK)
         Exit = AddToNode(Node, O, Prog, FormatName);
     if (Exit == EXAMPLE_OK)
-        Run(O, Prog->Mailbox, Seconds);
+        Run(O, Node, Prog->Mailbox, Seconds);
     // The node is closed before the FIFO stops, so that no callback waits for an answer.
     DtNmosNode_Close(Node);
     if (O->Rx != NULL)

@@ -42,6 +42,7 @@ DT_TEST(HasNmosAsBuilt)
 // The bridge's functions as a build without it exports them: the header that declares
 // them is not installed, so they are declared here as the stubs define them.
 typedef struct DtNmosAvFifoRxChange DtNmosAvFifoRxChange;
+typedef struct DtNmosClock DtNmosClock;
 typedef struct DtNmosAvFifoTxChange DtNmosAvFifoTxChange;
 typedef struct DtNmosReceiverActivation DtNmosReceiverActivation;
 typedef struct DtNmosSenderActivation DtNmosSenderActivation;
@@ -73,6 +74,8 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* F
                                               const DtNmosSenderConfig* Config,
                                               DtNmosSenderActivateFunc Activate,
                                               void* User, DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_ClockFromPort(const DtDevice* Device, int Port,
+                                                  DtNmosClock* Clock);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -110,6 +113,7 @@ DT_TEST(NmosStubsFail)
     DT_ASSERT_EQ(DtNmosAvFifo_AddSender(NULL, NULL, NULL, NULL, NULL, NULL),
                  DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtNmosAvFifo_UpdateSender(NULL, NULL, NULL), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtNmosAvFifo_ClockFromPort(NULL, 1, NULL), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtNmosAvFifo_ApplyRxChange(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(DtNmosAvFifo_ApplyTxChange(NULL, NULL), DTAPI_E_NOT_SUPPORTED);
     DT_ASSERT_EQ(

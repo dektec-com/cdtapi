@@ -239,20 +239,28 @@ transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all o
 The NMOS bridge, in `cdtapi_nmos.h`, connects the AV FIFOs of an IP port to NMOS. With
 it, a program registers a FIFO as an NMOS sender or receiver, lets a controller connect
 it through IS-05, and converts between an SDP and a FIFO's configuration. The node
-itself comes from [dtnmos](https://github.com/dektec-com/dtnmos), version 0.5.
+itself comes from [dtnmos](https://github.com/dektec-com/dtnmos), version 0.5.2 or a later
+0.5.
 
 The bridge is optional, so that a program without NMOS needs nothing besides CDTAPI:
 
 - **With vcpkg**, ask for the feature: `cdtapi[nmos]` among the `dependencies`, with
   `dtnmos` added to the registry's `packages` as well.
 - **From source**, configure with `-DCDTAPI_WITH_NMOS=ON` and a dtnmos that
-  `find_package(dtnmos 0.5)` finds. The presets `windows-sim-nmos` and `linux-sim-nmos`
+  `find_package(dtnmos 0.5.2)` finds. The presets `windows-sim-nmos` and `linux-sim-nmos`
   take it from vcpkg, and need `VCPKG_ROOT` set.
 
 Only then is `cdtapi_nmos.h` installed. A library built without the bridge still exports
 its functions, which return `DTAPI_E_NOT_SUPPORTED`, and `DtapiHasNmos()` tells a program
 which library it has. `DtNmos2110` in the examples runs a node with a receiver or a
 sender that a controller connects.
+
+The bridge reports the port's PTP clock, which DtapiService's PTP clock slave keeps (see
+`cdtapi_service.h`): a sender's SDP names the grandmaster in `a=ts-refclk` while the
+slave is locked to it, and `DtNmosAvFifo_ClockFromPort()` gives the node its IS-04
+clock, for the `Clock` of its config and for `DtNmosNode_SetClock()` when the lock
+changes. Without DtapiService the reference clock is the port's MAC address, and the
+node's clock internal.
 
 ## Without a card
 

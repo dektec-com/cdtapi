@@ -717,6 +717,9 @@ DT_TEST(NmosCalls)
     DT_ASSERT_EQ(TxVideo.Format, St2110_TxFrameFormat_Uyvy422_10b);
 
     DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(NULL, &Flow), DTAPI_E_INVALID_ARG);
+    DtNmosClock Clock;
+    DT_ASSERT_EQ(DtNmosAvFifo_ClockFromPort(NULL, 1, &Clock), DTAPI_E_DEVICE);
+    DT_ASSERT_EQ(Clock.Kind, DTNMOS_CLOCK_INTERNAL);
     DtNmosId Id;
     DT_ASSERT_EQ(DtNmosAvFifo_AddDevice(NULL, NULL, 1, NULL, &Id), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtNmosAvFifo_AddReceiver(NULL, NULL, NULL, NULL, NULL, &Id),

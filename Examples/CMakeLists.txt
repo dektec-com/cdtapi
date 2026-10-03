@@ -303,12 +303,12 @@ endif()
 if(CDTAPI_WITH_NMOS)
     set(ExampleRegistry --registry http://127.0.0.1:9 --host 127.0.0.1 --seconds 1)
     cdtapi_example_test(Nmos2110Receive DtNmos2110
-        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  receiver [0-9a-f-]+  video as 10b"
+        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  clock internal\n9211000001:1  receiver [0-9a-f-]+  video as 10b"
         --receive ${ExampleRegistry})
     cdtapi_example_test(Nmos2110ReceiveAudio DtNmos2110
         "9211000001:1  receiver [0-9a-f-]+  audio" --receive --audio 2 ${ExampleRegistry})
     cdtapi_example_test(Nmos2110Send DtNmos2110
-        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  sender [0-9a-f-]+"
+        "9211000001:1  node [0-9a-f-]+ at http://127.0.0.1:[0-9]+\n9211000001:1  clock internal\n9211000001:1  sender [0-9a-f-]+"
         --send --width 320 --height 240 --rate 25 ${ExampleRegistry})
     cdtapi_example_test(Nmos2110NeitherWay DtNmos2110
         "^Give one of --receive and --send" --registry http://127.0.0.1:9)

@@ -34,6 +34,8 @@ typedef struct DtAvTxFifoDescription
     uint8_t SourceIp[16];       // The port's IP address the stream is sent from, of
                                 // IpPars's IP version, as Start chooses it
     uint8_t Mac[6];             // The port's MAC address
+    const DtDevice* Device;     // The FIFO's own handle to the device, while attached
+    int Port;                   // The port, counting from 1
 } DtAvTxFifoDescription;
 
 // Fills in the description of a transmit FIFO. The source address and MAC address are

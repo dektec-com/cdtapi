@@ -728,6 +728,8 @@ DtapiResult DtAvTxFifo_Describe(AvFifo_TxFifo* Fifo, DtAvTxFifoDescription* Desc
             Description->IpPars = *Pars;
             memcpy(Description->SourceIp, Own.Ip, 16);
             memcpy(Description->Mac, Fifo->Port.Mac, 6);
+            Description->Device = &Fifo->Port.Device;
+            Description->Port = Fifo->Port.PortIndex + 1;
         }
     }
     OsMutex_Unlock(Fifo->Lock);

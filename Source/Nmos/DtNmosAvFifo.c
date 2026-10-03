@@ -609,6 +609,34 @@ DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* Fifo,
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ClockFromPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The slave's grandmaster makes a PTP clock as soon as the slave has chosen it, locked or
+// not yet (dtnmos 0004); without one the clock is internal.
+//
+DtapiResult DtNmosAvFifo_ClockFromPort(const DtDevice* Device, int Port,
+                                       DtNmosClock* Clock)
+{
+    if (Clock == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, "DtNmosAvFifo_ClockFromPort",
+                             "No clock");
+    memset(Clock, 0, sizeof(*Clock));
+    Clock->Size = sizeof(*Clock);
+    Clock->Kind = DTNMOS_CLOCK_INTERNAL;
+    DtPtpStatus Ptp;
+    DtapiResult Result = DtDevice_GetPtpStatus(Device, Port, &Ptp);
+    if (Result != DTAPI_OK || !Ptp.HasMaster)
+        return Result;
+    const uint8_t* Id = Ptp.GrandmasterId;
+    Clock->Kind = DTNMOS_CLOCK_PTP;
+    snprintf(Clock->Grandmaster, sizeof(Clock->Grandmaster),
+             "%02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x", Id[0], Id[1], Id[2], Id[3], Id[4],
+             Id[5], Id[6], Id[7]);
+    Clock->Traceable = Ptp.IsTimeTraceable;
+    Clock->Locked = Ptp.LockStatus == DT_PTP_LOCK_LOCKED;
+    return DTAPI_OK;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ApplyRxChange -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -749,6 +777,35 @@ DtapiResult DtNmosAvFifo_TxChangeFromActivation(const DtNmosSenderActivation* Ac
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRefClock -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The clock a sender's timestamps follow: the grandmaster of the port's PTP clock slave
+// while the slave is locked to it, named in full, ptp=IEEE1588-2008:<EUI-64>:<domain>;
+// otherwise, also when DtapiService cannot be asked, the port itself, by its MAC address.
+//
+static void SetRefClock(const DtAvTxFifoDescription* Description, DtNmosRefClock* Clock)
+{
+    memset(Clock, 0, sizeof(*Clock));
+    DtPtpStatus Ptp;
+    if (DtDevice_GetPtpStatus(Description->Device, Description->Port, &Ptp) == DTAPI_OK &&
+        Ptp.HasMaster && Ptp.LockStatus == DT_PTP_LOCK_LOCKED)
+    {
+        const uint8_t* Id = Ptp.GrandmasterId;
+        Clock->Kind = DTNMOS_REFCLOCK_PTP;
+        snprintf(Clock->PtpVersion, sizeof(Clock->PtpVersion), "%s", "IEEE1588-2008");
+        snprintf(Clock->Grandmaster, sizeof(Clock->Grandmaster),
+                 "%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X", Id[0], Id[1], Id[2], Id[3],
+                 Id[4], Id[5], Id[6], Id[7]);
+        Clock->Domain = Ptp.Domain;
+        return;
+    }
+    const uint8_t* Mac = Description->Mac;
+    Clock->Kind = DTNMOS_REFCLOCK_LOCALMAC;
+    Clock->Domain = -1;
+    snprintf(Clock->LocalMac, sizeof(Clock->LocalMac), "%02X-%02X-%02X-%02X-%02X-%02X",
+             Mac[0], Mac[1], Mac[2], Mac[3], Mac[4], Mac[5]);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The frame rate of interlaced and PsF video is half the field rate CDTAPI has: the
@@ -778,12 +835,7 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
     DtNmosAddr_Format(IpV6, Description.SourceIp, Made.SourceIp, sizeof(Made.SourceIp));
     Made.DestinationPort = (uint16_t)Description.IpPars.Port;
     Made.PayloadType = (uint8_t)Description.IpPars.RtpPayloadType;
-    Made.RefClock.Kind = DTNMOS_REFCLOCK_LOCALMAC;
-    Made.RefClock.Domain = -1;
-    const uint8_t* Mac = Description.Mac;
-    snprintf(Made.RefClock.LocalMac, sizeof(Made.RefClock.LocalMac),
-             "%02X-%02X-%02X-%02X-%02X-%02X", Mac[0], Mac[1], Mac[2], Mac[3], Mac[4],
-             Mac[5]);
+    SetRefClock(&Description, &Made.RefClock);
     Made.MediaClockDirect = true;
 
     if (Description.Kind == DT_AV_KIND_VIDEO)

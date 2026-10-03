@@ -22,6 +22,7 @@
 // dtnmos's headers; here only their names, as only pointers to them are passed. The
 // callbacks are passed on and never called, so any function pointer stands for them.
 typedef struct DtNmosAvFifoRxChange DtNmosAvFifoRxChange;
+typedef struct DtNmosClock DtNmosClock;
 typedef struct DtNmosAvFifoTxChange DtNmosAvFifoTxChange;
 typedef struct DtNmosReceiverActivation DtNmosReceiverActivation;
 typedef struct DtNmosSenderActivation DtNmosSenderActivation;
@@ -55,6 +56,8 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* F
                                               const DtNmosSenderConfig* Config,
                                               DtNmosSenderActivateFunc Activate,
                                               void* User, DtNmosId* Id);
+CDTAPI_API DtapiResult DtNmosAvFifo_ClockFromPort(const DtDevice* Device, int Port,
+                                                  DtNmosClock* Clock);
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 CDTAPI_API DtapiResult DtNmosAvFifo_RxConfigFromFlow(const DtNmosFlow* Flow,
                                                      St2110_RxFrameFormat Format,
@@ -178,6 +181,17 @@ DtapiResult DtNmosAvFifo_TxChangeFromActivation(const DtNmosSenderActivation* Ac
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Flows +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_ClockFromPort -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtNmosAvFifo_ClockFromPort(const DtDevice* Device, int Port,
+                                       DtNmosClock* Clock)
+{
+    (void)Device;
+    (void)Port;
+    (void)Clock;
+    return NoNmos("DtNmosAvFifo_ClockFromPort");
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtNmosAvFifo_FlowFromTxFifo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //

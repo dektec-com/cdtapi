@@ -25,8 +25,9 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDTAPI includes
-#include "cdtapi.h"        // Results.
-#include "cdtapi_avfifo.h" // The FIFOs and their configurations.
+#include "cdtapi.h"         // Results.
+#include "cdtapi_avfifo.h"  // The FIFOs and their configurations.
+#include "cdtapi_service.h" // The PTP clock slave of a port.
 
 // dtnmos includes
 #include "dtnmos_node.h" // Nodes, their devices, senders and receivers.
@@ -98,10 +99,9 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddReceiver(DtNmosNode* Node, AvFifo_RxFifo*
 //
 // In Config, set DeviceId and Label as for a receiver. If Config->Flow is NULL, the
 // bridge describes the stream with DtNmosAvFifo_FlowFromTxFifo(); Fifo must then be
-// configured and have IP parameters. To change the description, e.g. to add HDR or a
-// PTP reference clock, make the flow with DtNmosAvFifo_FlowFromTxFifo(), change it, and
-// pass it in Config->Flow. If SourceIp is empty, the bridge uses the address the FIFO
-// sends from.
+// configured and have IP parameters. To change the description, e.g. to add HDR, make
+// the flow with DtNmosAvFifo_FlowFromTxFifo(), change it, and pass it in Config->Flow.
+// If SourceIp is empty, the bridge uses the address the FIFO sends from.
 //
 // The node calls Activate, with User, when a controller enables, disables or redirects
 // the sender. Activate runs on a thread of the node and must not touch the FIFO.
@@ -112,6 +112,19 @@ CDTAPI_API DtapiResult DtNmosAvFifo_AddSender(DtNmosNode* Node, AvFifo_TxFifo* F
                                               const DtNmosSenderConfig* Config,
                                               DtNmosSenderActivateFunc Activate,
                                               void* User, DtNmosId* Id);
+
+// Fills *Clock with the clock of the node, as IS-04 has it, from the PTP clock slave of
+// port Port, counted from 1, of Device: the grandmaster the slave has chosen, with
+// whether it is traceable to TAI and whether the slave is locked to it yet; without a
+// grandmaster, an internal clock. Give it to the node in the Clock of its
+// DtNmosNodeConfig, and later with DtNmosNode_SetClock(), e.g. each time the program
+// checks its lock; the node registers again only when the clock changed.
+//
+// *Clock is internal after a failure too. Returns DTAPI_OK, DTAPI_E_INVALID_ARG for a
+// NULL Clock, or the errors of DtDevice_GetPtpStatus(), such as
+// DTAPI_E_CONNECT_TO_SERVICE when DtapiService does not run.
+CDTAPI_API DtapiResult DtNmosAvFifo_ClockFromPort(const DtDevice* Device, int Port,
+                                                  DtNmosClock* Clock);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Activations +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -217,9 +230,10 @@ CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
 // Fifo must be configured and have IP parameters; it need not be started. The source
 // address is the address the FIFO sends from. Fields the FIFO does not know get common
 // defaults: the colorimetry follows the frame size (BT601 for SD, BT709 for HD, BT2020
-// for UHD), the transfer characteristic is SDR, and the reference clock is named by the
-// port's MAC address (localmac). Change those in *Flow for HDR or a PTP clock. *Flow
-// owns no memory.
+// for UHD), and the transfer characteristic is SDR; change those in *Flow for HDR. The
+// reference clock is the grandmaster of the port's PTP clock slave while the slave is
+// locked to it, ptp=IEEE1588-2008:<grandmaster>:<domain>, and otherwise the port's MAC
+// address (localmac), also when DtapiService does not run. *Flow owns no memory.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_NOT_ATTACHED   Fifo is not attached

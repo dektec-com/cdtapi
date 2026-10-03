@@ -696,6 +696,111 @@ DT_TEST(TxFifoNotReady)
     DtTest_SetCleanup(NULL, NULL);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EnableSlave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Switches the emulated slave of the DTA-2110's port on, in domain Domain, so that it
+// locks to the emulated grandmaster at once.
+//
+static bool EnableSlave(const DtDevice* Device, int Domain)
+{
+    DtPtpSlave* Slave = NULL;
+    if (DtPtpSlave_Attach(Device, 1, true, &Slave) != DTAPI_OK)
+        return false;
+    DtPtpConfig Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.Fields = DT_PTP_CONFIG_ENABLE | DT_PTP_CONFIG_DOMAIN;
+    Config.Enable = true;
+    Config.Domain = Domain;
+    DtapiResult Result = DtPtpSlave_SetConfig(Slave, &Config);
+    DtPtpSlave_Detach(Slave);
+    return Result == DTAPI_OK;
+}
+
+// A sender's reference clock is the port's MAC address while the port's PTP slave is
+// off, and its grandmaster, named in full, once the slave is locked to it.
+DT_TEST(TxPtpRefClock)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures))
+        return;
+    const St2110_TxConfigAudio Config = {St2110_AudioFormat_L24BE, 2, 48, 48000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &Config));
+    AvFifo_IpPars IpPars;
+    memset(&IpPars, 0, sizeof(IpPars));
+    IpPars.IpVersion = IpProtocolVersion_IPv4;
+    IpPars.IpAddr[0] = 239;
+    IpPars.IpAddr[1] = 1;
+    IpPars.IpAddr[2] = 2;
+    IpPars.IpAddr[3] = 4;
+    IpPars.Port = 5004;
+    IpPars.RtpPayloadType = 97;
+    IpPars.TimeToLive = 64;
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &IpPars));
+
+    DtNmosFlow Flow;
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    DT_ASSERT_EQ(Flow.RefClock.Kind, DTNMOS_REFCLOCK_LOCALMAC);
+
+    DT_ASSERT(EnableSlave(Fix.Device, 5));
+    DT_ASSERT_OK(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow));
+    DT_ASSERT_EQ(Flow.RefClock.Kind, DTNMOS_REFCLOCK_PTP);
+    DT_ASSERT_STR(Flow.RefClock.PtpVersion, "IEEE1588-2008");
+    DT_ASSERT_STR(Flow.RefClock.Grandmaster, "00-1B-19-FF-FE-00-00-01");
+    DT_ASSERT_EQ(Flow.RefClock.Domain, 5);
+    DT_ASSERT(!Flow.RefClock.Traceable);
+
+    DtNmosSession Session;
+    memset(&Session, 0, sizeof(Session));
+    Session.Size = sizeof(Session);
+    Session.Name = "Ptp";
+    snprintf(Session.OriginIp, sizeof(Session.OriginIp), "%s", Flow.SourceIp);
+    char Text[2048];
+    size_t Size = sizeof(Text);
+    DT_ASSERT(DtNmosSdp_Write(&Session, &Flow, 1, Text, &Size) == DTNMOS_OK);
+    DT_ASSERT(
+        strstr(Text, "a=ts-refclk:ptp=IEEE1588-2008:00-1B-19-FF-FE-00-00-01:5\r\n") !=
+        NULL);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
+// The node's clock from the port's PTP slave: internal while it has no grandmaster, and
+// the grandmaster, in lower case, traceable and locked, once it has; a node registers
+// with it.
+DT_TEST(NodeClockFromPort)
+{
+    Fixture Fix = {NULL};
+    DtTest_SetCleanup(FreeFixture, &Fix);
+    if (!OpenTx(&Fix, DtFailures))
+        return;
+    DtNmosClock Clock;
+    DT_ASSERT_OK(DtNmosAvFifo_ClockFromPort(Fix.Device, 1, &Clock));
+    DT_ASSERT_EQ(Clock.Size, sizeof(Clock));
+    DT_ASSERT_EQ(Clock.Kind, DTNMOS_CLOCK_INTERNAL);
+
+    DT_ASSERT(EnableSlave(Fix.Device, 0));
+    DT_ASSERT_OK(DtNmosAvFifo_ClockFromPort(Fix.Device, 1, &Clock));
+    DT_ASSERT_EQ(Clock.Kind, DTNMOS_CLOCK_PTP);
+    DT_ASSERT_STR(Clock.Grandmaster, "00-1b-19-ff-fe-00-00-01");
+    DT_ASSERT(Clock.Traceable);
+    DT_ASSERT(Clock.Locked);
+
+    // A node takes it as it is.
+    if (!OpenNode(&Fix, DtFailures))
+        return;
+    DT_ASSERT(DtNmosNode_SetClock(Fix.Node, &Clock) == DTNMOS_OK);
+    DT_ASSERT(Answers(Fix.Node, "/x-nmos/node/v1.3/self",
+                      "\"gmid\": \"00-1b-19-ff-fe-00-00-01\", \"locked\": true"));
+
+    // A port without a slave fails, and leaves the clock internal.
+    DT_ASSERT_EQ(DtNmosAvFifo_ClockFromPort(Fix.Device, 2, &Clock), DTAPI_E_NO_SUCH_PORT);
+    DT_ASSERT_EQ(Clock.Kind, DTNMOS_CLOCK_INTERNAL);
+    DT_ASSERT_EQ(DtNmosAvFifo_ClockFromPort(Fix.Device, 1, NULL), DTAPI_E_INVALID_ARG);
+    FreeFixture(&Fix);
+    DtTest_SetCleanup(NULL, NULL);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Nodes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The device of the DTA-2110's port: without a config, its ID derived from the node's,
@@ -1218,5 +1323,6 @@ DT_TEST_MAIN("NmosAvFifo", DT_RUN(LinksDtnmos), DT_RUN(RxVideo), DT_RUN(RxVideoF
              DT_RUN(RxAudio), DT_RUN(RxRefused), DT_RUN(RxArguments), DT_RUN(RxIpV6),
              DT_RUN(TxVideo), DT_RUN(TxAudio), DT_RUN(TxRefused),
              DT_RUN(TxRoundTripVideo), DT_RUN(TxRoundTripAudio), DT_RUN(TxFifoNotReady),
-             DT_RUN(AddDevice), DT_RUN(AddReceiver), DT_RUN(AddSender), DT_RUN(RxChange),
-             DT_RUN(TxChange), DT_RUN(ActivationReachesTheOwner))
+             DT_RUN(TxPtpRefClock), DT_RUN(NodeClockFromPort), DT_RUN(AddDevice),
+             DT_RUN(AddReceiver), DT_RUN(AddSender), DT_RUN(RxChange), DT_RUN(TxChange),
+             DT_RUN(ActivationReachesTheOwner))
