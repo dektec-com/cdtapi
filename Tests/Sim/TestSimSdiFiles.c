@@ -25,9 +25,11 @@
 #include "OAL/OsThread.h"           // Waiting for frames on the clock.
 #include "OAL/Sim/SimChSdiRx.h"     // The emulated source's frames.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "Sdi/DtSdiView.h"          // Whether a frame lent ran across the ring's end.
 #include "Video/DtSdiFrame.h"       // Frame sizes.
 #include "Video/DtVidStd.h"         // Which standards are 4K.
 #include "cdtapi.h"                 // Public API under test.
+#include "cdtapi_sdi.h"             // Parsing the frames lent.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -1039,9 +1041,280 @@ DT_TEST(LeavesAFileForTheExamples)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames lent +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The image of a frame, parsed into planar 10-bit: Width * Height * 4 bytes, Y then Cb
+// then Cr. NULL when that fails.
+static uint8_t* ParsedImage(DtSdiParser* Parser, DtSdiView* View, size_t* Bytes)
+{
+    int VidStd = 0;
+    int Width = 0;
+    int Height = 0;
+    int Strides[3];
+    *Bytes = 0;
+    if (DtSdiView_GetFormat(View, &VidStd, NULL) != DTAPI_OK ||
+        DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Width, &Height, Strides) !=
+            DTAPI_OK)
+        return NULL;
+    *Bytes = 4 * (size_t)Width * (size_t)Height;
+    uint8_t* Image = (uint8_t*)malloc(*Bytes);
+    if (Image == NULL)
+        return NULL;
+    const size_t Y = 2 * (size_t)Width * (size_t)Height;
+    DtSdiImage Planar = {DT_SDI_PIXFMT_YUV422P_10B,
+                         DT_SDI_FIELDS_WOVEN,
+                         {Image, Image + Y, Image + Y + Y / 2},
+                         {2 * Width, Width, Width}};
+    if (DtSdiParser_Parse(Parser, View, &Planar, NULL, NULL) != DTAPI_OK)
+    {
+        free(Image);
+        return NULL;
+    }
+    return Image;
+}
+
+// What a frame's blanking holds: every packet, the audio's and the payload ID's too,
+// and the audio as PCM.
+typedef struct Blanking
+{
+    DtSdiAncPacket Packets[4096];
+    uint16_t Words[65536];
+    int32_t Samples[16][2048];
+    DtSdiAncData Anc;
+    DtSdiAudio Audio;
+} Blanking;
+
+// Parses the blanking of View into B. False when the parse fails.
+static bool ParseBlankingOf(DtSdiParser* Parser, DtSdiView* View, Blanking* B)
+{
+    memset(&B->Anc, 0, sizeof(B->Anc));
+    B->Anc.Packets = B->Packets;
+    B->Anc.MaxPackets = 4096;
+    B->Anc.Words = B->Words;
+    B->Anc.MaxWords = 65536;
+    memset(&B->Audio, 0, sizeof(B->Audio));
+    for (int p = 0; p < 8; p++)
+        B->Audio.Formats[p] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 16; c++)
+    {
+        B->Audio.Channels[c].Samples = B->Samples[c];
+        B->Audio.Channels[c].MaxSamples = 2048;
+    }
+    return DtSdiParser_Parse(Parser, View, NULL, &B->Audio, &B->Anc) == DTAPI_OK;
+}
+
+// Returns NULL when A and B hold the same, else what differs.
+static const char* SameBlanking(const Blanking* A, const Blanking* B)
+{
+    if (A->Anc.NumPackets != B->Anc.NumPackets)
+        return "another number of packets";
+    for (int p = 0; p < A->Anc.NumPackets; p++)
+    {
+        const DtSdiAncPacket* X = &A->Packets[p];
+        const DtSdiAncPacket* Y = &B->Packets[p];
+        if (X->Line != Y->Line || X->InHanc != Y->InHanc || X->OnChroma != Y->OnChroma ||
+            X->VirtualInterface != Y->VirtualInterface || X->Did != Y->Did ||
+            X->SdidOrDbn != Y->SdidOrDbn || X->NumWords != Y->NumWords ||
+            X->ChecksumOk != Y->ChecksumOk ||
+            memcmp(X->Words, Y->Words, (size_t)X->NumWords * sizeof(uint16_t)) != 0)
+            return "a packet differs";
+    }
+    for (int c = 0; c < 16; c++)
+    {
+        const DtSdiAudioChannel* X = &A->Audio.Channels[c];
+        const DtSdiAudioChannel* Y = &B->Audio.Channels[c];
+        if (X->NumSamples != Y->NumSamples ||
+            memcmp(A->Samples[c], B->Samples[c], (size_t)X->NumSamples * 4) != 0)
+            return "the audio differs";
+    }
+    return NULL;
+}
+
+// A channel lends the frames of a file the source plays, where they lie in its ring,
+// until one has run across the end of the ring: each, parsed, gives the image of one of
+// the file's frames and its blanking, every packet and the audio, as the raw frame's;
+// up to 3G each active line reads as in the raw frame too. While a frame is lent,
+// ReadFrame, the builder and a raw frame for the view are refused; given back, it cannot
+// be given back again. In 625i, 720p50, 1080i50 and 2160p50.
+DT_TEST(AcquireLendsTheFrames)
+{
+    static const struct
+    {
+        int VidStd;
+        const char* Name;
+        int NumFiles;
+    } Cases[] = {{DTAPI_VIDSTD_625I50, "625I50", 3},
+                 {DTAPI_VIDSTD_720P50, "720P50", 3},
+                 {DTAPI_VIDSTD_1080I50, "1080I50", 3},
+                 {DTAPI_VIDSTD_2160P50, "2160P50", 2}};
+
+    for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]); c++)
+    {
+        const int VidStd = Cases[c].VidStd;
+        const int NumFiles = Cases[c].NumFiles;
+        Fixture Fix;
+        if (!Start(&Fix, DtFailures))
+            return;
+        DT_ASSERT(WriteFrames(SOURCE_FILE, VidStd, 100, NumFiles, 0));
+        DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue(Cases[c].Name, SOURCE_FILE)));
+
+        // The images and the raw frames the file holds.
+        DtSdiParser* Parser = DtSdiParser_Alloc();
+        DtSdiView* Raw = DtSdiView_Alloc();
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+        DT_ASSERT(Parser != NULL && Raw != NULL && View != NULL && Builder != NULL);
+        uint8_t* Frames[3] = {NULL, NULL, NULL};
+        uint8_t* Images[3] = {NULL, NULL, NULL};
+        size_t Size = 0;
+        size_t Padded = 0;
+        size_t ImageBytes = 0;
+        for (int f = 0; f < NumFiles; f++)
+        {
+            Frames[f] = PatternFrame(VidStd, 100 + (uint32_t)f, &Size, &Padded);
+            DT_ASSERT(Frames[f] != NULL);
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frames[f], Size, VidStd, 10));
+            Images[f] = ParsedImage(Parser, Raw, &ImageBytes);
+            DT_ASSERT(Images[f] != NULL);
+        }
+
+        Fix.In = DtInpChannel_Alloc();
+        DT_ASSERT(Fix.In != NULL);
+        DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+        DT_ASSERT_OK(
+            DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+        int MaxFifo = 0;
+        DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.In, &MaxFifo));
+        const int MaxFrames = 3 * (int)((size_t)MaxFifo / Size + 2);
+
+        char* ReadBuffer = (char*)malloc(Padded);
+        Blanking* Lent = (Blanking*)malloc(sizeof(Blanking));
+        Blanking* Read = (Blanking*)malloc(sizeof(Blanking));
+        DT_ASSERT(ReadBuffer != NULL && Lent != NULL && Read != NULL);
+        bool Wrapped = false;
+        int Frame = 0;
+        for (; Frame < MaxFrames && !(Wrapped && Frame >= 3); Frame++)
+        {
+            DtTimeOfDay Arrival;
+            DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, &Arrival));
+            Wrapped = Wrapped || View->WrapLineIndex >= 0;
+
+            size_t Bytes = 0;
+            uint8_t* Image = ParsedImage(Parser, View, &Bytes);
+            DT_ASSERT(Image != NULL && Bytes == ImageBytes);
+            int Which = -1;
+            for (int f = 0; f < NumFiles && Which < 0; f++)
+                if (memcmp(Image, Images[f], Bytes) == 0)
+                    Which = f;
+            free(Image);
+            if (Which < 0)
+                DT_FAIL("%s, frame %d: the image is none of the file's", Cases[c].Name,
+                        Frame);
+
+            // The blanking, every packet and the audio, as the raw frame's.
+            const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_BOTH, 0, 0};
+            DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frames[Which], Size, VidStd, 10));
+            DT_ASSERT(ParseBlankingOf(Parser, View, Lent));
+            DT_ASSERT(ParseBlankingOf(Parser, Raw, Read));
+            const char* Differs = SameBlanking(Lent, Read);
+            if (Differs != NULL)
+                DT_FAIL("%s, frame %d: %s", Cases[c].Name, Frame, Differs);
+            DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, NULL, 0));
+
+            // Every active line where it lies, as in the raw frame, up to 3G.
+            if (!DtVidStd_Is4k(VidStd))
+            {
+                DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frames[Which], Size, VidStd, 10));
+                int Width = 0;
+                int Height = 0;
+                DT_ASSERT_OK(DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Width,
+                                                &Height, NULL));
+                for (int y = 0; y < Height; y += 37)
+                {
+                    DtSdiSymbolPtr A;
+                    DtSdiSymbolPtr B;
+                    DT_ASSERT_OK(DtSdiView_GetActiveLine(View, y, &A));
+                    DT_ASSERT_OK(DtSdiView_GetActiveLine(Raw, y, &B));
+                    for (int s = 0; s < 2 * Width; s += 7)
+                        if (DtSdiSymbolPtr_Get(&A, (size_t)s) !=
+                            DtSdiSymbolPtr_Get(&B, (size_t)s))
+                            DT_FAIL("%s, line %d, symbol %d differs", Cases[c].Name, y,
+                                    s);
+                }
+            }
+
+            int FrameSize = (int)Padded;
+            DT_ASSERT_EQ(DtInpChannel_ReadFrame(Fix.In, ReadBuffer, &FrameSize, 100),
+                         DTAPI_E_IN_USE);
+            DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL),
+                         DTAPI_E_STATE);
+            DT_ASSERT_EQ(DtSdiView_SetRawFrame(View, Frames[0], Size, VidStd, 10),
+                         DTAPI_E_IN_USE);
+            DT_ASSERT_EQ(DtInpChannel_AcquireFrame(Fix.In, View, 100, NULL),
+                         DTAPI_E_IN_USE);
+            DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+            DT_ASSERT_EQ(DtInpChannel_ReleaseFrame(Fix.In, View), DTAPI_E_INVALID_ARG);
+            DT_ASSERT_EQ(DtSdiView_GetFormat(View, NULL, NULL), DTAPI_E_STATE);
+        }
+        if (!Wrapped)
+            DT_FAIL("%s: no frame ran across the end of the ring in %d", Cases[c].Name,
+                    Frame);
+        printf("    %s: %d frames lent\n", Cases[c].Name, Frame);
+
+        // Detaching takes a lent frame back.
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
+        DT_ASSERT_OK(DtInpChannel_Detach(Fix.In, 0));
+        DT_ASSERT_EQ(DtSdiView_GetFormat(View, NULL, NULL), DTAPI_E_STATE);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frames[0], Size, VidStd, 10));
+
+        free(Read);
+        free(Lent);
+        free(ReadBuffer);
+        for (int f = 0; f < NumFiles; f++)
+        {
+            free(Images[f]);
+            free(Frames[f]);
+        }
+        DtSdiBuilder_Free(Builder);
+        DtSdiView_Free(View);
+        DtSdiView_Free(Raw);
+        DtSdiParser_Free(Parser);
+        FINISH(Fix);
+    }
+    remove(SOURCE_FILE);
+}
+
+// A receive mode of 16 bits a symbol lends nothing.
+DT_TEST(AcquireNeedsTenBits)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_625I50, 100, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("625I50", SOURCE_FILE)));
+    DtSdiView* View = DtSdiView_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(View != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    DT_ASSERT_EQ(DtInpChannel_AcquireFrame(Fix.In, View, 2000, NULL),
+                 DTAPI_E_INVALID_MODE);
+    DT_ASSERT_EQ(DtSdiView_GetFormat(View, NULL, NULL), DTAPI_E_STATE);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+}
+
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
              DT_RUN(FourKThroughFiles), DT_RUN(FourKOverThreads),
              DT_RUN(FourKThroughDispatch), DT_RUN(TwoChannelsShareAPoolOfEight),
-             DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(AcquireLendsTheFrames),
+             DT_RUN(AcquireNeedsTenBits), DT_RUN(LeavesAFileForTheExamples))

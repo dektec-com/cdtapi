@@ -337,11 +337,11 @@ DT_TEST(InputChannelCalls)
                       DTAPI_OK, DTAPI_E_TIMEOUT));
     free(Buffer);
 
-    // Plan 0032 has these as stubs until its step F.
+    // A frame lent where it lies, in the 10-bit mode set above, and given back.
     DtSdiView* View = DtSdiView_Alloc();
     DT_ASSERT(View != NULL);
     DtapiResult Acquired = DtInpChannel_AcquireFrame(Channel, View, 20, &Arrival);
-    DT_ASSERT(IsOneOf(Acquired, DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT(IsOneOf(Acquired, DTAPI_OK, DTAPI_E_TIMEOUT));
     if (Acquired == DTAPI_OK)
         DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Channel, View));
     else

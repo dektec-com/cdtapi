@@ -20,6 +20,7 @@
 #include "DtPcieAbi.h"          // DT_FUNC_OPMODE_ and SDI rate values.
 #include "DtSdiRx.h"            // Interface being implemented.
 #include "OAL/OsThread.h"       // The process.
+#include "Sdi/DtSdiView.h"      // Views of the frames lent.
 #include "Video/DtFrameProps.h" // The frame rate and geometry.
 #include "Video/DtSdiFrame.h"   // The ring's format and the raw frame.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
@@ -76,9 +77,13 @@ typedef struct DtSdiRx
     size_t WrapLineBufferBytes;
     size_t SymbolsPerBand;
 
-    // Reading.
+    // Reading, and the frame lent, at the head of the ring: its view, header and the
+    // ring's load when it was lent.
     bool InSync;
     int ExpectedFrameId;
+    DtSdiView* LentView;
+    DtSdiFrameRxHeader LentHeader;
+    size_t LentAvailable;
 } DtSdiRx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -86,6 +91,17 @@ typedef struct DtSdiRx
 static OsDrv* DrvOf(const DtSdiRx* Sdi)
 {
     return Sdi->Rx.Port.Device->Drv;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForgetLent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The lent frame is gone with the ring or its contents: its view describes no frame.
+//
+static void ForgetLent(DtSdiRx* Sdi)
+{
+    if (Sdi->LentView != NULL)
+        DtSdiView_Forget(Sdi->LentView);
+    Sdi->LentView = NULL;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -139,6 +155,7 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
 //
 static void ReleaseChannel(DtSdiRx* Sdi)
 {
+    ForgetLent(Sdi);
     DtPcieCmd_ChSdiRxUnmapDmaBuf(DrvOf(Sdi), Sdi->Ring.Base, (int)Sdi->Ring.Size,
                                  Sdi->RingMappedByCdtapi);
     memset(&Sdi->Ring, 0, sizeof(Sdi->Ring));
@@ -453,6 +470,9 @@ static DtapiResult ApplyRxControl(DtSdiRx* Sdi, int RxControl)
     if (Sdi->Rx.RxControl == RxControl)
         return DTAPI_OK;
 
+    // Reading starts at the ring's start again: a lent frame is gone.
+    ForgetLent(Sdi);
+
     DtapiResult Result;
     if (RxControl == DTAPI_RXCTRL_IDLE)
         Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->ChSdiRx, DT_FUNC_OPMODE_IDLE);
@@ -701,53 +721,52 @@ static void DecodeLines(void* Context, int Index, int Count)
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Delivers the next frame into Buffer when the ring holds all of it, and the time of
-// arrival its header gives into *ArrivalTime. Returns DTAPI_OK with *Delivered true for a
-// frame, DTAPI_OK with *Delivered false when there is none yet, or a driver failure.
+// Finds the next whole frame at the head of the ring and decodes its header into
+// *Header. Returns DTAPI_OK with *Found true when there is one, the read offset at it and
+// *Available the ring's load; DTAPI_OK with *Found false when there is none yet; or a
+// driver failure.
 //
-static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
-                                bool* Delivered)
+// Out of sync, a header is searched for; a header that is not the one expected puts the
+// channel out of sync, and the search starts again from that header. A frame whose first
+// or last line is not where it should be lost lines when the ring was full, and holds the
+// start of a later frame: it is skipped, and the search starts again after its header.
+//
+static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* Available,
+                             bool* Found)
 {
-    DtSdiRx* Sdi = (DtSdiRx*)Rx;
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
-    size_t CodedFrameSize = DtSdiFrame_RxCodedSize(Layout);
+    const size_t CodedFrameSize = DtSdiFrame_RxCodedSize(Layout);
 
-    *Delivered = false;
+    *Found = false;
     DtapiResult Result = SyncWriteOffset(Sdi);
     if (Result != DTAPI_OK)
         return Result;
-    size_t Available = DtRing_Load(&Sdi->Ring);
+    *Available = DtRing_Load(&Sdi->Ring);
 
     // A ring that has filled up has lost data.
-    if (Available + (size_t)Layout->RxStride >= Sdi->Ring.MaxLoad)
+    if (*Available + (size_t)Layout->RxStride >= Sdi->Ring.MaxLoad)
     {
         Sdi->FifoOvf = true;
         Sdi->FifoOvfLatched = true;
     }
 
-    // Out of sync, a header is searched for; a header that is not the one expected puts
-    // the channel out of sync, and the search starts again from that header. A frame
-    // whose first or last line is not where it should be lost lines when the ring was
-    // full, and holds the start of a later frame: it is not delivered, and the search
-    // starts again after its header.
     uint8_t HeaderBytes[DT_SDIFRAME_HEADER_BYTES];
-    DtSdiFrameRxHeader Header;
     for (;;)
     {
         if (!Sdi->InSync)
         {
             if (!FindHeader(Sdi, &Result))
                 return Result;
-            Available = DtRing_Load(&Sdi->Ring);
+            *Available = DtRing_Load(&Sdi->Ring);
         }
-        if (Available < CodedFrameSize)
+        if (*Available < CodedFrameSize)
             return DTAPI_OK;
 
         DtRing_PeekAt(&Sdi->Ring, 0, HeaderBytes, sizeof(HeaderBytes));
-        DtSdiFrame_DecodeRxHeader(HeaderBytes, &Header);
-        if (DtSdiFrame_CheckRxHeader(Layout, &Header, Sdi->ExpectedFrameId) == DTAPI_OK)
+        DtSdiFrame_DecodeRxHeader(HeaderBytes, Header);
+        if (DtSdiFrame_CheckRxHeader(Layout, Header, Sdi->ExpectedFrameId) == DTAPI_OK)
         {
             uint8_t FirstLineStart[DT_SDIFRAME_LINE_START_BYTES];
 
@@ -761,15 +780,65 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
                           LastLineStart, sizeof(LastLineStart));
             if (DtSdiFrame_CheckLineNumbers(Layout, FirstLineStart, LastLineStart) ==
                 DTAPI_OK)
-                break;
+            {
+                *Found = true;
+                return DTAPI_OK;
+            }
 
             Result = AdvanceReadOffset(Sdi, (size_t)Layout->AlignmentInBytes);
             if (Result != DTAPI_OK)
                 return Result;
-            Available = DtRing_Load(&Sdi->Ring);
+            *Available = DtRing_Load(&Sdi->Ring);
         }
         Sdi->InSync = false;
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FinishFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Moves past the frame at the head of the ring, of Header and found with the ring's load
+// Available, and sets *ArrivalTime to when it arrived.
+//
+static DtapiResult FinishFrame(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header,
+                               size_t Available, DtTimeOfDay* ArrivalTime)
+{
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    const size_t CodedFrameSize = DtSdiFrame_RxCodedSize(Layout);
+    DtapiResult Result = AdvanceReadOffset(Sdi, CodedFrameSize);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (Available - CodedFrameSize + (size_t)Layout->RxStride < Sdi->Ring.MaxLoad)
+        Sdi->FifoOvf = false;
+    Sdi->ExpectedFrameId = (Header->FrameId + 1) & 0xFFFF;
+    if (ArrivalTime != NULL)
+    {
+        ArrivalTime->Seconds = Header->PtpSeconds;
+        ArrivalTime->Nanoseconds = Header->PtpNanoseconds;
+    }
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Delivers the next frame into Buffer when the ring holds all of it, and the time of
+// arrival its header gives into *ArrivalTime. Returns DTAPI_OK with *Delivered true for a
+// frame, DTAPI_OK with *Delivered false when there is none yet, or a driver failure.
+//
+static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                                bool* Delivered)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    DtSdiFrameRxHeader Header;
+    size_t Available = 0;
+    bool Found = false;
+
+    *Delivered = false;
+    if (Sdi->LentView != NULL)
+        return DTAPI_E_IN_USE;
+    DtapiResult Result = FindFrame(Sdi, &Header, &Available, &Found);
+    if (Result != DTAPI_OK || !Found)
+        return Result;
 
     // A line that runs across the end of the ring is copied into one piece first. A raw
     // 4K line takes two coded lines and whole bytes, so its lines need no clearing.
@@ -785,17 +854,59 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
 
     DtJobRunner_Run(&Sdi->JobRunner, DecodeLines, &Band);
 
-    Result = AdvanceReadOffset(Sdi, CodedFrameSize);
+    Result = FinishFrame(Sdi, &Header, Available, ArrivalTime);
+    *Delivered = Result == DTAPI_OK;
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LendFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The frame at the head of the ring stays there, and the read offset with it, until it is
+// given back: the card cannot write over it meanwhile.
+//
+static DtapiResult LendFrame(DtRx* Rx, DtSdiView* View, void* Holder,
+                             DtTimeOfDay* ArrivalTime, bool* Lent)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+
+    *Lent = false;
+    if (Sdi->BitsPerSymbol != 10)
+        return DTAPI_E_INVALID_MODE;
+    if (Sdi->LentView != NULL)
+        return DTAPI_E_IN_USE;
+
+    bool Found = false;
+    DtapiResult Result = FindFrame(Sdi, &Sdi->LentHeader, &Sdi->LentAvailable, &Found);
+    if (Result != DTAPI_OK || !Found)
+        return Result;
+    const size_t LinesStart =
+        (DtRing_ReadOffset(&Sdi->Ring) + (size_t)Layout->RxHeaderNumBytes) %
+        Sdi->Ring.Size;
+    Result = DtSdiView_SetRingFrame(View, Layout, Sdi->Ring.Base, Sdi->Ring.Size,
+                                    LinesStart, Holder);
     if (Result != DTAPI_OK)
         return Result;
-
-    if (Available - CodedFrameSize + (size_t)Layout->RxStride < Sdi->Ring.MaxLoad)
-        Sdi->FifoOvf = false;
-    Sdi->ExpectedFrameId = (Header.FrameId + 1) & 0xFFFF;
-    ArrivalTime->Seconds = Header.PtpSeconds;
-    ArrivalTime->Nanoseconds = Header.PtpNanoseconds;
-    *Delivered = true;
+    if (ArrivalTime != NULL)
+    {
+        ArrivalTime->Seconds = Sdi->LentHeader.PtpSeconds;
+        ArrivalTime->Nanoseconds = Sdi->LentHeader.PtpNanoseconds;
+    }
+    Sdi->LentView = View;
+    *Lent = true;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReturnFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static DtapiResult ReturnFrame(DtRx* Rx, DtSdiView* View)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+    if (Sdi->LentView == NULL || Sdi->LentView != View)
+        return DTAPI_E_INVALID_ARG;
+    Sdi->LentView = NULL;
+    DtSdiView_Forget(View);
+    return FinishFrame(Sdi, &Sdi->LentHeader, Sdi->LentAvailable, NULL);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrepareWait -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -869,6 +980,8 @@ static const DtRxBackend g_SdiRxBackend = {
     .SetWorkerPool = SetWorkerPool,
     .CheckFrameBuffer = CheckFrameBuffer,
     .DeliverFrame = DeliverFrame,
+    .LendFrame = LendFrame,
+    .ReturnFrame = ReturnFrame,
     .PrepareWait = PrepareWait,
     .Wait = Wait,
     .AfterWait = AfterWait,

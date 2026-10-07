@@ -43,6 +43,7 @@ typedef struct DtSdiParserBand
 {
     uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
+    DtSdiLineScratch Scratch; // A 2160p line of a frame in a ring, decoded
 } DtSdiParserBand;
 
 struct DtSdiParser
@@ -61,7 +62,9 @@ struct DtSdiParser
     DtSdiParserBand* Bands;
     int NumBands;
 
-    // The blanking's symbols: a section of a raw line, and one stream's words of it.
+    // The blanking's symbols: a section of a raw line, and one stream's words of it; and
+    // a 2160p line of a frame in a ring, decoded.
+    DtSdiLineScratch Scratch;
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
     uint16_t StreamWords[DT_SDIPARSER_MAX_WIDTH];
 };
@@ -96,8 +99,9 @@ static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
 
     for (int y = First; y < End; y++)
     {
-        const DtSdiSymbolPtr Active = DtSdiView_RawSymbols(
-            Frame, DtSdiGeometry_RawLine(Geo, y), (size_t)Geo->Layout.LineNumSymsHanc);
+        const DtSdiSymbolPtr Active =
+            DtSdiView_LineSymbols(Frame, DtSdiGeometry_RawLine(Geo, y),
+                                  (size_t)Geo->Layout.LineNumSymsHanc, NULL);
         DtSdiSymbols_Read(&Active, NumSymbols, Band->Lines[0], Vec);
         DtSdiImage_PutLine(Image, Geo, y, Band->Lines[0], Vec);
     }
@@ -121,8 +125,8 @@ static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
 
     for (int k = First; k < End; k++)
     {
-        const DtSdiSymbolPtr Active =
-            DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
+        const DtSdiSymbolPtr Active = DtSdiView_LineSymbols(
+            Frame, Geo->PictureFirstIndex + k, 8 * HancWords, &Band->Scratch);
         DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Band->RawActive, Vec);
         Vec->Split4k(Band->RawActive, (size_t)LinkWidth, Band->Lines[0], Band->Lines[1]);
         DtSdiImage_PutLine(Image, Geo, 2 * k, Band->Lines[0], Vec);
@@ -244,16 +248,42 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
     const int First = Where->InHanc ? Geo->StreamEavWords : 0;
     const int End = Where->InHanc ? SectionWords - Geo->StreamSavWords : SectionWords;
 
-    const DtSdiSymbolPtr Symbols =
-        DtSdiView_RawSymbols(Frame, Where->LineIndex, FirstSymbol);
-    DtSdiSymbols_Read(&Symbols, (size_t)SectionWords * (size_t)Streams, Parser->RawActive,
-                      Parser->Vec);
+    // Audio alone is in link 1: the other links need no reading. The horizontal blanking
+    // of a 2160p frame in a ring is a section of each link's own, its C and Y words in
+    // turn, read where it lies rather than from the whole line decoded.
+    const bool AllLinks = Anc != NULL;
+    const bool PerLink = Geo->Is4k && Frame->RingBase != NULL && Where->InHanc;
+    if (!PerLink)
+    {
+        const DtSdiSymbolPtr Symbols =
+            DtSdiView_LineSymbols(Frame, Where->LineIndex, FirstSymbol, &Parser->Scratch);
+        DtSdiSymbols_Read(&Symbols, (size_t)SectionWords * (size_t)Streams,
+                          Parser->RawActive, Parser->Vec);
+    }
 
     for (int s = 0; s < Streams; s++)
     {
-        for (int k = First; k < End; k++)
-            Parser->StreamWords[k - First] =
-                Parser->RawActive[Geo->StreamFirst[s] + k * Streams];
+        if (!AllLinks && Geo->StreamLink[s] != 1)
+            continue;
+        if (PerLink && (s & 1) == 0)
+        {
+            const DtSdiSymbolPtr Symbols =
+                DtSdiView_LinkHanc(Frame, Where->LineIndex, Geo->StreamLink[s]);
+            DtSdiSymbols_Read(&Symbols, 2 * (size_t)SectionWords, Parser->RawActive,
+                              Parser->Vec);
+        }
+        if (PerLink)
+        {
+            const int Y = Geo->StreamIsChroma[s] ? 0 : 1;
+            for (int k = First; k < End; k++)
+                Parser->StreamWords[k - First] = Parser->RawActive[2 * k + Y];
+        }
+        else
+        {
+            for (int k = First; k < End; k++)
+                Parser->StreamWords[k - First] =
+                    Parser->RawActive[Geo->StreamFirst[s] + k * Streams];
+        }
 
         int Pos = 0;
         DtSdiAncFound Found;
@@ -367,7 +397,15 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         if (!ConfigureBands(Parser, &Frame->Geo))
             return DTAPI_E_OUT_OF_MEM;
         ImageJob Job = {Parser, Frame, Image};
-        DtJobRunner_Run(&Parser->Runner, ImageBand, &Job);
+        bool Scratch = true;
+        for (int b = 0; b < Parser->NumBands; b++)
+            Scratch = DtSdiLineScratch_Alloc(&Parser->Bands[b].Scratch, Frame) && Scratch;
+        if (Scratch)
+            DtJobRunner_Run(&Parser->Runner, ImageBand, &Job);
+        for (int b = 0; b < Parser->NumBands; b++)
+            DtSdiLineScratch_Free(&Parser->Bands[b].Scratch);
+        if (!Scratch)
+            return DTAPI_E_OUT_OF_MEM;
     }
     if (Audio != NULL)
         DtSdiAudio_Begin(Audio);
@@ -378,7 +416,12 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         Anc->NumLost = 0;
     }
     if (Audio != NULL || Anc != NULL)
+    {
+        if (!DtSdiLineScratch_Alloc(&Parser->Scratch, Frame))
+            return DTAPI_E_OUT_OF_MEM;
         ParseBlanking(Parser, Frame, Audio, Anc);
+        DtSdiLineScratch_Free(&Parser->Scratch);
+    }
 
     // A rate without a cadence has no place in one, whatever the control packet says.
     if (Audio != NULL && DtSdiAudio_CadenceLength(Frame->Geo.VidStd) == 1)

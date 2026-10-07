@@ -723,8 +723,8 @@ typedef struct DtSdiView DtSdiView;
 // which may be NULL, is set as by DtInpChannel_ReadFrame2().
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_IN_USE           a frame is lent and has not been given back, or a read on
-//                            another thread has not returned
+//   DTAPI_E_IN_USE           a frame is lent and has not been given back, Frame holds a
+//                            frame lent, or a read on another thread has not returned
 //   DTAPI_E_INVALID_MODE     the receive mode is not 10 bits a symbol
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
 //   DTAPI_E_NOT_SDI_MODE     the port receives ASI
@@ -877,7 +877,8 @@ CDTAPI_API DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer,
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
 //   DTAPI_E_INVALID_SIZE     *FrameSize is negative or not a multiple of 4
 //   DTAPI_E_INVALID_BUF      FrameBuffer is NULL, or its address not a multiple of 4
-//   DTAPI_E_IN_USE           a read on another thread has not returned
+//   DTAPI_E_IN_USE           a read on another thread has not returned, or
+//                            DtInpChannel_AcquireFrame() lent a frame not given back
 //   DTAPI_E_NOT_SDI_MODE     the port receives ASI
 //   DTAPI_E_TIMEOUT          no frame arrived in time
 //   DTAPI_E_CANCELLED        the channel was detached meanwhile
@@ -893,7 +894,9 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
                                                int TimeOut, DtTimeOfDay* ArrivalTime);
 
 // Gives the frame that Frame describes back to the card, so that it can use that part of
-// its buffer again. Frame then describes no frame.
+// its buffer again. Frame then describes no frame. Detaching the channel, a new I/O
+// standard, and setting the receive control or clearing the FIFO take a lent frame back
+// too, and Frame describes no frame after them.
 //
 // Returns DTAPI_OK, or DTAPI_E_INVALID_ARG when Frame describes no frame this channel
 // lent.

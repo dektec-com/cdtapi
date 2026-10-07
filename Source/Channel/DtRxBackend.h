@@ -102,6 +102,16 @@ struct DtRxBackend
     DtapiResult (*DeliverFrame)(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
                                 bool* Delivered);
 
+    // AcquireFrame and ReleaseFrame. NULL gives DTAPI_E_NOT_SDI_MODE.
+    // - LendFrame points View at the next frame where it lies, held by Holder, if one is
+    //   there, and sets *Lent; DTAPI_E_INVALID_MODE when the receive mode is not 10 bits.
+    // - ReturnFrame gives the lent frame back, and View describes no frame.
+    // Detaching, a new I/O standard and clearing the FIFO make the lent view describe no
+    // frame too.
+    DtapiResult (*LendFrame)(DtRx* Rx, DtSdiView* View, void* Holder,
+                             DtTimeOfDay* ArrivalTime, bool* Lent);
+    DtapiResult (*ReturnFrame)(DtRx* Rx, DtSdiView* View);
+
     // How a read waits while the channel receives:
     // - PrepareWait fills *Wait, with the lock held.
     // - Wait waits up to Ms milliseconds, without the lock.

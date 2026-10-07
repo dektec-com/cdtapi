@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // A view of a raw frame is the frame's address and its geometry: where each line starts
-// follows from the line's index, as every raw line has the same number of bits. The
-// payload ID is read in plan 0032's step C, with the other ancillary data.
+// follows from the line's index, as every raw line has the same number of bits. A view
+// of a frame in a ring finds a line's coded lines from its index the same way, in the
+// ring or, for the one line that runs across its end, in the view's copy.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,6 +26,107 @@
 #define DT_SDIVIEW_MAX_HANC_WORDS 4096
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodedLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The coded lines of raw line LineIndex of a frame in a ring, in one piece.
+//
+static const uint8_t* CodedLine(const DtSdiView* View, int LineIndex)
+{
+    if (LineIndex == View->WrapLineIndex)
+        return View->WrapLine;
+    const size_t Offset =
+        (View->LinesStart + (size_t)LineIndex * View->CodedBytesPerLine) % View->RingSize;
+    return View->RingBase + Offset;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLineScratch_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool DtSdiLineScratch_Alloc(DtSdiLineScratch* Scratch, const DtSdiView* View)
+{
+    memset(Scratch, 0, sizeof(*Scratch));
+    if (View->RingBase == NULL || !View->Geo.Is4k)
+        return true;
+    const DtSdiFrameLayout* Layout = &View->Geo.Layout;
+    Scratch->Raw =
+        (uint8_t*)DtAlloc_Malloc(DtSdiFrame_RawLineNumBits(Layout, 10) / 8 + 16);
+    Scratch->Symbols =
+        (uint16_t*)DtAlloc_Malloc(DtSdiFrame_NumBandSymbols(Layout) * sizeof(uint16_t));
+    if (Scratch->Raw != NULL && Scratch->Symbols != NULL)
+        return true;
+    DtSdiLineScratch_Free(Scratch);
+    return false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLineScratch_Free -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch)
+{
+    DtAlloc_Free(Scratch->Raw);
+    DtAlloc_Free(Scratch->Symbols);
+    memset(Scratch, 0, sizeof(*Scratch));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_Forget -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiView_Forget(DtSdiView* View)
+{
+    View->HasFrame = false;
+    View->Holder = NULL;
+    View->RingBase = NULL;
+    View->WrapLineIndex = -1;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_LinkHanc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The first coded line of a 2160p line holds the horizontal blanking of links 1 and 2,
+// the second that of links 3 and 4, each section padded to the alignment.
+//
+DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link)
+{
+    const DtSdiFrameLayout* Layout = &View->Geo.Layout;
+    const uint8_t* Coded = CodedLine(View, LineIndex);
+    if (Link > 2)
+        Coded += Layout->RxStride;
+    DtSdiSymbolPtr Ptr;
+    Ptr.Byte = Coded + (size_t)((Link - 1) & 1) * (size_t)Layout->SectionBytesHanc;
+    Ptr.Bit = 0;
+    Ptr.BitsPerSymbol = 10;
+    return Ptr;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_LineSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Up to 3G a coded line is the line's horizontal blanking and then its active part,
+// each a section that starts on a byte, its symbols as a raw line has them.
+//
+DtSdiSymbolPtr DtSdiView_LineSymbols(const DtSdiView* View, int LineIndex, size_t Symbol,
+                                     DtSdiLineScratch* Scratch)
+{
+    if (View->RingBase == NULL)
+        return DtSdiView_RawSymbols(View, LineIndex, Symbol);
+
+    const DtSdiFrameLayout* Layout = &View->Geo.Layout;
+    const uint8_t* Coded = CodedLine(View, LineIndex);
+    const uint8_t* Section = Coded;
+    size_t Within = Symbol;
+    if (Layout->Is4k)
+    {
+        DtSdiFrame_DecodeLine4k(Layout, 10, Coded, Coded + Layout->RxStride, LineIndex,
+                                Scratch->Raw, Scratch->Symbols);
+        Section = Scratch->Raw;
+    }
+    else if (Symbol >= (size_t)Layout->LineNumSymsHanc)
+    {
+        Section = Coded + Layout->SectionBytesHanc;
+        Within = Symbol - (size_t)Layout->LineNumSymsHanc;
+    }
+    DtSdiSymbolPtr Ptr;
+    Ptr.Byte = Section + Within * 10 / 8;
+    Ptr.Bit = (int)(Within * 10 % 8);
+    Ptr.BitsPerSymbol = 10;
+    return Ptr;
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_RawSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -49,6 +151,7 @@ DtSdiView* DtSdiView_Alloc(void)
     if (View == NULL)
         return NULL;
     memset(View, 0, sizeof(*View));
+    View->WrapLineIndex = -1;
     return View;
 }
 
@@ -56,6 +159,9 @@ DtSdiView* DtSdiView_Alloc(void)
 //
 void DtSdiView_Free(DtSdiView* View)
 {
+    if (View == NULL)
+        return;
+    DtAlloc_Free(View->WrapLine);
     DtAlloc_Free(View);
 }
 
@@ -84,8 +190,8 @@ DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
     if (View->Geo.Is4k)
         return DTAPI_E_NOT_SUPPORTED;
 
-    *Symbols = DtSdiView_RawSymbols(View, DtSdiGeometry_RawLine(&View->Geo, Line),
-                                    (size_t)View->Geo.Layout.LineNumSymsHanc);
+    *Symbols = DtSdiView_LineSymbols(View, DtSdiGeometry_RawLine(&View->Geo, Line),
+                                     (size_t)View->Geo.Layout.LineNumSymsHanc, NULL);
     return DTAPI_OK;
 }
 
@@ -109,7 +215,8 @@ DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd, int* BitsPer
 // Looks for the payload ID in the horizontal blanking of the Y stream of link 1 of line
 // LineIndex, and sets *PayloadId to its four bytes when it is there.
 //
-static bool FindPayloadId(const DtSdiView* View, int LineIndex, uint32_t* PayloadId)
+static bool FindPayloadId(const DtSdiView* View, int LineIndex, DtSdiLineScratch* Scratch,
+                          uint32_t* PayloadId)
 {
     const DtSdiGeometry* Geo = &View->Geo;
     const int Stream = Geo->NumStreams == 1 ? 0 : 1;
@@ -118,7 +225,7 @@ static bool FindPayloadId(const DtSdiView* View, int LineIndex, uint32_t* Payloa
     if (Words > DT_SDIVIEW_MAX_HANC_WORDS)
         return false;
 
-    const DtSdiSymbolPtr Line = DtSdiView_RawSymbols(View, LineIndex, 0);
+    const DtSdiSymbolPtr Line = DtSdiView_LineSymbols(View, LineIndex, 0, Scratch);
     for (int k = 0; k < Words; k++)
     {
         const size_t Symbol = (size_t)Geo->StreamFirst[Stream] +
@@ -157,17 +264,17 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
     if (!View->HasFrame)
         return DTAPI_E_STATE;
 
+    DtSdiLineScratch Scratch;
+    if (!DtSdiLineScratch_Alloc(&Scratch, View))
+        return DTAPI_E_OUT_OF_MEM;
     const DtSdiGeometry* Geo = &View->Geo;
     const int Standard = Geo->SwitchingIndex + 3;
-    if (FindPayloadId(View, Standard, PayloadId))
-        return DTAPI_OK;
+    bool Found = FindPayloadId(View, Standard, &Scratch, PayloadId);
     const int FirstActive = Geo->Is4k ? Geo->PictureFirstIndex : Geo->FieldFirstIndex[0];
-    for (int Line = 0; Line < FirstActive; Line++)
-    {
-        if (Line != Standard && FindPayloadId(View, Line, PayloadId))
-            return DTAPI_OK;
-    }
-    return DTAPI_E_NOT_FOUND;
+    for (int Line = 0; Line < FirstActive && !Found; Line++)
+        Found = Line != Standard && FindPayloadId(View, Line, &Scratch, PayloadId);
+    DtSdiLineScratch_Free(&Scratch);
+    return Found ? DTAPI_OK : DTAPI_E_NOT_FOUND;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_RawFrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -210,9 +317,67 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
 
     View->Geo = Geo;
     View->BitsPerSymbol = BitsPerSymbol;
+    View->RingBase = NULL;
+    View->WrapLineIndex = -1;
     View->Frame = (uint8_t*)Frame;
     View->FrameSize = Size;
     View->LineNumBits = DtSdiFrame_RawLineNumBits(&Geo.Layout, BitsPerSymbol);
+    View->HasFrame = true;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRingFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A frame's coded lines take less than the ring, so at most one of them runs across its
+// end.
+//
+DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
+                                   const uint8_t* RingBase, size_t RingSize,
+                                   size_t LinesStart, void* Holder)
+{
+    DtSdiView_Forget(View);
+    DtSdiGeometry Geo;
+    DtapiResult Result = DtSdiGeometry_Init(&Geo, Layout->VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
+    // The sections are padded to the card's alignment, not to the geometry's own.
+    Geo.Layout = *Layout;
+
+    const size_t Bytes = DtSdiFrame_RxCodedBytesPerLine(&Geo.Layout);
+    int Wrap = -1;
+    for (int Line = 0; Line < Geo.Layout.NumLines && Wrap < 0; Line++)
+    {
+        const size_t Offset = (LinesStart + (size_t)Line * Bytes) % RingSize;
+        if (Offset + Bytes > RingSize)
+            Wrap = Line;
+    }
+    if (Wrap >= 0)
+    {
+        if (View->WrapLineRoom < Bytes)
+        {
+            DtAlloc_Free(View->WrapLine);
+            View->WrapLine = (uint8_t*)DtAlloc_Malloc(Bytes);
+            View->WrapLineRoom = View->WrapLine == NULL ? 0 : Bytes;
+            if (View->WrapLine == NULL)
+                return DTAPI_E_OUT_OF_MEM;
+        }
+        const size_t Offset = (LinesStart + (size_t)Wrap * Bytes) % RingSize;
+        const size_t First = RingSize - Offset;
+        memcpy(View->WrapLine, RingBase + Offset, First);
+        memcpy(View->WrapLine + First, RingBase, Bytes - First);
+    }
+
+    View->Geo = Geo;
+    View->BitsPerSymbol = 10;
+    View->Frame = NULL;
+    View->FrameSize = 0;
+    View->LineNumBits = DtSdiFrame_RawLineNumBits(&Geo.Layout, 10);
+    View->RingBase = RingBase;
+    View->RingSize = RingSize;
+    View->LinesStart = LinesStart % RingSize;
+    View->CodedBytesPerLine = Bytes;
+    View->WrapLineIndex = Wrap;
+    View->Holder = Holder;
     View->HasFrame = true;
     return DTAPI_OK;
 }

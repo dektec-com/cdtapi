@@ -815,11 +815,13 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_AcquireFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// For now a stub: plan 0032 lends frames of the ring in its step F.
+// As DtInpChannel_ReadFrame2 reads, but the side lends the frame where it lies rather
+// than decoding it into a buffer.
 //
 DtapiResult DtInpChannel_AcquireFrame(DtInpChannel* InpChannel, DtSdiView* Frame,
                                       int TimeOut, DtTimeOfDay* ArrivalTime)
 {
+    uint64_t StartMs = OsTime_MonotonicMs();
     DtTimeOfDay Arrival = {0, 0};
 
     if (ArrivalTime != NULL)
@@ -830,14 +832,56 @@ DtapiResult DtInpChannel_AcquireFrame(DtInpChannel* InpChannel, DtSdiView* Frame
         return DTAPI_E_INVALID_TIMEOUT;
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
-    OsMutex_Unlock(InpChannel->Lock);
+    if (InpChannel->WaitingDetaches > 0)
+    {
+        OsMutex_Unlock(InpChannel->Lock);
+        return DTAPI_E_NOT_ATTACHED;
+    }
+    if (InpChannel->Reading || Frame->Holder != NULL)
+    {
+        OsMutex_Unlock(InpChannel->Lock);
+        return DTAPI_E_IN_USE;
+    }
     Frame->HasFrame = false;
-    return DTAPI_E_NOT_SUPPORTED;
+
+    DtapiResult Result = DTAPI_OK;
+    InpChannel->Reading = true;
+    while (Result == DTAPI_OK)
+    {
+        // While this call waited without the lock, another thread may have stopped the
+        // channel, changed its standard or receive mode, and started it again.
+        DtRx* Rx = InpChannel->Rx;
+        if (Rx->Backend->LendFrame == NULL)
+        {
+            Result = DTAPI_E_NOT_SDI_MODE;
+            break;
+        }
+        if (Rx->RxControl != DTAPI_RXCTRL_IDLE)
+        {
+            bool Lent = false;
+            Result = Rx->Backend->LendFrame(Rx, Frame, InpChannel, &Arrival, &Lent);
+            if (Result != DTAPI_OK || Lent)
+                break;
+        }
+
+        uint64_t ElapsedMs = OsTime_MonotonicMs() - StartMs;
+        if (TimeOut != -1 && ElapsedMs >= (uint64_t)TimeOut)
+        {
+            Result = DTAPI_E_TIMEOUT;
+            break;
+        }
+        Result = WaitForData(InpChannel,
+                             TimeOut == -1 ? -1 : (int64_t)TimeOut - (int64_t)ElapsedMs);
+    }
+    InpChannel->Reading = false;
+
+    if (ArrivalTime != NULL && Result == DTAPI_OK)
+        *ArrivalTime = Arrival;
+    OsMutex_Unlock(InpChannel->Lock);
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ReleaseFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// For now a stub, as DtInpChannel_AcquireFrame is: no frame is ever lent.
 //
 DtapiResult DtInpChannel_ReleaseFrame(DtInpChannel* InpChannel, DtSdiView* Frame)
 {
@@ -845,8 +889,13 @@ DtapiResult DtInpChannel_ReleaseFrame(DtInpChannel* InpChannel, DtSdiView* Frame
         return DTAPI_E_INVALID_ARG;
     if (LockAttached(InpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
+    DtRx* Rx = InpChannel->Rx;
+    const DtapiResult Result =
+        Frame->Holder == InpChannel && Rx->Backend->ReturnFrame != NULL
+            ? Rx->Backend->ReturnFrame(Rx, Frame)
+            : DTAPI_E_INVALID_ARG;
     OsMutex_Unlock(InpChannel->Lock);
-    return Frame->Holder == InpChannel ? DTAPI_OK : DTAPI_E_INVALID_ARG;
+    return Result;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ASI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
