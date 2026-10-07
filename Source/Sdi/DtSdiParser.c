@@ -4,8 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// For now a stub: the parser exists and keeps its settings, and parsing returns
-// DTAPI_E_NOT_SUPPORTED; plan 0032 fills it in.
+// The parser reads a frame line by line: each line's symbols into a buffer of its own,
+// one value a word, and from there into the image. This is the portable version, the
+// reference that the vector versions of plan 0032's step F must equal. Audio and
+// ancillary data follow in step C, and the worker pool in step F.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -14,17 +16,109 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
+#include "DtSdiImage.h"   // Writing the image.
 #include "DtSdiView.h"    // The frame a call reads or writes.
 #include "cdtapi_sdi.h"   // Interface being implemented.
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- State -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The widest image, 2160p, in pixels: a line has twice as many symbols.
+#define DT_SDIPARSER_MAX_WIDTH 3840
+
+// The symbols of the active parts of one raw 2160p line: the four links' 1920 pixels.
+#define DT_SDIPARSER_MAX_RAW_ACTIVE (4 * DT_SDIPARSER_MAX_WIDTH)
+
+// Where each link's words lie in a group of eight words of a raw 2160p line: the C words
+// of links 4, 2, 3 and 1, then their Y words. g_LinkPlace[L] is the place of link L + 1.
+static const int g_LinkPlace[4] = {3, 1, 2, 0};
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 struct DtSdiParser
 {
     bool AudioChecks;           // Check the BCH code and checksum of the audio packets
     DtSdiAncFilter* AncFilters; // The packets to list; NULL for the default
     int NumAncFilters;
+
+    // The symbols of the lines being read: two image lines, as a 2160p line holds two,
+    // and the active parts of a raw 2160p line.
+    uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
+    uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
 };
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Reads Count symbols from where Ptr points into Out, one value a word.
+//
+static void ReadSymbols(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
+{
+    for (size_t i = 0; i < Count; i++)
+        Out[i] = DtSdiSymbolPtr_Get(Ptr, i);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes the image of a frame up to 3G into Image, line by line.
+//
+static void ParseImage(DtSdiParser* Parser, const DtSdiView* Frame,
+                       const DtSdiImage* Image)
+{
+    const DtSdiGeometry* Geo = &Frame->Geo;
+    const size_t NumSymbols = 2 * (size_t)Geo->Width;
+
+    for (int y = 0; y < Geo->Height; y++)
+    {
+        const DtSdiSymbolPtr Active = DtSdiView_RawSymbols(
+            Frame, DtSdiGeometry_RawLine(Geo, y), (size_t)Geo->Layout.LineNumSymsHanc);
+        ReadSymbols(&Active, NumSymbols, Parser->Lines[0]);
+        DtSdiImage_PutLine(Image, Geo, y, Parser->Lines[0]);
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes the image of a 2160p frame into Image, two lines from each raw line of the
+// picture. In a raw line, the active parts of the four links follow their horizontal
+// blanking, word by word: word n of each link's C stream and then of its Y stream, in
+// groups of eight. Pixel x of a link is the C and Y word n = x of its active part. Link
+// 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and 4 those of
+// the lower one.
+//
+static void ParseImage4k(DtSdiParser* Parser, const DtSdiView* Frame,
+                         const DtSdiImage* Image)
+{
+    const DtSdiGeometry* Geo = &Frame->Geo;
+    const size_t HancWords = (size_t)Geo->Layout.SectionNumSymsHanc / 2;
+    const int LinkWidth = Geo->LinkWidth;
+
+    for (int k = 0; k < Geo->Height / 2; k++)
+    {
+        const DtSdiSymbolPtr Active =
+            DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
+        ReadSymbols(&Active, 8 * (size_t)LinkWidth, Parser->RawActive);
+
+        for (int Link = 0; Link < 4; Link++)
+        {
+            uint16_t* Line = Parser->Lines[Link >> 1];
+            const int Place = g_LinkPlace[Link];
+            for (int x = 0; x < LinkWidth; x++)
+            {
+                // Pixel x of the link is pixel X of the image line: its pixel pair
+                // x / 2 is the image's pair 2 * (x / 2) + 0 for links 1 and 3, + 1 for
+                // links 2 and 4.
+                const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
+                Line[2 * X] = Parser->RawActive[8 * x + Place];
+                Line[2 * X + 1] = Parser->RawActive[8 * x + 4 + Place];
+            }
+        }
+        DtSdiImage_PutLine(Image, Geo, 2 * k, Parser->Lines[0]);
+        DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Parser->Lines[1]);
+    }
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Parser +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -59,17 +153,33 @@ void DtSdiParser_Freep(DtSdiParser** Parser)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The arguments are checked before anything is written. Audio and ancillary data are
+// not read yet: they come with plan 0032's step C.
+//
 DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
                               DtSdiImage* Image, DtSdiAudio* Audio, DtSdiAncData* Anc)
 {
-    (void)Image;
-    (void)Audio;
-    (void)Anc;
     if (Parser == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
     if (!Frame->HasFrame)
         return DTAPI_E_STATE;
-    return DTAPI_E_NOT_SUPPORTED;
+    if (Image != NULL)
+    {
+        DtapiResult Result = DtSdiImage_Check(Image, &Frame->Geo);
+        if (Result != DTAPI_OK)
+            return Result;
+    }
+    if (Audio != NULL || Anc != NULL)
+        return DTAPI_E_NOT_SUPPORTED;
+
+    if (Image != NULL)
+    {
+        if (Frame->Geo.Is4k)
+            ParseImage4k(Parser, Frame, Image);
+        else
+            ParseImage(Parser, Frame, Image);
+    }
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_SetAncFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

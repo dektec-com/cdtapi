@@ -642,7 +642,7 @@ DT_TEST(SdiCalls)
     DT_ASSERT(IsOneOf(DtSdiView_GetActiveLine(View, 0, &Line), DTAPI_OK, DTAPI_E_STATE));
     uint32_t PayloadId = 0;
     DT_ASSERT(IsOneOf(DtSdiView_GetPayloadId(View, &PayloadId), DTAPI_E_NOT_FOUND,
-                      DTAPI_E_STATE));
+                      DTAPI_E_NOT_SUPPORTED));
 
     int Width = 0;
     int Height = 0;
@@ -680,7 +680,7 @@ DT_TEST(SdiCalls)
     DT_ASSERT(IsOneOf(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0), DTAPI_OK,
                       DTAPI_E_NOT_SUPPORTED));
     DT_ASSERT(IsOneOf(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL), DTAPI_OK,
-                      DTAPI_E_STATE));
+                      DTAPI_E_NOT_SUPPORTED));
     DtSdiBuilder_Freep(&Builder);
     DT_ASSERT(Builder == NULL);
     DtSdiBuilder_Free(NULL);

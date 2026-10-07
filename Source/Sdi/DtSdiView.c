@@ -4,8 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// For now partly a stub: a view can be created and freed and tells its format, and the
-// rest returns DTAPI_E_NOT_SUPPORTED; plan 0032 fills it in.
+// A view of a raw frame is the frame's address and its geometry: where each line starts
+// follows from the line's index, as every raw line has the same number of bits. The
+// payload ID is read in plan 0032's step C, with the other ancillary data.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -15,6 +16,23 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "DtSdiView.h"    // Interface being implemented.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_RawSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtSdiSymbolPtr DtSdiView_RawSymbols(const DtSdiView* View, int LineIndex, size_t Symbol)
+{
+    const size_t FirstBit =
+        (size_t)LineIndex * View->LineNumBits + Symbol * (size_t)View->BitsPerSymbol;
+    DtSdiSymbolPtr Ptr;
+    Ptr.Byte = View->Frame + FirstBit / 8;
+    Ptr.Bit = (int)(FirstBit % 8);
+    Ptr.BitsPerSymbol = View->BitsPerSymbol;
+    return Ptr;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= API +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -49,13 +67,19 @@ void DtSdiView_Freep(DtSdiView** View)
 DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
                                     DtSdiSymbolPtr* Symbols)
 {
-    (void)Line;
     if (View == NULL || Symbols == NULL)
         return DTAPI_E_INVALID_ARG;
     memset(Symbols, 0, sizeof(*Symbols));
     if (!View->HasFrame)
         return DTAPI_E_STATE;
-    return DTAPI_E_NOT_SUPPORTED;
+    if (Line < 0 || Line >= View->Geo.Height)
+        return DTAPI_E_INVALID_LINE;
+    if (View->Geo.Is4k)
+        return DTAPI_E_NOT_SUPPORTED;
+
+    *Symbols = DtSdiView_RawSymbols(View, DtSdiGeometry_RawLine(&View->Geo, Line),
+                                    (size_t)View->Geo.Layout.LineNumSymsHanc);
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetFormat -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -67,7 +91,7 @@ DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd, int* BitsPer
     if (!View->HasFrame)
         return DTAPI_E_STATE;
     if (VidStd != NULL)
-        *VidStd = View->VidStd;
+        *VidStd = View->Geo.VidStd;
     if (BitsPerSymbol != NULL)
         *BitsPerSymbol = View->BitsPerSymbol;
     return DTAPI_OK;
@@ -89,12 +113,18 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
 //
 DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol, size_t* Size)
 {
-    (void)VidStd;
-    (void)BitsPerSymbol;
     if (Size == NULL)
         return DTAPI_E_INVALID_ARG;
     *Size = 0;
-    return DTAPI_E_NOT_SUPPORTED;
+
+    DtSdiGeometry Geo;
+    DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (BitsPerSymbol != 10 && BitsPerSymbol != 16)
+        return DTAPI_E_INVALID_ARG;
+    *Size = DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol);
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRawFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -102,13 +132,26 @@ DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol, size_t* Size)
 DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int VidStd,
                                   int BitsPerSymbol)
 {
-    (void)Size;
-    (void)VidStd;
-    (void)BitsPerSymbol;
-    if (View == NULL || Frame == NULL)
+    if (View == NULL)
         return DTAPI_E_INVALID_ARG;
     if (View->Holder != NULL)
         return DTAPI_E_IN_USE;
     View->HasFrame = false;
-    return DTAPI_E_NOT_SUPPORTED;
+
+    DtSdiGeometry Geo;
+    DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (Frame == NULL || (BitsPerSymbol != 10 && BitsPerSymbol != 16))
+        return DTAPI_E_INVALID_ARG;
+    if (Size != DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol))
+        return DTAPI_E_INVALID_SIZE;
+
+    View->Geo = Geo;
+    View->BitsPerSymbol = BitsPerSymbol;
+    View->Frame = (uint8_t*)Frame;
+    View->FrameSize = Size;
+    View->LineNumBits = DtSdiFrame_RawLineNumBits(&Geo.Layout, BitsPerSymbol);
+    View->HasFrame = true;
+    return DTAPI_OK;
 }

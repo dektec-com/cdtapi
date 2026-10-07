@@ -14,7 +14,8 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "cdtapi_sdi.h" // The view.
+#include "DtSdiGeometry.h" // Where the image lies.
+#include "cdtapi_sdi.h"    // The view.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -22,10 +23,15 @@
 // for a frame in its receive buffer; DtSdiView_SetRawFrame for a raw frame.
 struct DtSdiView
 {
-    bool HasFrame;     // The view describes a frame
-    int VidStd;        // The frame's video standard, a DTAPI_VIDSTD_ code
-    int BitsPerSymbol; // 10 or 16
-    uint8_t* Frame;    // The raw frame; NULL for a frame of an input channel
-    size_t FrameSize;  // Bytes in Frame
-    void* Holder;      // The input channel that holds the frame; NULL for a raw frame
+    bool HasFrame;      // The view describes a frame
+    DtSdiGeometry Geo;  // The frame's standard and where its image lies
+    int BitsPerSymbol;  // 10 or 16
+    uint8_t* Frame;     // The raw frame; NULL for a frame of an input channel
+    size_t FrameSize;   // Bytes in Frame
+    size_t LineNumBits; // Bits of one raw line
+    void* Holder;       // The input channel that holds the frame; NULL for a raw frame
 };
+
+// Returns where symbol Symbol (from 0) of raw line LineIndex (from 0) of the frame View
+// describes lies. The view must describe a raw frame.
+DtSdiSymbolPtr DtSdiView_RawSymbols(const DtSdiView* View, int LineIndex, size_t Symbol);
