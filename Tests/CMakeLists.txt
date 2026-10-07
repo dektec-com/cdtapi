@@ -120,6 +120,19 @@ target_include_directories(BenchAvPixConv PRIVATE ${CMAKE_SOURCE_DIR}/Source
 target_link_libraries(BenchAvPixConv PRIVATE cdtapi)
 target_compile_options(BenchAvPixConv PRIVATE ${CDTAPI_WARN_FLAGS})
 
+# How fast the SDI parser takes frames apart, through the public API. A program to run by
+# hand, as BenchAvPixConv is.
+add_executable(BenchSdi Bench/BenchSdi.c)
+set_target_properties(BenchSdi PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+    FOLDER "Tests")
+target_include_directories(BenchSdi PRIVATE ${CMAKE_SOURCE_DIR}/Source
+    "${CMAKE_CURRENT_BINARY_DIR}/BenchBuild/$<CONFIG>")
+target_link_libraries(BenchSdi PRIVATE cdtapi)
+target_compile_options(BenchSdi PRIVATE ${CDTAPI_WARN_FLAGS})
+
 # The configuration and the compiler flags the library was built with, which the benchmark
 # prints: the speed of the portable conversions depends on how far the compiler vectorises
 # them.
