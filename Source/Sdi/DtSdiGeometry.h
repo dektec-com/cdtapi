@@ -40,12 +40,29 @@ typedef struct DtSdiGeometry
     int FieldNumLines[2];    // The active lines of each field
     int LinkWidth;           // 2160p: the pixels of one link's line
     int PictureFirstIndex;   // 2160p: the index of the first raw line of the picture
+
+    // The streams of a raw line, each a sequence of words: one in SD; C and Y in HD and
+    // 3G, the C word first; and C and Y of each of four links in 2160p. Word k of
+    // stream s is symbol StreamFirst[s] + k * NumStreams of the line.
+    int NumStreams;         // 1, 2 or 8
+    int StreamFirst[8];     // Where each stream's first word is
+    bool StreamIsChroma[8]; // The stream is a C stream, in HD and up
+    int StreamLink[8];      // The link the stream belongs to, from 1
+    int StreamEavWords;     // Words of EAV, line number and CRC at a stream's start
+    int StreamHancWords;    // Words of horizontal blanking, EAV and SAV included
+    int StreamSavWords;     // Words of SAV at the end of the horizontal blanking
+    int StreamActiveWords;  // Words of the active part
+    int SwitchingIndex;     // The index of field 1's switching line
 } DtSdiGeometry;
 
 // Fills *Geo for video standard VidStd. Returns DTAPI_OK, or DTAPI_E_INVALID_VIDSTD for a
 // code that is not a standard, and for a standard of 3G level B, which a channel does
 // not carry.
 DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd);
+
+// Returns whether the active part of raw line LineIndex is vertical blanking rather than
+// image.
+bool DtSdiGeometry_IsVanc(const DtSdiGeometry* Geo, int LineIndex);
 
 // Returns the index of the raw line that holds line ImageLine of the image, for a
 // standard that is not 2160p.

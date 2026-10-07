@@ -625,8 +625,819 @@ DT_TEST(Refusals)
     DT_ASSERT_EQ(NoPlanes, DTAPI_E_INVALID_ARG);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Ancillary packets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// SMPTE ST 291 puts a packet in one stream of a line: the single stream of SD, the C or
+// the Y stream of HD, or one of the C and Y streams of the four links of 2160p. A stream
+// starts with EAV, and in HD its line number and CRC, four or eight words; then the
+// horizontal blanking; then, on a blanking line, the active part.
+//
+
+// One stream of a line of Format: where its first word is and how far apart its words
+// are in the raw line.
+typedef struct TestStream
+{
+    int First;
+    int Step;
+} TestStream;
+
+// The stream of Format that is link Link's (from 1) C or Y stream.
+static TestStream StreamOf(const SdiFormat* Format, int Link, bool Chroma)
+{
+    static const int Place[4] = {3, 1, 2, 0};
+    if (Is4k(Format))
+        return (TestStream){Place[Link - 1] + (Chroma ? 0 : 4), 8};
+    if (Format->Lines <= 625)
+        return (TestStream){0, 1};
+    return (TestStream){Chroma ? 0 : 1, 2};
+}
+
+// The words of a stream's horizontal blanking, timing references included.
+static int StreamHancWords(const SdiFormat* Format)
+{
+    return (Format->Samples - Format->Active) * (Format->Lines <= 625 ? 2 : 1);
+}
+
+// The first word of a stream's horizontal blanking after EAV, line number and CRC.
+static int StreamHancStart(const SdiFormat* Format)
+{
+    return Format->Lines <= 625 ? 4 : 8;
+}
+
+// Writes Value as word Word of stream S of line Line (from 1).
+static void PutStreamWord(uint8_t* Frame, int Bits, const SdiFormat* Format, int Line,
+                          TestStream S, int Word, uint16_t Value)
+{
+    const size_t Symbol = (size_t)(Line - 1) * LineSymbols(Format) + (size_t)S.First +
+                          (size_t)Word * (size_t)S.Step;
+    PutSymbol(Frame, Bits, Symbol, Value);
+}
+
+// An 8-bit value with even parity in bit 8 and its inverse in bit 9.
+static uint16_t WithParity(uint8_t Value)
+{
+    int Ones = 0;
+    for (int b = 0; b < 8; b++)
+        Ones += (Value >> b) & 1;
+    const uint16_t Bit8 = (uint16_t)(Ones & 1);
+    return (uint16_t)(Value | Bit8 << 8 | (Bit8 ^ 1) << 9);
+}
+
+// Writes a packet into stream S of line Line, from word Word on: the flag, Did and Sdid
+// with parity, the count, Count words of Data, and the checksum, wrong when BadSum.
+// Returns the word after the packet.
+static int PutPacket(uint8_t* Frame, int Bits, const SdiFormat* Format, int Line,
+                     TestStream S, int Word, uint8_t Did, uint8_t Sdid,
+                     const uint16_t* Data, int Count, bool BadSum)
+{
+    uint16_t Words[263];
+    int n = 0;
+    Words[n++] = 0x000;
+    Words[n++] = 0x3FF;
+    Words[n++] = 0x3FF;
+    Words[n++] = WithParity(Did);
+    Words[n++] = WithParity(Sdid);
+    Words[n++] = WithParity((uint8_t)Count);
+    for (int i = 0; i < Count; i++)
+        Words[n++] = Data[i];
+    unsigned Sum = 0;
+    for (int i = 3; i < n; i++)
+        Sum += Words[i] & 0x1FF;
+    Sum = (Sum + (BadSum ? 1u : 0u)) & 0x1FF;
+    Words[n++] = (uint16_t)(Sum | (((Sum >> 8) & 1) ^ 1) << 9);
+    for (int i = 0; i < n; i++)
+        PutStreamWord(Frame, Bits, Format, Line, S, Word + i, Words[i]);
+    return Word + n;
+}
+
+// The packets of the test frames, and the order the parser lists them in.
+typedef struct TestPacket
+{
+    int Line;
+    bool InHanc;
+    int Link;
+    bool Chroma;
+    uint8_t Did;
+    uint8_t Sdid;
+    int Count;
+    bool BadSum;
+} TestPacket;
+
+// Writes Packets into a frame of Format, each at the start of its section, or after the
+// packet before it in the same section; and the payload ID 85 C5 00 01 on its line.
+static void PutPackets(uint8_t* Frame, int Bits, const SdiFormat* Format,
+                       const TestPacket* Packets, int NumPackets, int PayloadLine)
+{
+    uint16_t Data[255];
+    for (int i = 0; i < 255; i++)
+        Data[i] = (uint16_t)((i * 37 + 5) & 0x3FF);
+
+    int Next[2] = {0, 0}; // Where the next packet goes in the section just written
+    for (int p = 0; p < NumPackets; p++)
+    {
+        const TestPacket* P = &Packets[p];
+        const TestStream S = StreamOf(Format, P->Link, P->Chroma);
+        const bool SameSection = p > 0 && Packets[p - 1].Line == P->Line &&
+                                 Packets[p - 1].InHanc == P->InHanc &&
+                                 Packets[p - 1].Link == P->Link &&
+                                 Packets[p - 1].Chroma == P->Chroma;
+        int Word = P->InHanc ? StreamHancStart(Format) : StreamHancWords(Format);
+        if (SameSection)
+            Word = Next[P->InHanc];
+        Next[P->InHanc] = PutPacket(Frame, Bits, Format, P->Line, S, Word, P->Did,
+                                    P->Sdid, Data, P->Count, P->BadSum);
+    }
+
+    static const uint16_t Payload[4] = {0x85, 0xC5, 0x00, 0x01};
+    PutPacket(Frame, Bits, Format, PayloadLine, StreamOf(Format, 1, false),
+              StreamHancStart(Format), 0x41, 0x01, Payload, 4, false);
+}
+
+// Checks that Anc lists Expected[0] to Expected[NumExpected - 1], each with its words
+// when Anc has a word buffer. Returns NULL, or what differs.
+static const char* CheckPackets(const DtSdiAncData* Anc,
+                                const TestPacket* const* Expected, int NumExpected,
+                                char* Message, size_t Size)
+{
+    if (Anc->NumPackets != NumExpected)
+    {
+        snprintf(Message, Size, "%d packets listed, %d expected", Anc->NumPackets,
+                 NumExpected);
+        return Message;
+    }
+    for (int p = 0; p < NumExpected; p++)
+    {
+        const DtSdiAncPacket* Got = &Anc->Packets[p];
+        const TestPacket* Want = Expected[p];
+        const bool Same = Got->Line == Want->Line && Got->InHanc == Want->InHanc &&
+                          Got->VirtualInterface == Want->Link &&
+                          Got->OnChroma == Want->Chroma && Got->Did == Want->Did &&
+                          Got->SdidOrDbn == Want->Sdid && Got->NumWords == Want->Count &&
+                          Got->ChecksumOk == !Want->BadSum;
+        if (!Same)
+        {
+            snprintf(Message, Size, "packet %d (line %d, DID %02X) differs", p,
+                     Want->Line, Want->Did);
+            return Message;
+        }
+        for (int w = 0; Anc->Words != NULL && w < Got->NumWords; w++)
+        {
+            if (Got->Words[w] != (uint16_t)((w * 37 + 5) & 0x3FF))
+            {
+                snprintf(Message, Size, "packet %d: word %d differs", p, w);
+                return Message;
+            }
+        }
+        if (Anc->Words == NULL && Got->Words != NULL)
+            return "a packet has words without a word buffer";
+    }
+    return NULL;
+}
+
+// Room for the packets of the tests.
+#define TEST_MAX_PACKETS 16
+#define TEST_MAX_WORDS 4096
+
+typedef struct TestAnc
+{
+    DtSdiAncData Data;
+    DtSdiAncPacket Packets[TEST_MAX_PACKETS];
+    uint16_t Words[TEST_MAX_WORDS];
+} TestAnc;
+
+static void TestAnc_Init(TestAnc* T, int MaxPackets, int MaxWords, bool WithWords)
+{
+    memset(T, 0, sizeof(*T));
+    T->Data.Packets = T->Packets;
+    T->Data.MaxPackets = MaxPackets;
+    T->Data.Words = WithWords ? T->Words : NULL;
+    T->Data.MaxWords = MaxWords;
+}
+
+// The packets of the 1080i50 frame, in the order the parser lists them: line by line,
+// and in a line the horizontal blanking before the active part. An audio data packet,
+// an audio control packet and the payload ID are in the frame too, and listed only when
+// a filter names them.
+static const TestPacket g_Hd[] = {
+    {9, false, 1, false, 0x61, 0x01, 10, false},   // Captions, VANC, Y
+    {15, false, 1, true, 0x45, 0x05, 3, true},     // A bad checksum, VANC, C
+    {100, true, 1, true, 0x60, 0x60, 16, false},   // ATC, HANC, C
+    {100, true, 1, true, 0xE7, 0x01, 24, false},   // Audio data, group 1
+    {100, true, 1, false, 0xE3, 0x00, 11, false},  // Audio control, group 1
+    {1124, false, 1, false, 0x41, 0x05, 8, false}, // AFD, VANC of field 2's blanking
+};
+
+// Builds the 1080i50 frame with g_Hd's packets. Returns NULL when there is no memory.
+static uint8_t* BuildHdPackets(int Bits, size_t* Size)
+{
+    const SdiFormat* F = FindFormat("1080I50");
+    uint8_t* Frame = BuildFrame(F, Bits, Size);
+    if (Frame != NULL)
+        PutPackets(Frame, Bits, F, g_Hd, (int)(sizeof(g_Hd) / sizeof(g_Hd[0])), 10);
+    return Frame;
+}
+
+// Parses View with Filters and Anc, and checks the packets listed against Expected.
+static const char* ParseAndCheckAnc(DtSdiParser* Parser, DtSdiView* View,
+                                    const DtSdiAncFilter* Filters, int NumFilters,
+                                    TestAnc* Anc, DtapiResult Result,
+                                    const TestPacket* const* Expected, int NumExpected,
+                                    char* Message, size_t Size)
+{
+    if (DtSdiParser_SetAncFilter(Parser, Filters, NumFilters) != DTAPI_OK)
+        return "SetAncFilter refused the filters";
+    if (DtSdiParser_Parse(Parser, View, NULL, NULL, &Anc->Data) != Result)
+        return "Parse returned another result";
+    return CheckPackets(&Anc->Data, Expected, NumExpected, Message, Size);
+}
+
+// The packets of a 1080i50 frame: listed with their place, IDs, words and checksum, in
+// the frame's order; audio and the payload ID left out unless a filter names them.
+DT_TEST(AncPacketsHd)
+{
+    char Message[160];
+    size_t Size = 0;
+    uint8_t* Frame = BuildHdPackets(10, &Size);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    TestAnc* Anc = (TestAnc*)malloc(sizeof(TestAnc));
+    DT_ASSERT(Frame != NULL && View != NULL && Parser != NULL && Anc != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_1080I50, 10));
+
+    const TestPacket* Default[] = {&g_Hd[0], &g_Hd[1], &g_Hd[2], &g_Hd[5]};
+    const TestPacket* From11[] = {&g_Hd[1], &g_Hd[2], &g_Hd[3], &g_Hd[4], &g_Hd[5]};
+    const TestPacket* Captions[] = {&g_Hd[0]};
+    const TestPacket* HancFrom90[] = {&g_Hd[2], &g_Hd[3], &g_Hd[4]};
+    const TestPacket* FirstTwo[] = {&g_Hd[0], &g_Hd[1]};
+
+    DtSdiAncFilter Any;
+    memset(&Any, 0, sizeof(Any));
+    Any.AnyDid = true;
+    Any.Space = DT_SDI_ANC_SPACE_BOTH;
+    Any.FirstLine = 11; // After the payload ID, whose words are its own
+    DtSdiAncFilter Cap = {false, 0x61, false, 0x01, DT_SDI_ANC_SPACE_VANC, 0, 0};
+    DtSdiAncFilter Hanc = {true, 0, false, 0, DT_SDI_ANC_SPACE_HANC, 90, 200};
+
+    const char* Failure = NULL;
+    uint32_t PayloadId = 0;
+    TestAnc_Init(Anc, TEST_MAX_PACKETS, TEST_MAX_WORDS, true);
+    Failure = ParseAndCheckAnc(Parser, View, NULL, 0, Anc, DTAPI_OK, Default, 4, Message,
+                               sizeof(Message));
+    if (Failure == NULL)
+        Failure = ParseAndCheckAnc(Parser, View, &Any, 1, Anc, DTAPI_OK, From11, 5,
+                                   Message, sizeof(Message));
+    if (Failure == NULL)
+        Failure = ParseAndCheckAnc(Parser, View, &Cap, 1, Anc, DTAPI_OK, Captions, 1,
+                                   Message, sizeof(Message));
+    if (Failure == NULL)
+        Failure = ParseAndCheckAnc(Parser, View, &Hanc, 1, Anc, DTAPI_OK, HancFrom90, 3,
+                                   Message, sizeof(Message));
+    if (Failure == NULL)
+    {
+        // Without a word buffer: the packets are listed, their words not copied.
+        TestAnc_Init(Anc, TEST_MAX_PACKETS, 0, false);
+        Failure = ParseAndCheckAnc(Parser, View, NULL, 0, Anc, DTAPI_OK, Default, 4,
+                                   Message, sizeof(Message));
+    }
+    if (Failure == NULL)
+    {
+        // Room for two packets: the other two are lost, and the call says so.
+        TestAnc_Init(Anc, 2, TEST_MAX_WORDS, true);
+        Failure = ParseAndCheckAnc(Parser, View, NULL, 0, Anc, DTAPI_E_BUF_TOO_SMALL,
+                                   FirstTwo, 2, Message, sizeof(Message));
+        if (Failure == NULL && Anc->Data.NumLost != 2)
+            Failure = "NumLost is not 2";
+    }
+    if (Failure == NULL)
+    {
+        // Room for the words of the first packet only: the next fits, as it has three.
+        TestAnc_Init(Anc, TEST_MAX_PACKETS, 13, true);
+        Failure = ParseAndCheckAnc(Parser, View, NULL, 0, Anc, DTAPI_E_BUF_TOO_SMALL,
+                                   FirstTwo, 2, Message, sizeof(Message));
+    }
+    const DtapiResult Payload = DtSdiView_GetPayloadId(View, &PayloadId);
+
+    free(Anc);
+    DtSdiParser_Free(Parser);
+    DtSdiView_Free(View);
+    free(Frame);
+    if (Failure != NULL)
+        DT_FAIL("%s", Failure);
+    DT_ASSERT_OK(Payload);
+    DT_ASSERT_EQ(PayloadId, 0x85C50001u);
+}
+
+// The image is written in full when the packets do not all fit.
+DT_TEST(ImageWhenPacketsAreLost)
+{
+    char Message[128];
+    size_t Size = 0;
+    uint8_t* Frame = BuildHdPackets(10, &Size);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    TestAnc* Anc = (TestAnc*)malloc(sizeof(TestAnc));
+    TestImage T;
+    DT_ASSERT(Frame != NULL && View != NULL && Parser != NULL && Anc != NULL);
+    DT_ASSERT(TestImage_Alloc(&T, DTAPI_VIDSTD_1080I50, DT_SDI_PIXFMT_YUV422P_10B));
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_1080I50, 10));
+    TestAnc_Init(Anc, 1, TEST_MAX_WORDS, true);
+
+    const DtapiResult Result =
+        DtSdiParser_Parse(Parser, View, &T.Image, NULL, &Anc->Data);
+    const char* Failure = CheckImage(&T, Message, sizeof(Message));
+    const int Lost = Anc->Data.NumLost;
+
+    TestImage_Free(&T);
+    free(Anc);
+    DtSdiParser_Free(Parser);
+    DtSdiView_Free(View);
+    free(Frame);
+    DT_ASSERT_EQ(Result, DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(Lost, 3);
+    if (Failure != NULL)
+        DT_FAIL("%s", Failure);
+}
+
+// The packets of SD, in its one stream, and of 2160p, in the streams of each link; and
+// the payload ID of each.
+DT_TEST(AncPacketsSdAnd4k)
+{
+    static const TestPacket Sd[] = {
+        {10, false, 1, false, 0x61, 0x01, 6, false}, // VANC
+        {40, true, 1, false, 0x60, 0x60, 16, false}, // HANC
+    };
+    static const TestPacket Uhd[] = {
+        {10, false, 2, false, 0x61, 0x01, 6, false}, // VANC, link 2, Y
+        {40, true, 1, true, 0x60, 0x60, 16, false},  // HANC, link 1, C
+        {40, true, 4, false, 0x51, 0x02, 5, false},  // HANC, link 4, Y
+    };
+    static const struct
+    {
+        const char* Name;
+        int VidStd;
+        const TestPacket* Packets;
+        int NumPackets;
+        int PayloadLine;
+    } Cases[] = {
+        {"625I50", DTAPI_VIDSTD_625I50, Sd, 2, 9},
+        {"2160P50", DTAPI_VIDSTD_2160P50, Uhd, 3, 10},
+    };
+
+    char Message[160];
+    for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]); c++)
+    {
+        const SdiFormat* F = FindFormat(Cases[c].Name);
+        DT_ASSERT(F != NULL);
+        size_t Size = 0;
+        uint8_t* Frame = BuildFrame(F, 10, &Size);
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiParser* Parser = DtSdiParser_Alloc();
+        TestAnc* Anc = (TestAnc*)malloc(sizeof(TestAnc));
+        DT_ASSERT(Frame != NULL && View != NULL && Parser != NULL && Anc != NULL);
+        PutPackets(Frame, 10, F, Cases[c].Packets, Cases[c].NumPackets,
+                   Cases[c].PayloadLine);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, Cases[c].VidStd, 10));
+
+        const TestPacket* Expected[3];
+        for (int p = 0; p < Cases[c].NumPackets; p++)
+            Expected[p] = &Cases[c].Packets[p];
+        // SD has no C stream: its packets are never on chroma.
+        TestAnc_Init(Anc, TEST_MAX_PACKETS, TEST_MAX_WORDS, true);
+        const char* Failure =
+            ParseAndCheckAnc(Parser, View, NULL, 0, Anc, DTAPI_OK, Expected,
+                             Cases[c].NumPackets, Message, sizeof(Message));
+        uint32_t PayloadId = 0;
+        const DtapiResult Payload = DtSdiView_GetPayloadId(View, &PayloadId);
+
+        free(Anc);
+        DtSdiParser_Free(Parser);
+        DtSdiView_Free(View);
+        free(Frame);
+        if (Failure != NULL)
+            DT_FAIL("%s: %s", Cases[c].Name, Failure);
+        DT_ASSERT_OK(Payload);
+        DT_ASSERT_EQ(PayloadId, 0x85C50001u);
+    }
+}
+
+// A frame without a payload ID says so.
+DT_TEST(NoPayloadId)
+{
+    size_t Size = 0;
+    uint8_t* Frame = BuildFrame(FindFormat("720P50"), 10, &Size);
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(Frame != NULL && View != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_720P50, 10));
+    uint32_t PayloadId = 1;
+    const DtapiResult Result = DtSdiView_GetPayloadId(View, &PayloadId);
+    DtSdiView_Free(View);
+    free(Frame);
+    DT_ASSERT_EQ(Result, DTAPI_E_NOT_FOUND);
+    DT_ASSERT_EQ(PayloadId, 0);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Audio +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// The audio packets here follow SMPTE ST 299-1 and ST 272 word for word: a HD data
+// packet holds two clock words, four words for each of the group's channels and six
+// words of BCH code; an SD data packet holds subframes of three words.
+//
+
+// The 24 bits of audio of sample n of channel c (from 0).
+static uint32_t AudioValue(int c, int n)
+{
+    return ((uint32_t)c * 0x123457u + (uint32_t)n * 0x9E3779u) & 0xFFFFFF;
+}
+
+// The V bit of sample n of channel c: set for one sample of channel 3.
+static bool AudioInvalid(int c, int n)
+{
+    return c == 2 && n == 5;
+}
+
+// The AES3 subframe of sample n of channel c, in the layout of DT_SDI_AUDIO_AES3: Z at
+// the start of every block of 192 on channels 1 and 3 of a group, the audio, V, a U
+// and a C bit that change, and P.
+static uint32_t AudioSubframe(int c, int n)
+{
+    const uint32_t Z = (n % 192 == 0 && c % 2 == 0) ? 1u : 0u;
+    const uint32_t V = AudioInvalid(c, n) ? 1u : 0u;
+    const uint32_t U = (uint32_t)(n & 1);
+    const uint32_t C = (uint32_t)((n >> 1) & 1);
+    const uint32_t P = (uint32_t)((c + n) & 1);
+    return Z << 3 | AudioValue(c, n) << 4 | V << 28 | U << 29 | C << 30 | P << 31;
+}
+
+// The BCH code of ST 299-1 over the lower bytes of Count words.
+static uint64_t TestBch(const uint16_t* Words, int Count)
+{
+    uint64_t Bch = 0;
+    for (int i = 0; i < Count; i++)
+        Bch = Bch >> 8 ^ (((Words[i] ^ Bch) & 0xFF) * 0x10101010001ULL);
+    return Bch;
+}
+
+// Writes the HD data packet of sample n of group Group (from 0) into stream S of line
+// Line, from word Word on; with a wrong BCH code when BadBch. Returns the word after it.
+static int PutHdAudio(uint8_t* Frame, const SdiFormat* Format, int Line, TestStream S,
+                      int Word, int Group, int n, bool BadBch)
+{
+    uint16_t Data[24];
+    Data[0] = WithParity((uint8_t)n);
+    Data[1] = WithParity(0);
+    for (int c = 0; c < 4; c++)
+    {
+        const uint32_t Aes3 = AudioSubframe(4 * Group + c, n);
+        for (int b = 0; b < 4; b++)
+            Data[2 + 4 * c + b] = WithParity((uint8_t)(Aes3 >> (8 * b)));
+    }
+    // The code covers the flag, the IDs, the count and the first 18 user data words.
+    uint16_t Covered[24] = {0x000,
+                            0x3FF,
+                            0x3FF,
+                            WithParity((uint8_t)(0xE7 - Group)),
+                            WithParity((uint8_t)(n & 0xFF)),
+                            WithParity(24)};
+    for (int i = 0; i < 18; i++)
+        Covered[6 + i] = Data[i];
+    const uint64_t Bch = TestBch(Covered, 24) ^ (BadBch ? 1u : 0u);
+    for (int i = 0; i < 6; i++)
+        Data[18 + i] = WithParity((uint8_t)(Bch >> (8 * i)));
+    return PutPacket(Frame, 10, Format, Line, S, Word, (uint8_t)(0xE7 - Group),
+                     (uint8_t)(n & 0xFF), Data, 24, false);
+}
+
+// Builds a HD frame of Format with NumSamples samples of groups 1 and 2, spread over its
+// lines from line 1, two packets a line in the C stream; a control packet for group 1
+// with frame number FrameNumber in the Y stream of line 9; and a wrong BCH code in one
+// packet of group 2.
+static uint8_t* BuildHdAudio(const SdiFormat* Format, int NumSamples, int FrameNumber,
+                             size_t* Size)
+{
+    uint8_t* Frame = BuildFrame(Format, 10, Size);
+    if (Frame == NULL)
+        return NULL;
+    const TestStream C = StreamOf(Format, 1, true);
+    for (int n = 0; n < NumSamples; n++)
+    {
+        const int Line = 1 + n / 2 + (n / 2 >= 7 ? 2 : 0); // Not on lines 8 and 9
+        int Word = StreamHancStart(Format) + (n % 2) * 2 * 31;
+        Word = PutHdAudio(Frame, Format, Line, C, Word, 0, n, false);
+        PutHdAudio(Frame, Format, Line, C, Word, 1, n, n == 100);
+    }
+    uint16_t Control[11] = {WithParity((uint8_t)FrameNumber)};
+    for (int i = 1; i < 11; i++)
+        Control[i] = WithParity(0);
+    PutPacket(Frame, 10, Format, 9, StreamOf(Format, 1, false), StreamHancStart(Format),
+              0xE3, 0x00, Control, 11, false);
+    return Frame;
+}
+
+// Builds a 625-line frame with NumSamples samples of channels 1 and 2, the subframes of
+// ST 272 in packets of eight samples a channel, one packet a line from line 1.
+static uint8_t* BuildSdAudio(const SdiFormat* Format, int NumSamples, size_t* Size)
+{
+    uint8_t* Frame = BuildFrame(Format, 10, Size);
+    if (Frame == NULL)
+        return NULL;
+    const TestStream S = StreamOf(Format, 1, false);
+    for (int First = 0; First < NumSamples; First += 8)
+    {
+        uint16_t Data[48];
+        int Count = 0;
+        for (int n = First; n < First + 8 && n < NumSamples; n++)
+        {
+            for (int c = 0; c < 2; c++)
+            {
+                // The upper 20 of the 24 bits; Z, V, U, C and P as in the subframe.
+                const uint32_t Aes3 = AudioSubframe(c, n);
+                const uint32_t A = (Aes3 >> 8) & 0xFFFFF;
+                const uint32_t X = ((Aes3 >> 3) & 1) | (uint32_t)c << 1 | (A & 0x3F) << 3;
+                const uint32_t Y = (A >> 6) & 0x1FF;
+                const uint32_t Z = ((A >> 15) & 0x1F) | (Aes3 >> 28) << 5;
+                Data[Count++] = (uint16_t)(X | (((X >> 8) & 1) ^ 1) << 9);
+                Data[Count++] = (uint16_t)(Y | (((Y >> 8) & 1) ^ 1) << 9);
+                Data[Count++] = (uint16_t)(Z | (((Z >> 8) & 1) ^ 1) << 9);
+            }
+        }
+        PutPacket(Frame, 10, Format, 1 + First / 8, S, StreamHancStart(Format), 0xFF,
+                  (uint8_t)(First / 8), Data, Count, false);
+    }
+    return Frame;
+}
+
+// Room for a frame's samples of each channel, planar, and the channels set up for them.
+typedef struct TestAudio
+{
+    DtSdiAudio Audio;
+    uint32_t Samples[DT_SDI_AUDIO_MAX_CHANNELS][2048];
+} TestAudio;
+
+static void TestAudio_Init(TestAudio* T, DtSdiAudioFormat Format, int NumPairs)
+{
+    memset(T, 0, sizeof(*T));
+    for (int p = 0; p < NumPairs; p++)
+        T->Audio.Formats[p] = Format;
+    for (int c = 0; c < 2 * NumPairs; c++)
+    {
+        T->Audio.Channels[c].Samples = T->Samples[c];
+        T->Audio.Channels[c].Stride = 1;
+        T->Audio.Channels[c].MaxSamples = 2048;
+    }
+}
+
+// Checks Count samples of the first NumChannels channels: as subframes, or in PCM the
+// 24 or, when Twenty, 20 bits of audio at the top of 32. Returns NULL, or what differs.
+static const char* CheckAudio(const TestAudio* T, int NumChannels, int Count, bool Pcm,
+                              bool Twenty, char* Message, size_t Size)
+{
+    for (int c = 0; c < NumChannels; c++)
+    {
+        const DtSdiAudioChannel* C = &T->Audio.Channels[c];
+        if (C->NumSamples != Count || !C->Present)
+        {
+            snprintf(Message, Size, "channel %d: %d samples, %d expected", c + 1,
+                     C->NumSamples, Count);
+            return Message;
+        }
+        if (C->Invalid != (c == 2))
+        {
+            snprintf(Message, Size, "channel %d: Invalid is wrong", c + 1);
+            return Message;
+        }
+        for (int n = 0; n < Count; n++)
+        {
+            uint32_t Want = AudioSubframe(c, n);
+            if (Twenty)
+                Want &= ~0xF0u;
+            if (Pcm)
+                Want = (Want << 4) & 0xFFFFFF00u;
+            if (T->Samples[c][n] != Want)
+            {
+                snprintf(Message, Size, "channel %d, sample %d: %08X, %08X expected",
+                         c + 1, n, (unsigned)T->Samples[c][n], (unsigned)Want);
+                return Message;
+            }
+        }
+    }
+    for (int c = NumChannels; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        if (T->Audio.Channels[c].Present)
+            return "a channel without audio is present";
+    }
+    return NULL;
+}
+
+// HD audio at 25 and at 29.97 frames: PCM and AES3 subframes of two groups, the frame
+// number of the control packet, and with the checks on, the packet with a wrong BCH code
+// counted in its group.
+DT_TEST(AudioHd)
+{
+    static const struct
+    {
+        const char* Name;
+        int NumSamples;
+        int FrameNumber;
+    } Cases[] = {{"1080I50", 1920, 0}, {"1080I59_94", 1601, 2}}; // Place 2 of the cadence
+    char Message[160];
+    TestAudio* T = (TestAudio*)malloc(sizeof(TestAudio));
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(T != NULL && Parser != NULL && View != NULL);
+
+    const char* Failure = NULL;
+    int Errors[4] = {0};
+    int FrameNumbers[2] = {-1, -1};
+    for (size_t k = 0; k < sizeof(Cases) / sizeof(Cases[0]) && Failure == NULL; k++)
+    {
+        const SdiFormat* F = FindFormat(Cases[k].Name);
+        size_t Size = 0;
+        uint8_t* Frame =
+            BuildHdAudio(F, Cases[k].NumSamples, Cases[k].FrameNumber, &Size);
+        if (Frame == NULL ||
+            DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10) != DTAPI_OK)
+        {
+            Failure = "no frame";
+        }
+
+        // Subframes, then PCM; then the checks on, with nothing but audio wanted.
+        TestAudio_Init(T, DT_SDI_AUDIO_AES3, 4);
+        if (Failure == NULL &&
+            DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL) != DTAPI_OK)
+            Failure = "Parse failed";
+        if (Failure == NULL)
+            Failure = CheckAudio(T, 8, Cases[k].NumSamples, false, false, Message,
+                                 sizeof(Message));
+        FrameNumbers[k] = T->Audio.FrameNumber;
+        TestAudio_Init(T, DT_SDI_AUDIO_PCM, 4);
+        DtSdiParser_SetAudioChecks(Parser, true);
+        if (Failure == NULL &&
+            DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL) != DTAPI_OK)
+            Failure = "Parse failed";
+        if (Failure == NULL)
+            Failure = CheckAudio(T, 8, Cases[k].NumSamples, true, false, Message,
+                                 sizeof(Message));
+        for (int g = 0; g < 4; g++)
+            Errors[g] += T->Audio.NumPacketErrors[g];
+        DtSdiParser_SetAudioChecks(Parser, false);
+        free(Frame);
+    }
+
+    DtSdiView_Free(View);
+    DtSdiParser_Free(Parser);
+    free(T);
+    if (Failure != NULL)
+        DT_FAIL("%s", Failure);
+    DT_ASSERT_EQ(FrameNumbers[0], 0);
+    DT_ASSERT_EQ(FrameNumbers[1], 2);
+    DT_ASSERT_EQ(Errors[0], 0);
+    DT_ASSERT_EQ(Errors[1], 2); // One packet with a wrong code, in each of two frames
+    DT_ASSERT_EQ(Errors[2] + Errors[3], 0);
+}
+
+// SD audio of ST 272: 20 bits of audio in PCM and in subframes, with Z, V, U, C and P.
+DT_TEST(AudioSd)
+{
+    char Message[160];
+    const SdiFormat* F = FindFormat("625I50");
+    size_t Size = 0;
+    uint8_t* Frame = BuildSdAudio(F, 1920, &Size);
+    TestAudio* T = (TestAudio*)malloc(sizeof(TestAudio));
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(Frame != NULL && T != NULL && Parser != NULL && View != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
+
+    TestAudio_Init(T, DT_SDI_AUDIO_AES3, 1);
+    DtapiResult Result = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+    const char* Failure = Result != DTAPI_OK ? "Parse failed"
+                                             : CheckAudio(T, 2, 1920, false, true,
+                                                          Message, sizeof(Message));
+    if (Failure == NULL)
+    {
+        TestAudio_Init(T, DT_SDI_AUDIO_PCM, 1);
+        Result = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+        Failure = Result != DTAPI_OK
+                      ? "Parse failed"
+                      : CheckAudio(T, 2, 1920, true, true, Message, sizeof(Message));
+    }
+
+    DtSdiView_Free(View);
+    DtSdiParser_Free(Parser);
+    free(T);
+    free(Frame);
+    if (Failure != NULL)
+        DT_FAIL("%s", Failure);
+}
+
+// Audio buffers the parser refuses before it writes anything.
+DT_TEST(AudioRefusals)
+{
+    const SdiFormat* F = FindFormat("1080I59_94");
+    size_t Size = 0;
+    uint8_t* Frame = BuildFrame(F, 10, &Size);
+    TestAudio* T = (TestAudio*)malloc(sizeof(TestAudio));
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(Frame != NULL && T != NULL && Parser != NULL && View != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
+
+    int Most = 0;
+    const DtapiResult MaxResult = DtSdiAudio_MaxSamples(F->VidStd, &Most);
+    TestAudio_Init(T, DT_SDI_AUDIO_PCM, 1);
+    T->Audio.Channels[1].MaxSamples = 1601;
+    const DtapiResult Small = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+    TestAudio_Init(T, DT_SDI_AUDIO_PCM, 1);
+    T->Audio.Formats[0] = (DtSdiAudioFormat)7;
+    const DtapiResult Unknown = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+    TestAudio_Init(T, DT_SDI_AUDIO_PCM, 1);
+    T->Audio.Channels[0].Stride = -1;
+    const DtapiResult Backwards = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+    TestAudio_Init(T, DT_SDI_AUDIO_NONE, 1);
+    T->Audio.Channels[0].MaxSamples = 1; // Not wanted, so not checked
+    const DtapiResult NotWanted = DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL);
+
+    DtSdiView_Free(View);
+    DtSdiParser_Free(Parser);
+    free(T);
+    free(Frame);
+    DT_ASSERT_OK(MaxResult);
+    DT_ASSERT_EQ(Most, 1602);
+    DT_ASSERT_EQ(Small, DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(Unknown, DTAPI_E_INVALID_FORMAT);
+    DT_ASSERT_EQ(Backwards, DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(NotWanted);
+}
+
+// The most samples a frame holds, per frame rate.
+DT_TEST(MaxSamplesPerRate)
+{
+    static const struct
+    {
+        int VidStd;
+        int Most;
+    } Cases[] = {{DTAPI_VIDSTD_1080P23_98, 2002}, {DTAPI_VIDSTD_1080P24, 2000},
+                 {DTAPI_VIDSTD_1080I50, 1920},    {DTAPI_VIDSTD_525I59_94, 1602},
+                 {DTAPI_VIDSTD_720P50, 960},      {DTAPI_VIDSTD_720P59_94, 801},
+                 {DTAPI_VIDSTD_2160P60, 800}};
+    for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        int Most = 0;
+        DT_ASSERT_OK(DtSdiAudio_MaxSamples(Cases[i].VidStd, &Most));
+        DT_ASSERT_EQ(Most, Cases[i].Most);
+    }
+    int Most = 0;
+    DT_ASSERT_EQ(DtSdiAudio_MaxSamples(DTAPI_VIDSTD_1080P50B, &Most),
+                 DTAPI_E_INVALID_VIDSTD);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= FFmpeg's sdi muxer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The channels of the muxer's audio: group 1.
+#define MUXER_CHANNELS 4
+
+// Checks the audio the parser took from a frame against the next samples of Pcm, the
+// muxer's input: four channels of s32le, interleaved, of which the frame carries the
+// upper 24 bits, or in SD 20; Mask keeps those. Returns NULL, or what differs.
+static const char* CheckMuxerAudio(const TestAudio* A, FILE* Pcm, uint32_t Mask,
+                                   char* Message, size_t Size)
+{
+    const int Count = A->Audio.Channels[0].NumSamples;
+    for (int c = 0; c < MUXER_CHANNELS; c++)
+    {
+        if (!A->Audio.Channels[c].Present || A->Audio.Channels[c].NumSamples != Count)
+            return "the channels differ in their samples";
+    }
+    for (int g = 0; g < DT_SDI_AUDIO_MAX_CHANNELS / 4; g++)
+    {
+        if (A->Audio.NumPacketErrors[g] != 0)
+            return "a packet failed its checks";
+    }
+    for (int n = 0; n < Count; n++)
+    {
+        uint8_t Bytes[4 * MUXER_CHANNELS];
+        if (fread(Bytes, 1, sizeof(Bytes), Pcm) != sizeof(Bytes))
+            return "the .pcm file ends early";
+        for (int c = 0; c < MUXER_CHANNELS; c++)
+        {
+            const uint32_t Source =
+                (uint32_t)Bytes[4 * c] | (uint32_t)Bytes[4 * c + 1] << 8 |
+                (uint32_t)Bytes[4 * c + 2] << 16 | (uint32_t)Bytes[4 * c + 3] << 24;
+            if (A->Samples[c][n] != (Source & Mask))
+            {
+                snprintf(Message, Size, "channel %d, sample %d: %08X, %08X expected",
+                         c + 1, n, (unsigned)A->Samples[c][n], (unsigned)(Source & Mask));
+                return Message;
+            }
+        }
+    }
+    return NULL;
+}
+
 // Frames that FFmpeg's sdi muxer made, where CDTAPI_TEST_SDI_DIR names a directory of
-// them; see the top of this file.
+// them; see the top of this file. Where <Name>.pcm is there too, the frames carry its
+// audio, four channels, and the parser must take it out exactly, with every packet's BCH
+// code and checksum right.
 DT_TEST(FramesOfTheSdiMuxer)
 {
     const char* Dir = getenv("CDTAPI_TEST_SDI_DIR");
@@ -636,22 +1447,35 @@ DT_TEST(FramesOfTheSdiMuxer)
         return;
     }
 
+    char Message[160];
     int Checked = 0;
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
     {
         const SdiFormat* F = &g_SdiFormats[i];
-        char RawName[512];
-        char YuvName[512];
-        snprintf(RawName, sizeof(RawName), "%s/%s.raw", Dir, F->Name);
-        snprintf(YuvName, sizeof(YuvName), "%s/%s.yuv", Dir, F->Name);
-        FILE* Raw = fopen(RawName, "rb");
-        FILE* Yuv = fopen(YuvName, "rb");
+        char Name[512];
+        snprintf(Name, sizeof(Name), "%s/%s.raw", Dir, F->Name);
+        FILE* Raw = fopen(Name, "rb");
+        snprintf(Name, sizeof(Name), "%s/%s.yuv", Dir, F->Name);
+        FILE* Yuv = fopen(Name, "rb");
+        snprintf(Name, sizeof(Name), "%s/%s.pcm", Dir, F->Name);
+        FILE* Pcm = fopen(Name, "rb");
+        // In 2160p the muxer puts its audio in the C streams of links 4 and 2 rather
+        // than in link 1, where SMPTE ST 299-1 has it and the parser takes it from: its
+        // audio is not compared.
+        const bool AudioElsewhere = Pcm != NULL && Is4k(F);
+        if (AudioElsewhere)
+        {
+            fclose(Pcm);
+            Pcm = NULL;
+        }
         if (Raw == NULL || Yuv == NULL)
         {
             if (Raw != NULL)
                 fclose(Raw);
             if (Yuv != NULL)
                 fclose(Yuv);
+            if (Pcm != NULL)
+                fclose(Pcm);
             continue;
         }
 
@@ -662,7 +1486,9 @@ DT_TEST(FramesOfTheSdiMuxer)
         uint8_t* Frame = (uint8_t*)malloc(FrameSize);
         DtSdiView* View = DtSdiView_Alloc();
         DtSdiParser* Parser = DtSdiParser_Alloc();
+        TestAudio* A = Pcm != NULL ? (TestAudio*)malloc(sizeof(TestAudio)) : NULL;
         const bool Ready = Frame != NULL && View != NULL && Parser != NULL &&
+                           (Pcm == NULL || A != NULL) &&
                            TestImage_Alloc(&T, F->VidStd, DT_SDI_PIXFMT_YUV422P_10B);
         const size_t PlaneBytes[3] = {2 * (size_t)T.Width * (size_t)T.Height,
                                       (size_t)T.Width * (size_t)T.Height,
@@ -670,14 +1496,30 @@ DT_TEST(FramesOfTheSdiMuxer)
         uint8_t* Expected = Ready ? (uint8_t*)malloc(PlaneBytes[0]) : NULL;
         const char* Failure = Ready && Expected != NULL ? NULL : "out of memory";
         int NumFrames = 0;
+        int NumSamples = 0;
+        char Numbers[64] = "";
+        if (A != NULL)
+        {
+            TestAudio_Init(A, DT_SDI_AUDIO_PCM, MUXER_CHANNELS / 2);
+            DtSdiParser_SetAudioChecks(Parser, true);
+        }
 
         while (Failure == NULL && fread(Frame, 1, FrameSize, Raw) == FrameSize)
         {
             if (DtSdiView_SetRawFrame(View, Frame, FrameSize, F->VidStd, 10) !=
                     DTAPI_OK ||
-                DtSdiParser_Parse(Parser, View, &T.Image, NULL, NULL) != DTAPI_OK)
+                DtSdiParser_Parse(Parser, View, &T.Image, A != NULL ? &A->Audio : NULL,
+                                  NULL) != DTAPI_OK)
             {
                 Failure = "the frame was refused";
+                break;
+            }
+            // The muxer's payload ID names the standard's payload in its first byte.
+            uint32_t PayloadId = 0;
+            if (DtSdiView_GetPayloadId(View, &PayloadId) != DTAPI_OK ||
+                (int)(PayloadId >> 24) != F->Payload)
+            {
+                Failure = "the payload ID is missing or wrong";
                 break;
             }
             for (int p = 0; p < 3 && Failure == NULL; p++)
@@ -700,19 +1542,38 @@ DT_TEST(FramesOfTheSdiMuxer)
                     }
                 }
             }
+            if (Failure == NULL && A != NULL)
+            {
+                Failure =
+                    CheckMuxerAudio(A, Pcm, F->Lines <= 625 ? 0xFFFFF000u : 0xFFFFFF00u,
+                                    Message, sizeof(Message));
+                NumSamples += A->Audio.Channels[0].NumSamples;
+                const size_t Used = strlen(Numbers);
+                if (Used + 4 < sizeof(Numbers))
+                    snprintf(Numbers + Used, sizeof(Numbers) - Used, " %d",
+                             A->Audio.FrameNumber);
+            }
             NumFrames++;
         }
 
         free(Expected);
+        free(A);
         TestImage_Free(&T);
         DtSdiParser_Free(Parser);
         DtSdiView_Free(View);
         free(Frame);
         fclose(Raw);
         fclose(Yuv);
+        if (Pcm != NULL)
+            fclose(Pcm);
         if (Failure != NULL)
-            DT_FAIL("%s: %s", F->Name, Failure);
-        printf("    %s: %d frames\n", F->Name, NumFrames);
+            DT_FAIL("%s: frame %d: %s", F->Name, NumFrames, Failure);
+        if (Pcm != NULL)
+            printf("    %s: %d frames, %d samples a channel, frame numbers%s\n", F->Name,
+                   NumFrames, NumSamples, Numbers);
+        else
+            printf("    %s: %d frames%s\n", F->Name, NumFrames,
+                   AudioElsewhere ? ", its audio on the wrong link" : "");
         Checked++;
     }
     printf("    %d standards checked\n", Checked);
@@ -721,4 +1582,7 @@ DT_TEST(FramesOfTheSdiMuxer)
 DT_TEST_MAIN("SdiParser", DT_RUN(SizesEveryStandard), DT_RUN(LeastStrides),
              DT_RUN(ImageEveryStandard), DT_RUN(EveryPixelFormat), DT_RUN(Image4k),
              DT_RUN(ActiveLinesWhereTheyLie), DT_RUN(Refusals),
-             DT_RUN(FramesOfTheSdiMuxer))
+             DT_RUN(FramesOfTheSdiMuxer), DT_RUN(AncPacketsHd),
+             DT_RUN(ImageWhenPacketsAreLost), DT_RUN(AncPacketsSdAnd4k),
+             DT_RUN(NoPayloadId), DT_RUN(AudioHd), DT_RUN(AudioSd), DT_RUN(AudioRefusals),
+             DT_RUN(MaxSamplesPerRate))

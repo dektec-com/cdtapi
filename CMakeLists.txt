@@ -113,6 +113,7 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimSdiTx.c
     Source/OAL/Sim/SimService.c
     Source/OAL/Sim/SimVpd.c
+    Source/Sdi/DtSdiAnc.c
     Source/Sdi/DtSdiAudio.c
     Source/Sdi/DtSdiBuilder.c
     Source/Sdi/DtSdiGeometry.c

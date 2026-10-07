@@ -10,9 +10,9 @@
 // that is, and the millions of cycles a frame where the system says what clock it runs
 // at: the number that carries to another machine.
 //
-// The frame's content does not matter to the image's speed, so it is noise. Plan 0032
-// adds the parser's audio and ancillary data, the builder, the vector versions and the
-// worker pool as they come.
+// The frame's content does not matter to the image's speed, so it is noise. A second
+// table measures the walk over the blanking for audio and ancillary packets. Plan 0032
+// adds the builder, the vector versions and the worker pool as they come.
 //
 // Not a test: it asserts nothing about time.
 //
@@ -117,11 +117,12 @@ static void FreeImage(DtSdiImage* Image)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Measure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Parses View into Image for Seconds, and returns the milliseconds a frame took, or a
-// negative number when the parser refused.
+// Parses View into Image, Audio and Anc, any of which may be NULL, for Seconds, and
+// returns the milliseconds a frame took, or a negative number when the parser refused.
+// Packets that do not fit in Anc are no failure.
 //
 static double Measure(DtSdiParser* Parser, const DtSdiView* View, DtSdiImage* Image,
-                      int Seconds)
+                      DtSdiAudio* Audio, DtSdiAncData* Anc, int Seconds)
 {
     const uint64_t Start = OsTime_MonotonicMs();
     uint64_t Elapsed = 0;
@@ -129,12 +130,80 @@ static double Measure(DtSdiParser* Parser, const DtSdiView* View, DtSdiImage* Im
 
     while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
     {
-        if (DtSdiParser_Parse(Parser, View, Image, NULL, NULL) != DTAPI_OK)
+        const DtapiResult Result = DtSdiParser_Parse(Parser, View, Image, Audio, Anc);
+        if (Result != DTAPI_OK && Result != DTAPI_E_BUF_TOO_SMALL)
             return -1.0;
         Frames++;
         Elapsed = OsTime_MonotonicMs() - Start;
     }
     return (double)Elapsed / Frames;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchBlanking -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Measures the walk over every line's blanking that takes out a frame's audio, all 16
+// channels as PCM, and lists its ancillary packets, without the image: the cost of audio
+// and ancillary data on top of the image's. A frame of noise holds few packets, so it is
+// the walk that is measured, not the copying of packets.
+//
+static int BenchBlanking(DtSdiParser* Parser, DtSdiView* View, int Seconds, double GHz)
+{
+    enum
+    {
+        MAX_SAMPLES = 2048,
+        MAX_PACKETS = 1024,
+        MAX_WORDS = 65536
+    };
+    static int32_t Samples[DT_SDI_AUDIO_MAX_CHANNELS][MAX_SAMPLES];
+    static DtSdiAncPacket Packets[MAX_PACKETS];
+    static uint16_t Words[MAX_WORDS];
+
+    DtSdiAudio Audio;
+    memset(&Audio, 0, sizeof(Audio));
+    for (int p = 0; p < DT_SDI_AUDIO_MAX_CHANNELS / 2; p++)
+        Audio.Formats[p] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        Audio.Channels[c].Samples = Samples[c];
+        Audio.Channels[c].Stride = 1;
+        Audio.Channels[c].MaxSamples = MAX_SAMPLES;
+    }
+    DtSdiAncData Anc;
+    memset(&Anc, 0, sizeof(Anc));
+    Anc.Packets = Packets;
+    Anc.MaxPackets = MAX_PACKETS;
+    Anc.Words = Words;
+    Anc.MaxWords = MAX_WORDS;
+
+    printf(
+        "\nThe parser's audio, 16 channels, and ancillary packets, without the image\n");
+    printf("%-10s %4s  %-14s %10s %9s %8s\n", "standard", "bits", "", "ms/frame",
+           "% period", "Mc");
+    for (int s = 0; s < NUM_STANDARDS; s++)
+    {
+        const Standard* Std = &g_Standards[s];
+        size_t Size = 0;
+        DtSdiView_RawFrameSize(Std->VidStd, 10, &Size);
+        uint8_t* Frame = (uint8_t*)malloc(Size);
+        if (Frame == NULL)
+        {
+            fprintf(stderr, "Out of memory\n");
+            return 1;
+        }
+        FillNoise(Frame, Size);
+        DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, 10);
+        const double Ms = Measure(Parser, View, NULL, &Audio, &Anc, Seconds);
+        free(Frame);
+        if (Ms < 0.0)
+        {
+            fprintf(stderr, "%s: the parser refused the frame\n", Std->Name);
+            return 1;
+        }
+        printf("%-10s %4d  %-14s %10.2f %9.1f %8.1f\n", Std->Name, 10, "", Ms,
+               Ms * Std->FrameRate / 10.0, Ms * GHz);
+        fflush(stdout);
+    }
+    return 0;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -192,7 +261,7 @@ int main(int Argc, char** Argv)
                     Status = 1;
                     break;
                 }
-                const double Ms = Measure(Parser, View, &Image, Seconds);
+                const double Ms = Measure(Parser, View, &Image, NULL, NULL, Seconds);
                 FreeImage(&Image);
                 if (Ms < 0.0)
                 {
@@ -208,6 +277,8 @@ int main(int Argc, char** Argv)
         }
     }
 
+    if (Status == 0)
+        Status = BenchBlanking(Parser, View, Seconds, GHz);
     DtSdiView_Free(View);
     DtSdiParser_Free(Parser);
     return Status;

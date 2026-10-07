@@ -16,6 +16,8 @@
 
 // CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
+#include "DtSdiAnc.h"     // Finding the ancillary packets.
+#include "DtSdiAudio.h"   // Taking the audio out of its packets.
 #include "DtSdiImage.h"   // Writing the image.
 #include "DtSdiSymbols.h" // Reading the frame's symbols.
 #include "DtSdiView.h"    // The frame a call reads or writes.
@@ -41,11 +43,20 @@ struct DtSdiParser
     DtSdiAncFilter* AncFilters; // The packets to list; NULL for the default
     int NumAncFilters;
 
-    // The symbols of the lines being read: two image lines, as a 2160p line holds two,
-    // and the active parts of a raw 2160p line.
+    // The symbols of the lines being read: two image lines, as a 2160p line holds two;
+    // the active parts of a raw 2160p line, or a section of any raw line; and one
+    // stream's words of such a section.
     uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
+    uint16_t StreamWords[DT_SDIPARSER_MAX_WIDTH];
 };
+
+// Where a section of a line lies, which the parser searches for packets.
+typedef struct Section
+{
+    int LineIndex; // The raw line, from 0
+    bool InHanc;   // The horizontal blanking; else the active part of a blanking line
+} Section;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -109,6 +120,123 @@ static void ParseImage4k(DtSdiParser* Parser, const DtSdiView* Frame,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ListPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Adds Found, in stream Stream of Where, to Anc if it has room, or counts it lost.
+//
+static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Stream,
+                       const DtSdiAncFound* Found, DtSdiAncData* Anc)
+{
+    const bool WordsFit =
+        Anc->Words == NULL || Anc->NumWords + Found->NumWords <= Anc->MaxWords;
+    if (Anc->NumPackets >= Anc->MaxPackets || !WordsFit)
+    {
+        Anc->NumLost++;
+        return;
+    }
+
+    DtSdiAncPacket* Packet = &Anc->Packets[Anc->NumPackets++];
+    memset(Packet, 0, sizeof(*Packet));
+    Packet->Line = Where->LineIndex + 1;
+    Packet->InHanc = Where->InHanc;
+    Packet->OnChroma = Geo->StreamIsChroma[Stream];
+    Packet->VirtualInterface = Geo->StreamLink[Stream];
+    Packet->Did = Found->Did;
+    Packet->SdidOrDbn = Found->SdidOrDbn;
+    Packet->NumWords = Found->NumWords;
+    Packet->ChecksumOk = Found->ChecksumOk;
+    if (Anc->Words != NULL)
+    {
+        uint16_t* Words = Anc->Words + Anc->NumWords;
+        memcpy(Words, Found->Words, (size_t)Found->NumWords * sizeof(*Words));
+        Packet->Words = Words;
+        Anc->NumWords += Found->NumWords;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScanSection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Reads a section of a line, splits it into its streams, and takes the packets in each:
+// audio into Audio, when the program wants it and the packet is link 1's in the
+// horizontal blanking; and the packets the parser's filters want into Anc. Either may be
+// NULL.
+//
+static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Section* Where,
+                        DtSdiAudio* Audio, DtSdiAncData* Anc)
+{
+    const DtSdiGeometry* Geo = &Frame->Geo;
+    const int Streams = Geo->NumStreams;
+    const int SectionWords =
+        Where->InHanc ? Geo->StreamHancWords : Geo->StreamActiveWords;
+    const size_t FirstSymbol =
+        Where->InHanc ? 0 : (size_t)Geo->StreamHancWords * (size_t)Streams;
+
+    // The words to search: those between the timing references, or the whole active
+    // part.
+    const int First = Where->InHanc ? Geo->StreamEavWords : 0;
+    const int End = Where->InHanc ? SectionWords - Geo->StreamSavWords : SectionWords;
+
+    const DtSdiSymbolPtr Symbols =
+        DtSdiView_RawSymbols(Frame, Where->LineIndex, FirstSymbol);
+    DtSdiSymbols_Read(&Symbols, (size_t)SectionWords * (size_t)Streams,
+                      Parser->RawActive);
+
+    for (int s = 0; s < Streams; s++)
+    {
+        for (int k = First; k < End; k++)
+            Parser->StreamWords[k - First] =
+                Parser->RawActive[Geo->StreamFirst[s] + k * Streams];
+
+        int Pos = 0;
+        DtSdiAncFound Found;
+        while (DtSdiAnc_Find(Parser->StreamWords, End - First, &Pos, &Found))
+        {
+            if (Audio != NULL && Where->InHanc && Geo->StreamLink[s] == 1 &&
+                DtSdiAnc_IsAudio(Found.Did))
+            {
+                if (Streams == 1)
+                    DtSdiAudio_TakeSd(Audio, &Found, Parser->AudioChecks);
+                else
+                    DtSdiAudio_TakeHd(Audio, &Found, Parser->AudioChecks);
+            }
+            if (Anc != NULL &&
+                DtSdiAnc_IsListed(Parser->AncFilters, Parser->NumAncFilters, Found.Did,
+                                  Found.SdidOrDbn, Where->InHanc, Where->LineIndex + 1))
+            {
+                ListPacket(Geo, Where, s, &Found, Anc);
+            }
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseBlanking -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Takes the audio and lists the ancillary packets of the frame, line by line: in each
+// line's horizontal blanking, then in the active part of a blanking line. A section that
+// neither audio nor a filter needs is not read.
+//
+static void ParseBlanking(DtSdiParser* Parser, const DtSdiView* Frame, DtSdiAudio* Audio,
+                          DtSdiAncData* Anc)
+{
+    const DtSdiGeometry* Geo = &Frame->Geo;
+    for (int Line = 0; Line < Geo->Layout.NumLines; Line++)
+    {
+        const Section Hanc = {Line, true};
+        const Section Vanc = {Line, false};
+        const bool HancListed =
+            Anc != NULL &&
+            DtSdiAnc_IsWanted(Parser->AncFilters, Parser->NumAncFilters, true, Line + 1);
+        const bool VancListed =
+            Anc != NULL && DtSdiGeometry_IsVanc(Geo, Line) &&
+            DtSdiAnc_IsWanted(Parser->AncFilters, Parser->NumAncFilters, false, Line + 1);
+
+        if (Audio != NULL || HancListed)
+            ScanSection(Parser, Frame, &Hanc, Audio, HancListed ? Anc : NULL);
+        if (VancListed)
+            ScanSection(Parser, Frame, &Vanc, NULL, Anc);
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Parser +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -144,8 +272,8 @@ void DtSdiParser_Freep(DtSdiParser** Parser)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The arguments are checked before anything is written. Audio and ancillary data are
-// not read yet: they come with plan 0032's step C.
+// The arguments are checked before anything is written. The image is read first, then
+// the blanking of every line, for the audio and the ancillary packets together.
 //
 DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
                               DtSdiImage* Image, DtSdiAudio* Audio, DtSdiAncData* Anc)
@@ -154,14 +282,13 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         return DTAPI_E_INVALID_ARG;
     if (!Frame->HasFrame)
         return DTAPI_E_STATE;
+    DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
-    {
-        DtapiResult Result = DtSdiImage_Check(Image, &Frame->Geo);
-        if (Result != DTAPI_OK)
-            return Result;
-    }
-    if (Audio != NULL || Anc != NULL)
-        return DTAPI_E_NOT_SUPPORTED;
+        Result = DtSdiImage_Check(Image, &Frame->Geo);
+    if (Result == DTAPI_OK && Audio != NULL)
+        Result = DtSdiAudio_Check(Audio, Frame->Geo.VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
 
     if (Image != NULL)
     {
@@ -170,7 +297,17 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         else
             ParseImage(Parser, Frame, Image);
     }
-    return DTAPI_OK;
+    if (Audio != NULL)
+        DtSdiAudio_Begin(Audio);
+    if (Anc != NULL)
+    {
+        Anc->NumPackets = 0;
+        Anc->NumWords = 0;
+        Anc->NumLost = 0;
+    }
+    if (Audio != NULL || Anc != NULL)
+        ParseBlanking(Parser, Frame, Audio, Anc);
+    return Anc != NULL && Anc->NumLost > 0 ? DTAPI_E_BUF_TOO_SMALL : DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_SetAncFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

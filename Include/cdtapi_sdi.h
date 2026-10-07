@@ -367,9 +367,9 @@ typedef struct DtSdiAncPacket
                            // Always false in SD
     int VirtualInterface;  // 3G and 2160p: the virtual interface, counted from 1.
                            // Builder: 0 means the first
-    uint16_t Did;          // Data ID
+    uint16_t Did;          // Data ID, 8 bits without parity; the builder adds it
     uint16_t SdidOrDbn;    // Secondary data ID, or for a DID of 0x80 and up the data
-                           // block number
+                           // block number; 8 bits, as Did
     int NumWords;          // User data words, 0 to 255
     const uint16_t* Words; // The user data words
     bool ChecksumOk;       // Parser: whether the packet's checksum held
