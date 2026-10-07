@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
+#include "DtSdiVec.h"   // The conversions that unpack and pack.
 #include "cdtapi_sdi.h" // The symbol pointer.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Symbols +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -20,21 +21,24 @@
 // Reads Count symbols from where Ptr points into Out, one value from 0 to 1023 a word.
 // 10-bit symbols are read four at a time from five bytes once the run reaches a byte
 // boundary, which it does within three symbols. This is the portable version.
-void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out);
+void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
+                       const DtSdiVec* Vec);
 
 // Writes symbols one after the other into a frame: 10 bits each, packed least
 // significant bit first, or 16 bits each, little endian. A run of 10-bit symbols need
 // not end on a byte boundary; the next run goes on where it stopped.
 typedef struct DtSdiSymbolWriter
 {
-    uint8_t* Next;     // The next whole byte to write
-    uint64_t Bits;     // Bits written but not yet stored, the first lowest
-    int NumBits;       // How many
-    int BitsPerSymbol; // 10 or 16
+    uint8_t* Next;       // The next whole byte to write
+    uint64_t Bits;       // Bits written but not yet stored, the first lowest
+    int NumBits;         // How many
+    int BitsPerSymbol;   // 10 or 16
+    const DtSdiVec* Vec; // The conversions that pack the symbols
 } DtSdiSymbolWriter;
 
 // Starts writing at Frame with BitsPerSymbol bits a symbol.
-void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol);
+void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol,
+                            const DtSdiVec* Vec);
 
 // Writes Count symbols from Symbols, each a value from 0 to 1023.
 void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,

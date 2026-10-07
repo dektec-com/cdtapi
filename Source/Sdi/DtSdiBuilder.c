@@ -31,6 +31,7 @@
 #include "DtSdiEmbed.h"        // The audio.
 #include "DtSdiImage.h"        // Reading the image.
 #include "DtSdiSymbols.h"      // Writing the frame's symbols.
+#include "DtSdiVec.h"          // The conversions.
 #include "DtSdiView.h"         // The frame a call writes.
 #include "Video/DtSmpte352.h"  // The payload ID.
 #include "cdtapi_sdi.h"        // Interface being implemented.
@@ -78,6 +79,7 @@ struct DtSdiBuilder
     uint32_t LastCrc[8]; // Per stream: the CRC over the active part of that frame's last
                          // line, where the first line's CRC starts
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
+    const DtSdiVec* Vec;     // The conversions
     DtSdiEmbed Embed;        // The audio: of the frame being built, and its cadence
     int Used[DT_SDIBUILDER_MAX_SECTIONS]; // Per section of the frame: its packets' words
 
@@ -389,12 +391,13 @@ static void MakeLine(const DtSdiBuilder* Builder, DtSdiBuilderBand* Band,
         else if (Geo->Is4k)
         {
             const int k = LineIndex - Geo->PictureFirstIndex;
-            DtSdiImage_GetLine(Image, Geo, 2 * k, Band->Image[0]);
-            DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Band->Image[1]);
+            DtSdiImage_GetLine(Image, Geo, 2 * k, Band->Image[0], Builder->Vec);
+            DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Band->Image[1], Builder->Vec);
             PutActive4k(Geo, Band->Image[0], Band->Image[1], Raw);
         }
         else
-            DtSdiImage_GetLine(Image, Geo, ImageLineOf(Geo, LineIndex), Active);
+            DtSdiImage_GetLine(Image, Geo, ImageLineOf(Geo, LineIndex), Active,
+                               Builder->Vec);
     }
 
     // The CRC over this line's active part, for the next line's.
@@ -442,7 +445,8 @@ static void BuildBand(void* Context, int PieceIndex, int NumPieces)
         (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) * (size_t)Geo->NumStreams;
     const size_t FirstBit = (size_t)First * LineSymbols * (size_t)Frame->BitsPerSymbol;
     DtSdiSymbolWriter Writer;
-    DtSdiSymbolWriter_Init(&Writer, Frame->Frame + FirstBit / 8, Frame->BitsPerSymbol);
+    DtSdiSymbolWriter_Init(&Writer, Frame->Frame + FirstBit / 8, Frame->BitsPerSymbol,
+                           Builder->Vec);
     for (int LineIndex = First; LineIndex < End; LineIndex++)
     {
         MakeLine(Builder, Band, Geo, Job->Image, Job->Anc, Job->Vpid, LineIndex);
@@ -499,6 +503,7 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
     if (Builder == NULL)
         return NULL;
     memset(Builder, 0, sizeof(*Builder));
+    Builder->Vec = DtSdiVec_Best();
     DtJobRunner_Init(&Builder->Runner);
     for (uint32_t i = 0; i < 1024; i++)
         Builder->CrcTable[i] = DtSdiFrame_Crc18(i, 0);
@@ -634,4 +639,11 @@ DtapiResult DtSdiBuilder_SetWorkerPool(DtSdiBuilder* Builder, DtWorkerPool* Pool
     Builder->NumThreads = NumThreads;
     Builder->RunnerPieces = 0;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_UseVec -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiBuilder_UseVec(DtSdiBuilder* Builder, const DtSdiVec* Vec)
+{
+    Builder->Vec = Vec;
 }

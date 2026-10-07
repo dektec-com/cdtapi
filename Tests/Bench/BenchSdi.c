@@ -12,8 +12,9 @@
 //
 // The frame's content does not matter to the image's speed, so it is noise. A second
 // table measures the walk over the blanking for audio and ancillary packets, a third the
-// builder, from images of noise, a fourth the parser's image over a worker pool. Plan
-// 0032 adds the vector versions as they come.
+// builder, from images of noise, a fourth both over a worker pool. The first and the
+// third have a column for each version of the conversions: portable, SSSE3 and AVX2;
+// the fourth takes the fastest.
 //
 // Not a test: it asserts nothing about time.
 //
@@ -29,6 +30,7 @@
 // CDTAPI includes
 #include "BenchCommon.h"  // The clock, the compiler and its flags.
 #include "OAL/OsThread.h" // The monotonic clock.
+#include "Sdi/DtSdiVec.h" // The versions of the conversions.
 #include "cdtapi_sdi.h"   // The parser measured.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -68,6 +70,36 @@ static const PixelFormat g_Formats[] = {
 
 static const int g_Bits[] = {10, 16};
 #define NUM_BITS ((int)(sizeof(g_Bits) / sizeof(g_Bits[0])))
+
+// The versions of the conversions: portable, SSSE3 and AVX2; one the processor or the
+// build lacks is NULL, and its column says so.
+#define NUM_VERSIONS 3
+static const char* g_VersionNames[NUM_VERSIONS] = {"portable", "SSSE3", "AVX2"};
+
+static void GetVersions(const DtSdiVec* Versions[NUM_VERSIONS])
+{
+    Versions[0] = DtSdiVec_C();
+    Versions[1] = DtSdiVec_Ssse3();
+    Versions[2] = DtSdiVec_Avx2();
+}
+
+// Prints the head of a table with a column per version.
+static void PrintVersionHead(const char* First)
+{
+    printf("%-10s %4s  %-14s", "standard", First, "format");
+    for (int v = 0; v < NUM_VERSIONS; v++)
+        printf("  %16s", g_VersionNames[v]);
+    printf("\n");
+}
+
+// Prints a cell: milliseconds a frame and the share of the frame period.
+static void PrintCell(double Ms, double FrameRate)
+{
+    if (Ms < 0.0)
+        printf("  %16s", "-");
+    else
+        printf("  %8.2f %6.1f%%", Ms, Ms * FrameRate / 10.0);
+}
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Measuring +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -310,19 +342,22 @@ static int BenchWorkers(DtSdiView* View, int Seconds, double GHz)
 //
 // Measures the builder: a whole frame of 10-bit symbols from an image of noise in each
 // format, the timing references, line numbers and payload ID included, the line CRCs
-// and checksums left to the transmitter as by default.
+// and checksums left to the transmitter as by default; per version.
 //
 static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
 {
+    (void)GHz;
     DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
     if (Builder == NULL)
     {
         fprintf(stderr, "Out of memory\n");
         return 1;
     }
-    printf("\nThe builder's image and raster, portable version, one thread\n");
-    printf("%-10s %4s  %-14s %10s %9s %8s\n", "standard", "bits", "format", "ms/frame",
-           "% period", "Mc");
+    printf("\nThe builder's image and raster, one thread, per version: ms/frame and "
+           "%% period\n");
+    PrintVersionHead("bits");
+    const DtSdiVec* Versions[NUM_VERSIONS];
+    GetVersions(Versions);
 
     int Status = 0;
     for (int s = 0; s < NUM_STANDARDS && Status == 0; s++)
@@ -353,26 +388,29 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
             DtSdiImage_GetSize(Std->VidStd, g_Formats[f].Format, NULL, &Height, NULL);
             for (int p = 0; p < 3 && Image.Planes[p] != NULL; p++)
                 FillNoise(Image.Planes[p], (size_t)Image.Strides[p] * (size_t)Height);
-            const uint64_t Start = OsTime_MonotonicMs();
-            uint64_t Elapsed = 0;
-            int Frames = 0;
-            while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
+            printf("%-10s %4d  %-14s", Std->Name, 10, g_Formats[f].Name);
+            for (int v = 0; v < NUM_VERSIONS; v++)
             {
-                if (DtSdiBuilder_Build(Builder, View, &Image, NULL, NULL) != DTAPI_OK)
+                double Ms = -1.0;
+                if (Versions[v] != NULL)
                 {
-                    fprintf(stderr, "%s: the builder refused the image\n", Std->Name);
-                    Status = 1;
-                    break;
+                    DtSdiBuilder_UseVec(Builder, Versions[v]);
+                    const uint64_t Start = OsTime_MonotonicMs();
+                    uint64_t Elapsed = 0;
+                    int Frames = 0;
+                    while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
+                    {
+                        DtSdiBuilder_Build(Builder, View, &Image, NULL, NULL);
+                        Frames++;
+                        Elapsed = OsTime_MonotonicMs() - Start;
+                    }
+                    Ms = (double)Elapsed / Frames;
                 }
-                Frames++;
-                Elapsed = OsTime_MonotonicMs() - Start;
+                PrintCell(Ms, Std->FrameRate);
             }
-            FreeImage(&Image);
-            const double Ms = (double)Elapsed / Frames;
-            if (Status == 0)
-                printf("%-10s %4d  %-14s %10.2f %9.1f %8.1f\n", Std->Name, 10,
-                       g_Formats[f].Name, Ms, Ms * Std->FrameRate / 10.0, Ms * GHz);
+            printf("\n");
             fflush(stdout);
+            FreeImage(&Image);
         }
         free(Frame);
     }
@@ -403,9 +441,10 @@ int main(int Argc, char** Argv)
     const double GHz = BenchClockGHz();
     if (GHz > 0.0)
         printf("Clock %.2f GHz; Mc is millions of cycles a frame\n", GHz);
-    printf("\nThe parser's image, portable version, one thread\n");
-    printf("%-10s %4s  %-14s %10s %9s %8s\n", "standard", "bits", "format", "ms/frame",
-           "% period", "Mc");
+    printf("\nThe parser's image, one thread, per version: ms/frame and %% period\n");
+    PrintVersionHead("bits");
+    const DtSdiVec* Versions[NUM_VERSIONS];
+    GetVersions(Versions);
 
     int Status = 0;
     for (int s = 0; s < NUM_STANDARDS && Status == 0; s++)
@@ -425,7 +464,7 @@ int main(int Argc, char** Argv)
             FillNoise(Frame, Size);
             DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, g_Bits[b]);
 
-            for (int f = 0; f < NUM_FORMATS; f++)
+            for (int f = 0; f < NUM_FORMATS && Status == 0; f++)
             {
                 DtSdiImage Image;
                 if (!AllocImage(&Image, Std->VidStd, g_Formats[f].Format))
@@ -435,21 +474,25 @@ int main(int Argc, char** Argv)
                     Status = 1;
                     break;
                 }
-                const double Ms = Measure(Parser, View, &Image, NULL, NULL, Seconds);
-                FreeImage(&Image);
-                if (Ms < 0.0)
+                printf("%-10s %4d  %-14s", Std->Name, g_Bits[b], g_Formats[f].Name);
+                for (int v = 0; v < NUM_VERSIONS; v++)
                 {
-                    fprintf(stderr, "%s: the parser refused the frame\n", Std->Name);
-                    Status = 1;
-                    break;
+                    double Ms = -1.0;
+                    if (Versions[v] != NULL)
+                    {
+                        DtSdiParser_UseVec(Parser, Versions[v]);
+                        Ms = Measure(Parser, View, &Image, NULL, NULL, Seconds);
+                    }
+                    PrintCell(Ms, Std->FrameRate);
                 }
-                printf("%-10s %4d  %-14s %10.2f %9.1f %8.1f\n", Std->Name, g_Bits[b],
-                       g_Formats[f].Name, Ms, Ms * Std->FrameRate / 10.0, Ms * GHz);
+                printf("\n");
                 fflush(stdout);
+                FreeImage(&Image);
             }
             free(Frame);
         }
     }
+    DtSdiParser_UseVec(Parser, DtSdiVec_Best());
 
     if (Status == 0)
         Status = BenchBlanking(Parser, View, Seconds, GHz);

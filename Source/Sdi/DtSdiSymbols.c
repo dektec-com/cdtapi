@@ -15,7 +15,8 @@
 // same one. So at most three symbols are read one by one before the run is on a byte
 // boundary; from there four symbols take five bytes, least significant bit first.
 //
-void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
+void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
+                       const DtSdiVec* Vec)
 {
     if (Ptr->BitsPerSymbol == 16)
     {
@@ -32,17 +33,9 @@ void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
         i++;
     }
 
-    const uint8_t* Bytes = Ptr->Byte + ((size_t)Ptr->Bit + 10 * i) / 8;
-    for (; i + 4 <= Count; i += 4, Bytes += 5)
-    {
-        const uint64_t Bits = (uint64_t)Bytes[0] | (uint64_t)Bytes[1] << 8 |
-                              (uint64_t)Bytes[2] << 16 | (uint64_t)Bytes[3] << 24 |
-                              (uint64_t)Bytes[4] << 32;
-        Out[i] = (uint16_t)(Bits & 0x3FF);
-        Out[i + 1] = (uint16_t)(Bits >> 10 & 0x3FF);
-        Out[i + 2] = (uint16_t)(Bits >> 20 & 0x3FF);
-        Out[i + 3] = (uint16_t)(Bits >> 30 & 0x3FF);
-    }
+    const size_t Aligned = (Count - i) / 4 * 4;
+    Vec->Unpack10(Ptr->Byte + ((size_t)Ptr->Bit + 10 * i) / 8, Aligned, Out + i);
+    i += Aligned;
 
     for (; i < Count; i++)
         Out[i] = DtSdiSymbolPtr_Get(Ptr, i);
@@ -50,8 +43,10 @@ void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbolWriter_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol)
+void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol,
+                            const DtSdiVec* Vec)
 {
+    Writer->Vec = Vec;
     Writer->Next = Frame;
     Writer->Bits = 0;
     Writer->NumBits = 0;
@@ -91,20 +86,11 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
         }
     }
 
-    // Then four symbols into five bytes.
-    for (; i + 4 <= Count; i += 4)
-    {
-        const uint64_t Four = (uint64_t)(Symbols[i] & 0x3FF) |
-                              (uint64_t)(Symbols[i + 1] & 0x3FF) << 10 |
-                              (uint64_t)(Symbols[i + 2] & 0x3FF) << 20 |
-                              (uint64_t)(Symbols[i + 3] & 0x3FF) << 30;
-        Next[0] = (uint8_t)Four;
-        Next[1] = (uint8_t)(Four >> 8);
-        Next[2] = (uint8_t)(Four >> 16);
-        Next[3] = (uint8_t)(Four >> 24);
-        Next[4] = (uint8_t)(Four >> 32);
-        Next += 5;
-    }
+    // Then four symbols into five bytes, as many fours as there are.
+    const size_t Aligned = (Count - i) / 4 * 4;
+    Writer->Vec->Pack10(Symbols + i, Aligned, Next);
+    Next += Aligned / 4 * 5;
+    i += Aligned;
 
     // And the rest one at a time.
     for (; i < Count; i++)

@@ -121,6 +121,7 @@ set(CDTAPI_SOURCES
     Source/Sdi/DtSdiImage.c
     Source/Sdi/DtSdiParser.c
     Source/Sdi/DtSdiSymbols.c
+    Source/Sdi/DtSdiVec.c
     Source/Sdi/DtSdiView.c
     Source/Service/DtPtp.c
     Source/Service/DtPtpSlave.c
@@ -142,12 +143,15 @@ list(APPEND CDTAPI_SOURCES
     Source/OAL/Linux/LinIoctlBuffer.c
     Source/OAL/Linux/LinTime.c)
 
-# The SSSE3 and AVX2 pixel conversions exist for x86 processors only. The library calls
-# them when CPUID reports SSSE3 or AVX2, so only their own files are compiled for it.
+# The SSSE3 and AVX2 pixel and symbol conversions exist for x86 processors only. The
+# library calls them when CPUID reports SSSE3 or AVX2, so only their own files are
+# compiled for it.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
     list(APPEND CDTAPI_SOURCES
         Source/AvFifo/DtAvPixConvSsse3.c
         Source/AvFifo/DtAvPixConvAvx2.c
+        Source/Sdi/DtSdiVecSsse3.c
+        Source/Sdi/DtSdiVecAvx2.c
         Source/Video/DtSdi4kSsse3.c)
     set(CDTAPI_HAVE_SSSE3 ON)
 else()
@@ -280,14 +284,17 @@ if(CDTAPI_HAVE_SSSE3)
     # GCC and Clang, clang-cl too, need a flag for each.
     set(PixConvDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/AvFifo")
     set(VideoDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/Video")
+    set(SdiDir "${CMAKE_CURRENT_SOURCE_DIR}/Source/Sdi")
     if(NOT MSVC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
         set_source_files_properties("${PixConvDir}/DtAvPixConvSsse3.c"
-            "${VideoDir}/DtSdi4kSsse3.c"
+            "${VideoDir}/DtSdi4kSsse3.c" "${SdiDir}/DtSdiVecSsse3.c"
             PROPERTIES COMPILE_OPTIONS -mssse3)
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
+            "${SdiDir}/DtSdiVecAvx2.c"
             PROPERTIES COMPILE_OPTIONS -mavx2)
     else()
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
+            "${SdiDir}/DtSdiVecAvx2.c"
             PROPERTIES COMPILE_OPTIONS /arch:AVX2)
     endif()
 endif()

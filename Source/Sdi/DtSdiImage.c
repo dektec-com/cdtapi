@@ -86,60 +86,6 @@ static void LeastStrides(DtSdiPixelFormat Format, int Width, int Strides[3])
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutLe16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-static void PutLe16(uint8_t* Bytes, uint16_t Value)
-{
-    Bytes[0] = (uint8_t)Value;
-    Bytes[1] = (uint8_t)(Value >> 8);
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutLe32 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-static void PutLe32(uint8_t* Bytes, uint32_t Value)
-{
-    Bytes[0] = (uint8_t)Value;
-    Bytes[1] = (uint8_t)(Value >> 8);
-    Bytes[2] = (uint8_t)(Value >> 16);
-    Bytes[3] = (uint8_t)(Value >> 24);
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutUyvy10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Packs the symbols ten bits each, least significant bit first: four symbols in five
-// bytes. A line always has a multiple of four symbols.
-//
-static void PutUyvy10(uint8_t* Out, const uint16_t* Symbols, int NumSymbols)
-{
-    for (int i = 0; i < NumSymbols; i += 4)
-    {
-        const uint64_t Bits = (uint64_t)Symbols[i] | (uint64_t)Symbols[i + 1] << 10 |
-                              (uint64_t)Symbols[i + 2] << 20 |
-                              (uint64_t)Symbols[i + 3] << 30;
-        for (int b = 0; b < 5; b++)
-            *Out++ = (uint8_t)(Bits >> (8 * b));
-    }
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutV210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Packs the symbols three in a 32-bit little-endian word, in the order they come, and
-// fills the last block of six pixels and the rest of the line's stride with zeros.
-//
-static void PutV210(uint8_t* Out, const uint16_t* Symbols, int NumSymbols, int Stride)
-{
-    int Written = 0;
-    for (int i = 0; i < NumSymbols; i += 3)
-    {
-        uint32_t Word = 0;
-        for (int k = 0; k < 3 && i + k < NumSymbols; k++)
-            Word |= (uint32_t)Symbols[i + k] << (10 * k);
-        PutLe32(Out + Written, Word);
-        Written += 4;
-    }
-    memset(Out + Written, 0, (size_t)(Stride - Written));
-}
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Images +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_GetSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -192,30 +138,12 @@ DtapiResult DtSdiImage_Check(const DtSdiImage* Image, const DtSdiGeometry* Geo)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetLe16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-static uint16_t GetLe16(const uint8_t* Bytes)
-{
-    return (uint16_t)(Bytes[0] | Bytes[1] << 8);
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Legal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Limits a sample to 4..1019: SDI keeps 0 to 3 and 1020 to 1023 for timing references.
-//
-static inline uint16_t Legal(unsigned Sample)
-{
-    const unsigned Low = Sample < 4 ? 4 : Sample;
-    return (uint16_t)(Low > 1019 ? 1019 : Low);
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_GetLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        uint16_t* Symbols)
+                        uint16_t* Symbols, const DtSdiVec* Vec)
 {
-    const int Width = Geo->Width;
-    const int NumSymbols = 2 * Width;
+    const size_t Count = 2 * (size_t)Geo->Width;
     const uint8_t* In[3];
     for (int p = 0; p < 3; p++)
         In[p] = Image->Planes[p] == NULL
@@ -225,70 +153,24 @@ void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
     switch (Image->Format)
     {
     case DT_SDI_PIXFMT_UYVY_10B:
-        for (int i = 0; i < NumSymbols; i += 4)
-        {
-            const uint8_t* B = In[0] + 5 * (i / 4);
-            const uint64_t Bits = (uint64_t)B[0] | (uint64_t)B[1] << 8 |
-                                  (uint64_t)B[2] << 16 | (uint64_t)B[3] << 24 |
-                                  (uint64_t)B[4] << 32;
-            for (int k = 0; k < 4; k++)
-                Symbols[i + k] = Legal((unsigned)(Bits >> (10 * k)) & 0x3FF);
-        }
+        Vec->Unpack10(In[0], Count, Symbols);
+        Vec->Limit(Symbols, Count);
         break;
-
     case DT_SDI_PIXFMT_UYVY_8B:
-        for (int i = 0; i < NumSymbols; i++)
-            Symbols[i] = Legal((unsigned)In[0][i] << 2);
+        Vec->FromUyvy8(In[0], Count, Symbols);
         break;
-
     case DT_SDI_PIXFMT_V210:
-        // Three samples a little-endian word; a line of 2 * Width samples ends in a
-        // whole word, as a width is even.
-        for (int i = 0, w = 0; i < NumSymbols; w++)
-        {
-            const uint8_t* W = In[0] + 4 * w;
-            const uint32_t Word = (uint32_t)W[0] | (uint32_t)W[1] << 8 |
-                                  (uint32_t)W[2] << 16 | (uint32_t)W[3] << 24;
-            Symbols[i++] = Legal(Word & 0x3FF);
-            if (i < NumSymbols)
-                Symbols[i++] = Legal(Word >> 10 & 0x3FF);
-            if (i < NumSymbols)
-                Symbols[i++] = Legal(Word >> 20 & 0x3FF);
-        }
+        Vec->FromV210(In[0], Count, Symbols);
         break;
-
     case DT_SDI_PIXFMT_Y210:
-        // Each pair of pixels: Y0, Cb, Y1, Cr, the 10 bits at the top of each word.
-        for (int i = 0; i < NumSymbols; i += 4)
-        {
-            const uint8_t* Pair = In[0] + 2 * i;
-            Symbols[i + 0] = Legal(GetLe16(Pair + 2) >> 6);
-            Symbols[i + 1] = Legal(GetLe16(Pair + 0) >> 6);
-            Symbols[i + 2] = Legal(GetLe16(Pair + 6) >> 6);
-            Symbols[i + 3] = Legal(GetLe16(Pair + 4) >> 6);
-        }
+        Vec->FromY210(In[0], Count, Symbols);
         break;
-
     case DT_SDI_PIXFMT_YUV422P_10B:
-        for (int x = 0; x < Width; x++)
-            Symbols[2 * x + 1] = Legal(GetLe16(In[0] + 2 * x) & 0x3FF);
-        for (int c = 0; c < Width / 2; c++)
-        {
-            Symbols[4 * c] = Legal(GetLe16(In[1] + 2 * c) & 0x3FF);
-            Symbols[4 * c + 2] = Legal(GetLe16(In[2] + 2 * c) & 0x3FF);
-        }
+        Vec->FromPlanar10(In[0], In[1], In[2], Count, Symbols);
         break;
-
     case DT_SDI_PIXFMT_YUV422P_8B:
-        for (int x = 0; x < Width; x++)
-            Symbols[2 * x + 1] = Legal((unsigned)In[0][x] << 2);
-        for (int c = 0; c < Width / 2; c++)
-        {
-            Symbols[4 * c] = Legal((unsigned)In[1][c] << 2);
-            Symbols[4 * c + 2] = Legal((unsigned)In[2][c] << 2);
-        }
+        Vec->FromPlanar8(In[0], In[1], In[2], Count, Symbols);
         break;
-
     default:
         break;
     }
@@ -297,10 +179,9 @@ void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_PutLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        const uint16_t* Symbols)
+                        const uint16_t* Symbols, const DtSdiVec* Vec)
 {
-    const int Width = Geo->Width;
-    const int NumSymbols = 2 * Width;
+    const size_t Count = 2 * (size_t)Geo->Width;
     uint8_t* Out[3];
     for (int p = 0; p < 3; p++)
         Out[p] = Image->Planes[p] == NULL
@@ -310,54 +191,31 @@ void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
     switch (Image->Format)
     {
     case DT_SDI_PIXFMT_UYVY_10B:
-        PutUyvy10(Out[0], Symbols, NumSymbols);
+        Vec->Pack10(Symbols, Count, Out[0]);
         break;
-
     case DT_SDI_PIXFMT_UYVY_8B:
-        for (int i = 0; i < NumSymbols; i++)
-            Out[0][i] = (uint8_t)(Symbols[i] >> 2);
+        Vec->ToUyvy8(Symbols, Count, Out[0]);
         break;
-
     case DT_SDI_PIXFMT_V210:
     {
+        // The words of the line, then zeros up to the least stride: a line is padded
+        // to 128 bytes.
         int Strides[3];
-        LeastStrides(DT_SDI_PIXFMT_V210, Width, Strides);
-        PutV210(Out[0], Symbols, NumSymbols, Strides[0]);
+        LeastStrides(DT_SDI_PIXFMT_V210, Geo->Width, Strides);
+        const size_t Written = (Count + 2) / 3 * 4;
+        Vec->ToV210(Symbols, Count, Out[0]);
+        memset(Out[0] + Written, 0, (size_t)Strides[0] - Written);
         break;
     }
-
     case DT_SDI_PIXFMT_Y210:
-        // Each pair of pixels: Y0, Cb, Y1, Cr, the 10 bits at the top of each word.
-        for (int i = 0; i < NumSymbols; i += 4)
-        {
-            uint8_t* Pair = Out[0] + 2 * i;
-            PutLe16(Pair + 0, (uint16_t)(Symbols[i + 1] << 6));
-            PutLe16(Pair + 2, (uint16_t)(Symbols[i + 0] << 6));
-            PutLe16(Pair + 4, (uint16_t)(Symbols[i + 3] << 6));
-            PutLe16(Pair + 6, (uint16_t)(Symbols[i + 2] << 6));
-        }
+        Vec->ToY210(Symbols, Count, Out[0]);
         break;
-
     case DT_SDI_PIXFMT_YUV422P_10B:
-        for (int x = 0; x < Width; x++)
-            PutLe16(Out[0] + 2 * x, Symbols[2 * x + 1]);
-        for (int c = 0; c < Width / 2; c++)
-        {
-            PutLe16(Out[1] + 2 * c, Symbols[4 * c]);
-            PutLe16(Out[2] + 2 * c, Symbols[4 * c + 2]);
-        }
+        Vec->ToPlanar10(Symbols, Count, Out[0], Out[1], Out[2]);
         break;
-
     case DT_SDI_PIXFMT_YUV422P_8B:
-        for (int x = 0; x < Width; x++)
-            Out[0][x] = (uint8_t)(Symbols[2 * x + 1] >> 2);
-        for (int c = 0; c < Width / 2; c++)
-        {
-            Out[1][c] = (uint8_t)(Symbols[4 * c] >> 2);
-            Out[2][c] = (uint8_t)(Symbols[4 * c + 2] >> 2);
-        }
+        Vec->ToPlanar8(Symbols, Count, Out[0], Out[1], Out[2]);
         break;
-
     default:
         break;
     }

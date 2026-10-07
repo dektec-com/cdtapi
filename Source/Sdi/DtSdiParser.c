@@ -23,6 +23,7 @@
 #include "DtSdiAudio.h"        // Taking the audio out of its packets.
 #include "DtSdiImage.h"        // Writing the image.
 #include "DtSdiSymbols.h"      // Reading the frame's symbols.
+#include "DtSdiVec.h"          // The conversions.
 #include "DtSdiView.h"         // The frame a call reads or writes.
 #include "cdtapi_sdi.h"        // Interface being implemented.
 
@@ -50,6 +51,7 @@ typedef struct DtSdiParserBand
 
 struct DtSdiParser
 {
+    const DtSdiVec* Vec;        // The conversions
     bool AudioChecks;           // Check the BCH code and checksum of the audio packets
     DtSdiAncFilter* AncFilters; // The packets to list; NULL for the default
     int NumAncFilters;
@@ -91,7 +93,7 @@ typedef struct Section
 // the buffers of Band.
 //
 static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
-                       const DtSdiImage* Image, int First, int End)
+                       const DtSdiImage* Image, int First, int End, const DtSdiVec* Vec)
 {
     const DtSdiGeometry* Geo = &Frame->Geo;
     const size_t NumSymbols = 2 * (size_t)Geo->Width;
@@ -100,8 +102,8 @@ static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
     {
         const DtSdiSymbolPtr Active = DtSdiView_RawSymbols(
             Frame, DtSdiGeometry_RawLine(Geo, y), (size_t)Geo->Layout.LineNumSymsHanc);
-        DtSdiSymbols_Read(&Active, NumSymbols, Band->Lines[0]);
-        DtSdiImage_PutLine(Image, Geo, y, Band->Lines[0]);
+        DtSdiSymbols_Read(&Active, NumSymbols, Band->Lines[0], Vec);
+        DtSdiImage_PutLine(Image, Geo, y, Band->Lines[0], Vec);
     }
 }
 
@@ -115,7 +117,7 @@ static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
 // the lower one.
 //
 static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
-                         const DtSdiImage* Image, int First, int End)
+                         const DtSdiImage* Image, int First, int End, const DtSdiVec* Vec)
 {
     const DtSdiGeometry* Geo = &Frame->Geo;
     const size_t HancWords = (size_t)Geo->Layout.SectionNumSymsHanc / 2;
@@ -125,7 +127,7 @@ static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
     {
         const DtSdiSymbolPtr Active =
             DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
-        DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Band->RawActive);
+        DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Band->RawActive, Vec);
 
         for (int Link = 0; Link < 4; Link++)
         {
@@ -141,8 +143,8 @@ static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
                 Line[2 * X + 1] = Band->RawActive[8 * x + 4 + Place];
             }
         }
-        DtSdiImage_PutLine(Image, Geo, 2 * k, Band->Lines[0]);
-        DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Band->Lines[1]);
+        DtSdiImage_PutLine(Image, Geo, 2 * k, Band->Lines[0], Vec);
+        DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Band->Lines[1], Vec);
     }
 }
 
@@ -161,12 +163,12 @@ static void ImageBand(void* Context, int PieceIndex, int NumPieces)
     if (Geo->Is4k)
     {
         DtJobRunner_Split(Geo->Height / 2, PieceIndex, NumPieces, 1, &First, &End);
-        ParseImage4k(Band, Job->Frame, Job->Image, First, End);
+        ParseImage4k(Band, Job->Frame, Job->Image, First, End, Job->Parser->Vec);
     }
     else
     {
         DtJobRunner_Split(Geo->Height, PieceIndex, NumPieces, 1, &First, &End);
-        ParseImage(Band, Job->Frame, Job->Image, First, End);
+        ParseImage(Band, Job->Frame, Job->Image, First, End, Job->Parser->Vec);
     }
 }
 
@@ -262,8 +264,8 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
 
     const DtSdiSymbolPtr Symbols =
         DtSdiView_RawSymbols(Frame, Where->LineIndex, FirstSymbol);
-    DtSdiSymbols_Read(&Symbols, (size_t)SectionWords * (size_t)Streams,
-                      Parser->RawActive);
+    DtSdiSymbols_Read(&Symbols, (size_t)SectionWords * (size_t)Streams, Parser->RawActive,
+                      Parser->Vec);
 
     for (int s = 0; s < Streams; s++)
     {
@@ -331,6 +333,7 @@ DtSdiParser* DtSdiParser_Alloc(void)
     if (Parser == NULL)
         return NULL;
     memset(Parser, 0, sizeof(*Parser));
+    Parser->Vec = DtSdiVec_Best();
     DtJobRunner_Init(&Parser->Runner);
     return Parser;
 }
@@ -468,4 +471,11 @@ DtapiResult DtSdiParser_SetWorkerPool(DtSdiParser* Parser, DtWorkerPool* Pool,
     Parser->NumThreads = NumThreads;
     Parser->RunnerPieces = 0;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_UseVec -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiParser_UseVec(DtSdiParser* Parser, const DtSdiVec* Vec)
+{
+    Parser->Vec = Vec;
 }
