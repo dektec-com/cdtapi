@@ -35,10 +35,6 @@
 // The symbols of the active parts of one raw 2160p line: the four links' 1920 pixels.
 #define DT_SDIPARSER_MAX_RAW_ACTIVE (4 * DT_SDIPARSER_MAX_WIDTH)
 
-// Where each link's words lie in a group of eight words of a raw 2160p line: the C words
-// of links 4, 2, 3 and 1, then their Y words. g_LinkPlace[L] is the place of link L + 1.
-static const int g_LinkPlace[4] = {3, 1, 2, 0};
-
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // The buffers of a band of the image: two image lines, as a 2160p line holds two, and
@@ -114,7 +110,7 @@ static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
 // blanking, word by word: word n of each link's C stream and then of its Y stream, in
 // groups of eight. Pixel x of a link is the C and Y word n = x of its active part. Link
 // 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and 4 those of
-// the lower one.
+// the lower one: Split4k takes them apart.
 //
 static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
                          const DtSdiImage* Image, int First, int End, const DtSdiVec* Vec)
@@ -128,21 +124,7 @@ static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
         const DtSdiSymbolPtr Active =
             DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
         DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Band->RawActive, Vec);
-
-        for (int Link = 0; Link < 4; Link++)
-        {
-            uint16_t* Line = Band->Lines[Link >> 1];
-            const int Place = g_LinkPlace[Link];
-            for (int x = 0; x < LinkWidth; x++)
-            {
-                // Pixel x of the link is pixel X of the image line: its pixel pair
-                // x / 2 is the image's pair 2 * (x / 2) + 0 for links 1 and 3, + 1 for
-                // links 2 and 4.
-                const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
-                Line[2 * X] = Band->RawActive[8 * x + Place];
-                Line[2 * X + 1] = Band->RawActive[8 * x + 4 + Place];
-            }
-        }
+        Vec->Split4k(Band->RawActive, (size_t)LinkWidth, Band->Lines[0], Band->Lines[1]);
         DtSdiImage_PutLine(Image, Geo, 2 * k, Band->Lines[0], Vec);
         DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Band->Lines[1], Vec);
     }

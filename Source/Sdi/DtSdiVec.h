@@ -60,6 +60,14 @@ typedef struct DtSdiVec
     // multiple of 3, its other bits 0.
     void (*ToV210)(const uint16_t* Symbols, size_t Count, uint8_t* Bytes);
     void (*FromV210)(const uint8_t* Bytes, size_t Count, uint16_t* Symbols);
+
+    // The active part of a raw 2160p line, Pixels of each link, and its two image lines.
+    // In the raw line, word n of the C streams of links 4, 2, 3 and 1 come first, then
+    // word n of their Y streams; links 1 and 2 carry the pixel pairs of the upper image
+    // line in turn, links 3 and 4 those of the lower one. Pixels is even.
+    void (*Split4k)(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower);
+    void (*Join4k)(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
+                   uint16_t* Raw);
 } DtSdiVec;
 
 // Returns the portable conversions.

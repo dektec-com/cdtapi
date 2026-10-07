@@ -234,30 +234,6 @@ static int ImageLineOf(const DtSdiGeometry* Geo, int LineIndex)
     return -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutActive4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Writes two image lines, Upper and Lower, into the active part of raw 2160p line Line,
-// woven: link 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and
-// 4 those of the lower one, and pixel x of a link is word x of its active part.
-//
-static void PutActive4k(const DtSdiGeometry* Geo, const uint16_t* Upper,
-                        const uint16_t* Lower, uint16_t* Line)
-{
-    const int First = Geo->StreamHancWords;
-    for (int Link = 0; Link < 4; Link++)
-    {
-        const uint16_t* Image = (Link >> 1) != 0 ? Lower : Upper;
-        uint16_t* C = Line + (size_t)First * 8 + (size_t)Geo->StreamFirst[2 * Link];
-        uint16_t* Y = Line + (size_t)First * 8 + (size_t)Geo->StreamFirst[2 * Link + 1];
-        for (int x = 0; x < Geo->LinkWidth; x++)
-        {
-            const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
-            C[8 * x] = Image[2 * X];
-            Y[8 * x] = Image[2 * X + 1];
-        }
-    }
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Writes a black active part into raw line Line: 200 (hex) in the C words, 040 in the
@@ -393,7 +369,8 @@ static void MakeLine(const DtSdiBuilder* Builder, DtSdiBuilderBand* Band,
             const int k = LineIndex - Geo->PictureFirstIndex;
             DtSdiImage_GetLine(Image, Geo, 2 * k, Band->Image[0], Builder->Vec);
             DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Band->Image[1], Builder->Vec);
-            PutActive4k(Geo, Band->Image[0], Band->Image[1], Raw);
+            Builder->Vec->Join4k(Band->Image[0], Band->Image[1], (size_t)Geo->LinkWidth,
+                                 Active);
         }
         else
             DtSdiImage_GetLine(Image, Geo, ImageLineOf(Geo, LineIndex), Active,

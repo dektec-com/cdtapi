@@ -199,6 +199,31 @@ static const char* Compare(const DtSdiVec* Vec, Bufs* B, size_t Count, char* Mes
         snprintf(Message, MessageSize, "Limit of %zu: %s", Count, Failure);
         return Message;
     }
+    // The links of 2160p: as many pairs of pixels as the run's symbols hold sixteen
+    // raw words; the upper and the lower line one after the other in the output.
+    const size_t Pixels = Count / 16 * 2;
+    if (Pixels > 0)
+    {
+        ClearOut(B);
+        for (int v = 0; v < 2; v++)
+            V[v]->Split4k(B->Symbols, Pixels, B->OutSymbols[v],
+                          B->OutSymbols[v] + 4 * Pixels);
+        Failure = SameSymbols(B, 8 * Pixels, Detail, sizeof(Detail));
+        if (Failure == NULL)
+        {
+            ClearOut(B);
+            for (int v = 0; v < 2; v++)
+                V[v]->Join4k(B->Symbols, B->Symbols + 4 * Pixels, Pixels,
+                             B->OutSymbols[v]);
+            Failure = SameSymbols(B, 8 * Pixels, Detail, sizeof(Detail));
+        }
+        if (Failure != NULL)
+        {
+            snprintf(Message, MessageSize, "Split4k or Join4k of %zu pixels: %s", Pixels,
+                     Failure);
+            return Message;
+        }
+    }
 #undef TO
 #undef FROM
     return NULL;

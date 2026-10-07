@@ -203,6 +203,47 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Split4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Pixel x of link L (from 0) is pixel X of its image line: its pixel pair x / 2 is the
+// image's pair 2 * (x / 2) for links 1 and 3, and that plus one for links 2 and 4. Its C
+// word is word 8x + Place[L] of the raw line, its Y word four after.
+//
+static const int g_LinkPlace[4] = {3, 1, 2, 0};
+
+static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower)
+{
+    for (int Link = 0; Link < 4; Link++)
+    {
+        uint16_t* Line = (Link >> 1) != 0 ? Lower : Upper;
+        const size_t Place = (size_t)g_LinkPlace[Link];
+        for (size_t x = 0; x < Pixels; x++)
+        {
+            const size_t X = 2 * (2 * (x / 2) + (size_t)(Link & 1)) + (x & 1);
+            Line[2 * X] = Raw[8 * x + Place];
+            Line[2 * X + 1] = Raw[8 * x + 4 + Place];
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Join4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
+                   uint16_t* Raw)
+{
+    for (int Link = 0; Link < 4; Link++)
+    {
+        const uint16_t* Line = (Link >> 1) != 0 ? Lower : Upper;
+        const size_t Place = (size_t)g_LinkPlace[Link];
+        for (size_t x = 0; x < Pixels; x++)
+        {
+            const size_t X = 2 * (2 * (x / 2) + (size_t)(Link & 1)) + (x & 1);
+            Raw[8 * x + Place] = Line[2 * X];
+            Raw[8 * x + 4 + Place] = Line[2 * X + 1];
+        }
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -231,9 +272,10 @@ const DtSdiVec* DtSdiVec_Best(void)
 //
 const DtSdiVec* DtSdiVec_C(void)
 {
-    static const DtSdiVec Portable = {
-        Unpack10, Pack10,    Limit,  ToPlanar10, FromPlanar10, ToPlanar8, FromPlanar8,
-        ToUyvy8,  FromUyvy8, ToY210, FromY210,   ToV210,       FromV210};
+    static const DtSdiVec Portable = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                      FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                      FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                      FromV210,     Split4k,   Join4k};
     return &Portable;
 }
 

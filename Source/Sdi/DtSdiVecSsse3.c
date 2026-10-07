@@ -356,14 +356,76 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
     DtSdiVec_C()->FromV210(Bytes + i / 3 * 4, Count - i, Symbols + i);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Split4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Two pixels of each link a step, sixteen raw words: G0 holds pixel 2q of every link,
+// G1 pixel 2q + 1. The upper line takes C and Y of both pixels of link 1, then of link
+// 2: words 3 and 7 of G0, 3 and 7 of G1, then 1 and 5 of each; the lower line the same
+// of links 3 and 4, words 2 and 6, then 0 and 4.
+//
+static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower)
+{
+    const __m128i UpperFrom0 =
+        _mm_set_epi8(Z, Z, Z, Z, 11, 10, 3, 2, Z, Z, Z, Z, 15, 14, 7, 6);
+    const __m128i UpperFrom1 =
+        _mm_set_epi8(11, 10, 3, 2, Z, Z, Z, Z, 15, 14, 7, 6, Z, Z, Z, Z);
+    const __m128i LowerFrom0 =
+        _mm_set_epi8(Z, Z, Z, Z, 9, 8, 1, 0, Z, Z, Z, Z, 13, 12, 5, 4);
+    const __m128i LowerFrom1 =
+        _mm_set_epi8(9, 8, 1, 0, Z, Z, Z, Z, 13, 12, 5, 4, Z, Z, Z, Z);
+    size_t x = 0;
+    for (; x + 2 <= Pixels; x += 2)
+    {
+        const __m128i G0 = _mm_loadu_si128((const __m128i*)(Raw + 8 * x));
+        const __m128i G1 = _mm_loadu_si128((const __m128i*)(Raw + 8 * x + 8));
+        _mm_storeu_si128((__m128i*)(Upper + 4 * x),
+                         _mm_or_si128(_mm_shuffle_epi8(G0, UpperFrom0),
+                                      _mm_shuffle_epi8(G1, UpperFrom1)));
+        _mm_storeu_si128((__m128i*)(Lower + 4 * x),
+                         _mm_or_si128(_mm_shuffle_epi8(G0, LowerFrom0),
+                                      _mm_shuffle_epi8(G1, LowerFrom1)));
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Join4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The other way round: G0 is lower 4, upper 4, lower 0, upper 0, lower 5, upper 5,
+// lower 1, upper 1, by word; G1 the same of 6, 2, 7 and 3.
+//
+static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
+                   uint16_t* Raw)
+{
+    const __m128i G0FromUpper =
+        _mm_set_epi8(3, 2, Z, Z, 11, 10, Z, Z, 1, 0, Z, Z, 9, 8, Z, Z);
+    const __m128i G0FromLower =
+        _mm_set_epi8(Z, Z, 3, 2, Z, Z, 11, 10, Z, Z, 1, 0, Z, Z, 9, 8);
+    const __m128i G1FromUpper =
+        _mm_set_epi8(7, 6, Z, Z, 15, 14, Z, Z, 5, 4, Z, Z, 13, 12, Z, Z);
+    const __m128i G1FromLower =
+        _mm_set_epi8(Z, Z, 7, 6, Z, Z, 15, 14, Z, Z, 5, 4, Z, Z, 13, 12);
+    size_t x = 0;
+    for (; x + 2 <= Pixels; x += 2)
+    {
+        const __m128i U = _mm_loadu_si128((const __m128i*)(Upper + 4 * x));
+        const __m128i L = _mm_loadu_si128((const __m128i*)(Lower + 4 * x));
+        _mm_storeu_si128((__m128i*)(Raw + 8 * x),
+                         _mm_or_si128(_mm_shuffle_epi8(U, G0FromUpper),
+                                      _mm_shuffle_epi8(L, G0FromLower)));
+        _mm_storeu_si128((__m128i*)(Raw + 8 * x + 8),
+                         _mm_or_si128(_mm_shuffle_epi8(U, G1FromUpper),
+                                      _mm_shuffle_epi8(L, G1FromLower)));
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 const DtSdiVec* DtSdiVec_Ssse3Unchecked(void)
 {
-    static const DtSdiVec Ssse3 = {
-        Unpack10, Pack10,    Limit,  ToPlanar10, FromPlanar10, ToPlanar8, FromPlanar8,
-        ToUyvy8,  FromUyvy8, ToY210, FromY210,   ToV210,       FromV210};
+    static const DtSdiVec Ssse3 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                   FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                   FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                   FromV210,     Split4k,   Join4k};
     return &Ssse3;
 }

@@ -8,7 +8,7 @@
 // these conversions only after CPUID reports AVX2 and the operating system saves its
 // registers. Unpacking, packing and limiting take sixteen symbols a step, two blocks of
 // eight as the SSSE3 version takes them, one in each half of the register; the pixel
-// formats are the SSSE3 version's.
+// formats and the links of 2160p are the SSSE3 version's.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -150,14 +150,26 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
     DtSdiVec_Ssse3Unchecked()->FromV210(Bytes, Count, Symbols);
 }
 
+static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower)
+{
+    DtSdiVec_Ssse3Unchecked()->Split4k(Raw, Pixels, Upper, Lower);
+}
+
+static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
+                   uint16_t* Raw)
+{
+    DtSdiVec_Ssse3Unchecked()->Join4k(Upper, Lower, Pixels, Raw);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Avx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const DtSdiVec* DtSdiVec_Avx2Unchecked(void)
 {
-    static const DtSdiVec Avx2 = {
-        Unpack10, Pack10,    Limit,  ToPlanar10, FromPlanar10, ToPlanar8, FromPlanar8,
-        ToUyvy8,  FromUyvy8, ToY210, FromY210,   ToV210,       FromV210};
+    static const DtSdiVec Avx2 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                  FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                  FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                  FromV210,     Split4k,   Join4k};
     return &Avx2;
 }
