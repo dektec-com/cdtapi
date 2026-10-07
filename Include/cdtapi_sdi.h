@@ -69,6 +69,39 @@ extern "C"
 // A view of one SDI frame, which a parser reads or a builder writes.
 typedef struct DtSdiView DtSdiView;
 
+// Points at a run of SDI symbols where they lie in a frame, to read them one by one: 10
+// bits each, packed least significant bit first, or 16 bits each, the value in the
+// lower 10 bits of a little-endian word. A run of 10-bit symbols need not start on a
+// byte boundary, so the pointer names the bit as well as the byte.
+typedef struct DtSdiSymbolPtr
+{
+    const uint8_t* Byte; // The byte that holds the first bit of symbol 0
+    int Bit;             // That bit, from 0 (least significant) to 7
+    int BitsPerSymbol;   // 10 or 16
+} DtSdiSymbolPtr;
+
+// Returns symbol Index of the run Ptr points at, a value from 0 to 1023. It reads only
+// the bytes that hold the symbol.
+//
+// It is meant for reading samples here and there, e.g. to check or analyse them. To
+// convert a whole image, DtSdiParser_Parse() is much faster.
+static inline uint16_t DtSdiSymbolPtr_Get(const DtSdiSymbolPtr* Ptr, size_t Index)
+{
+    if (Ptr->BitsPerSymbol == 16)
+    {
+        const uint8_t* Word = Ptr->Byte + 2 * Index;
+        return (uint16_t)((Word[0] | Word[1] << 8) & 0x3FF);
+    }
+
+    const size_t FirstBit = (size_t)Ptr->Bit + 10 * Index;
+    const uint8_t* Bytes = Ptr->Byte + FirstBit / 8;
+    const unsigned Shift = (unsigned)(FirstBit % 8);
+    uint32_t Bits = (uint32_t)Bytes[0] | (uint32_t)Bytes[1] << 8;
+    if (Shift > 6)
+        Bits |= (uint32_t)Bytes[2] << 16;
+    return (uint16_t)(Bits >> Shift & 0x3FF);
+}
+
 // Creates a view that describes no frame yet. Returns NULL when there is not enough
 // memory.
 CDTAPI_API DtSdiView* DtSdiView_Alloc(void);
@@ -79,24 +112,25 @@ CDTAPI_API void DtSdiView_Free(DtSdiView* View);
 // Frees *View, as DtSdiView_Free() does, and sets *View to NULL. NULL does nothing.
 CDTAPI_API void DtSdiView_Freep(DtSdiView** View);
 
-// Returns in *Data where line Line of the frame's woven image (counted from 0, top to
-// bottom) lies in the frame, without copying it. The samples are in
-// the frame's own format: Cb, Y, Cr, Y and so on, in 10-bit symbols packed least
-// significant bit first or in 16-bit words, as DtSdiView_GetFormat() says. The line
-// returned starts on a byte boundary. In a 10-bit raw frame of 720p23.98 or 720p24,
-// every other line starts half-way through a byte; for those lines there is no pointer,
-// and DtSdiParser_Parse() into DT_SDI_PIXFMT_UYVY_10B gives the image with one copy.
+// Sets *Symbols to where line Line of the frame's woven image (counted from 0, top to
+// bottom) lies in the frame, without copying it. Its symbols are in the frame's own
+// order, Cb, Y, Cr, Y and so on: DtSdiSymbolPtr_Get(Symbols, 0) is the first Cb of the
+// line, and the line has twice as many symbols as the image is wide.
 //
 // This is how a program reads the image with no copy at all. Lines are not evenly
-// spaced: the fields lie apart, and in an input channel's buffer the frame may wrap.
+// spaced: the fields lie apart, and in an input channel's buffer the frame may wrap. A
+// line need not start on a byte boundary either: in a 10-bit raw frame of 720p23.98 or
+// 720p24, every other line starts half-way through a byte. The symbol pointer covers
+// all of it. When Symbols->Bit is 0, as it is for every line but half of those of
+// 720p23.98 and 720p24 in 10 bits, Symbols->Byte is where the line's packed symbols
+// start, to be read in bulk, e.g. copied or uploaded as they are.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_STATE           the view describes no frame
 //   DTAPI_E_INVALID_LINE    Line is not a line of the image
-//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links,
-//                           or the line does not start on a byte boundary
+//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links
 CDTAPI_API DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
-                                               const void** Data);
+                                               DtSdiSymbolPtr* Symbols);
 
 // Returns the video standard of the frame View describes, a DTAPI_VIDSTD_ code, in
 // *VidStd, and its bits a symbol, 10 or 16, in *BitsPerSymbol. Either may be NULL. A

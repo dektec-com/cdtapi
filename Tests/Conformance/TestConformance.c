@@ -638,7 +638,7 @@ DT_TEST(SdiCalls)
     int Std = 0;
     int Bits = 0;
     DT_ASSERT(IsOneOf(DtSdiView_GetFormat(View, &Std, &Bits), DTAPI_OK, DTAPI_E_STATE));
-    const void* Line = NULL;
+    DtSdiSymbolPtr Line;
     DT_ASSERT(IsOneOf(DtSdiView_GetActiveLine(View, 0, &Line), DTAPI_OK, DTAPI_E_STATE));
     uint32_t PayloadId = 0;
     DT_ASSERT(IsOneOf(DtSdiView_GetPayloadId(View, &PayloadId), DTAPI_E_NOT_FOUND,

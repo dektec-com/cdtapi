@@ -46,12 +46,13 @@ void DtSdiView_Freep(DtSdiView** View)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetActiveLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line, const void** Data)
+DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
+                                    DtSdiSymbolPtr* Symbols)
 {
     (void)Line;
-    if (View == NULL || Data == NULL)
+    if (View == NULL || Symbols == NULL)
         return DTAPI_E_INVALID_ARG;
-    *Data = NULL;
+    memset(Symbols, 0, sizeof(*Symbols));
     if (!View->HasFrame)
         return DTAPI_E_STATE;
     return DTAPI_E_NOT_SUPPORTED;
