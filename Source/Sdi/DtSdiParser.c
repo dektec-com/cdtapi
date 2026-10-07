@@ -307,6 +307,10 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
     }
     if (Audio != NULL || Anc != NULL)
         ParseBlanking(Parser, Frame, Audio, Anc);
+
+    // A rate without a cadence has no place in one, whatever the control packet says.
+    if (Audio != NULL && DtSdiAudio_CadenceLength(Frame->Geo.VidStd) == 1)
+        Audio->FrameNumber = 0;
     return Anc != NULL && Anc->NumLost > 0 ? DTAPI_E_BUF_TOO_SMALL : DTAPI_OK;
 }
 

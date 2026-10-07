@@ -32,8 +32,17 @@
 //   DTAPI_E_BUF_TOO_SMALL   a channel's MaxSamples is below DtSdiAudio_MaxSamples()
 DtapiResult DtSdiAudio_Check(const DtSdiAudio* Audio, int VidStd);
 
+// Returns the frames of the audio cadence of video standard VidStd: 5 at 29.97 and
+// 59.94 Hz, 1 at a rate whose frames all hold the same number of samples.
+int DtSdiAudio_CadenceLength(int VidStd);
+
 // Clears what the parser sets in Audio, for a new frame.
 void DtSdiAudio_Begin(DtSdiAudio* Audio);
+
+// Returns the six BCH words of a HD data packet whose first ADF word is Words[0], one
+// byte each, the first in the lowest bits: the code of SMPTE ST 299-1 over the lower
+// bytes of the flag, IDs, data count and first 18 user data words.
+uint64_t DtSdiAudio_HdBch(const uint16_t* Words);
 
 // Takes an audio packet of SMPTE ST 299-1 (HD and up): a data packet's four samples, or
 // a control packet's frame number. Checks the data packet's BCH code and checksum when

@@ -13,10 +13,11 @@
 //
 // Blanking is 200 (hex) in a C stream and 040 in a Y stream, alternating from Cb in SD,
 // as DTAPI's matrix and the black frames of DtSdiFrame have it. The payload ID is DTAPI's
-// matrix's: on the line three after each field's switching line, in the Y stream only in
-// HD and in every stream in 3G and 2160p. The line CRCs and the packets' checksums are
-// left to the transmitter unless the program asks for them. This is the portable
-// version; audio comes with plan 0032's step E.
+// matrix's: on the line three after each field's switching line, in the Y stream, of
+// every link in 2160p. The audio follows it, as DtSdiEmbed makes it:
+// its control packets in the Y stream and its data in the C stream, in 2160p of link 1.
+// The program's packets come last. The line CRCs and the packets' checksums are left to
+// the transmitter unless the program asks for them. This is the portable version.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -26,6 +27,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h"     // Allocation seam.
 #include "DtSdiAnc.h"         // The data IDs the builder writes itself.
+#include "DtSdiEmbed.h"       // The audio.
 #include "DtSdiImage.h"       // Reading the image.
 #include "DtSdiSymbols.h"     // Writing the frame's symbols.
 #include "DtSdiView.h"        // The frame a call writes.
@@ -49,10 +51,6 @@
 // The words of the payload ID packet: flag, IDs, count, four bytes, checksum.
 #define DT_SDIBUILDER_PAYLOAD_ID_WORDS 11
 
-// What stands in for a packet's checksum that the transmitter fills in: a legal word,
-// which some transmitters need before they replace it.
-#define DT_SDIBUILDER_NO_CHECKSUM 0x0CC
-
 // The blanking of a C and of a Y word.
 #define DT_SDIBUILDER_BLANK_C 0x200
 #define DT_SDIBUILDER_BLANK_Y 0x040
@@ -67,6 +65,7 @@ struct DtSdiBuilder
     uint32_t LastCrc[8]; // Per stream: the CRC over the active part of that frame's last
                          // line, where the first line's CRC starts
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
+    DtSdiEmbed Embed;        // The audio: of the frame being built, and its cadence
 
     // The words of each stream of the line being made, the line woven, the image lines
     // it takes, and per section of the frame the words its packets take.
@@ -77,52 +76,6 @@ struct DtSdiBuilder
 };
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// An 8-bit value with even parity in bit 8 and its inverse in bit 9, as the IDs, count
-// and payload ID bytes of a packet carry it.
-//
-static uint16_t WithParity8(unsigned Value)
-{
-    unsigned Ones = Value & 0xFF;
-    Ones ^= Ones >> 4;
-    Ones ^= Ones >> 2;
-    Ones ^= Ones >> 1;
-    const unsigned Bit8 = Ones & 1;
-    return (uint16_t)((Value & 0xFF) | Bit8 << 8 | (Bit8 ^ 1) << 9);
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Writes a packet into Words from Pos on: the flag, Did and Sdid, the count, Count user
-// data words and the checksum, worked out when Checksum is true, else 0CC (hex), a legal
-// word for the transmitter to replace. Returns the word after it.
-//
-static int PutPacket(uint16_t* Words, int Pos, unsigned Did, unsigned Sdid,
-                     const uint16_t* Data, int Count, bool Checksum)
-{
-    Words[Pos++] = 0x000;
-    Words[Pos++] = 0x3FF;
-    Words[Pos++] = 0x3FF;
-    const int First = Pos;
-    Words[Pos++] = WithParity8(Did);
-    Words[Pos++] = WithParity8(Sdid);
-    Words[Pos++] = WithParity8((unsigned)Count);
-    for (int i = 0; i < Count; i++)
-        Words[Pos++] = (uint16_t)(Data[i] & 0x3FF);
-    if (!Checksum)
-    {
-        Words[Pos++] = DT_SDIBUILDER_NO_CHECKSUM;
-        return Pos;
-    }
-    unsigned Sum = 0;
-    for (int i = First; i < Pos; i++)
-        Sum += Words[i] & 0x1FF;
-    Sum &= 0x1FF;
-    Words[Pos++] = (uint16_t)(Sum | (((Sum >> 8) & 1) ^ 1) << 9);
-    return Pos;
-}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StreamOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -149,8 +102,10 @@ static int Section(int LineIndex, bool InHanc, int Stream)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Returns whether stream Stream of line LineIndex carries the payload ID: three lines
-// after a field's switching line, in SD's one stream, HD's Y stream, and every stream
-// of 3G and 2160p.
+// after a field's switching line, in SD's one stream and in every Y stream above SD,
+// those of each link of 2160p too. That is where DTAPI's matrix puts it: its comment
+// has 3G and up in every stream, but its code tells HD by "not SD", and the card shows
+// the payload ID of 1080p50 in the Y stream alone.
 //
 static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
 {
@@ -161,9 +116,7 @@ static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
         (Props->NumFields == 2 && Line == Props->Fields[1].SwitchingLine + 3);
     if (!OnLine)
         return false;
-    if (Geo->NumStreams == 1 || Geo->Is4k || Geo->Layout.SdiRate == DT_SDIRATE_3G)
-        return true;
-    return !Geo->StreamIsChroma[Stream];
+    return Geo->NumStreams == 1 || !Geo->StreamIsChroma[Stream];
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -209,6 +162,8 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         int Room = P->InHanc ? HancRoom : Geo->StreamActiveWords;
         if (P->InHanc && HasPayloadId(Geo, P->Line - 1, Stream))
             Room -= DT_SDIBUILDER_PAYLOAD_ID_WORDS;
+        if (P->InHanc)
+            Room -= DtSdiEmbed_HancWords(&Builder->Embed, Geo, P->Line - 1, Stream);
         *Used += 7 + P->NumWords;
         if (*Used > Room)
             return DTAPI_E_TOO_LONG;
@@ -228,8 +183,8 @@ static void PutPackets(const DtSdiGeometry* Geo, const DtSdiAncData* Anc, int Li
     {
         const DtSdiAncPacket* P = &Anc->Packets[p];
         if (P->Line == LineIndex + 1 && P->InHanc == InHanc && StreamOf(Geo, P) == Stream)
-            Pos = PutPacket(Words, Pos, P->Did, P->SdidOrDbn, P->Words, P->NumWords,
-                            Checksum);
+            Pos = DtSdiAnc_Put(Words, Pos, (uint8_t)P->Did, (uint8_t)P->SdidOrDbn,
+                               P->Words, P->NumWords, Checksum);
     }
 }
 
@@ -339,16 +294,20 @@ static void MakeLine(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         W[Hanc - 2] = 0x000;
         W[Hanc - 1] = (uint16_t)Sav;
 
-        // The horizontal blanking: the payload ID first, then the program's packets.
+        // The horizontal blanking: the payload ID first, then the audio, then the
+        // program's packets.
         int Pos = Geo->StreamEavWords;
         if (HasPayloadId(Geo, LineIndex, s))
         {
-            const uint16_t Bytes[4] = {
-                WithParity8(Vpid & 0xFF), WithParity8(Vpid >> 8 & 0xFF),
-                WithParity8(Vpid >> 16 & 0xFF), WithParity8(Vpid >> 24 & 0xFF)};
-            Pos = PutPacket(W, Pos, DT_SDIANC_DID_PAYLOAD_ID, DT_SDIANC_SDID_PAYLOAD_ID,
-                            Bytes, 4, Builder->Checksums);
+            const uint16_t Bytes[4] = {DtSdiAnc_WithParity8(Vpid & 0xFF),
+                                       DtSdiAnc_WithParity8(Vpid >> 8 & 0xFF),
+                                       DtSdiAnc_WithParity8(Vpid >> 16 & 0xFF),
+                                       DtSdiAnc_WithParity8(Vpid >> 24 & 0xFF)};
+            Pos = DtSdiAnc_Put(W, Pos, DT_SDIANC_DID_PAYLOAD_ID,
+                               DT_SDIANC_SDID_PAYLOAD_ID, Bytes, 4, Builder->Checksums);
         }
+        Pos = DtSdiEmbed_Put(&Builder->Embed, Geo, LineIndex, s, W, Pos,
+                             Builder->Checksums);
         PutPackets(Geo, Anc, LineIndex, true, s, Builder->Checksums, W, Pos);
         if (Vanc)
             PutPackets(Geo, Anc, LineIndex, false, s, Builder->Checksums, W, Hanc);
@@ -422,7 +381,8 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_Build -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Every argument is checked before the frame is touched. The CRC of the first line
+// Every argument is checked before the frame is touched, the audio planned first so
+// that the room it leaves for the program's packets is known. The CRC of the first line
 // covers the last line of the frame built before, of the same standard; of the first
 // frame, or after a change of standard, nothing but its own EAV and line number.
 //
@@ -439,22 +399,16 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
         Result = DtSdiImage_Check(Image, Geo);
+    if (Result == DTAPI_OK)
+    {
+        DtSdiEmbed_Init(&Builder->Embed, Geo);
+        Result = DtSdiEmbed_Begin(&Builder->Embed, Audio);
+    }
     if (Result == DTAPI_OK && Anc != NULL)
         Result = CheckPackets(Builder, Geo, Anc);
-    if (Result == DTAPI_OK && Audio != NULL)
-    {
-        // Audio is plan 0032's step E: until then a frame carries none.
-        for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
-        {
-            if (Audio->Formats[c / 2] != DT_SDI_AUDIO_NONE &&
-                Audio->Channels[c].Samples != NULL)
-            {
-                Result = DTAPI_E_NOT_SUPPORTED;
-            }
-        }
-    }
     if (Result != DTAPI_OK)
         return Result;
+    DtSdiEmbed_Start(&Builder->Embed);
 
     if (Builder->VidStd != Geo->VidStd)
     {
@@ -491,6 +445,7 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         WriteLine(Builder, Geo, &Writer);
     }
     DtSdiSymbolWriter_End(&Writer, Frame->Frame + Frame->FrameSize);
+    DtSdiEmbed_End(&Builder->Embed);
     return DTAPI_OK;
 }
 
@@ -513,17 +468,27 @@ void DtSdiBuilder_Freep(DtSdiBuilder** Builder)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_GetNumAudioSamples -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Audio is plan 0032's step E.
+// The builder's own audio state, set up for VidStd in a copy, says where its cadence
+// stands.
 //
 DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder, int VidStd,
                                             int FrameNumber, int* NumSamples)
 {
-    (void)VidStd;
-    (void)FrameNumber;
     if (Builder == NULL || NumSamples == NULL)
         return DTAPI_E_INVALID_ARG;
     *NumSamples = 0;
-    return DTAPI_E_NOT_SUPPORTED;
+    DtSdiGeometry Geo;
+    const DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
+    DtSdiEmbed* Embed = (DtSdiEmbed*)DtAlloc_Malloc(sizeof(DtSdiEmbed));
+    if (Embed == NULL)
+        return DTAPI_E_OUT_OF_MEM;
+    memcpy(Embed, &Builder->Embed, sizeof(*Embed));
+    DtSdiEmbed_Init(Embed, &Geo);
+    const DtapiResult Found = DtSdiEmbed_NumSamples(Embed, FrameNumber, NumSamples);
+    DtAlloc_Free(Embed);
+    return Found;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetChecksums -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

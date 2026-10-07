@@ -11,10 +11,10 @@
 // ST 291; and for 2160p the division over four links of ST 2082-10. Where the standards
 // leave a choice, the frame is made as DTAPI's matrix makes it: blanking 200 (hex) in a
 // C and 040 in a Y stream; the payload ID right after EAV on the lines ST 352 names, in
-// the Y stream in HD and in every stream from 3G up, with byte 3 zero and byte 4 saying
-// 10 bits. The program's packets follow it, in the order given. Unless the builder is
-// asked for them, the CRC words are 200 (hex) and the checksums 0CC, for the
-// transmitter to fill in.
+// every Y stream above SD, those of each link of 2160p too, with byte 3 zero and byte 4
+// saying 10 bits. The program's packets follow it, in the order given. Unless the
+// builder is asked for them, the CRC words are 200 (hex) and the checksums 0CC, for
+// the transmitter to fill in.
 //
 // With CDTAPI_TEST_SDI_DIR set, one more case builds frames from the images FFmpeg's sdi
 // muxer was given, <Name>.yuv, and compares them with the muxer's, <Name>.raw. They
@@ -340,8 +340,7 @@ static void RefLine(const SdiFormat* F, int Line, Pattern Value,
         }
 
         int Pos = EavWords(F);
-        const bool ThreeGUp = F->SdiRate != DT_SDIRATE_HD;
-        if (IsPayloadIdLine(F, Line) && (IsSd(F) || ThreeGUp || !C))
+        if (IsPayloadIdLine(F, Line) && (IsSd(F) || !C))
         {
             const uint32_t Vpid = MatrixVpid(F);
             const uint16_t Bytes[4] = {Parity8(Vpid & 0xFF), Parity8(Vpid >> 8 & 0xFF),
@@ -872,17 +871,45 @@ DT_TEST(Refusals)
     for (size_t b = 0; b < Size; b++)
         DT_ASSERT_EQ(Frame[b], 0xA5);
 
-    // Audio is plan 0032's step E.
-    int32_t Samples[2048];
+    // Audio that a frame of 1080i50, 1920 samples a channel, cannot take.
+    static int32_t Samples[2048];
     DtSdiAudio Audio;
     memset(&Audio, 0, sizeof(Audio));
     Audio.Formats[0] = DT_SDI_AUDIO_PCM;
     Audio.Channels[0].Samples = Samples;
     Audio.Channels[0].Stride = 1;
-    Audio.Channels[0].NumSamples = 1920;
+    Audio.Channels[0].NumSamples = 1919;
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL),
-                 DTAPI_E_NOT_SUPPORTED);
-    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, &Full), DTAPI_OK);
+                 DTAPI_E_BUF_TOO_SMALL);
+    DT_ASSERT_EQ(Audio.NumSamplesUsed, 1920);
+    Audio.Channels[0].NumSamples = 1920;
+    Audio.FrameNumber = 2; // 25 Hz has no cadence
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL),
+                 DTAPI_E_INVALID_ARG);
+    Audio.FrameNumber = 0;
+    Audio.Channels[0].Stride = -1;
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL),
+                 DTAPI_E_INVALID_ARG);
+    Audio.Channels[0].Stride = 1;
+    Audio.Formats[1] = (DtSdiAudioFormat)7;
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL),
+                 DTAPI_E_INVALID_FORMAT);
+    Audio.Formats[1] = DT_SDI_AUDIO_NONE;
+
+    // Packets that fill a line's horizontal blanking of the C stream to the last word
+    // fit without audio, and not with it: every line but the one after a switching line
+    // carries a sample of group 1 there.
+    DtSdiAncPacket Fill[3];
+    for (int p = 0; p < 3; p++)
+        Fill[p] = (DtSdiAncPacket){
+            50, true, true, 0, 0x60, 0x60, p < 2 ? 255 : 177, g_PacketWords[p], false};
+    DtSdiAncData Filled = {Fill, 0, 3, NULL, 0, 0, 0};
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Filled),
+                 DTAPI_E_TOO_LONG);
+    for (size_t b = 0; b < Size; b++)
+        DT_ASSERT_EQ(Frame[b], 0xA5);
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, &Filled), DTAPI_OK);
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Full), DTAPI_OK);
 
     // In SD, a packet has no chrominance stream to go in.
     size_t SdSize = 0;
@@ -898,6 +925,593 @@ DT_TEST(Refusals)
     DT_ASSERT(Builder == NULL);
     DtSdiView_Free(View);
     free(Frame);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Audio +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// The builder's audio is read back by the parser, which step C checked against the
+// matrix and the muxer; what the parser cannot tell, where the packets lie, the test
+// sees in the parser's list of packets. The expectations come from the standards and
+// from the matrix: the cadence of 1001 rates as DTAPI divides it, no audio on the line
+// after a switching line, the control packets two lines after it, a frame's share of
+// samples a line at most, the channel status of decision 8.
+//
+
+// The samples per channel of the frame at place Place (from 1) of F's cadence.
+static int ExpectedSamples(const SdiFormat* F, int Place)
+{
+    static const int At2997[5] = {1602, 1601, 1602, 1601, 1602};
+    static const int At5994[5] = {801, 800, 801, 801, 801};
+    if (F->FpsDen == 1001 && F->FpsNum == 30000)
+        return At2997[Place - 1];
+    if (F->FpsDen == 1001 && F->FpsNum == 60000)
+        return At5994[Place - 1];
+    return (int)(48000LL * F->FpsDen / F->FpsNum);
+}
+
+static int CadenceOf(const SdiFormat* F)
+{
+    return F->FpsDen == 1001 && F->FpsNum != 24000 ? 5 : 1;
+}
+
+// The switching lines, as a raw frame numbers its lines: ST 125's 10 and 273 three
+// lower; BT.656's 6 and 319; 7 of ST 296; 7 and 569 of ST 274.
+static int SwitchingLines(const SdiFormat* F, int Lines[2])
+{
+    if (F->Lines == 525)
+    {
+        Lines[0] = 7;
+        Lines[1] = 270;
+        return 2;
+    }
+    if (F->Lines == 625)
+    {
+        Lines[0] = 6;
+        Lines[1] = 319;
+        return 2;
+    }
+    Lines[0] = 7;
+    Lines[1] = 569;
+    return F->Lines == 1125 && F->Scan != SDI_SCAN_P ? 2 : 1;
+}
+
+static bool IsAfterSwitching(const SdiFormat* F, int Line, int After)
+{
+    int Lines[2];
+    const int N = SwitchingLines(F, Lines);
+    for (int i = 0; i < N; i++)
+        if (Line == Lines[i] + After)
+            return true;
+    return false;
+}
+
+// A 24-bit value for each channel and sample.
+static uint32_t Value24(int Channel, long Sample)
+{
+    uint32_t X = (uint32_t)Channel * 2654435761u + (uint32_t)Sample * 40503u + 12345u;
+    X ^= X >> 13;
+    X *= 0x5BD1E995u;
+    X ^= X >> 15;
+    return X & 0xFFFFFF;
+}
+
+static uint32_t Parity32(uint32_t Bits)
+{
+    uint32_t P = 0;
+    for (; Bits != 0; Bits &= Bits - 1)
+        P ^= 1;
+    return P;
+}
+
+// The program's AES3 subframe of channel Channel: V, U and C in patterns of their own,
+// Z every 192 samples on the first channel of the pair, and P set whether right or not.
+static uint32_t ProgramAes3(int Channel, long Sample)
+{
+    uint32_t W = Value24(Channel, Sample) << 4;
+    if (Sample % 7 == 0)
+        W |= DT_SDI_AES3_V;
+    if (Sample % 5 == 0)
+        W |= DT_SDI_AES3_U;
+    if ((Sample / 3) % 2 != 0)
+        W |= DT_SDI_AES3_C;
+    if (Channel % 2 == 0 && Sample % 192 == 0)
+        W |= DT_SDI_AES3_Z;
+    return W | DT_SDI_AES3_P;
+}
+
+// W with P even parity over bits 4 to 30.
+static uint32_t WithRightP(uint32_t W)
+{
+    W &= ~DT_SDI_AES3_P;
+    return W | Parity32(W & 0x7FFFFFF0u) << 31;
+}
+
+// The channel status block, bit n in the order it is sent: of PCM, professional, 48 kHz,
+// stereo, 24 bits; of a channel its group lacks, professional, 48 kHz, 16 bits. AES3's
+// tables give a field's bits in the order they are sent. The CRC is AES3's: x^8 + x^4
+// + x^3 + x^2 + 1 over bits 0 to 183, the register all ones at the start, its highest
+// bit sent first.
+static void ExpectedStatus(bool Mute, uint8_t Bits[192])
+{
+    memset(Bits, 0, 192);
+    Bits[0] = 1; // Professional
+    Bits[7] = 1; // 48 kHz: bits 6 and 7 are 0 1
+    if (Mute)
+        Bits[19] = 1; // Word length 1 0 0: 16 bits of at most 20
+    else
+    {
+        Bits[9] = 1;  // Channel mode 0 1 0 0: stereo
+        Bits[18] = 1; // Auxiliary bits 0 0 1: at most 24 bits
+        Bits[19] = 1; // Word length 1 0 1: 24 bits
+        Bits[21] = 1;
+    }
+    unsigned Crc = 0xFF;
+    for (int n = 0; n < 184; n++)
+    {
+        const unsigned Feedback = (Crc >> 7 & 1) ^ Bits[n];
+        Crc = Crc << 1 & 0xFF;
+        if (Feedback != 0)
+            Crc ^= 0x1D;
+    }
+    for (int n = 0; n < 8; n++)
+        Bits[184 + n] = (uint8_t)(Crc >> (7 - n) & 1);
+}
+
+#define AUDIO_MAX 2048
+#define AUDIO_MAX_FRAMES 10
+#define AUDIO_MAX_PACKETS 8192
+
+// The buffers of the audio tests.
+typedef struct AudioBufs
+{
+    int32_t Pcm[8][AUDIO_MAX];
+    uint32_t Aes3[DT_SDI_AUDIO_MAX_CHANNELS][AUDIO_MAX];
+    uint32_t Got[DT_SDI_AUDIO_MAX_CHANNELS][AUDIO_MAX];
+    uint32_t Kept[3]
+                 [AUDIO_MAX * AUDIO_MAX_FRAMES]; // Channels 1, 2 and 11 over the frames
+    DtSdiAncPacket Packets[AUDIO_MAX_PACKETS];
+    DtSdiAudio In;
+    DtSdiAudio Out;
+} AudioBufs;
+
+// Sets B->Out to take every channel as AES3 subframes.
+static void AudioBufs_Receive(AudioBufs* B)
+{
+    memset(&B->Out, 0, sizeof(B->Out));
+    for (int p = 0; p < DT_SDI_AUDIO_MAX_CHANNELS / 2; p++)
+        B->Out.Formats[p] = DT_SDI_AUDIO_AES3;
+    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        B->Out.Channels[c].Samples = B->Got[c];
+        B->Out.Channels[c].MaxSamples = AUDIO_MAX;
+    }
+}
+
+// Checks where the audio packets of a frame of F lie, as the parser listed them, and
+// that each group of Groups (a bit per group) carries Expected samples. Returns NULL, or
+// what is wrong.
+static const char* CheckAudioPackets(const SdiFormat* F, const DtSdiAncData* List,
+                                     int Expected, unsigned Groups, char* Message,
+                                     size_t Size)
+{
+    static int PerLine[1126][4];
+    memset(PerLine, 0, sizeof(PerLine));
+    int Total[4] = {0, 0, 0, 0};
+    int Controls[4] = {0, 0, 0, 0};
+    const bool Sd = IsSd(F);
+    int Switching[2];
+    const int NumFields = SwitchingLines(F, Switching);
+    const int Lines = F->Lines;
+    const int MaxPerLine = (Expected + Lines - NumFields - 1) / (Lines - NumFields);
+
+    for (int p = 0; p < List->NumPackets; p++)
+    {
+        const DtSdiAncPacket* P = &List->Packets[p];
+        const int Did = P->Did;
+        const bool Data =
+            Sd ? (Did >= 0xF9 && Did % 2 == 1) : (Did >= 0xE4 && Did <= 0xE7);
+        const bool Control = !Sd && Did >= 0xE0 && Did <= 0xE3;
+        if (!Data && !Control)
+            continue;
+        const int Group = Sd ? (0xFF - Did) / 2 : Data ? 0xE7 - Did : 0xE3 - Did;
+        if (!P->InHanc || !P->ChecksumOk || (Is4k(F) && P->VirtualInterface != 1) ||
+            (Groups >> Group & 1) == 0)
+        {
+            snprintf(Message, Size, "line %d: a packet of DID %02X where none belongs",
+                     P->Line, Did);
+            return Message;
+        }
+        if (Control)
+        {
+            if (P->OnChroma || !IsAfterSwitching(F, P->Line, 2) || P->NumWords != 11)
+            {
+                snprintf(Message, Size, "line %d: a control packet out of place",
+                         P->Line);
+                return Message;
+            }
+            Controls[Group]++;
+            continue;
+        }
+        const int Samples = Sd ? P->NumWords / 12 : 1;
+        if ((!Sd && (!P->OnChroma || P->NumWords != 24)) ||
+            (Sd && P->NumWords % 12 != 0) || IsAfterSwitching(F, P->Line, 1))
+        {
+            snprintf(Message, Size, "line %d: a data packet out of place", P->Line);
+            return Message;
+        }
+        PerLine[P->Line][Group] += Samples;
+        Total[Group] += Samples;
+    }
+
+    for (int g = 0; g < 4; g++)
+    {
+        const bool On = (Groups >> g & 1) != 0;
+        if (Total[g] != (On ? Expected : 0) || Controls[g] != (On && !Sd ? NumFields : 0))
+        {
+            snprintf(Message, Size, "group %d: %d samples and %d control packets", g + 1,
+                     Total[g], Controls[g]);
+            return Message;
+        }
+        for (int Line = 1; Line <= Lines; Line++)
+        {
+            if (PerLine[Line][g] > MaxPerLine)
+            {
+                snprintf(Message, Size, "line %d: %d samples, at most %d a line", Line,
+                         PerLine[Line][g], MaxPerLine);
+                return Message;
+            }
+        }
+    }
+    return NULL;
+}
+
+// Checks the channel status and the block starts of the samples kept of one channel:
+// Z on every 192nd sample from the first when ZExpected, and the C bits of Mute's or
+// PCM's status.
+static const char* CheckStatus(const uint32_t* Kept, long Count, bool Mute,
+                               bool ZExpected, char* Message, size_t Size)
+{
+    uint8_t Bits[192];
+    ExpectedStatus(Mute, Bits);
+    for (long s = 0; s < Count; s++)
+    {
+        const bool Z = (Kept[s] & DT_SDI_AES3_Z) != 0;
+        const bool C = (Kept[s] & DT_SDI_AES3_C) != 0;
+        if (Z != (ZExpected && s % 192 == 0) || C != (Bits[s % 192] != 0))
+        {
+            snprintf(Message, Size, "sample %ld: Z %d, C %d", s, (int)Z, (int)C);
+            return Message;
+        }
+    }
+    return NULL;
+}
+
+// Builds and parses frames of F with audio: channels 1 to 8 PCM, 9 and 10 the program's
+// AES3, 11 and 12 not sent, so silent in group 3, and group 4 absent. Returns NULL, or
+// what failed.
+static const char* AudioOfStandard(const SdiFormat* F, AudioBufs* B, char* Message,
+                                   size_t Size)
+{
+    const bool Sd = IsSd(F);
+    const int Cadence = CadenceOf(F);
+    const int NumFrames = Cadence == 5 ? (Is4k(F) ? 5 : AUDIO_MAX_FRAMES) : 3;
+    size_t FrameSize = 0;
+    DtSdiView_RawFrameSize(F->VidStd, 10, &FrameSize);
+    uint8_t* Frame = (uint8_t*)malloc(FrameSize);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    const char* Failure = NULL;
+    if (Frame == NULL || View == NULL || Builder == NULL || Parser == NULL)
+        Failure = "out of memory";
+    const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_HANC, 0, 0};
+    if (Failure == NULL && (DtSdiBuilder_SetChecksums(Builder, true) != DTAPI_OK ||
+                            DtSdiParser_SetAudioChecks(Parser, true) != DTAPI_OK ||
+                            DtSdiParser_SetAncFilter(Parser, &All, 1) != DTAPI_OK))
+        Failure = "a setting was refused";
+
+    long Sent = 0;
+    for (int n = 0; Failure == NULL && n < NumFrames; n++)
+    {
+        const int Place = n % Cadence + 1;
+        const int Expected = ExpectedSamples(F, Place);
+        int Asked = 0;
+        if (DtSdiBuilder_GetNumAudioSamples(Builder, F->VidStd, 0, &Asked) != DTAPI_OK ||
+            Asked != Expected)
+        {
+            snprintf(Message, Size, "frame %d: %d samples asked, %d expected", n, Asked,
+                     Expected);
+            Failure = Message;
+            break;
+        }
+
+        memset(&B->In, 0, sizeof(B->In));
+        for (int c = 0; c < 10; c++)
+        {
+            B->In.Formats[c / 2] = c < 8 ? DT_SDI_AUDIO_PCM : DT_SDI_AUDIO_AES3;
+            for (int i = 0; i < AUDIO_MAX; i++)
+            {
+                if (c < 8)
+                    B->Pcm[c][i] = (int32_t)(Value24(c, Sent + i) << 8);
+                else
+                    B->Aes3[c][i] = ProgramAes3(c, Sent + i);
+            }
+            B->In.Channels[c].Samples = c < 8 ? (void*)B->Pcm[c] : (void*)B->Aes3[c];
+            B->In.Channels[c].NumSamples = AUDIO_MAX;
+        }
+        if (DtSdiView_SetRawFrame(View, Frame, FrameSize, F->VidStd, 10) != DTAPI_OK ||
+            DtSdiBuilder_Build(Builder, View, NULL, &B->In, NULL) != DTAPI_OK)
+        {
+            Failure = "the build failed";
+            break;
+        }
+        if (B->In.NumSamplesUsed != Expected)
+        {
+            Failure = "NumSamplesUsed differs";
+            break;
+        }
+
+        AudioBufs_Receive(B);
+        DtSdiAncData List = {B->Packets, AUDIO_MAX_PACKETS, 0, NULL, 0, 0, 0};
+        if (DtSdiParser_Parse(Parser, View, NULL, &B->Out, &List) != DTAPI_OK)
+        {
+            Failure = "the parse failed";
+            break;
+        }
+        const int Number = Cadence == 1 || Sd ? 0 : Place;
+        if (B->Out.FrameNumber != Number)
+        {
+            snprintf(Message, Size, "frame %d: frame number %d, expected %d", n,
+                     B->Out.FrameNumber, Number);
+            Failure = Message;
+            break;
+        }
+        for (int g = 0; g < 4 && Failure == NULL; g++)
+            if (B->Out.NumPacketErrors[g] != 0)
+                Failure = "a packet's BCH code or checksum failed";
+        if (Failure == NULL)
+            Failure = CheckAudioPackets(F, &List, Expected, 0x7, Message, Size);
+
+        // The samples, and what each subframe carries besides.
+        const uint32_t Audio = Sd ? 0x0FFFFF00u : DT_SDI_AES3_AUDIO;
+        for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS && Failure == NULL; c++)
+        {
+            const DtSdiAudioChannel* C = &B->Out.Channels[c];
+            if (C->Present != (c < 12) || (c < 12 && C->NumSamples != Expected) ||
+                C->Invalid != (c >= 8 && c < 12))
+            {
+                snprintf(Message, Size, "frame %d, channel %d: present %d, %d samples", n,
+                         c + 1, (int)C->Present, C->NumSamples);
+                Failure = Message;
+                break;
+            }
+            for (int i = 0; i < (c < 12 ? Expected : 0); i++)
+            {
+                const uint32_t W = B->Got[c][i];
+                // SD's parity covers the channel number and Z too, so only HD's is
+                // that of the subframe.
+                bool Right = Sd || Parity32(W & 0xFFFFFFF0u) == 0;
+                if (c < 8)
+                    Right = Right && (W & Audio) == (Value24(c, Sent + i) << 4 & Audio) &&
+                            (W & (DT_SDI_AES3_V | DT_SDI_AES3_U)) == 0;
+                else if (c < 10)
+                {
+                    const uint32_t Mask =
+                        Sd ? Audio | DT_SDI_AES3_V | DT_SDI_AES3_U | DT_SDI_AES3_C
+                           : 0xFFFFFFFFu;
+                    Right = Right &&
+                            (W & Mask) == (WithRightP(ProgramAes3(c, Sent + i)) & Mask);
+                }
+                else
+                    Right =
+                        Right && (W & DT_SDI_AES3_AUDIO) == 0 && (W & DT_SDI_AES3_V) != 0;
+                if (!Right)
+                {
+                    snprintf(Message, Size, "frame %d, channel %d, sample %d: %08X", n,
+                             c + 1, i, W);
+                    Failure = Message;
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < Expected && Failure == NULL; i++)
+        {
+            B->Kept[0][Sent + i] = B->Got[0][i];
+            B->Kept[1][Sent + i] = B->Got[1][i];
+            B->Kept[2][Sent + i] = B->Got[10][i];
+        }
+        Sent += Expected;
+    }
+
+    // The channel status over the frames: in HD Z on channels 1 and 3 of a group; in SD
+    // on every channel of a sample from the first that has it.
+    if (Failure == NULL)
+        Failure = CheckStatus(B->Kept[0], Sent, false, true, Message, Size);
+    if (Failure == NULL)
+        Failure = CheckStatus(B->Kept[1], Sent, false, Sd, Message, Size);
+    if (Failure == NULL)
+        Failure = CheckStatus(B->Kept[2], Sent, true, true, Message, Size);
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(Frame);
+    return Failure;
+}
+
+// Audio in a standard of each kind of line and rate, read back by the parser.
+DT_TEST(AudioEveryKind)
+{
+    static const char* Names[] = {"525I59_94",  "625I50",  "720P50",
+                                  "720P59_94",  "1080I50", "1080I59_94",
+                                  "1080P23_98", "1080P50", "2160P59_94"};
+    AudioBufs* B = (AudioBufs*)malloc(sizeof(AudioBufs));
+    DT_ASSERT(B != NULL);
+    char Message[160];
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        const SdiFormat* F = NULL;
+        for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+            if (strcmp(g_SdiFormats[j].Name, Names[i]) == 0)
+                F = &g_SdiFormats[j];
+        DT_ASSERT(F != NULL);
+        const char* Failure = AudioOfStandard(F, B, Message, sizeof(Message));
+        if (Failure != NULL)
+        {
+            free(B);
+            DT_FAIL("%s: %s", F->Name, Failure);
+        }
+    }
+    free(B);
+}
+
+// The cadence: a place given goes on from there; a frame without audio moves it on too;
+// another standard starts it afresh. Without the checksums, the parser's checks fail on
+// every packet.
+DT_TEST(AudioCadence)
+{
+    const SdiFormat* F = NULL;
+    const SdiFormat* Other = NULL;
+    for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+    {
+        if (strcmp(g_SdiFormats[j].Name, "1080I59_94") == 0)
+            F = &g_SdiFormats[j];
+        if (strcmp(g_SdiFormats[j].Name, "1080I50") == 0)
+            Other = &g_SdiFormats[j];
+    }
+    DT_ASSERT(F != NULL && Other != NULL);
+    AudioBufs* B = (AudioBufs*)malloc(sizeof(AudioBufs));
+    size_t Size = 0;
+    size_t OtherSize = 0;
+    DtSdiView_RawFrameSize(F->VidStd, 10, &Size);
+    DtSdiView_RawFrameSize(Other->VidStd, 10, &OtherSize);
+    uint8_t* Frame = (uint8_t*)malloc(Size > OtherSize ? Size : OtherSize);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DT_ASSERT(B != NULL && Frame != NULL && View != NULL && Builder != NULL &&
+              Parser != NULL);
+    DT_ASSERT_OK(DtSdiParser_SetAudioChecks(Parser, true));
+    memset(&B->In, 0, sizeof(B->In));
+    memset(B->Pcm[0], 0, sizeof(B->Pcm[0]));
+    B->In.Formats[0] = DT_SDI_AUDIO_PCM;
+    B->In.Channels[0].Samples = B->Pcm[0];
+    B->In.Channels[0].NumSamples = AUDIO_MAX;
+
+    // Place 3, then the builder's own: 4; a frame without audio, 5; then 1.
+    const int Expected[] = {3, 4, 5, 1};
+    for (int k = 0; k < 4; k++)
+    {
+        B->In.FrameNumber = k == 0 ? 3 : 0;
+        int Asked = 0;
+        DT_ASSERT_OK(DtSdiBuilder_GetNumAudioSamples(Builder, F->VidStd,
+                                                     B->In.FrameNumber, &Asked));
+        DT_ASSERT_EQ(Asked, ExpectedSamples(F, Expected[k]));
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
+        DT_ASSERT_OK(
+            DtSdiBuilder_Build(Builder, View, NULL, k == 2 ? NULL : &B->In, NULL));
+        if (k == 2)
+            continue;
+        AudioBufs_Receive(B);
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &B->Out, NULL));
+        DT_ASSERT_EQ(B->Out.FrameNumber, Expected[k]);
+        DT_ASSERT_EQ(B->Out.Channels[0].NumSamples, ExpectedSamples(F, Expected[k]));
+        DT_ASSERT(B->Out.NumPacketErrors[0] > 0);
+    }
+
+    // Another standard, and back: the cadence starts at 1.
+    B->In.FrameNumber = 0;
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, OtherSize, Other->VidStd, 10));
+    DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &B->In, NULL));
+    DT_ASSERT_EQ(B->In.NumSamplesUsed, 1920);
+    int Asked = 0;
+    DT_ASSERT_OK(DtSdiBuilder_GetNumAudioSamples(Builder, F->VidStd, 0, &Asked));
+    DT_ASSERT_EQ(Asked, ExpectedSamples(F, 1));
+    DT_ASSERT_EQ(DtSdiBuilder_GetNumAudioSamples(Builder, F->VidStd, 6, &Asked),
+                 DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiBuilder_GetNumAudioSamples(Builder, 12345, 0, &Asked),
+                 DTAPI_E_INVALID_VIDSTD);
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(Frame);
+    free(B);
+}
+
+// Raw AES3 through the parser and the builder and back, frame for frame with the
+// parser's frame number: the frames come out the same, channel status and block starts
+// included.
+DT_TEST(Aes3RoundTrip)
+{
+    static const char* Names[] = {"625I50", "1080I59_94"};
+    AudioBufs* B = (AudioBufs*)malloc(sizeof(AudioBufs));
+    DT_ASSERT(B != NULL);
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        const SdiFormat* F = NULL;
+        for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+            if (strcmp(g_SdiFormats[j].Name, Names[i]) == 0)
+                F = &g_SdiFormats[j];
+        DT_ASSERT(F != NULL);
+        size_t Size = 0;
+        DtSdiView_RawFrameSize(F->VidStd, 10, &Size);
+        uint8_t* First = (uint8_t*)malloc(Size);
+        uint8_t* Again = (uint8_t*)malloc(Size);
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiBuilder* Pcm = DtSdiBuilder_Alloc();
+        DtSdiBuilder* Raw = DtSdiBuilder_Alloc();
+        DtSdiParser* Parser = DtSdiParser_Alloc();
+        DT_ASSERT(First != NULL && Again != NULL && View != NULL && Pcm != NULL &&
+                  Raw != NULL && Parser != NULL);
+        DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Pcm, true));
+        DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Raw, true));
+
+        long Sent = 0;
+        for (int n = 0; n < 6; n++)
+        {
+            // A frame of PCM in groups 1 and 2.
+            memset(&B->In, 0, sizeof(B->In));
+            for (int c = 0; c < 8; c++)
+            {
+                B->In.Formats[c / 2] = DT_SDI_AUDIO_PCM;
+                for (int s = 0; s < AUDIO_MAX; s++)
+                    B->Pcm[c][s] = (int32_t)(Value24(c, Sent + s) << 8);
+                B->In.Channels[c].Samples = B->Pcm[c];
+                B->In.Channels[c].NumSamples = AUDIO_MAX;
+            }
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(View, First, Size, F->VidStd, 10));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Pcm, View, NULL, &B->In, NULL));
+            Sent += B->In.NumSamplesUsed;
+
+            // Its subframes, sent again as they came.
+            AudioBufs_Receive(B);
+            DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &B->Out, NULL));
+            memset(&B->In, 0, sizeof(B->In));
+            B->In.FrameNumber = B->Out.FrameNumber;
+            for (int c = 0; c < 8; c++)
+            {
+                B->In.Formats[c / 2] = DT_SDI_AUDIO_AES3;
+                memcpy(B->Aes3[c], B->Got[c], sizeof(B->Aes3[c]));
+                B->In.Channels[c].Samples = B->Aes3[c];
+                B->In.Channels[c].NumSamples = B->Out.Channels[c].NumSamples;
+            }
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Again, Size, F->VidStd, 10));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Raw, View, NULL, &B->In, NULL));
+            if (memcmp(First, Again, Size) != 0)
+            {
+                free(B);
+                DT_FAIL("%s: frame %d: the frame built from AES3 differs", F->Name, n);
+            }
+        }
+        DtSdiParser_Free(Parser);
+        DtSdiBuilder_Free(Raw);
+        DtSdiBuilder_Free(Pcm);
+        DtSdiView_Free(View);
+        free(Again);
+        free(First);
+    }
+    free(B);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames of the sdi muxer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -1020,4 +1634,5 @@ DT_TEST(FramesOfTheSdiMuxer)
 
 DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
+             DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(Aes3RoundTrip),
              DT_RUN(FramesOfTheSdiMuxer))

@@ -29,6 +29,10 @@
 #define DT_SDIANC_DID_PAYLOAD_ID 0x41
 #define DT_SDIANC_SDID_PAYLOAD_ID 0x01
 
+// What stands in for a packet's checksum that the transmitter fills in: a legal word,
+// which some transmitters need before they replace it.
+#define DT_SDIANC_NO_CHECKSUM 0x0CC
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Packets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // A packet found in a stream: where it starts, its IDs and its user data words.
@@ -55,6 +59,17 @@ bool DtSdiAnc_IsAudio(uint8_t Did);
 // need not read the rest.
 bool DtSdiAnc_IsWanted(const DtSdiAncFilter* Filters, int NumFilters, bool InHanc,
                        int Line);
+
+// Writes a packet into Words from Pos on: the flag, Did and SdidOrDbn and the count,
+// each with its parity, Count user data words from Data, and the checksum, worked out
+// when Checksum is true, else DT_SDIANC_NO_CHECKSUM for the transmitter to replace.
+// Returns the index of the word after it.
+int DtSdiAnc_Put(uint16_t* Words, int Pos, uint8_t Did, uint8_t SdidOrDbn,
+                 const uint16_t* Data, int Count, bool Checksum);
+
+// Returns the lower eight bits of Value with even parity in bit 8 and its inverse in
+// bit 9, as the IDs and data count of a packet carry them.
+uint16_t DtSdiAnc_WithParity8(unsigned Value);
 
 // Returns whether a packet with Did and SdidOrDbn on line Line (from 1), in the
 // horizontal blanking or not, is to be listed: when it matches one of the NumFilters

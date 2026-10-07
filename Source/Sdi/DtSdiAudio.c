@@ -64,10 +64,7 @@ static void PutSample(DtSdiAudio* Audio, int Channel, uint32_t Aes3)
 //
 static bool HdBchHolds(const DtSdiAncFound* Found)
 {
-    const uint16_t* Words = Found->Words - 6;
-    uint64_t Bch = 0;
-    for (int i = 0; i < 6 + DT_SDIAUDIO_HD_DATA_WORDS; i++)
-        Bch = Bch >> 8 ^ (((Words[i] ^ Bch) & 0xFF) * 0x10101010001ULL);
+    const uint64_t Bch = DtSdiAudio_HdBch(Found->Words - 6);
     for (int i = 0; i < DT_SDIAUDIO_HD_BCH_WORDS; i++)
     {
         if ((Found->Words[DT_SDIAUDIO_HD_DATA_WORDS + i] & 0xFF) !=
@@ -78,6 +75,20 @@ static bool HdBchHolds(const DtSdiAncFound* Found)
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Audio +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_HdBch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Each byte goes into a register of six bytes, the code's: the byte xored with the
+// register's lowest byte selects what the shift brings in, the generator of ST 299-1,
+// which the multiplication spreads over the bytes it touches.
+//
+uint64_t DtSdiAudio_HdBch(const uint16_t* Words)
+{
+    uint64_t Bch = 0;
+    for (int i = 0; i < 6 + DT_SDIAUDIO_HD_DATA_WORDS; i++)
+        Bch = Bch >> 8 ^ (((Words[i] ^ Bch) & 0xFF) * 0x10101010001ULL);
+    return Bch;
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_MaxSamples -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
@@ -112,6 +123,29 @@ void DtSdiAudio_Begin(DtSdiAudio* Audio)
     for (int g = 0; g < DT_SDI_AUDIO_MAX_CHANNELS / 4; g++)
         Audio->NumPacketErrors[g] = 0;
     Audio->FrameNumber = 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_CadenceLength -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A frame holds 48000 Den / Num samples on average; the cadence is the denominator of
+// that fraction in its lowest terms.
+//
+int DtSdiAudio_CadenceLength(int VidStd)
+{
+    int Num = 0;
+    int Den = 0;
+    DtVidStd_FrameRate(VidStd, &Num, &Den);
+    if (Num <= 0)
+        return 1;
+    long long A = (long long)DT_SDIAUDIO_SAMPLE_RATE * Den;
+    long long B = Num;
+    while (B != 0)
+    {
+        const long long R = A % B;
+        A = B;
+        B = R;
+    }
+    return (int)(Num / A);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_Check -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

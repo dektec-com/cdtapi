@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiAnc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Finding SMPTE ST 291 ancillary packets in a stream of SDI words
+// CDTAPI - Finding and writing SMPTE ST 291 ancillary packets in a stream of SDI words
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -8,7 +8,8 @@
 // or, for a data ID of 80 (hex) and up, the data block number; the data count, in its
 // lower eight bits; that many user data words; and the checksum: the sum of the lower
 // nine bits of the data ID through the last user data word, in nine bits, with bit 9
-// the inverse of bit 8.
+// the inverse of bit 8. The IDs and the count carry even parity in bit 8 and its
+// inverse in bit 9.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -109,4 +110,43 @@ bool DtSdiAnc_IsListed(const DtSdiAncFilter* Filters, int NumFilters, uint8_t Di
         return true;
     }
     return false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAnc_Put -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int DtSdiAnc_Put(uint16_t* Words, int Pos, uint8_t Did, uint8_t SdidOrDbn,
+                 const uint16_t* Data, int Count, bool Checksum)
+{
+    Words[Pos++] = 0x000;
+    Words[Pos++] = 0x3FF;
+    Words[Pos++] = 0x3FF;
+    const int First = Pos;
+    Words[Pos++] = DtSdiAnc_WithParity8(Did);
+    Words[Pos++] = DtSdiAnc_WithParity8(SdidOrDbn);
+    Words[Pos++] = DtSdiAnc_WithParity8((unsigned)Count);
+    for (int i = 0; i < Count; i++)
+        Words[Pos++] = (uint16_t)(Data[i] & 0x3FF);
+    if (!Checksum)
+    {
+        Words[Pos++] = DT_SDIANC_NO_CHECKSUM;
+        return Pos;
+    }
+    unsigned Sum = 0;
+    for (int i = First; i < Pos; i++)
+        Sum += Words[i] & 0x1FF;
+    Sum &= 0x1FF;
+    Words[Pos++] = (uint16_t)(Sum | (((Sum >> 8) & 1) ^ 1) << 9);
+    return Pos;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAnc_WithParity8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+uint16_t DtSdiAnc_WithParity8(unsigned Value)
+{
+    unsigned Ones = Value & 0xFF;
+    Ones ^= Ones >> 4;
+    Ones ^= Ones >> 2;
+    Ones ^= Ones >> 1;
+    const unsigned Bit8 = Ones & 1;
+    return (uint16_t)((Value & 0xFF) | Bit8 << 8 | (Bit8 ^ 1) << 9);
 }

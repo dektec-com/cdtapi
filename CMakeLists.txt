@@ -116,6 +116,7 @@ set(CDTAPI_SOURCES
     Source/Sdi/DtSdiAnc.c
     Source/Sdi/DtSdiAudio.c
     Source/Sdi/DtSdiBuilder.c
+    Source/Sdi/DtSdiEmbed.c
     Source/Sdi/DtSdiGeometry.c
     Source/Sdi/DtSdiImage.c
     Source/Sdi/DtSdiParser.c

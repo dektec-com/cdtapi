@@ -1238,7 +1238,8 @@ DT_TEST(AudioHd)
         const char* Name;
         int NumSamples;
         int FrameNumber;
-    } Cases[] = {{"1080I50", 1920, 0}, {"1080I59_94", 1601, 2}}; // Place 2 of the cadence
+    } Cases[] = {{"1080I50", 1920, 1},     // No cadence: 1 in the packet, 0 given
+                 {"1080I59_94", 1601, 2}}; // Place 2 of the cadence
     char Message[160];
     TestAudio* T = (TestAudio*)malloc(sizeof(TestAudio));
     DtSdiParser* Parser = DtSdiParser_Alloc();
