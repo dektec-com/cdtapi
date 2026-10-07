@@ -118,6 +118,7 @@ set(CDTAPI_SOURCES
     Source/Sdi/DtSdiGeometry.c
     Source/Sdi/DtSdiImage.c
     Source/Sdi/DtSdiParser.c
+    Source/Sdi/DtSdiSymbols.c
     Source/Sdi/DtSdiView.c
     Source/Service/DtPtp.c
     Source/Service/DtPtpSlave.c

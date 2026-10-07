@@ -17,6 +17,7 @@
 // CDTAPI includes
 #include "Core/DtAlloc.h" // Allocation seam.
 #include "DtSdiImage.h"   // Writing the image.
+#include "DtSdiSymbols.h" // Reading the frame's symbols.
 #include "DtSdiView.h"    // The frame a call reads or writes.
 #include "cdtapi_sdi.h"   // Interface being implemented.
 
@@ -48,16 +49,6 @@ struct DtSdiParser
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Reads Count symbols from where Ptr points into Out, one value a word.
-//
-static void ReadSymbols(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
-{
-    for (size_t i = 0; i < Count; i++)
-        Out[i] = DtSdiSymbolPtr_Get(Ptr, i);
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Writes the image of a frame up to 3G into Image, line by line.
@@ -72,7 +63,7 @@ static void ParseImage(DtSdiParser* Parser, const DtSdiView* Frame,
     {
         const DtSdiSymbolPtr Active = DtSdiView_RawSymbols(
             Frame, DtSdiGeometry_RawLine(Geo, y), (size_t)Geo->Layout.LineNumSymsHanc);
-        ReadSymbols(&Active, NumSymbols, Parser->Lines[0]);
+        DtSdiSymbols_Read(&Active, NumSymbols, Parser->Lines[0]);
         DtSdiImage_PutLine(Image, Geo, y, Parser->Lines[0]);
     }
 }
@@ -97,7 +88,7 @@ static void ParseImage4k(DtSdiParser* Parser, const DtSdiView* Frame,
     {
         const DtSdiSymbolPtr Active =
             DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
-        ReadSymbols(&Active, 8 * (size_t)LinkWidth, Parser->RawActive);
+        DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Parser->RawActive);
 
         for (int Link = 0; Link < 4; Link++)
         {
