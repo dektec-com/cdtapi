@@ -30,6 +30,14 @@
 #define DT_S352_ID_S2081_2160 0xC0    // 2160 lines on 6G, SMPTE ST 2081-10
 #define DT_S352_ID_S2082_2160 0xCE    // 2160 lines on 12G, SMPTE ST 2082-10
 
+// Returns the VPID a transmitter puts on video standard VidStd, in the same order: byte 1
+// in the least significant bits. Byte 1 is the payload: of SMPTE ST 259 in SD, ST 292 in
+// HD, ST 425-1 level A in 3G, and ST 2081-10 or ST 2082-10 for 2160p on one 6G or 12G
+// link. Byte 2 is the picture rate, with bit 7 set for a progressive transport and bit 6
+// for a progressive picture; byte 3 is 0; byte 4 says 10 bits. Returns 0 for a standard
+// a channel does not carry.
+uint32_t DtSmpte352_Make(int VidStd);
+
 // Returns the payload identifier: byte 1 of the VPID.
 int DtSmpte352_PayloadId(uint32_t Vpid);
 

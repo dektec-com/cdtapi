@@ -40,6 +40,7 @@ DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd)
     Geo->VidStd = VidStd;
     Geo->Is4k = Geo->Layout.Is4k;
     Geo->SwitchingIndex = Props.Fields[0].SwitchingLine - 1;
+    Geo->Props = Props;
 
     // The streams. Of 2160p, Props describes one link, whose streams are those of HD.
     const bool IsSd = DtFrameProps_IsSd(&Props);

@@ -53,6 +53,7 @@ typedef struct DtSdiGeometry
     int StreamSavWords;     // Words of SAV at the end of the horizontal blanking
     int StreamActiveWords;  // Words of the active part
     int SwitchingIndex;     // The index of field 1's switching line
+    DtFrameProps Props;     // The frame's fields and lines: of one link in 2160p
 } DtSdiGeometry;
 
 // Fills *Geo for video standard VidStd. Returns DTAPI_OK, or DTAPI_E_INVALID_VIDSTD for a

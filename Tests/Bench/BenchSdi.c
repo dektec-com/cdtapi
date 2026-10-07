@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# BenchSdi.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Measures how fast the parser takes SDI frames apart
+// CDTAPI - Measures how fast the parser takes SDI frames apart and the builder makes them
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
@@ -11,8 +11,9 @@
 // at: the number that carries to another machine.
 //
 // The frame's content does not matter to the image's speed, so it is noise. A second
-// table measures the walk over the blanking for audio and ancillary packets. Plan 0032
-// adds the builder, the vector versions and the worker pool as they come.
+// table measures the walk over the blanking for audio and ancillary packets, a third the
+// builder, from images of noise. Plan 0032 adds the builder's audio, the vector versions
+// and the worker pool as they come.
 //
 // Not a test: it asserts nothing about time.
 //
@@ -206,6 +207,80 @@ static int BenchBlanking(DtSdiParser* Parser, DtSdiView* View, int Seconds, doub
     return 0;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchBuilder -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Measures the builder: a whole frame of 10-bit symbols from an image of noise in each
+// format, the timing references, line numbers and payload ID included, the line CRCs
+// and checksums left to the transmitter as by default.
+//
+static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
+{
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    if (Builder == NULL)
+    {
+        fprintf(stderr, "Out of memory\n");
+        return 1;
+    }
+    printf("\nThe builder's image and raster, portable version, one thread\n");
+    printf("%-10s %4s  %-14s %10s %9s %8s\n", "standard", "bits", "format", "ms/frame",
+           "% period", "Mc");
+
+    int Status = 0;
+    for (int s = 0; s < NUM_STANDARDS && Status == 0; s++)
+    {
+        const Standard* Std = &g_Standards[s];
+        size_t Size = 0;
+        DtSdiView_RawFrameSize(Std->VidStd, 10, &Size);
+        uint8_t* Frame = (uint8_t*)malloc(Size);
+        if (Frame == NULL)
+        {
+            fprintf(stderr, "Out of memory\n");
+            Status = 1;
+            break;
+        }
+        DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, 10);
+
+        for (int f = 0; f < NUM_FORMATS && Status == 0; f++)
+        {
+            DtSdiImage Image;
+            if (!AllocImage(&Image, Std->VidStd, g_Formats[f].Format))
+            {
+                fprintf(stderr, "Out of memory\n");
+                FreeImage(&Image);
+                Status = 1;
+                break;
+            }
+            int Height = 0;
+            DtSdiImage_GetSize(Std->VidStd, g_Formats[f].Format, NULL, &Height, NULL);
+            for (int p = 0; p < 3 && Image.Planes[p] != NULL; p++)
+                FillNoise(Image.Planes[p], (size_t)Image.Strides[p] * (size_t)Height);
+            const uint64_t Start = OsTime_MonotonicMs();
+            uint64_t Elapsed = 0;
+            int Frames = 0;
+            while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
+            {
+                if (DtSdiBuilder_Build(Builder, View, &Image, NULL, NULL) != DTAPI_OK)
+                {
+                    fprintf(stderr, "%s: the builder refused the image\n", Std->Name);
+                    Status = 1;
+                    break;
+                }
+                Frames++;
+                Elapsed = OsTime_MonotonicMs() - Start;
+            }
+            FreeImage(&Image);
+            const double Ms = (double)Elapsed / Frames;
+            if (Status == 0)
+                printf("%-10s %4d  %-14s %10.2f %9.1f %8.1f\n", Std->Name, 10,
+                       g_Formats[f].Name, Ms, Ms * Std->FrameRate / 10.0, Ms * GHz);
+            fflush(stdout);
+        }
+        free(Frame);
+    }
+    DtSdiBuilder_Free(Builder);
+    return Status;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 int main(int Argc, char** Argv)
@@ -279,6 +354,8 @@ int main(int Argc, char** Argv)
 
     if (Status == 0)
         Status = BenchBlanking(Parser, View, Seconds, GHz);
+    if (Status == 0)
+        Status = BenchBuilder(View, Seconds, GHz);
     DtSdiView_Free(View);
     DtSdiParser_Free(Parser);
     return Status;

@@ -6,8 +6,73 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <stddef.h>
+
 // CDTAPI includes
-#include "DtSmpte352.h" // Interface being implemented.
+#include "DtFrameProps.h" // The scan of a standard.
+#include "DtSmpte352.h"   // Interface being implemented.
+#include "DtVidStd.h"     // Frame rates and I/O standards.
+#include "cdtapi.h"       // DTAPI_IOCONFIG_ codes.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+= Making a payload identifier +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RateCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The picture rate code of byte 2, bits 3..0, for a frame rate of Num / Den; 0 for one
+// SMPTE ST 352 has no code for.
+//
+static uint32_t RateCode(int Num, int Den)
+{
+    static const struct
+    {
+        int Num, Den;
+        uint32_t Code;
+    } Codes[] = {{24000, 1001, 0x2}, {24, 1, 0x3}, {25, 1, 0x5},       {30000, 1001, 0x6},
+                 {30, 1, 0x7},       {50, 1, 0x9}, {60000, 1001, 0xA}, {60, 1, 0xB}};
+    for (size_t i = 0; i < sizeof(Codes) / sizeof(Codes[0]); i++)
+    {
+        if (Codes[i].Num == Num && Codes[i].Den == Den)
+            return Codes[i].Code;
+    }
+    return 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_Make -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Byte 1 and the scan bits of byte 2 per payload: SD 81, both interlaced; 720p 84,
+// progressive picture in a transport that ST 292 does not mark; 1080 85, interlaced,
+// PsF (progressive picture) or progressive; 3G level A 89 and 2160p C0 or CE,
+// progressive. Byte 4 is 01, 10 bits.
+//
+uint32_t DtSmpte352_Make(int VidStd)
+{
+    const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
+    DtFrameProps Props;
+    if (Info == NULL || Info->IsLevelB || !DtFrameProps_Init(&Props, VidStd))
+        return 0;
+
+    uint32_t Vpid;
+    if (DtVidStd_Is4k(VidStd))
+        Vpid = Info->IoStd == DTAPI_IOCONFIG_12GSDI ? 0xC0CE : 0xC0C0;
+    else if (DtFrameProps_IsSd(&Props))
+        Vpid = 0x0081;
+    else if (Info->NumLines == 750)
+        Vpid = 0x4084;
+    else if (DtFrameProps_Is3g(&Props))
+        Vpid = 0xC089;
+    else if (DtFrameProps_IsPsF(&Props))
+        Vpid = 0x4085;
+    else if (DtFrameProps_IsInterlaced(&Props))
+        Vpid = 0x0085;
+    else
+        Vpid = 0xC085;
+
+    int Num = 0;
+    int Den = 0;
+    DtVidStd_FrameRate(VidStd, &Num, &Den);
+    return Vpid | RateCode(Num, Den) << 8 | 0x01000000u;
+}
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Payload fields +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 

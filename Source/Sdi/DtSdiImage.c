@@ -192,6 +192,101 @@ DtapiResult DtSdiImage_Check(const DtSdiImage* Image, const DtSdiGeometry* Geo)
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetLe16 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static uint16_t GetLe16(const uint8_t* Bytes)
+{
+    return (uint16_t)(Bytes[0] | Bytes[1] << 8);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Legal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Limits a sample to 4..1019: SDI keeps 0 to 3 and 1020 to 1023 for timing references.
+//
+static uint16_t Legal(unsigned Sample)
+{
+    return (uint16_t)(Sample < 4 ? 4 : Sample > 1019 ? 1019 : Sample);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_GetLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
+                        uint16_t* Symbols)
+{
+    const int Width = Geo->Width;
+    const int NumSymbols = 2 * Width;
+    const uint8_t* In[3];
+    for (int p = 0; p < 3; p++)
+        In[p] = Image->Planes[p] == NULL
+                    ? NULL
+                    : Image->Planes[p] + (size_t)Line * (size_t)Image->Strides[p];
+
+    switch (Image->Format)
+    {
+    case DT_SDI_PIXFMT_UYVY_10B:
+        for (int i = 0; i < NumSymbols; i += 4)
+        {
+            const uint8_t* B = In[0] + 5 * (i / 4);
+            const uint64_t Bits = (uint64_t)B[0] | (uint64_t)B[1] << 8 |
+                                  (uint64_t)B[2] << 16 | (uint64_t)B[3] << 24 |
+                                  (uint64_t)B[4] << 32;
+            for (int k = 0; k < 4; k++)
+                Symbols[i + k] = Legal((unsigned)(Bits >> (10 * k)) & 0x3FF);
+        }
+        break;
+
+    case DT_SDI_PIXFMT_UYVY_8B:
+        for (int i = 0; i < NumSymbols; i++)
+            Symbols[i] = Legal((unsigned)In[0][i] << 2);
+        break;
+
+    case DT_SDI_PIXFMT_V210:
+        for (int i = 0; i < NumSymbols; i++)
+        {
+            const uint8_t* W = In[0] + 4 * (i / 3);
+            const uint32_t Word = (uint32_t)W[0] | (uint32_t)W[1] << 8 |
+                                  (uint32_t)W[2] << 16 | (uint32_t)W[3] << 24;
+            Symbols[i] = Legal((Word >> (10 * (i % 3))) & 0x3FF);
+        }
+        break;
+
+    case DT_SDI_PIXFMT_Y210:
+        // Each pair of pixels: Y0, Cb, Y1, Cr, the 10 bits at the top of each word.
+        for (int i = 0; i < NumSymbols; i += 4)
+        {
+            const uint8_t* Pair = In[0] + 2 * i;
+            Symbols[i + 0] = Legal(GetLe16(Pair + 2) >> 6);
+            Symbols[i + 1] = Legal(GetLe16(Pair + 0) >> 6);
+            Symbols[i + 2] = Legal(GetLe16(Pair + 6) >> 6);
+            Symbols[i + 3] = Legal(GetLe16(Pair + 4) >> 6);
+        }
+        break;
+
+    case DT_SDI_PIXFMT_YUV422P_10B:
+        for (int x = 0; x < Width; x++)
+            Symbols[2 * x + 1] = Legal(GetLe16(In[0] + 2 * x) & 0x3FF);
+        for (int c = 0; c < Width / 2; c++)
+        {
+            Symbols[4 * c] = Legal(GetLe16(In[1] + 2 * c) & 0x3FF);
+            Symbols[4 * c + 2] = Legal(GetLe16(In[2] + 2 * c) & 0x3FF);
+        }
+        break;
+
+    case DT_SDI_PIXFMT_YUV422P_8B:
+        for (int x = 0; x < Width; x++)
+            Symbols[2 * x + 1] = Legal((unsigned)In[0][x] << 2);
+        for (int c = 0; c < Width / 2; c++)
+        {
+            Symbols[4 * c] = Legal((unsigned)In[1][c] << 2);
+            Symbols[4 * c + 2] = Legal((unsigned)In[2][c] << 2);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_PutLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,

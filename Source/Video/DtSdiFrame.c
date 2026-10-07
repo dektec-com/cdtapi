@@ -965,12 +965,12 @@ static void FillBlack(uint8_t* Section, size_t Symbols, size_t Bytes)
         SetSymbol(Section, i, i % 2 == 0 ? BLACK_C : BLACK_Y);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant bit
 // first.
 //
-static uint32_t Crc18(uint32_t Crc, uint32_t Word)
+uint32_t DtSdiFrame_Crc18(uint32_t Crc, uint32_t Word)
 {
     for (int Bit = 0; Bit < 10; Bit++)
     {
@@ -983,12 +983,12 @@ static uint32_t Crc18(uint32_t Crc, uint32_t Word)
     return Crc;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The fourth word of a timing reference of line Line, from 1: the field, vertical
 // blanking and EAV or SAV bits, and the protection bits over those three.
 //
-static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
+uint32_t DtSdiFrame_Xyz(const DtFrameProps* Props, int Line, bool Eav)
 {
     uint32_t F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
     const DtFieldProps* Field = &Props->Fields[F];
@@ -999,11 +999,11 @@ static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
            (F ^ V ^ H) << 2;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiFrame_WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Nine bits with bit 9 the inverse of bit 8, as line numbers and CRC words carry them.
 //
-static uint32_t WithParity(uint32_t Nine)
+uint32_t DtSdiFrame_WithParity(uint32_t Nine)
 {
     Nine &= 0x1FF;
     return Nine | ((Nine >> 8) ^ 1) << 9;
@@ -1025,14 +1025,15 @@ static void WriteBlackLinkLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
 
     // Every line's active part is black, so each channel's CRC starts the same.
     for (size_t i = 0; i < Video; i++)
-        ActiveCrc[i % 2] = Crc18(ActiveCrc[i % 2], i % 2 == 0 ? BLACK_C : BLACK_Y);
+        ActiveCrc[i % 2] =
+            DtSdiFrame_Crc18(ActiveCrc[i % 2], i % 2 == 0 ? BLACK_C : BLACK_Y);
 
     for (int Line = 1; Line <= Layout->NumLines; Line++)
     {
         uint8_t* Coded = Lines + (size_t)(Line - 1) * (size_t)Layout->RxStride;
         const uint32_t Sync[3] = {0x3FF, 0x000, 0x000};
-        const uint32_t Eav = Xyz(&Props, Line, true);
-        const uint32_t Sav = Xyz(&Props, Line, false);
+        const uint32_t Eav = DtSdiFrame_Xyz(&Props, Line, true);
+        const uint32_t Sav = DtSdiFrame_Xyz(&Props, Line, false);
 
         FillBlack(Coded, Hanc, (size_t)Layout->SectionBytesHanc);
         FillBlack(Coded + Layout->SectionBytesHanc, Video,
@@ -1058,16 +1059,16 @@ static void WriteBlackLinkLines(const DtSdiFrameLayout* Layout, uint8_t* Lines)
                                  0x000,
                                  0x000,
                                  Eav,
-                                 WithParity((uint32_t)Line << 2),
-                                 WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
+                                 DtSdiFrame_WithParity((uint32_t)Line << 2),
+                                 DtSdiFrame_WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
                                  0,
                                  0};
             uint32_t Crc = ActiveCrc[Channel];
 
             for (j = 0; j < 6; j++)
-                Crc = Crc18(Crc, Words[j]);
-            Words[6] = WithParity(Crc);
-            Words[7] = WithParity(Crc >> 9);
+                Crc = DtSdiFrame_Crc18(Crc, Words[j]);
+            Words[6] = DtSdiFrame_WithParity(Crc);
+            Words[7] = DtSdiFrame_WithParity(Crc >> 9);
 
             for (j = 0; j < 8; j++)
                 SetSymbol(Coded, 2 * j + Channel, Words[j]);

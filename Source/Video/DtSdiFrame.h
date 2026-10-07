@@ -14,7 +14,8 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "cdtapi.h" // DtapiResult.
+#include "DtFrameProps.h" // The fields of a frame.
+#include "cdtapi.h"       // DtapiResult.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Coded frames +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -347,3 +348,16 @@ bool DtSdiFrame_EncodeLine4k(const DtSdiFrameLayout* Layout, int BitsPerSymbol,
 // Returns false for 4K when the layout of one link cannot be made, or there is not
 // enough memory.
 bool DtSdiFrame_WriteBlackLines(const DtSdiFrameLayout* Layout, uint8_t* Lines);
+
+// Returns Crc after one more 10-bit word, Word: SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1,
+// least significant bit first. A line's CRC starts at 0.
+uint32_t DtSdiFrame_Crc18(uint32_t Crc, uint32_t Word);
+
+// Returns the fourth word of a timing reference of line Line (from 1) of a frame of
+// Props: EAV when Eav is true, else SAV, with the field, vertical blanking and EAV bits
+// and the protection bits over them.
+uint32_t DtSdiFrame_Xyz(const DtFrameProps* Props, int Line, bool Eav);
+
+// Returns the lower nine bits of Nine with bit 9 the inverse of bit 8, as line numbers
+// and CRC words carry them.
+uint32_t DtSdiFrame_WithParity(uint32_t Nine);

@@ -496,6 +496,12 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 // step with the video: audio from a source with a clock of its own makes the program's
 // store of samples grow or shrink slowly, which the program has to correct.
 //
+// In HD and up, each line carries a CRC of SMPTE ST 292 after its line number, and each
+// ancillary packet ends in a checksum. The builder leaves both to the transmitter, which
+// works them out as it sends, and writes a legal word in their place; with
+// DtSdiBuilder_SetChecksums() it works them out itself. The BCH code of the audio
+// packets of HD and up, which no transmitter fills in, the builder always works out.
+//
 // The builder writes the program's ancillary packets on the line, in the blanking, the
 // stream and the virtual interface each packet names. In the horizontal blanking they
 // follow the builder's own packets of that line: the payload ID, the audio control
@@ -537,6 +543,18 @@ CDTAPI_API void DtSdiBuilder_Freep(DtSdiBuilder** Builder);
 CDTAPI_API DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder,
                                                        int VidStd, int FrameNumber,
                                                        int* NumSamples);
+
+// Makes the builder work out each line's CRC in HD and up and each ancillary packet's
+// checksum, so that a frame is right without a transmitter's help: for a frame that goes
+// into a file, or to a transmitter that does not fill them in. Off by default, as the
+// CRC takes a calculation over every word of the frame and a DekTec transmitter fills
+// both in as it sends; then each CRC word is 200 (hex) and each checksum 0CC, legal
+// words that a transmitter replaces. The CRC of a frame's first line covers the last
+// line of the frame built before, when that frame had the same standard and its CRCs
+// too.
+//
+// Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a NULL Builder.
+CDTAPI_API DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute);
 
 // Makes the builder divide the lines of a frame over the threads of Pool, as
 // DtSdiParser_SetWorkerPool() does for a parser.

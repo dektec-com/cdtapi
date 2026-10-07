@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiSymbols.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - Reading runs of SDI symbols out of a frame
+// CDTAPI - Reading and writing runs of SDI symbols in a frame
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -46,4 +46,60 @@ void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out)
 
     for (; i < Count; i++)
         Out[i] = DtSdiSymbolPtr_Get(Ptr, i);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbolWriter_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol)
+{
+    Writer->Next = Frame;
+    Writer->Bits = 0;
+    Writer->NumBits = 0;
+    Writer->BitsPerSymbol = BitsPerSymbol;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbolWriter_Put -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
+                           size_t Count)
+{
+    if (Writer->BitsPerSymbol == 16)
+    {
+        for (size_t i = 0; i < Count; i++)
+        {
+            *Writer->Next++ = (uint8_t)Symbols[i];
+            *Writer->Next++ = (uint8_t)(Symbols[i] >> 8);
+        }
+        return;
+    }
+
+    uint64_t Bits = Writer->Bits;
+    int NumBits = Writer->NumBits;
+    uint8_t* Next = Writer->Next;
+    for (size_t i = 0; i < Count; i++)
+    {
+        Bits |= (uint64_t)(Symbols[i] & 0x3FF) << NumBits;
+        NumBits += 10;
+        while (NumBits >= 8)
+        {
+            *Next++ = (uint8_t)Bits;
+            Bits >>= 8;
+            NumBits -= 8;
+        }
+    }
+    Writer->Bits = Bits;
+    Writer->NumBits = NumBits;
+    Writer->Next = Next;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbolWriter_End -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiSymbolWriter_End(DtSdiSymbolWriter* Writer, uint8_t* End)
+{
+    if (Writer->NumBits > 0 && Writer->Next < End)
+        *Writer->Next++ = (uint8_t)Writer->Bits;
+    Writer->Bits = 0;
+    Writer->NumBits = 0;
+    while (Writer->Next < End)
+        *Writer->Next++ = 0;
 }
