@@ -1514,6 +1514,84 @@ DT_TEST(Aes3RoundTrip)
     free(B);
 }
 
+// A worker pool builds the frames one thread builds, in as many pieces as the standard
+// calls for and in three and five, with audio, packets and checksums, twice in a row so
+// that the CRC and the audio run on from frame to frame: of 2160p50, 1080i50, and
+// 720p24, whose lines start half-way through a byte in 10 bits.
+DT_TEST(WorkerPool)
+{
+    static const char* Names[] = {"2160P50", "1080I50", "720P24"};
+    FillPacketWords();
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 4));
+    AudioBufs* B = (AudioBufs*)malloc(sizeof(AudioBufs));
+    DT_ASSERT(B != NULL);
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        const SdiFormat* F = NULL;
+        for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+            if (strcmp(g_SdiFormats[j].Name, Names[i]) == 0)
+                F = &g_SdiFormats[j];
+        DT_ASSERT(F != NULL);
+        size_t Size = 0;
+        DT_ASSERT_OK(DtSdiView_RawFrameSize(F->VidStd, 10, &Size));
+        uint8_t* One = (uint8_t*)malloc(Size);
+        uint8_t* Many = (uint8_t*)malloc(Size);
+        DtSdiView* View = DtSdiView_Alloc();
+        TestImage T;
+        memset(&T, 0, sizeof(T));
+        DT_ASSERT(One != NULL && Many != NULL && View != NULL &&
+                  TestImage_Alloc(&T, F, FullPattern));
+        DtSdiAncPacket Packets[2] = {
+            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false},
+            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false}};
+        DtSdiAncData Anc = {Packets, 0, 2, NULL, 0, 0, 0};
+
+        for (int Threads = 0; Threads <= 5; Threads += Threads == 0 ? 3 : 2)
+        {
+            DtSdiBuilder* Single = DtSdiBuilder_Alloc();
+            DtSdiBuilder* Pooled = DtSdiBuilder_Alloc();
+            DT_ASSERT(Single != NULL && Pooled != NULL);
+            DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Single, true));
+            DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Pooled, true));
+            DT_ASSERT_OK(DtSdiBuilder_SetWorkerPool(Pooled, Pool, Threads));
+            long Sent = 0;
+            for (int n = 0; n < 2; n++)
+            {
+                memset(&B->In, 0, sizeof(B->In));
+                for (int c = 0; c < 6; c++)
+                {
+                    B->In.Formats[c / 2] = DT_SDI_AUDIO_PCM;
+                    for (int s = 0; s < AUDIO_MAX; s++)
+                        B->Pcm[c][s] = (int32_t)(Value24(c, Sent + s) << 8);
+                    B->In.Channels[c].Samples = B->Pcm[c];
+                    B->In.Channels[c].NumSamples = AUDIO_MAX;
+                }
+                DT_ASSERT_OK(DtSdiView_SetRawFrame(View, One, Size, F->VidStd, 10));
+                DT_ASSERT_OK(DtSdiBuilder_Build(Single, View, &T.Image, &B->In, &Anc));
+                DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Many, Size, F->VidStd, 10));
+                DT_ASSERT_OK(DtSdiBuilder_Build(Pooled, View, &T.Image, &B->In, &Anc));
+                Sent += B->In.NumSamplesUsed;
+                if (memcmp(One, Many, Size) != 0)
+                {
+                    free(B);
+                    DT_FAIL("%s, %d threads, frame %d: the frames differ", F->Name,
+                            Threads, n);
+                }
+            }
+            DtSdiBuilder_Free(Pooled);
+            DtSdiBuilder_Free(Single);
+        }
+        TestImage_Free(&T);
+        DtSdiView_Free(View);
+        free(Many);
+        free(One);
+    }
+    free(B);
+    DtWorkerPool_Free(Pool);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames of the sdi muxer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Builds each frame of <Name>.yuv and compares it with the muxer's in <Name>.raw, symbol
@@ -1635,4 +1713,4 @@ DT_TEST(FramesOfTheSdiMuxer)
 DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
              DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(Aes3RoundTrip),
-             DT_RUN(FramesOfTheSdiMuxer))
+             DT_RUN(WorkerPool), DT_RUN(FramesOfTheSdiMuxer))

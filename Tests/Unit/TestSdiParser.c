@@ -1580,10 +1580,59 @@ DT_TEST(FramesOfTheSdiMuxer)
     printf("    %d standards checked\n", Checked);
 }
 
+// The image over a worker pool of four threads, in as many pieces as the standard
+// calls for and in three, is the image read in one thread: of 2160p, which splits by
+// itself, and of 1080i50, which only splits when asked.
+DT_TEST(ImageOverWorkerPool)
+{
+    static const char* Names[] = {"2160P50", "1080I50"};
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 4));
+    char Message[160];
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        const SdiFormat* F = FindFormat(Names[i]);
+        DT_ASSERT(F != NULL);
+        for (int Threads = 0; Threads <= 3; Threads += 3)
+        {
+            size_t FrameSize = 0;
+            uint8_t* Frame = BuildFrame(F, 10, &FrameSize);
+            DtSdiView* View = DtSdiView_Alloc();
+            DtSdiParser* Parser = DtSdiParser_Alloc();
+            TestImage T;
+            const char* Failure = NULL;
+            if (Frame == NULL || View == NULL || Parser == NULL ||
+                !TestImage_Alloc(&T, F->VidStd, DT_SDI_PIXFMT_V210))
+            {
+                Failure = "out of memory";
+                memset(&T, 0, sizeof(T));
+            }
+            else if (DtSdiParser_SetWorkerPool(Parser, Pool, Threads) != DTAPI_OK ||
+                     DtSdiView_SetRawFrame(View, Frame, FrameSize, F->VidStd, 10) !=
+                         DTAPI_OK ||
+                     DtSdiParser_Parse(Parser, View, &T.Image, NULL, NULL) != DTAPI_OK)
+                Failure = "the parse failed";
+            else
+                Failure = CheckImage(&T, Message, sizeof(Message));
+            TestImage_Free(&T);
+            DtSdiParser_Free(Parser);
+            DtSdiView_Free(View);
+            free(Frame);
+            if (Failure != NULL)
+            {
+                DtWorkerPool_Free(Pool);
+                DT_FAIL("%s, %d threads: %s", F->Name, Threads, Failure);
+            }
+        }
+    }
+    DtWorkerPool_Free(Pool);
+}
+
 DT_TEST_MAIN("SdiParser", DT_RUN(SizesEveryStandard), DT_RUN(LeastStrides),
              DT_RUN(ImageEveryStandard), DT_RUN(EveryPixelFormat), DT_RUN(Image4k),
              DT_RUN(ActiveLinesWhereTheyLie), DT_RUN(Refusals),
              DT_RUN(FramesOfTheSdiMuxer), DT_RUN(AncPacketsHd),
              DT_RUN(ImageWhenPacketsAreLost), DT_RUN(AncPacketsSdAnd4k),
              DT_RUN(NoPayloadId), DT_RUN(AudioHd), DT_RUN(AudioSd), DT_RUN(AudioRefusals),
-             DT_RUN(MaxSamplesPerRate))
+             DT_RUN(MaxSamplesPerRate), DT_RUN(ImageOverWorkerPool))

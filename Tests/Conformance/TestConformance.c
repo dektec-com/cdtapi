@@ -664,8 +664,7 @@ DT_TEST(SdiCalls)
     DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &Captions, 1));
     DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, NULL, 0));
     DT_ASSERT_OK(DtSdiParser_SetAudioChecks(Parser, true));
-    DT_ASSERT(IsOneOf(DtSdiParser_SetWorkerPool(Parser, NULL, 0), DTAPI_OK,
-                      DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT_OK(DtSdiParser_SetWorkerPool(Parser, NULL, 0));
     DT_ASSERT(IsOneOf(DtSdiParser_Parse(Parser, View, NULL, NULL, NULL), DTAPI_OK,
                       DTAPI_E_STATE));
     DtSdiParser_Freep(&Parser);
@@ -679,8 +678,7 @@ DT_TEST(SdiCalls)
                       DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
     DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, true));
     DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, false));
-    DT_ASSERT(IsOneOf(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0), DTAPI_OK,
-                      DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT_OK(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0));
     DT_ASSERT(IsOneOf(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL), DTAPI_OK,
                       DTAPI_E_NOT_SUPPORTED));
     DtSdiBuilder_Freep(&Builder);

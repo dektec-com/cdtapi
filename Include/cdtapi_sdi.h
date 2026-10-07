@@ -432,6 +432,8 @@ CDTAPI_API void DtSdiParser_Freep(DtSdiParser** Parser);
 //                           DtSdiAudio_MaxSamples(); or Anc has no room for every packet
 //   DTAPI_E_NOT_SUPPORTED   Image->Fields is DT_SDI_FIELDS_SEPARATE, which is not yet
 //                           supported
+//   DTAPI_E_OUT_OF_MEM      no memory for the buffers of even one band of the image's
+//                           lines
 // The checks of the arguments come first: after such a failure, nothing has been
 // written. Room for the ancillary packets is found only while reading the frame: when
 // it runs out, the call writes the image and the audio all the same, lists the packets
@@ -460,12 +462,16 @@ CDTAPI_API DtapiResult DtSdiParser_SetAncFilter(DtSdiParser* Parser,
 // a calculation over every word of every packet. The samples are the same either way.
 CDTAPI_API DtapiResult DtSdiParser_SetAudioChecks(DtSdiParser* Parser, bool Check);
 
-// Makes the parser divide the lines of a frame over the threads of Pool, at most
-// NumThreads at once; 0 lets the parser choose by the video standard, as an input
+// Makes the parser divide the lines of a frame's image over the threads of Pool, at
+// most NumThreads at once; 0 lets the parser choose by the video standard, as an input
 // channel does (see DtInpChannel_SetWorkerPool()). NULL for Pool does all work in the
-// calling thread, the default. The results are the same either way.
+// calling thread, the default. The audio and the ancillary packets are read in the
+// calling thread, as they run through the frame in order. The results are the same
+// either way.
 //
-// Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a NULL Parser or a negative NumThreads.
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG  a NULL Parser or a negative NumThreads
+//   DTAPI_E_OUT_OF_MEM   no memory to wait for the pool's threads with
 CDTAPI_API DtapiResult DtSdiParser_SetWorkerPool(DtSdiParser* Parser, DtWorkerPool* Pool,
                                                  int NumThreads);
 
@@ -519,6 +525,7 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking it names
 //   DTAPI_E_TOO_LONG        the packets of a line do not fit in its blanking
+//   DTAPI_E_OUT_OF_MEM      no memory for the buffers of even one band of lines
 // The checks come first: after a failure, the frame has not been written and the
 // cadence has not moved on.
 CDTAPI_API DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
@@ -556,8 +563,14 @@ CDTAPI_API DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Build
 // Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a NULL Builder.
 CDTAPI_API DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute);
 
-// Makes the builder divide the lines of a frame over the threads of Pool, as
-// DtSdiParser_SetWorkerPool() does for a parser.
+// Makes the builder divide the lines of a frame over the threads of Pool, at most
+// NumThreads at once; 0 lets the builder choose by the video standard, as for a parser.
+// Every band of lines works out where the audio and the CRCs stand at its first line,
+// so the frames are the same either way.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG  a NULL Builder or a negative NumThreads
+//   DTAPI_E_OUT_OF_MEM   no memory to wait for the pool's threads with
 CDTAPI_API DtapiResult DtSdiBuilder_SetWorkerPool(DtSdiBuilder* Builder,
                                                   DtWorkerPool* Pool, int NumThreads);
 

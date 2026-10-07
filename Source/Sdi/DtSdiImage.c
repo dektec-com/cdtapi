@@ -203,9 +203,10 @@ static uint16_t GetLe16(const uint8_t* Bytes)
 //
 // Limits a sample to 4..1019: SDI keeps 0 to 3 and 1020 to 1023 for timing references.
 //
-static uint16_t Legal(unsigned Sample)
+static inline uint16_t Legal(unsigned Sample)
 {
-    return (uint16_t)(Sample < 4 ? 4 : Sample > 1019 ? 1019 : Sample);
+    const unsigned Low = Sample < 4 ? 4 : Sample;
+    return (uint16_t)(Low > 1019 ? 1019 : Low);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_GetLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -241,12 +242,18 @@ void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
         break;
 
     case DT_SDI_PIXFMT_V210:
-        for (int i = 0; i < NumSymbols; i++)
+        // Three samples a little-endian word; a line of 2 * Width samples ends in a
+        // whole word, as a width is even.
+        for (int i = 0, w = 0; i < NumSymbols; w++)
         {
-            const uint8_t* W = In[0] + 4 * (i / 3);
+            const uint8_t* W = In[0] + 4 * w;
             const uint32_t Word = (uint32_t)W[0] | (uint32_t)W[1] << 8 |
                                   (uint32_t)W[2] << 16 | (uint32_t)W[3] << 24;
-            Symbols[i] = Legal((Word >> (10 * (i % 3))) & 0x3FF);
+            Symbols[i++] = Legal(Word & 0x3FF);
+            if (i < NumSymbols)
+                Symbols[i++] = Legal(Word >> 10 & 0x3FF);
+            if (i < NumSymbols)
+                Symbols[i++] = Legal(Word >> 20 & 0x3FF);
         }
         break;
 

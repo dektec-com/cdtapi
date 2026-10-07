@@ -108,7 +108,8 @@ static uint32_t Parity(uint32_t Bits)
 // The AES3 subframe of channel Channel's sample Index, and for a channel whose
 // subframes the builder makes, the channel status moved on a bit.
 //
-static uint32_t Aes3Of(DtSdiEmbed* Embed, int Channel, int Index)
+static uint32_t Aes3Of(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Channel,
+                       int Index)
 {
     const DtSdiEmbedSource Source = Embed->Source[Channel];
     const uint8_t* At = Embed->Samples[Channel] + (size_t)Index * Embed->Stride[Channel];
@@ -133,13 +134,13 @@ static uint32_t Aes3Of(DtSdiEmbed* Embed, int Channel, int Index)
         Word = DT_SDI_AES3_V;
         Status = Embed->Status[1];
     }
-    const int Bit = Embed->StatusBit[Channel];
+    const int Bit = Cursor->StatusBit[Channel];
     if ((Status[Bit / 8] >> (7 - Bit % 8) & 1) != 0)
         Word |= DT_SDI_AES3_C;
     Word |= Parity(Word) << 31;
     if (Bit == 0 && Channel % 2 == 0)
         Word |= DT_SDI_AES3_Z;
-    Embed->StatusBit[Channel] = (Bit + 1) % 192;
+    Cursor->StatusBit[Channel] = (Bit + 1) % 192;
     return Word;
 }
 
@@ -149,15 +150,15 @@ static uint32_t Aes3Of(DtSdiEmbed* Embed, int Channel, int Index)
 // phase, each channel's subframe a byte a word, and the BCH code. Returns the word after
 // it.
 //
-static int PutHdData(DtSdiEmbed* Embed, int Group, int Index, uint16_t* Words, int Pos,
-                     bool Checksum)
+static int PutHdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Group,
+                     int Index, uint16_t* Words, int Pos, bool Checksum)
 {
     // The packet's first 24 words as the BCH code takes them: flag, IDs, count, then
     // the user data words.
     uint16_t Coded[6 + DT_SDIEMBED_HD_DATA_WORDS];
     uint16_t* Data = Coded + 6;
     const uint8_t Did = (uint8_t)(DT_SDIANC_DID_HD_AUDIO_DATA_G1 - Group);
-    const uint8_t Dbn = Embed->Dbn[Group];
+    const uint8_t Dbn = Cursor->Dbn[Group];
 
     const unsigned Clock = Embed->Clock[Index];
     const unsigned Phase = Clock & 0x1FFF;
@@ -167,7 +168,7 @@ static int PutHdData(DtSdiEmbed* Embed, int Group, int Index, uint16_t* Words, i
                              ((Clock & DT_SDIEMBED_MPF) != 0 ? 0x10 : 0));
     for (int c = 0; c < 4; c++)
     {
-        const uint32_t Word = Aes3Of(Embed, 4 * Group + c, Index);
+        const uint32_t Word = Aes3Of(Embed, Cursor, 4 * Group + c, Index);
         for (int b = 0; b < 4; b++)
             Data[2 + 4 * c + b] = DtSdiAnc_WithParity8(Word >> (8 * b) & 0xFF);
     }
@@ -182,7 +183,7 @@ static int PutHdData(DtSdiEmbed* Embed, int Group, int Index, uint16_t* Words, i
     for (int i = 0; i < 6; i++)
         Data[18 + i] = DtSdiAnc_WithParity8((unsigned)(Bch >> (8 * i)) & 0xFF);
 
-    Embed->Dbn[Group] = (uint8_t)(Dbn == 255 ? 1 : Dbn + 1);
+    Cursor->Dbn[Group] = (uint8_t)(Dbn == 255 ? 1 : Dbn + 1);
     return DtSdiAnc_Put(Words, Pos, Did, Dbn, Data, DT_SDIEMBED_HD_DATA_WORDS, Checksum);
 }
 
@@ -211,19 +212,19 @@ static int PutHdControl(const DtSdiEmbed* Embed, int Group, uint16_t* Words, int
 // First on: for each sample a subframe of three words per channel. Z is set on every
 // channel of a sample from the first whose subframe has it. Returns the word after it.
 //
-static int PutSdData(DtSdiEmbed* Embed, int Group, int First, int Count, uint16_t* Words,
-                     int Pos, bool Checksum)
+static int PutSdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Group,
+                     int First, int Count, uint16_t* Words, int Pos, bool Checksum)
 {
     uint16_t Data[3 * 4 * DT_SDIEMBED_SD_MAX_PER_PACKET];
     const uint8_t Did = (uint8_t)(DT_SDIANC_DID_SD_AUDIO_DATA_G1 - 2 * Group);
-    const uint8_t Dbn = Embed->Dbn[Group];
+    const uint8_t Dbn = Cursor->Dbn[Group];
     int i = 0;
     for (int n = 0; n < Count; n++)
     {
         uint32_t Z = 0;
         for (int c = 0; c < 4; c++)
         {
-            const uint32_t Word = Aes3Of(Embed, 4 * Group + c, First + n);
+            const uint32_t Word = Aes3Of(Embed, Cursor, 4 * Group + c, First + n);
             uint32_t Out = (Word & 0x7FFFFF00u) >> 5 | (uint32_t)c << 1;
             if ((Word & DT_SDI_AES3_Z) != 0)
                 Z = 1;
@@ -234,7 +235,7 @@ static int PutSdData(DtSdiEmbed* Embed, int Group, int First, int Count, uint16_
             Data[i++] = (uint16_t)DtSdiFrame_WithParity(Out >> 18);
         }
     }
-    Embed->Dbn[Group] = (uint8_t)(Dbn == 255 ? 1 : Dbn + 1);
+    Cursor->Dbn[Group] = (uint8_t)(Dbn == 255 ? 1 : Dbn + 1);
     return DtSdiAnc_Put(Words, Pos, Did, Dbn, Data, i, Checksum);
 }
 
@@ -299,6 +300,18 @@ static void Plan(DtSdiEmbed* Embed)
         Embed->Count[Line - 1] = (uint8_t)Count;
         LineStart += Ticks;
     }
+
+    // The samples and, in SD, the packets of up to four of a group before each line.
+    Embed->SamplesBefore[0] = 0;
+    Embed->PacketsBefore[0] = 0;
+    for (int Line = 0; Line < Embed->NumLines; Line++)
+    {
+        const int Count = Embed->Count[Line];
+        Embed->SamplesBefore[Line + 1] = Embed->SamplesBefore[Line] + Count;
+        Embed->PacketsBefore[Line + 1] =
+            Embed->PacketsBefore[Line] +
+            (Count + DT_SDIEMBED_SD_MAX_PER_PACKET - 1) / DT_SDIEMBED_SD_MAX_PER_PACKET;
+    }
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Embedding +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -314,7 +327,8 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
     memset(Embed->Count, 0, sizeof(Embed->Count));
     for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
         Embed->Source[c] = DT_SDIEMBED_NONE;
-    Embed->Next = 0;
+    memset(Embed->SamplesBefore, 0, sizeof(Embed->SamplesBefore));
+    memset(Embed->PacketsBefore, 0, sizeof(Embed->PacketsBefore));
 
     if (Audio == NULL)
     {
@@ -376,10 +390,41 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_CursorAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A group's data block number moves on by one a packet, from 1 to 255 and round; a
+// channel whose subframes the builder makes moves on in its AES3 block by one a sample.
+//
+void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex, DtSdiEmbedCursor* Cursor)
+{
+    const int Line = LineIndex > Embed->NumLines ? Embed->NumLines : LineIndex;
+    const int Samples = Embed->SamplesBefore[Line];
+    const int Packets = Embed->Sd ? Embed->PacketsBefore[Line] : Samples;
+    Cursor->Next = Samples;
+    for (int g = 0; g < 4; g++)
+        Cursor->Dbn[g] = Embed->Group[g]
+                             ? (uint8_t)((Embed->Dbn[g] - 1 + Packets) % 255 + 1)
+                             : Embed->Dbn[g];
+    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        const DtSdiEmbedSource Source = Embed->Source[c];
+        Cursor->StatusBit[c] = Source == DT_SDIEMBED_PCM || Source == DT_SDIEMBED_MUTE
+                                   ? (Embed->StatusBit[c] + Samples) % 192
+                                   : Embed->StatusBit[c];
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_End -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiEmbed_End(DtSdiEmbed* Embed)
 {
+    if (Embed->HasAudio)
+    {
+        DtSdiEmbedCursor End;
+        DtSdiEmbed_CursorAt(Embed, Embed->NumLines, &End);
+        memcpy(Embed->Dbn, End.Dbn, sizeof(Embed->Dbn));
+        memcpy(Embed->StatusBit, End.StatusBit, sizeof(Embed->StatusBit));
+    }
     Embed->StateVidStd = Embed->VidStd;
     Embed->NextFrameNumber = Embed->FrameNumber % Embed->CadenceLength + 1;
 }
@@ -492,10 +537,9 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 // one sample of each group in turn; in SD each group's samples of the line go in
 // packets of up to four, group after group.
 //
-int DtSdiEmbed_Put(DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex, int Stream,
-                   uint16_t* Words, int Pos, bool Checksum)
+int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIndex,
+                   int Stream, uint16_t* Words, int Pos, bool Checksum)
 {
-    (void)Geo;
     if (!Embed->HasAudio || Stream > 1)
         return Pos;
     const int Count = Embed->Count[LineIndex];
@@ -511,11 +555,11 @@ int DtSdiEmbed_Put(DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex, i
                 const int InPacket = Count - n < DT_SDIEMBED_SD_MAX_PER_PACKET
                                          ? Count - n
                                          : DT_SDIEMBED_SD_MAX_PER_PACKET;
-                Pos =
-                    PutSdData(Embed, g, Embed->Next + n, InPacket, Words, Pos, Checksum);
+                Pos = PutSdData(Embed, Cursor, g, Cursor->Next + n, InPacket, Words, Pos,
+                                Checksum);
             }
         }
-        Embed->Next += Count;
+        Cursor->Next += Count;
         return Pos;
     }
 
@@ -531,8 +575,8 @@ int DtSdiEmbed_Put(DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex, i
     for (int n = 0; n < Count; n++)
         for (int g = 0; g < 4; g++)
             if (Embed->Group[g])
-                Pos = PutHdData(Embed, g, Embed->Next + n, Words, Pos, Checksum);
-    Embed->Next += Count;
+                Pos = PutHdData(Embed, Cursor, g, Cursor->Next + n, Words, Pos, Checksum);
+    Cursor->Next += Count;
     return Pos;
 }
 

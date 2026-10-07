@@ -5,9 +5,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // The parser reads a frame line by line: each line's symbols into a buffer of its own,
-// one value a word, and from there into the image. This is the portable version, the
-// reference that the vector versions of plan 0032's step F must equal. Audio and
-// ancillary data follow in step C, and the worker pool in step F.
+// one value a word, and from there into the image. The image's lines divide into bands
+// over a worker pool, each band with buffers of its own; the blanking is read in the
+// calling thread after them, line by line, as the audio and the list of packets run
+// through the frame in order. This is the portable version, the reference that the
+// vector versions must equal.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -15,13 +17,14 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h" // Allocation seam.
-#include "DtSdiAnc.h"     // Finding the ancillary packets.
-#include "DtSdiAudio.h"   // Taking the audio out of its packets.
-#include "DtSdiImage.h"   // Writing the image.
-#include "DtSdiSymbols.h" // Reading the frame's symbols.
-#include "DtSdiView.h"    // The frame a call reads or writes.
-#include "cdtapi_sdi.h"   // Interface being implemented.
+#include "Core/DtAlloc.h"      // Allocation seam.
+#include "Core/DtWorkerPool.h" // The bands of the image.
+#include "DtSdiAnc.h"          // Finding the ancillary packets.
+#include "DtSdiAudio.h"        // Taking the audio out of its packets.
+#include "DtSdiImage.h"        // Writing the image.
+#include "DtSdiSymbols.h"      // Reading the frame's symbols.
+#include "DtSdiView.h"         // The frame a call reads or writes.
+#include "cdtapi_sdi.h"        // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -37,19 +40,41 @@ static const int g_LinkPlace[4] = {3, 1, 2, 0};
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// The buffers of a band of the image: two image lines, as a 2160p line holds two, and
+// the active parts of a raw 2160p line.
+typedef struct DtSdiParserBand
+{
+    uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
+    uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
+} DtSdiParserBand;
+
 struct DtSdiParser
 {
     bool AudioChecks;           // Check the BCH code and checksum of the audio packets
     DtSdiAncFilter* AncFilters; // The packets to list; NULL for the default
     int NumAncFilters;
 
-    // The symbols of the lines being read: two image lines, as a 2160p line holds two;
-    // the active parts of a raw 2160p line, or a section of any raw line; and one
-    // stream's words of such a section.
-    uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
+    // The worker pool and the threads the program gave, the pieces the runner was set
+    // up for (0 when it must be set up again), and a band's buffers for each piece.
+    DtWorkerPool* Pool;
+    int NumThreads;
+    DtJobRunner Runner;
+    int RunnerPieces;
+    DtSdiParserBand* Bands;
+    int NumBands;
+
+    // The blanking's symbols: a section of a raw line, and one stream's words of it.
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
     uint16_t StreamWords[DT_SDIPARSER_MAX_WIDTH];
 };
+
+// The image a job of bands writes.
+typedef struct ImageJob
+{
+    DtSdiParser* Parser;
+    const DtSdiView* Frame;
+    const DtSdiImage* Image;
+} ImageJob;
 
 // Where a section of a line lies, which the parser searches for packets.
 typedef struct Section
@@ -62,20 +87,21 @@ typedef struct Section
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the image of a frame up to 3G into Image, line by line.
+// Writes image lines First up to End of a frame up to 3G into Image, line by line, with
+// the buffers of Band.
 //
-static void ParseImage(DtSdiParser* Parser, const DtSdiView* Frame,
-                       const DtSdiImage* Image)
+static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
+                       const DtSdiImage* Image, int First, int End)
 {
     const DtSdiGeometry* Geo = &Frame->Geo;
     const size_t NumSymbols = 2 * (size_t)Geo->Width;
 
-    for (int y = 0; y < Geo->Height; y++)
+    for (int y = First; y < End; y++)
     {
         const DtSdiSymbolPtr Active = DtSdiView_RawSymbols(
             Frame, DtSdiGeometry_RawLine(Geo, y), (size_t)Geo->Layout.LineNumSymsHanc);
-        DtSdiSymbols_Read(&Active, NumSymbols, Parser->Lines[0]);
-        DtSdiImage_PutLine(Image, Geo, y, Parser->Lines[0]);
+        DtSdiSymbols_Read(&Active, NumSymbols, Band->Lines[0]);
+        DtSdiImage_PutLine(Image, Geo, y, Band->Lines[0]);
     }
 }
 
@@ -88,22 +114,22 @@ static void ParseImage(DtSdiParser* Parser, const DtSdiView* Frame,
 // 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and 4 those of
 // the lower one.
 //
-static void ParseImage4k(DtSdiParser* Parser, const DtSdiView* Frame,
-                         const DtSdiImage* Image)
+static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
+                         const DtSdiImage* Image, int First, int End)
 {
     const DtSdiGeometry* Geo = &Frame->Geo;
     const size_t HancWords = (size_t)Geo->Layout.SectionNumSymsHanc / 2;
     const int LinkWidth = Geo->LinkWidth;
 
-    for (int k = 0; k < Geo->Height / 2; k++)
+    for (int k = First; k < End; k++)
     {
         const DtSdiSymbolPtr Active =
             DtSdiView_RawSymbols(Frame, Geo->PictureFirstIndex + k, 8 * HancWords);
-        DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Parser->RawActive);
+        DtSdiSymbols_Read(&Active, 8 * (size_t)LinkWidth, Band->RawActive);
 
         for (int Link = 0; Link < 4; Link++)
         {
-            uint16_t* Line = Parser->Lines[Link >> 1];
+            uint16_t* Line = Band->Lines[Link >> 1];
             const int Place = g_LinkPlace[Link];
             for (int x = 0; x < LinkWidth; x++)
             {
@@ -111,13 +137,71 @@ static void ParseImage4k(DtSdiParser* Parser, const DtSdiView* Frame,
                 // x / 2 is the image's pair 2 * (x / 2) + 0 for links 1 and 3, + 1 for
                 // links 2 and 4.
                 const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
-                Line[2 * X] = Parser->RawActive[8 * x + Place];
-                Line[2 * X + 1] = Parser->RawActive[8 * x + 4 + Place];
+                Line[2 * X] = Band->RawActive[8 * x + Place];
+                Line[2 * X + 1] = Band->RawActive[8 * x + 4 + Place];
             }
         }
-        DtSdiImage_PutLine(Image, Geo, 2 * k, Parser->Lines[0]);
-        DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Parser->Lines[1]);
+        DtSdiImage_PutLine(Image, Geo, 2 * k, Band->Lines[0]);
+        DtSdiImage_PutLine(Image, Geo, 2 * k + 1, Band->Lines[1]);
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ImageBand -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A piece of the image's job: its share of the image lines, or in 2160p of the raw
+// lines of the picture, with the buffers of its own band.
+//
+static void ImageBand(void* Context, int PieceIndex, int NumPieces)
+{
+    const ImageJob* Job = (const ImageJob*)Context;
+    const DtSdiGeometry* Geo = &Job->Frame->Geo;
+    DtSdiParserBand* Band = &Job->Parser->Bands[PieceIndex];
+    int First = 0;
+    int End = 0;
+    if (Geo->Is4k)
+    {
+        DtJobRunner_Split(Geo->Height / 2, PieceIndex, NumPieces, 1, &First, &End);
+        ParseImage4k(Band, Job->Frame, Job->Image, First, End);
+    }
+    else
+    {
+        DtJobRunner_Split(Geo->Height, PieceIndex, NumPieces, 1, &First, &End);
+        ParseImage(Band, Job->Frame, Job->Image, First, End);
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Sets the runner up for the pieces the program asked for or, with 0, those the
+// standard calls for, and gives each piece a band's buffers. When those cannot be had,
+// the parser works in one piece, in the calling thread. Returns false when not even one
+// band's buffers can be had.
+//
+static bool ConfigureBands(DtSdiParser* Parser, const DtSdiGeometry* Geo)
+{
+    const int Pieces = Parser->NumThreads > 0 ? Parser->NumThreads
+                                              : DtSdiFrame_NumJobPieces(&Geo->Layout);
+    if (Pieces == Parser->RunnerPieces && Parser->Bands != NULL)
+        return true;
+
+    if (DtJobRunner_SetPool(&Parser->Runner, Parser->Pool, Pieces) != DTAPI_OK)
+        DtJobRunner_SetPool(&Parser->Runner, NULL, 0);
+    int Wanted = DtJobRunner_NumPieces(&Parser->Runner);
+    if (Wanted != Parser->NumBands || Parser->Bands == NULL)
+    {
+        DtAlloc_Free(Parser->Bands);
+        Parser->Bands =
+            (DtSdiParserBand*)DtAlloc_Malloc((size_t)Wanted * sizeof(DtSdiParserBand));
+        if (Parser->Bands == NULL && Wanted > 1)
+        {
+            DtJobRunner_SetPool(&Parser->Runner, NULL, 0);
+            Wanted = 1;
+            Parser->Bands = (DtSdiParserBand*)DtAlloc_Malloc(sizeof(DtSdiParserBand));
+        }
+        Parser->NumBands = Parser->Bands == NULL ? 0 : Wanted;
+    }
+    Parser->RunnerPieces = Pieces;
+    return Parser->Bands != NULL;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ListPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -247,6 +331,7 @@ DtSdiParser* DtSdiParser_Alloc(void)
     if (Parser == NULL)
         return NULL;
     memset(Parser, 0, sizeof(*Parser));
+    DtJobRunner_Init(&Parser->Runner);
     return Parser;
 }
 
@@ -256,6 +341,8 @@ void DtSdiParser_Free(DtSdiParser* Parser)
 {
     if (Parser == NULL)
         return;
+    DtJobRunner_Free(&Parser->Runner);
+    DtAlloc_Free(Parser->Bands);
     DtAlloc_Free(Parser->AncFilters);
     DtAlloc_Free(Parser);
 }
@@ -292,10 +379,10 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
 
     if (Image != NULL)
     {
-        if (Frame->Geo.Is4k)
-            ParseImage4k(Parser, Frame, Image);
-        else
-            ParseImage(Parser, Frame, Image);
+        if (!ConfigureBands(Parser, &Frame->Geo))
+            return DTAPI_E_OUT_OF_MEM;
+        ImageJob Job = {Parser, Frame, Image};
+        DtJobRunner_Run(&Parser->Runner, ImageBand, &Job);
     }
     if (Audio != NULL)
         DtSdiAudio_Begin(Audio);
@@ -366,11 +453,19 @@ DtapiResult DtSdiParser_SetAudioChecks(DtSdiParser* Parser, bool Check)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// The runner takes the pool at once, so that the parser holds its reference from here
+// on; the pieces follow the standard of the next frame.
+//
 DtapiResult DtSdiParser_SetWorkerPool(DtSdiParser* Parser, DtWorkerPool* Pool,
                                       int NumThreads)
 {
-    (void)Pool;
     if (Parser == NULL || NumThreads < 0)
         return DTAPI_E_INVALID_ARG;
-    return DTAPI_E_NOT_SUPPORTED;
+    const DtapiResult Result = DtJobRunner_SetPool(&Parser->Runner, Pool, NumThreads);
+    if (Result != DTAPI_OK)
+        return Result;
+    Parser->Pool = Pool;
+    Parser->NumThreads = NumThreads;
+    Parser->RunnerPieces = 0;
+    return DTAPI_OK;
 }

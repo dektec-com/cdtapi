@@ -34,7 +34,9 @@
 // The work goes in steps, so that a refusal changes nothing: DtSdiEmbed_Begin checks
 // the program's audio and plans the frame; once every check has passed,
 // DtSdiEmbed_Start takes up the state that runs on from frame to frame,
-// DtSdiEmbed_Put writes each line's packets, and DtSdiEmbed_End moves the cadence on.
+// DtSdiEmbed_Put writes each line's packets, and DtSdiEmbed_End moves the state and the
+// cadence on. DtSdiEmbed_Put writes through a cursor, which DtSdiEmbed_CursorAt sets
+// for any line from the plan, so that bands of lines can be made at the same time.
 //
 
 // The longest audio cadence: five frames at 29.97 and 59.94 Hz.
@@ -69,7 +71,8 @@ typedef struct DtSdiEmbed
     DtFrameProps Props;                          // The fields and their switching lines
     uint8_t Status[2][24]; // Channel status: of PCM, of a mute channel
 
-    // What runs on from frame to frame, of the standard of StateVidStd.
+    // What runs on from frame to frame, of the standard of StateVidStd: at the start of
+    // the frame being built.
     int StateVidStd;                          // 0 before the first frame with audio
     int NextFrameNumber;                      // The cadence's next place, from 1
     uint8_t Dbn[4];                           // Per group: the next data block number
@@ -86,8 +89,21 @@ typedef struct DtSdiEmbed
     size_t Stride[DT_SDI_AUDIO_MAX_CHANNELS];          // In bytes
     uint8_t Count[DT_SDIEMBED_MAX_LINES];    // Per line: samples per group it carries
     uint16_t Clock[DT_SDIEMBED_MAX_SAMPLES]; // Per sample: its clock phase, bit 13 MPF
-    int Next;                                // The next sample to write
+
+    // Per line: the samples a group carries in the lines before it, and in SD its
+    // packets of up to four.
+    int SamplesBefore[DT_SDIEMBED_MAX_LINES + 1];
+    int PacketsBefore[DT_SDIEMBED_MAX_LINES + 1];
 } DtSdiEmbed;
+
+// Where writing the audio of a frame stands at a line: the next sample, each group's
+// next data block number and each channel's place in its AES3 block.
+typedef struct DtSdiEmbedCursor
+{
+    int Next;
+    uint8_t Dbn[4];
+    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS];
+} DtSdiEmbedCursor;
 
 // Prepares Embed for the frames of Geo, before DtSdiEmbed_Begin: the clock and the
 // cadence of the standard. The state that runs on from frame to frame starts afresh when
@@ -112,20 +128,27 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 //   DTAPI_E_BUF_TOO_SMALL   a channel offers fewer samples than the frame takes
 DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio);
 
+// Sets *Cursor to where writing the planned frame stands at the start of line
+// LineIndex; the frame's number of lines gives its end.
+void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex,
+                         DtSdiEmbedCursor* Cursor);
+
 // Returns the words the audio packets take in the horizontal blanking of stream Stream
 // of line LineIndex.
 int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex,
                          int Stream);
 
 // Writes the audio packets of stream Stream of line LineIndex into Words from Pos on,
-// with their checksums worked out when Checksum is true. Lines go in order. Returns the
-// index of the word after them.
-int DtSdiEmbed_Put(DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex, int Stream,
-                   uint16_t* Words, int Pos, bool Checksum);
+// with their checksums worked out when Checksum is true, from *Cursor on, which it
+// moves on. The streams of a line go in order, and so do the lines one cursor writes.
+// Returns the index of the word after them.
+int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIndex,
+                   int Stream, uint16_t* Words, int Pos, bool Checksum);
 
 // Starts writing the frame planned: the data block numbers and the places in the AES3
 // blocks start afresh when the frame's standard is not that of the frame before.
 void DtSdiEmbed_Start(DtSdiEmbed* Embed);
 
-// Ends a frame that was built: the cadence moves on to its next place.
+// Ends a frame that was built: the data block numbers and AES3 blocks move on to where
+// the frame ends, and the cadence to its next place.
 void DtSdiEmbed_End(DtSdiEmbed* Embed);

@@ -25,14 +25,15 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h"     // Allocation seam.
-#include "DtSdiAnc.h"         // The data IDs the builder writes itself.
-#include "DtSdiEmbed.h"       // The audio.
-#include "DtSdiImage.h"       // Reading the image.
-#include "DtSdiSymbols.h"     // Writing the frame's symbols.
-#include "DtSdiView.h"        // The frame a call writes.
-#include "Video/DtSmpte352.h" // The payload ID.
-#include "cdtapi_sdi.h"       // Interface being implemented.
+#include "Core/DtAlloc.h"      // Allocation seam.
+#include "Core/DtWorkerPool.h" // The bands of lines.
+#include "DtSdiAnc.h"          // The data IDs the builder writes itself.
+#include "DtSdiEmbed.h"        // The audio.
+#include "DtSdiImage.h"        // Reading the image.
+#include "DtSdiSymbols.h"      // Writing the frame's symbols.
+#include "DtSdiView.h"         // The frame a call writes.
+#include "Video/DtSmpte352.h"  // The payload ID.
+#include "cdtapi_sdi.h"        // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -57,6 +58,18 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// The buffers and the state of a band of lines: the words of each stream made for a
+// line, the line woven, the image lines a 2160p line takes; the CRC over the active
+// part of each stream of the line before; and where the audio stands.
+typedef struct DtSdiBuilderBand
+{
+    uint16_t Words[8][DT_SDIBUILDER_MAX_STREAM_WORDS];
+    uint16_t Line[DT_SDIBUILDER_MAX_LINE_SYMBOLS];
+    uint16_t Image[2][2 * DT_SDIBUILDER_MAX_WIDTH];
+    uint32_t LastCrc[8];
+    DtSdiEmbedCursor Cursor;
+} DtSdiBuilderBand;
+
 struct DtSdiBuilder
 {
     int VidStd;          // The standard of the frame built last; 0 before the first
@@ -66,14 +79,29 @@ struct DtSdiBuilder
                          // line, where the first line's CRC starts
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
     DtSdiEmbed Embed;        // The audio: of the frame being built, and its cadence
+    int Used[DT_SDIBUILDER_MAX_SECTIONS]; // Per section of the frame: its packets' words
 
-    // The words of each stream of the line being made, the line woven, the image lines
-    // it takes, and per section of the frame the words its packets take.
-    uint16_t Words[8][DT_SDIBUILDER_MAX_STREAM_WORDS];
-    uint16_t Line[DT_SDIBUILDER_MAX_LINE_SYMBOLS];
-    uint16_t Image[2][2 * DT_SDIBUILDER_MAX_WIDTH];
-    int Used[DT_SDIBUILDER_MAX_SECTIONS];
+    // The worker pool and the threads the program gave, the pieces the runner was set
+    // up for (0 when it must be set up again), and a band for each piece.
+    DtWorkerPool* Pool;
+    int NumThreads;
+    DtJobRunner Runner;
+    int RunnerPieces;
+    DtSdiBuilderBand* Bands;
+    int NumBands;
 };
+
+// A frame a job of bands builds.
+typedef struct BuildJob
+{
+    DtSdiBuilder* Builder;
+    DtSdiView* Frame;
+    const DtSdiImage* Image;
+    const DtSdiAncData* Anc;
+    uint32_t Vpid;
+    int Unit; // Lines that a band boundary does not split: 2 where every other line
+              // starts half-way through a byte
+} BuildJob;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -204,78 +232,89 @@ static int ImageLineOf(const DtSdiGeometry* Geo, int LineIndex)
     return -1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutActive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutActive4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes the image's samples for raw line LineIndex into the active part of each
-// stream, from Builder->Image: one image line, or two in 2160p.
+// Writes two image lines, Upper and Lower, into the active part of raw 2160p line Line,
+// woven: link 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and
+// 4 those of the lower one, and pixel x of a link is word x of its active part.
 //
-static void PutActive(DtSdiBuilder* Builder, const DtSdiGeometry* Geo)
+static void PutActive4k(const DtSdiGeometry* Geo, const uint16_t* Upper,
+                        const uint16_t* Lower, uint16_t* Line)
 {
     const int First = Geo->StreamHancWords;
-    if (Geo->Is4k)
+    for (int Link = 0; Link < 4; Link++)
     {
-        // Link 1 and 2 carry the pixel pairs of the upper image line in turn, link 3
-        // and 4 those of the lower one. Pixel x of a link is word x of its active part.
-        for (int Link = 0; Link < 4; Link++)
+        const uint16_t* Image = (Link >> 1) != 0 ? Lower : Upper;
+        uint16_t* C = Line + (size_t)First * 8 + (size_t)Geo->StreamFirst[2 * Link];
+        uint16_t* Y = Line + (size_t)First * 8 + (size_t)Geo->StreamFirst[2 * Link + 1];
+        for (int x = 0; x < Geo->LinkWidth; x++)
         {
-            const uint16_t* Image = Builder->Image[Link >> 1];
-            uint16_t* C = Builder->Words[2 * Link] + First;
-            uint16_t* Y = Builder->Words[2 * Link + 1] + First;
-            for (int x = 0; x < Geo->LinkWidth; x++)
-            {
-                const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
-                C[x] = Image[2 * X];
-                Y[x] = Image[2 * X + 1];
-            }
+            const int X = 2 * (2 * (x / 2) + (Link & 1)) + (x & 1);
+            C[8 * x] = Image[2 * X];
+            Y[8 * x] = Image[2 * X + 1];
         }
-        return;
     }
+}
 
-    const uint16_t* Image = Builder->Image[0];
-    if (Geo->NumStreams == 1)
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes a black active part into raw line Line: 200 (hex) in the C words, 040 in the
+// Y words.
+//
+static void PutBlack(const DtSdiGeometry* Geo, uint16_t* Line)
+{
+    const int Streams = Geo->NumStreams;
+    const size_t First = (size_t)Geo->StreamHancWords * (size_t)Streams;
+    const size_t Count = (size_t)Geo->StreamActiveWords * (size_t)Streams;
+    if (Streams == 8)
     {
-        memcpy(Builder->Words[0] + First, Image,
-               (size_t)Geo->StreamActiveWords * sizeof(*Image));
+        for (size_t k = 0; k < Count; k++)
+            Line[First + k] =
+                (k & 4) == 0 ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
         return;
     }
-    for (int x = 0; x < Geo->Width; x++)
-    {
-        Builder->Words[0][First + x] = Image[2 * x];
-        Builder->Words[1][First + x] = Image[2 * x + 1];
-    }
+    for (size_t k = 0; k < Count; k++)
+        Line[First + k] = (k & 1) == 0 ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Makes the words of every stream of raw line LineIndex in Builder->Words. HasImage
-// says whether Builder->Image holds the line's image; without, its active part is
-// black.
+// Makes raw line LineIndex in Band->Line. Its horizontal blanking is made stream by
+// stream in Band->Words and then woven into the line; so is its active part on a
+// line of the vertical blanking, with the program's packets. The active part of a line
+// of the image is the image: Image holds it when HasImage is true, read straight into
+// the line in SD, HD and 3G, where the image's order of samples is the line's, and into
+// Band->Image in 2160p; without, it is black.
 //
-static void MakeLine(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
-                     const DtSdiAncData* Anc, uint32_t Vpid, int LineIndex, bool HasImage)
+static void MakeLine(const DtSdiBuilder* Builder, DtSdiBuilderBand* Band,
+                     const DtSdiGeometry* Geo, const DtSdiImage* Image,
+                     const DtSdiAncData* Anc, uint32_t Vpid, int LineIndex)
 {
     const int Line = LineIndex + 1;
+    const int Streams = Geo->NumStreams;
     const int Hanc = Geo->StreamHancWords;
     const int Total = Hanc + Geo->StreamActiveWords;
     const uint32_t Eav = DtSdiFrame_Xyz(&Geo->Props, Line, true);
     const uint32_t Sav = DtSdiFrame_Xyz(&Geo->Props, Line, false);
     const bool Vanc = DtSdiGeometry_IsVanc(Geo, LineIndex);
+    const int Made = Vanc ? Total : Hanc; // The words made per stream
+    uint16_t* Raw = Band->Line;
 
-    for (int s = 0; s < Geo->NumStreams; s++)
+    for (int s = 0; s < Streams; s++)
     {
-        uint16_t* W = Builder->Words[s];
+        uint16_t* W = Band->Words[s];
 
-        // Blanking everywhere first: C and Y alternate in SD's one stream, from Cb.
-        if (Geo->NumStreams == 1)
+        // Blanking first: C and Y alternate in SD's one stream, from Cb.
+        if (Streams == 1)
         {
-            for (int k = 0; k < Total; k++)
+            for (int k = 0; k < Made; k++)
                 W[k] = (k & 1) == 0 ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
         }
         else
         {
             const uint16_t Blank =
                 Geo->StreamIsChroma[s] ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
-            for (int k = 0; k < Total; k++)
+            for (int k = 0; k < Made; k++)
                 W[k] = Blank;
         }
 
@@ -284,7 +323,7 @@ static void MakeLine(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         W[1] = 0x000;
         W[2] = 0x000;
         W[3] = (uint16_t)Eav;
-        if (Geo->NumStreams > 1)
+        if (Streams > 1)
         {
             W[4] = (uint16_t)DtSdiFrame_WithParity((uint32_t)Line << 2);
             W[5] = (uint16_t)DtSdiFrame_WithParity((uint32_t)(Line >> 7) << 2 & 0x3C);
@@ -306,62 +345,148 @@ static void MakeLine(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
             Pos = DtSdiAnc_Put(W, Pos, DT_SDIANC_DID_PAYLOAD_ID,
                                DT_SDIANC_SDID_PAYLOAD_ID, Bytes, 4, Builder->Checksums);
         }
-        Pos = DtSdiEmbed_Put(&Builder->Embed, Geo, LineIndex, s, W, Pos,
+        Pos = DtSdiEmbed_Put(&Builder->Embed, &Band->Cursor, LineIndex, s, W, Pos,
                              Builder->Checksums);
         PutPackets(Geo, Anc, LineIndex, true, s, Builder->Checksums, W, Pos);
         if (Vanc)
             PutPackets(Geo, Anc, LineIndex, false, s, Builder->Checksums, W, Hanc);
     }
 
-    if (HasImage)
-        PutActive(Builder, Geo);
-
-    // The CRCs of HD and up: each stream's covers the active part of the line before,
-    // then this line's EAV and line number. Ten bits at a time: the CRC is linear, so the
-    // register's lower ten bits and the word select one entry of the table, and the bits
-    // above are shifted in on it. Left to the transmitter, the CRC words are 200 (hex),
-    // a CRC of 0 with its bit 9.
-    if (Geo->NumStreams == 1)
-        return;
+    // The CRC words of HD and up: each stream's covers the active part of the line
+    // before, then this line's EAV and line number. Ten bits at a time: the CRC is
+    // linear, so the register's lower ten bits and the word select one entry of the
+    // table, and the bits above are shifted in on it. Left to the transmitter, they are
+    // 200 (hex), a CRC of 0 with its bit 9.
     const uint32_t* Table = Builder->CrcTable;
-    for (int s = 0; s < Geo->NumStreams; s++)
+    for (int s = 0; Streams > 1 && s < Streams; s++)
     {
-        uint16_t* W = Builder->Words[s];
-        if (!Builder->Checksums)
-        {
-            W[6] = (uint16_t)DtSdiFrame_WithParity(0);
-            W[7] = (uint16_t)DtSdiFrame_WithParity(0);
-            continue;
-        }
-        uint32_t Crc = Builder->LastCrc[s];
-        for (int k = 0; k < 6; k++)
-            Crc = (Crc >> 10) ^ Table[(Crc ^ W[k]) & 0x3FF];
+        uint16_t* W = Band->Words[s];
+        uint32_t Crc = Band->LastCrc[s];
+        if (Builder->Checksums)
+            for (int k = 0; k < 6; k++)
+                Crc = (Crc >> 10) ^ Table[(Crc ^ W[k]) & 0x3FF];
+        else
+            Crc = 0;
         W[6] = (uint16_t)DtSdiFrame_WithParity(Crc);
         W[7] = (uint16_t)DtSdiFrame_WithParity(Crc >> 9);
+    }
 
-        Crc = 0;
-        for (int k = Hanc; k < Total; k++)
-            Crc = (Crc >> 10) ^ Table[(Crc ^ W[k]) & 0x3FF];
-        Builder->LastCrc[s] = Crc;
+    // Weave what was made per stream into the line.
+    for (int s = 0; s < Streams; s++)
+    {
+        const uint16_t* W = Band->Words[s];
+        uint16_t* To = Raw + Geo->StreamFirst[s];
+        for (int k = 0; k < Made; k++)
+            To[(size_t)k * (size_t)Streams] = W[k];
+    }
+
+    // The active part of a line of the image.
+    if (!Vanc)
+    {
+        uint16_t* Active = Raw + (size_t)Hanc * (size_t)Streams;
+        if (Image == NULL)
+            PutBlack(Geo, Raw);
+        else if (Geo->Is4k)
+        {
+            const int k = LineIndex - Geo->PictureFirstIndex;
+            DtSdiImage_GetLine(Image, Geo, 2 * k, Band->Image[0]);
+            DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Band->Image[1]);
+            PutActive4k(Geo, Band->Image[0], Band->Image[1], Raw);
+        }
+        else
+            DtSdiImage_GetLine(Image, Geo, ImageLineOf(Geo, LineIndex), Active);
+    }
+
+    // The CRC over this line's active part, for the next line's.
+    for (int s = 0; Streams > 1 && Builder->Checksums && s < Streams; s++)
+    {
+        const uint16_t* From = Raw + (size_t)Hanc * (size_t)Streams + Geo->StreamFirst[s];
+        uint32_t Crc = 0;
+        for (int k = 0; k < Total - Hanc; k++)
+            Crc = (Crc >> 10) ^ Table[(Crc ^ From[(size_t)k * (size_t)Streams]) & 0x3FF];
+        Band->LastCrc[s] = Crc;
     }
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildBand -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Weaves the streams' words into the raw line and writes it.
+// A piece of a frame's job: its share of the frame's lines, made and written with its
+// own band. Where the band starts it takes the audio's cursor from the plan, and with
+// the checksums on the CRC of the line before, which it makes for that, unless the band
+// starts the frame. The band that ends the frame writes its padding and keeps the CRC
+// for the next frame.
 //
-static void WriteLine(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
-                      DtSdiSymbolWriter* Writer)
+static void BuildBand(void* Context, int PieceIndex, int NumPieces)
 {
-    const int Streams = Geo->NumStreams;
-    const int Total = Geo->StreamHancWords + Geo->StreamActiveWords;
-    for (int s = 0; s < Streams; s++)
+    const BuildJob* Job = (const BuildJob*)Context;
+    DtSdiBuilder* Builder = Job->Builder;
+    const DtSdiView* Frame = Job->Frame;
+    const DtSdiGeometry* Geo = &Frame->Geo;
+    const int NumLines = Geo->Layout.NumLines;
+    DtSdiBuilderBand* Band = &Builder->Bands[PieceIndex];
+    int First = 0;
+    int End = 0;
+    DtJobRunner_Split(NumLines, PieceIndex, NumPieces, Job->Unit, &First, &End);
+    if (First >= End)
+        return;
+
+    memcpy(Band->LastCrc, Builder->LastCrc, sizeof(Band->LastCrc));
+    if (First > 0 && Builder->Checksums && Geo->NumStreams > 1)
     {
-        const uint16_t* W = Builder->Words[s];
-        for (int k = 0; k < Total; k++)
-            Builder->Line[Geo->StreamFirst[s] + k * Streams] = W[k];
+        DtSdiEmbed_CursorAt(&Builder->Embed, First - 1, &Band->Cursor);
+        MakeLine(Builder, Band, Geo, Job->Image, Job->Anc, Job->Vpid, First - 1);
     }
-    DtSdiSymbolWriter_Put(Writer, Builder->Line, (size_t)Total * (size_t)Streams);
+    DtSdiEmbed_CursorAt(&Builder->Embed, First, &Band->Cursor);
+
+    const size_t LineSymbols =
+        (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) * (size_t)Geo->NumStreams;
+    const size_t FirstBit = (size_t)First * LineSymbols * (size_t)Frame->BitsPerSymbol;
+    DtSdiSymbolWriter Writer;
+    DtSdiSymbolWriter_Init(&Writer, Frame->Frame + FirstBit / 8, Frame->BitsPerSymbol);
+    for (int LineIndex = First; LineIndex < End; LineIndex++)
+    {
+        MakeLine(Builder, Band, Geo, Job->Image, Job->Anc, Job->Vpid, LineIndex);
+        DtSdiSymbolWriter_Put(&Writer, Band->Line, LineSymbols);
+    }
+    if (End == NumLines)
+    {
+        DtSdiSymbolWriter_End(&Writer, Frame->Frame + Frame->FrameSize);
+        memcpy(Builder->LastCrc, Band->LastCrc, sizeof(Builder->LastCrc));
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Sets the runner up for the pieces the program asked for or, with 0, those the
+// standard calls for, and gives each piece a band. When those cannot be had, the
+// builder works in one piece, in the calling thread. Returns false when not even one
+// band can be had.
+//
+static bool ConfigureBands(DtSdiBuilder* Builder, const DtSdiGeometry* Geo)
+{
+    const int Pieces = Builder->NumThreads > 0 ? Builder->NumThreads
+                                               : DtSdiFrame_NumJobPieces(&Geo->Layout);
+    if (Pieces == Builder->RunnerPieces && Builder->Bands != NULL)
+        return true;
+
+    if (DtJobRunner_SetPool(&Builder->Runner, Builder->Pool, Pieces) != DTAPI_OK)
+        DtJobRunner_SetPool(&Builder->Runner, NULL, 0);
+    int Wanted = DtJobRunner_NumPieces(&Builder->Runner);
+    if (Wanted != Builder->NumBands || Builder->Bands == NULL)
+    {
+        DtAlloc_Free(Builder->Bands);
+        Builder->Bands =
+            (DtSdiBuilderBand*)DtAlloc_Malloc((size_t)Wanted * sizeof(DtSdiBuilderBand));
+        if (Builder->Bands == NULL && Wanted > 1)
+        {
+            DtJobRunner_SetPool(&Builder->Runner, NULL, 0);
+            Wanted = 1;
+            Builder->Bands = (DtSdiBuilderBand*)DtAlloc_Malloc(sizeof(DtSdiBuilderBand));
+        }
+        Builder->NumBands = Builder->Bands == NULL ? 0 : Wanted;
+    }
+    Builder->RunnerPieces = Pieces;
+    return Builder->Bands != NULL;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Builder +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -374,6 +499,7 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
     if (Builder == NULL)
         return NULL;
     memset(Builder, 0, sizeof(*Builder));
+    DtJobRunner_Init(&Builder->Runner);
     for (uint32_t i = 0; i < 1024; i++)
         Builder->CrcTable[i] = DtSdiFrame_Crc18(i, 0);
     return Builder;
@@ -406,6 +532,8 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     }
     if (Result == DTAPI_OK && Anc != NULL)
         Result = CheckPackets(Builder, Geo, Anc);
+    if (Result == DTAPI_OK && !ConfigureBands(Builder, Geo))
+        Result = DTAPI_E_OUT_OF_MEM;
     if (Result != DTAPI_OK)
         return Result;
     DtSdiEmbed_Start(&Builder->Embed);
@@ -415,36 +543,15 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         memset(Builder->LastCrc, 0, sizeof(Builder->LastCrc));
         Builder->VidStd = Geo->VidStd;
     }
-    const uint32_t Vpid = DtSmpte352_Make(Geo->VidStd);
-
-    DtSdiSymbolWriter Writer;
-    DtSdiSymbolWriter_Init(&Writer, Frame->Frame, Frame->BitsPerSymbol);
-    for (int LineIndex = 0; LineIndex < Geo->Layout.NumLines; LineIndex++)
-    {
-        bool HasImage = false;
-        if (Image != NULL && Geo->Is4k)
-        {
-            const int k = LineIndex - Geo->PictureFirstIndex;
-            if (k >= 0 && k < Geo->Height / 2)
-            {
-                DtSdiImage_GetLine(Image, Geo, 2 * k, Builder->Image[0]);
-                DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Builder->Image[1]);
-                HasImage = true;
-            }
-        }
-        else if (Image != NULL)
-        {
-            const int y = ImageLineOf(Geo, LineIndex);
-            if (y >= 0)
-            {
-                DtSdiImage_GetLine(Image, Geo, y, Builder->Image[0]);
-                HasImage = true;
-            }
-        }
-        MakeLine(Builder, Geo, Anc, Vpid, LineIndex, HasImage);
-        WriteLine(Builder, Geo, &Writer);
-    }
-    DtSdiSymbolWriter_End(&Writer, Frame->Frame + Frame->FrameSize);
+    // A band starts on a line that starts on a byte, so that no two bands write the
+    // same byte: in 10 bits a line of 720p23.98 and 720p24 ends half-way through one.
+    const size_t LineBits = (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) *
+                            (size_t)Geo->NumStreams * (size_t)Frame->BitsPerSymbol;
+    int Unit = 1;
+    while ((LineBits * (size_t)Unit) % 8 != 0)
+        Unit++;
+    BuildJob Job = {Builder, Frame, Image, Anc, DtSmpte352_Make(Geo->VidStd), Unit};
+    DtJobRunner_Run(&Builder->Runner, BuildBand, &Job);
     DtSdiEmbed_End(&Builder->Embed);
     return DTAPI_OK;
 }
@@ -453,6 +560,10 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
 //
 void DtSdiBuilder_Free(DtSdiBuilder* Builder)
 {
+    if (Builder == NULL)
+        return;
+    DtJobRunner_Free(&Builder->Runner);
+    DtAlloc_Free(Builder->Bands);
     DtAlloc_Free(Builder);
 }
 
@@ -508,13 +619,19 @@ DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The worker pool is plan 0032's step F.
+// The runner takes the pool at once, so that the builder holds its reference from here
+// on; the pieces follow the standard of the next frame.
 //
 DtapiResult DtSdiBuilder_SetWorkerPool(DtSdiBuilder* Builder, DtWorkerPool* Pool,
                                        int NumThreads)
 {
-    (void)Pool;
     if (Builder == NULL || NumThreads < 0)
         return DTAPI_E_INVALID_ARG;
-    return DTAPI_E_NOT_SUPPORTED;
+    const DtapiResult Result = DtJobRunner_SetPool(&Builder->Runner, Pool, NumThreads);
+    if (Result != DTAPI_OK)
+        return Result;
+    Builder->Pool = Pool;
+    Builder->NumThreads = NumThreads;
+    Builder->RunnerPieces = 0;
+    return DTAPI_OK;
 }

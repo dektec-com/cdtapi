@@ -12,8 +12,8 @@
 //
 // The frame's content does not matter to the image's speed, so it is noise. A second
 // table measures the walk over the blanking for audio and ancillary packets, a third the
-// builder, from images of noise. Plan 0032 adds the builder's audio, the vector versions
-// and the worker pool as they come.
+// builder, from images of noise, a fourth the parser's image over a worker pool. Plan
+// 0032 adds the vector versions as they come.
 //
 // Not a test: it asserts nothing about time.
 //
@@ -207,6 +207,105 @@ static int BenchBlanking(DtSdiParser* Parser, DtSdiView* View, int Seconds, doub
     return 0;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchWorkers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Measures the parser's image and the builder over a worker pool of the library's own
+// threads, 1, 2, 4 and 8 pieces, in the formats a program most likely asks for: what
+// the pool gains.
+//
+static int BenchWorkers(DtSdiView* View, int Seconds, double GHz)
+{
+    static const int Pieces[] = {1, 2, 4, 8};
+    static const DtSdiPixelFormat Formats[] = {DT_SDI_PIXFMT_V210,
+                                               DT_SDI_PIXFMT_YUV422P_10B};
+    static const char* FormatNames[] = {"v210", "planar 10-bit"};
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
+    if (Pool == NULL || DtWorkerPool_StartThreads(Pool, 8) != DTAPI_OK)
+    {
+        fprintf(stderr, "No worker pool\n");
+        DtWorkerPool_Free(Pool);
+        return 1;
+    }
+    printf("\nThe parser's image and the builder over a worker pool, ms/frame and "
+           "%% period\n");
+    printf("%-10s %-8s %-14s", "standard", "", "format");
+    for (size_t p = 0; p < sizeof(Pieces) / sizeof(Pieces[0]); p++)
+        printf("  %9d %s", Pieces[p], Pieces[p] == 1 ? "piece " : "pieces");
+    printf("\n");
+
+    int Status = 0;
+    for (int s = 0; s < NUM_STANDARDS && Status == 0; s++)
+    {
+        const Standard* Std = &g_Standards[s];
+        size_t Size = 0;
+        DtSdiView_RawFrameSize(Std->VidStd, 10, &Size);
+        uint8_t* Frame = (uint8_t*)malloc(Size);
+        if (Frame == NULL)
+        {
+            Status = 1;
+            break;
+        }
+        FillNoise(Frame, Size);
+        DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, 10);
+        for (size_t f = 0; f < sizeof(Formats) / sizeof(Formats[0]) && Status == 0; f++)
+        {
+            DtSdiImage Image;
+            if (!AllocImage(&Image, Std->VidStd, Formats[f]))
+            {
+                FreeImage(&Image);
+                Status = 1;
+                break;
+            }
+            printf("%-10s %-8s %-14s", Std->Name, "parser", FormatNames[f]);
+            for (size_t p = 0; p < sizeof(Pieces) / sizeof(Pieces[0]); p++)
+            {
+                DtSdiParser* Parser = DtSdiParser_Alloc();
+                if (Parser == NULL ||
+                    DtSdiParser_SetWorkerPool(Parser, Pool, Pieces[p]) != DTAPI_OK)
+                {
+                    DtSdiParser_Free(Parser);
+                    Status = 1;
+                    break;
+                }
+                const double Ms = Measure(Parser, View, &Image, NULL, NULL, Seconds);
+                DtSdiParser_Free(Parser);
+                printf("  %7.2f %5.1f%%", Ms, Ms * Std->FrameRate / 10.0);
+            }
+            printf("\n%-10s %-8s %-14s", Std->Name, "builder", FormatNames[f]);
+            for (size_t p = 0; p < sizeof(Pieces) / sizeof(Pieces[0]) && Status == 0; p++)
+            {
+                DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+                if (Builder == NULL ||
+                    DtSdiBuilder_SetWorkerPool(Builder, Pool, Pieces[p]) != DTAPI_OK)
+                {
+                    DtSdiBuilder_Free(Builder);
+                    Status = 1;
+                    break;
+                }
+                const uint64_t Start = OsTime_MonotonicMs();
+                uint64_t Elapsed = 0;
+                int Frames = 0;
+                while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
+                {
+                    DtSdiBuilder_Build(Builder, View, &Image, NULL, NULL);
+                    Frames++;
+                    Elapsed = OsTime_MonotonicMs() - Start;
+                }
+                DtSdiBuilder_Free(Builder);
+                const double Ms = (double)Elapsed / Frames;
+                printf("  %7.2f %5.1f%%", Ms, Ms * Std->FrameRate / 10.0);
+            }
+            printf("\n");
+            fflush(stdout);
+            FreeImage(&Image);
+        }
+        free(Frame);
+    }
+    (void)GHz;
+    DtWorkerPool_Free(Pool);
+    return Status;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchBuilder -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Measures the builder: a whole frame of 10-bit symbols from an image of noise in each
@@ -356,6 +455,8 @@ int main(int Argc, char** Argv)
         Status = BenchBlanking(Parser, View, Seconds, GHz);
     if (Status == 0)
         Status = BenchBuilder(View, Seconds, GHz);
+    if (Status == 0)
+        Status = BenchWorkers(View, Seconds, GHz);
     DtSdiView_Free(View);
     DtSdiParser_Free(Parser);
     return Status;

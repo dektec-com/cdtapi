@@ -76,7 +76,38 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
     uint64_t Bits = Writer->Bits;
     int NumBits = Writer->NumBits;
     uint8_t* Next = Writer->Next;
-    for (size_t i = 0; i < Count; i++)
+    size_t i = 0;
+
+    // One at a time up to a byte boundary, which comes within four symbols.
+    for (; i < Count && NumBits != 0; i++)
+    {
+        Bits |= (uint64_t)(Symbols[i] & 0x3FF) << NumBits;
+        NumBits += 10;
+        while (NumBits >= 8)
+        {
+            *Next++ = (uint8_t)Bits;
+            Bits >>= 8;
+            NumBits -= 8;
+        }
+    }
+
+    // Then four symbols into five bytes.
+    for (; i + 4 <= Count; i += 4)
+    {
+        const uint64_t Four = (uint64_t)(Symbols[i] & 0x3FF) |
+                              (uint64_t)(Symbols[i + 1] & 0x3FF) << 10 |
+                              (uint64_t)(Symbols[i + 2] & 0x3FF) << 20 |
+                              (uint64_t)(Symbols[i + 3] & 0x3FF) << 30;
+        Next[0] = (uint8_t)Four;
+        Next[1] = (uint8_t)(Four >> 8);
+        Next[2] = (uint8_t)(Four >> 16);
+        Next[3] = (uint8_t)(Four >> 24);
+        Next[4] = (uint8_t)(Four >> 32);
+        Next += 5;
+    }
+
+    // And the rest one at a time.
+    for (; i < Count; i++)
     {
         Bits |= (uint64_t)(Symbols[i] & 0x3FF) << NumBits;
         NumBits += 10;
