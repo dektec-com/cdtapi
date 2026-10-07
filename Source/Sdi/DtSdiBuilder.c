@@ -38,7 +38,7 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_Build -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
-                               const DtSdiImage* Image, const DtSdiAudio* Audio,
+                               const DtSdiImage* Image, DtSdiAudio* Audio,
                                const DtSdiAncData* Anc)
 {
     (void)Image;
@@ -71,9 +71,10 @@ void DtSdiBuilder_Freep(DtSdiBuilder** Builder)
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_GetNumAudioSamples -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder, int VidStd,
-                                            int* NumSamples)
+                                            int FrameNumber, int* NumSamples)
 {
     (void)VidStd;
+    (void)FrameNumber;
     if (Builder == NULL || NumSamples == NULL)
         return DTAPI_E_INVALID_ARG;
     *NumSamples = 0;

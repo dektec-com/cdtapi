@@ -82,8 +82,10 @@ CDTAPI_API void DtSdiView_Freep(DtSdiView** View);
 // Returns in *Data where line Line of the frame's woven image (counted from 0, top to
 // bottom) lies in the frame, without copying it. The samples are in
 // the frame's own format: Cb, Y, Cr, Y and so on, in 10-bit symbols packed least
-// significant bit first or in 16-bit words, as DtSdiView_GetFormat() says. Each line
-// starts on a byte boundary.
+// significant bit first or in 16-bit words, as DtSdiView_GetFormat() says. The line
+// returned starts on a byte boundary. In a 10-bit raw frame of 720p23.98 or 720p24,
+// every other line starts half-way through a byte; for those lines there is no pointer,
+// and DtSdiParser_Parse() into DT_SDI_PIXFMT_UYVY_10B gives the image with one copy.
 //
 // This is how a program reads the image with no copy at all. Lines are not evenly
 // spaced: the fields lie apart, and in an input channel's buffer the frame may wrap.
@@ -91,7 +93,8 @@ CDTAPI_API void DtSdiView_Freep(DtSdiView** View);
 // Returns DTAPI_OK, or:
 //   DTAPI_E_STATE           the view describes no frame
 //   DTAPI_E_INVALID_LINE    Line is not a line of the image
-//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over several links
+//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links,
+//                           or the line does not start on a byte boundary
 CDTAPI_API DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
                                                const void** Data);
 
@@ -240,8 +243,8 @@ typedef struct DtSdiAudioChannel
                     // does not send
     int Stride;     // Samples from one sample of this channel to its next; 0 means 1
     int MaxSamples; // Parser: room for this many; at least DtSdiAudio_MaxSamples()
-    int NumSamples; // Parser: set to the samples the frame held. Builder: given, as
-                    // many as DtSdiBuilder_GetNumAudioSamples() says
+    int NumSamples; // Parser: set to the samples the frame held. Builder: the samples
+                    // ready in Samples, at least as many as the frame takes
     bool Present;   // Parser: set when the frame carried this channel
     bool Invalid;   // Parser: set when the V bit of a sample said it was not valid; the
                     // sample is given as it arrived all the same
@@ -259,6 +262,17 @@ typedef struct DtSdiAudio
     // Parser, with DtSdiParser_SetAudioChecks(): per group, the packets whose BCH code
     // or checksum failed. [0] is group 1.
     int NumPacketErrors[DT_SDI_AUDIO_MAX_CHANNELS / 4];
+
+    // The frame's place in the audio cadence of a 1001 rate, from 1, e.g. 1 to 5 at
+    // 29.97 Hz; 0 for a rate without a cadence. Parser: set to the place the frame
+    // has. Builder: 0 follows the builder's own cadence; another value puts the frame
+    // at that place, and the cadence goes on from there. To pass received audio on
+    // frame for frame, give the builder the parser's FrameNumber.
+    int FrameNumber;
+
+    // Builder: set to the samples per channel the frame took from each channel's
+    // Samples. The rest stays the program's, for the next frame.
+    int NumSamplesUsed;
 } DtSdiAudio;
 
 // Returns in *NumSamples the most audio samples a channel can have in one frame of video
@@ -367,7 +381,7 @@ CDTAPI_API void DtSdiParser_Freep(DtSdiParser** Parser);
 
 // Takes the frame in Frame apart, reading each of its lines once. Image, Audio and Anc
 // say what the program wants; each may be NULL for not wanted.
-//   Image  The active video is written into it, in its Format.
+//   Image    The active video is written into it, in its Format.
 //   Audio    Each pair whose format is not DT_SDI_AUDIO_NONE has its channels' samples
 //            written, as far as they have a buffer.
 //   Anc      The ancillary packets are listed: those of DtSdiParser_SetAncFilter(), or
@@ -381,10 +395,15 @@ CDTAPI_API void DtSdiParser_Freep(DtSdiParser** Parser);
 //                           of its enum, or is _NONE where it must be given
 //   DTAPI_E_INVALID_ARG     a plane the format needs is NULL, or its stride too small
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel's MaxSamples is below
-//                           DtSdiAudio_MaxSamples()
+//                           DtSdiAudio_MaxSamples(); or Anc has no room for every packet
 //   DTAPI_E_NOT_SUPPORTED   Image->Fields is DT_SDI_FIELDS_SEPARATE, which is not yet
 //                           supported
-// The checks come first: after a failure, nothing has been written.
+// The checks of the arguments come first: after such a failure, nothing has been
+// written. Room for the ancillary packets is found only while reading the frame: when
+// it runs out, the call writes the image and the audio all the same, lists the packets
+// that fit, counts the others in Anc->NumLost, and then returns DTAPI_E_BUF_TOO_SMALL.
+// So after DTAPI_E_BUF_TOO_SMALL, Anc->NumLost above 0 means that the frame was taken
+// apart and only packets were lost.
 CDTAPI_API DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
                                          DtSdiImage* Image, DtSdiAudio* Audio,
                                          DtSdiAncData* Anc);
@@ -435,6 +454,14 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 // Puts a frame together in Frame, writing all of it. Image, Audio and Anc may each be
 // NULL: without an image the frame is black, without audio it carries none.
 //
+// Each audio channel the program sends offers NumSamples samples, at least as many as
+// the frame takes: DtSdiBuilder_GetNumAudioSamples() says how many that is, and
+// DtSdiAudio_MaxSamples() is always enough. The builder takes what the frame needs from
+// the start of each channel's Samples and sets Audio->NumSamplesUsed to that number;
+// the rest stays the program's, for the next frame. The builder takes 48 kHz exactly, in
+// step with the video: audio from a source with a clock of its own makes the program's
+// store of samples grow or shrink slowly, which the program has to correct.
+//
 // The builder writes the program's ancillary packets on the line, in the blanking, the
 // stream and the virtual interface each packet names. In the horizontal blanking they
 // follow the builder's own packets of that line: the payload ID, the audio control
@@ -445,15 +472,17 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //   DTAPI_E_STATE           Frame describes no frame, or a frame of an input channel,
 //                           which is read-only
 //   DTAPI_E_INVALID_FORMAT  as for DtSdiParser_Parse()
-//   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(); or an audio channel has another
-//                           number of samples than DtSdiBuilder_GetNumAudioSamples()
-//                           said; or a packet has the DID of audio or of a payload ID
+//   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(); or Audio->FrameNumber is not a
+//                           place in the cadence of the frame's rate; or a packet has
+//                           the DID of audio or of a payload ID
+//   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes;
+//                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking it names
 //   DTAPI_E_TOO_LONG        the packets of a line do not fit in its blanking
-// The checks come first: after a failure, the frame has not been written.
+// The checks come first: after a failure, the frame has not been written and the
+// cadence has not moved on.
 CDTAPI_API DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
-                                          const DtSdiImage* Image,
-                                          const DtSdiAudio* Audio,
+                                          const DtSdiImage* Image, DtSdiAudio* Audio,
                                           const DtSdiAncData* Anc);
 
 // Frees Builder. NULL does nothing.
@@ -463,13 +492,17 @@ CDTAPI_API void DtSdiBuilder_Free(DtSdiBuilder* Builder);
 // nothing.
 CDTAPI_API void DtSdiBuilder_Freep(DtSdiBuilder** Builder);
 
-// Returns in *NumSamples how many audio samples each channel must have in the next frame
-// of video standard VidStd that the builder puts together. At 1001 rates it follows the
-// cadence, e.g. 1602, 1601, 1602, 1601, 1602 at 29.97 Hz.
+// Returns in *NumSamples how many audio samples per channel the next frame of video
+// standard VidStd that the builder puts together takes. At 1001 rates it follows the
+// cadence, e.g. 1602, 1601, 1602, 1601, 1602 at 29.97 Hz. FrameNumber is what the
+// program will give in DtSdiAudio's FrameNumber: 0 for the builder's own cadence, or the
+// frame's place in it.
 //
-// Returns DTAPI_OK or DTAPI_E_INVALID_VIDSTD.
+// Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD, or DTAPI_E_INVALID_ARG for a FrameNumber
+// that is not a place in the cadence of the standard's rate.
 CDTAPI_API DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder,
-                                                       int VidStd, int* NumSamples);
+                                                       int VidStd, int FrameNumber,
+                                                       int* NumSamples);
 
 // Makes the builder divide the lines of a frame over the threads of Pool, as
 // DtSdiParser_SetWorkerPool() does for a parser.

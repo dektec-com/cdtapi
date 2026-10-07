@@ -675,7 +675,7 @@ DT_TEST(SdiCalls)
     DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
     DT_ASSERT(Builder != NULL);
     int NumSamples = 0;
-    DT_ASSERT(IsOneOf(DtSdiBuilder_GetNumAudioSamples(Builder, VidStd, &NumSamples),
+    DT_ASSERT(IsOneOf(DtSdiBuilder_GetNumAudioSamples(Builder, VidStd, 0, &NumSamples),
                       DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
     DT_ASSERT(IsOneOf(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0), DTAPI_OK,
                       DTAPI_E_NOT_SUPPORTED));
