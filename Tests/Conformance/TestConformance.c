@@ -31,6 +31,7 @@
 #include "DtTest.h"
 #include "cdtapi.h"
 #include "cdtapi_avfifo.h"
+#include "cdtapi_sdi.h"
 #include "cdtapi_service.h"
 #if CDTAPI_TEST_WITH_NMOS
     #include "cdtapi_nmos.h"
@@ -336,6 +337,17 @@ DT_TEST(InputChannelCalls)
                       DTAPI_OK, DTAPI_E_TIMEOUT));
     free(Buffer);
 
+    // Plan 0032 has these as stubs until its step F.
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(View != NULL);
+    DtapiResult Acquired = DtInpChannel_AcquireFrame(Channel, View, 20, &Arrival);
+    DT_ASSERT(IsOneOf(Acquired, DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+    if (Acquired == DTAPI_OK)
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Channel, View));
+    else
+        DT_ASSERT_EQ(DtInpChannel_ReleaseFrame(Channel, View), DTAPI_E_INVALID_ARG);
+    DtSdiView_Free(View);
+
     DT_ASSERT_OK(DtInpChannel_Detach(Channel, 1));
     DtInpChannel_Freep(&Channel);
     DT_ASSERT(Channel == NULL);
@@ -602,6 +614,83 @@ DT_TEST(FramePropertiesAndTimingCalls)
     DT_ASSERT(GetLastException() != NULL);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= SDI parser and builder +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The parser, the builder and their views and sizes, on a raw 1080i50 frame. Plan 0032
+// has them as stubs until its later steps, so for now a call may answer
+// DTAPI_E_NOT_SUPPORTED where it will answer DTAPI_OK.
+DT_TEST(SdiCalls)
+{
+    const int VidStd = DTAPI_VIDSTD_1080I50;
+
+    size_t FrameSize = 0;
+    DT_ASSERT(IsOneOf(DtSdiView_RawFrameSize(VidStd, 10, &FrameSize), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    if (FrameSize == 0)
+        FrameSize = 1125 * 2640 * 2 * 10 / 8;
+    uint8_t* Frame = (uint8_t*)calloc(FrameSize, 1);
+    DT_ASSERT(Frame != NULL);
+
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(View != NULL);
+    DT_ASSERT(IsOneOf(DtSdiView_SetRawFrame(View, Frame, FrameSize, VidStd, 10), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    int Std = 0;
+    int Bits = 0;
+    DT_ASSERT(IsOneOf(DtSdiView_GetFormat(View, &Std, &Bits), DTAPI_OK, DTAPI_E_STATE));
+    const void* Line = NULL;
+    DT_ASSERT(IsOneOf(DtSdiView_GetActiveLine(View, 0, &Line), DTAPI_OK, DTAPI_E_STATE));
+    uint32_t PayloadId = 0;
+    DT_ASSERT(IsOneOf(DtSdiView_GetPayloadId(View, &PayloadId), DTAPI_E_NOT_FOUND,
+                      DTAPI_E_STATE));
+
+    int Width = 0;
+    int Height = 0;
+    int MinStrides[3];
+    DT_ASSERT(IsOneOf(
+        DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_V210, &Width, &Height, MinStrides),
+        DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+    int MaxSamples = 0;
+    DT_ASSERT(IsOneOf(DtSdiAudio_MaxSamples(VidStd, &MaxSamples), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DT_ASSERT(Parser != NULL);
+    DtSdiAncFilter Captions;
+    memset(&Captions, 0, sizeof(Captions));
+    Captions.Did = 0x61;
+    Captions.Sdid = 0x01;
+    Captions.Space = DT_SDI_ANC_SPACE_VANC;
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &Captions, 1));
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, NULL, 0));
+    DT_ASSERT_OK(DtSdiParser_SetAudioChecks(Parser, true));
+    DT_ASSERT(IsOneOf(DtSdiParser_SetWorkerPool(Parser, NULL, 0), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT(IsOneOf(DtSdiParser_Parse(Parser, View, NULL, NULL, NULL), DTAPI_OK,
+                      DTAPI_E_STATE));
+    DtSdiParser_Freep(&Parser);
+    DT_ASSERT(Parser == NULL);
+    DtSdiParser_Free(NULL);
+
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DT_ASSERT(Builder != NULL);
+    int NumSamples = 0;
+    DT_ASSERT(IsOneOf(DtSdiBuilder_GetNumAudioSamples(Builder, VidStd, &NumSamples),
+                      DTAPI_OK, DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT(IsOneOf(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0), DTAPI_OK,
+                      DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT(IsOneOf(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL), DTAPI_OK,
+                      DTAPI_E_STATE));
+    DtSdiBuilder_Freep(&Builder);
+    DT_ASSERT(Builder == NULL);
+    DtSdiBuilder_Free(NULL);
+
+    DtSdiView_Freep(&View);
+    DT_ASSERT(View == NULL);
+    DtSdiView_Free(NULL);
+    free(Frame);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Services +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // The PTP clock slave of the DTA-2110's port, through the emulated DtapiService: read it,
@@ -741,5 +830,5 @@ DT_TEST(NmosCalls)
 DT_TEST_MAIN("Conformance", DT_RUN(EveryPublicFunctionIsThere), DT_RUN(LibraryCalls),
              DT_RUN(DeviceCalls), DT_RUN(InputChannelCalls), DT_RUN(OutputChannelCalls),
              DT_RUN(ReceiveFifoCalls), DT_RUN(TransmitFifoCalls),
-             DT_RUN(FramePropertiesAndTimingCalls), DT_RUN(ServiceCalls),
-             DT_RUN(NmosCalls))
+             DT_RUN(FramePropertiesAndTimingCalls), DT_RUN(SdiCalls),
+             DT_RUN(ServiceCalls), DT_RUN(NmosCalls))

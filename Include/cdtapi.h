@@ -707,6 +707,34 @@ CDTAPI_API DtapiResult DtWorkerPool_StartThreads(DtWorkerPool* Pool, int NumThre
 
 typedef struct DtInpChannel DtInpChannel;
 
+// A view of an SDI frame, from cdtapi_sdi.h.
+typedef struct DtSdiView DtSdiView;
+
+// Waits for the next SDI frame and points Frame, a view from DtSdiView_Alloc(), at it
+// where it lies in the card's receive buffer, without copying it. Read it with
+// DtSdiParser_Parse() or DtSdiView_GetActiveLine(), then give it back with
+// DtInpChannel_ReleaseFrame(). Until then the card cannot use that part of its buffer
+// again, so give each frame back within a frame period or so. The channel lends one
+// frame at a time.
+//
+// The frame is the one DtInpChannel_ReadFrame() would deliver in 10 bits a symbol, and
+// the receive mode must be 10-bit. A program uses either this or ReadFrame on a channel,
+// not both. Waits up to TimeOut milliseconds, or without a limit for -1. ArrivalTime,
+// which may be NULL, is set as by DtInpChannel_ReadFrame2().
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_IN_USE           a frame is lent and has not been given back, or a read on
+//                            another thread has not returned
+//   DTAPI_E_INVALID_MODE     the receive mode is not 10 bits a symbol
+//   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
+//   DTAPI_E_NOT_SDI_MODE     the port receives ASI
+//   DTAPI_E_TIMEOUT          no frame arrived in time
+//   DTAPI_E_CANCELLED        the channel was detached meanwhile
+// After a failure Frame describes no frame.
+CDTAPI_API DtapiResult DtInpChannel_AcquireFrame(DtInpChannel* InpChannel,
+                                                 DtSdiView* Frame, int TimeOut,
+                                                 DtTimeOfDay* ArrivalTime);
+
 // Creates an input channel, not yet attached to a port. Returns NULL when there is not
 // enough memory.
 CDTAPI_API DtInpChannel* DtInpChannel_Alloc(void);
@@ -863,6 +891,14 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* Fr
 CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
                                                void* FrameBuffer, int* FrameSize,
                                                int TimeOut, DtTimeOfDay* ArrivalTime);
+
+// Gives the frame that Frame describes back to the card, so that it can use that part of
+// its buffer again. Frame then describes no frame.
+//
+// Returns DTAPI_OK, or DTAPI_E_INVALID_ARG when Frame describes no frame this channel
+// lent.
+CDTAPI_API DtapiResult DtInpChannel_ReleaseFrame(DtInpChannel* InpChannel,
+                                                 DtSdiView* Frame);
 
 // Changes a setting of the channel's port, e.g. its I/O standard. The channel must not
 // be receiving. ParXtra0 and ParXtra1 are as in DtIoConfig, -1 when not used.

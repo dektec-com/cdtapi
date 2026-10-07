@@ -113,6 +113,11 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimSdiTx.c
     Source/OAL/Sim/SimService.c
     Source/OAL/Sim/SimVpd.c
+    Source/Sdi/DtSdiAudio.c
+    Source/Sdi/DtSdiBuilder.c
+    Source/Sdi/DtSdiImage.c
+    Source/Sdi/DtSdiParser.c
+    Source/Sdi/DtSdiView.c
     Source/Service/DtPtp.c
     Source/Service/DtPtpSlave.c
     Source/Service/DtService.c
@@ -379,6 +384,7 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_constants.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_avfifo.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_service.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Include/cdtapi_sdi.h"
     "${CMAKE_CURRENT_BINARY_DIR}/Generated/cdtapi_version.h"
     DESTINATION ${CDTAPI_INCLUDE_DIR})
 

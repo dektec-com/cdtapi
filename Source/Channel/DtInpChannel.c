@@ -24,6 +24,7 @@
 #include "DtPcieAbi.h"         // DT_FWSTATUS_ values.
 #include "DtSdiRx.h"           // The SDI side.
 #include "OAL/OsThread.h"      // The lock, sleeping, the clock.
+#include "Sdi/DtSdiView.h"     // The views of frames it lends.
 #include "cdtapi.h"            // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -810,6 +811,42 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
                                    int* FrameSize, int TimeOut)
 {
     return DtInpChannel_ReadFrame2(InpChannel, FrameBuffer, FrameSize, TimeOut, NULL);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_AcquireFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// For now a stub: plan 0032 lends frames of the ring in its step F.
+//
+DtapiResult DtInpChannel_AcquireFrame(DtInpChannel* InpChannel, DtSdiView* Frame,
+                                      int TimeOut, DtTimeOfDay* ArrivalTime)
+{
+    DtTimeOfDay Arrival = {0, 0};
+
+    if (ArrivalTime != NULL)
+        *ArrivalTime = Arrival;
+    if (InpChannel == NULL || Frame == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (TimeOut != -1 && TimeOut <= 0)
+        return DTAPI_E_INVALID_TIMEOUT;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+    OsMutex_Unlock(InpChannel->Lock);
+    Frame->HasFrame = false;
+    return DTAPI_E_NOT_SUPPORTED;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_ReleaseFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// For now a stub, as DtInpChannel_AcquireFrame is: no frame is ever lent.
+//
+DtapiResult DtInpChannel_ReleaseFrame(DtInpChannel* InpChannel, DtSdiView* Frame)
+{
+    if (InpChannel == NULL || Frame == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(InpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+    OsMutex_Unlock(InpChannel->Lock);
+    return Frame->Holder == InpChannel ? DTAPI_OK : DTAPI_E_INVALID_ARG;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= ASI +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

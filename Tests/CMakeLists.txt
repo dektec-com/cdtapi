@@ -157,6 +157,7 @@ target_include_directories(test_Result PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/Gene
 set(PublicHeaders
     "${CMAKE_SOURCE_DIR}/Include/cdtapi.h"
     "${CMAKE_SOURCE_DIR}/Include/cdtapi_avfifo.h"
+    "${CMAKE_SOURCE_DIR}/Include/cdtapi_sdi.h"
     "${CMAKE_SOURCE_DIR}/Include/cdtapi_service.h")
 if(CDTAPI_WITH_NMOS)
     list(APPEND PublicHeaders "${CMAKE_SOURCE_DIR}/Include/cdtapi_nmos.h")
