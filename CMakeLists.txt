@@ -122,6 +122,7 @@ set(CDTAPI_SOURCES
     Source/Sdi/DtSdiParser.c
     Source/Sdi/DtSdiSymbols.c
     Source/Sdi/DtSdiConv.c
+    Source/Sdi/DtSdiCrc.c
     Source/Sdi/DtSdiView.c
     Source/Service/DtPtp.c
     Source/Service/DtPtpSlave.c
@@ -152,6 +153,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
         Source/AvFifo/DtAvPixConvAvx2.c
         Source/Sdi/DtSdiConvSsse3.c
         Source/Sdi/DtSdiConvAvx2.c
+        Source/Sdi/DtSdiCrcClmul.c
         Source/Video/DtSdi4kSsse3.c)
     set(CDTAPI_HAVE_SSSE3 ON)
 else()
@@ -292,6 +294,8 @@ if(CDTAPI_HAVE_SSSE3)
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
             "${SdiDir}/DtSdiConvAvx2.c"
             PROPERTIES COMPILE_OPTIONS -mavx2)
+        set_source_files_properties("${SdiDir}/DtSdiCrcClmul.c"
+            PROPERTIES COMPILE_OPTIONS -mpclmul)
     else()
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
             "${SdiDir}/DtSdiConvAvx2.c"

@@ -31,6 +31,7 @@
 #include "BenchCommon.h"   // The clock, the compiler and its flags.
 #include "OAL/OsThread.h"  // The monotonic clock.
 #include "Sdi/DtSdiConv.h" // The versions of the conversions.
+#include "Sdi/DtSdiCrc.h"  // The versions of the line CRC.
 #include "cdtapi_sdi.h"    // The parser measured.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -418,6 +419,81 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
     return Status;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchChecksums -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Measures what the line CRCs and the packets' checksums cost the builder, from v210
+// with the fastest conversions in one thread, in the standards that have a line CRC:
+// left to the transmitter, by table, and with PCLMULQDQ.
+//
+static int BenchChecksums(DtSdiView* View, int Seconds)
+{
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    if (Builder == NULL)
+    {
+        fprintf(stderr, "Out of memory\n");
+        return 1;
+    }
+    static const char* Columns[3] = {"no CRC", "CRC by table", "CRC, PCLMULQDQ"};
+    const DtSdiCrcFunc Crcs[3] = {NULL, DtSdiCrc_Words, DtSdiCrc_Clmul()};
+    printf("\nThe builder from v210 with its line CRCs and checksums, one thread: "
+           "ms/frame and %% period\n");
+    printf("%-10s %4s  %-14s", "standard", "bits", "format");
+    for (int c = 0; c < 3; c++)
+        printf("  %16s", Columns[c]);
+    printf("\n");
+
+    int Status = 0;
+    for (int s = 0; s < NUM_STANDARDS && Status == 0; s++)
+    {
+        const Standard* Std = &g_Standards[s];
+        if (Std->VidStd == DTAPI_VIDSTD_525I59_94)
+            continue; // SD has no line CRC
+        size_t Size = 0;
+        DtSdiView_RawFrameSize(Std->VidStd, 10, &Size);
+        uint8_t* Frame = (uint8_t*)malloc(Size);
+        DtSdiImage Image;
+        if (Frame == NULL || !AllocImage(&Image, Std->VidStd, DT_SDI_PIXFMT_V210))
+        {
+            fprintf(stderr, "Out of memory\n");
+            free(Frame);
+            Status = 1;
+            break;
+        }
+        int Height = 0;
+        DtSdiImage_GetSize(Std->VidStd, DT_SDI_PIXFMT_V210, NULL, &Height, NULL);
+        FillNoise(Image.Planes[0], (size_t)Image.Strides[0] * (size_t)Height);
+        DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, 10);
+        printf("%-10s %4d  %-14s", Std->Name, 10, "v210");
+        for (int c = 0; c < 3; c++)
+        {
+            double Ms = -1.0;
+            if (c == 0 || Crcs[c] != NULL)
+            {
+                DtSdiBuilder_SetChecksums(Builder, c != 0);
+                if (Crcs[c] != NULL)
+                    DtSdiBuilder_UseCrc(Builder, Crcs[c]);
+                const uint64_t Start = OsTime_MonotonicMs();
+                uint64_t Elapsed = 0;
+                int Frames = 0;
+                while (Elapsed < (uint64_t)Seconds * 1000u || Frames == 0)
+                {
+                    DtSdiBuilder_Build(Builder, View, &Image, NULL, NULL);
+                    Frames++;
+                    Elapsed = OsTime_MonotonicMs() - Start;
+                }
+                Ms = (double)Elapsed / Frames;
+            }
+            PrintCell(Ms, Std->FrameRate);
+        }
+        printf("\n");
+        fflush(stdout);
+        FreeImage(&Image);
+        free(Frame);
+    }
+    DtSdiBuilder_Free(Builder);
+    return Status;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 int main(int Argc, char** Argv)
@@ -498,6 +574,8 @@ int main(int Argc, char** Argv)
         Status = BenchBlanking(Parser, View, Seconds, GHz);
     if (Status == 0)
         Status = BenchBuilder(View, Seconds, GHz);
+    if (Status == 0)
+        Status = BenchChecksums(View, Seconds);
     if (Status == 0)
         Status = BenchWorkers(View, Seconds, GHz);
     DtSdiView_Free(View);

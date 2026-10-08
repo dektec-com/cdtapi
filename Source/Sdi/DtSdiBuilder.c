@@ -29,6 +29,7 @@
 #include "Core/DtWorkerPool.h" // The bands of lines.
 #include "DtSdiAnc.h"          // The data IDs the builder writes itself.
 #include "DtSdiConv.h"         // The conversions.
+#include "DtSdiCrc.h"          // The line CRC.
 #include "DtSdiEmbed.h"        // The audio.
 #include "DtSdiImage.h"        // Reading the image.
 #include "DtSdiSymbols.h"      // Writing the frame's symbols.
@@ -79,6 +80,7 @@ struct DtSdiBuilder
     uint32_t LastCrc[8]; // Per stream: the CRC over the active part of that frame's last
                          // line, where the first line's CRC starts
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
+    DtSdiCrcFunc Crc;        // The version of the CRC over a line's active part
     const DtSdiConv* Conv;   // The conversions
     DtSdiEmbed Embed;        // The audio: of the frame being built, and its cadence
     int Used[DT_SDIBUILDER_MAX_SECTIONS]; // Per section of the frame: its packets' words
@@ -429,10 +431,8 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
     for (int s = 0; Streams > 1 && Builder->Checksums && s < Streams; s++)
     {
         const uint16_t* From = Raw + (size_t)Hanc * (size_t)Streams + Geo->StreamFirst[s];
-        uint32_t Crc = 0;
-        for (int k = 0; k < Total - Hanc; k++)
-            Crc = (Crc >> 10) ^ Table[(Crc ^ From[(size_t)k * (size_t)Streams]) & 0x3FF];
-        Band->LastCrc[s] = Crc;
+        Band->LastCrc[s] =
+            Builder->Crc(From, (size_t)(Total - Hanc), (size_t)Streams, Table);
     }
 }
 
@@ -532,6 +532,7 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
     DtJobRunner_Init(&Builder->Runner);
     for (uint32_t i = 0; i < 1024; i++)
         Builder->CrcTable[i] = DtSdiFrame_Crc18(i, 0);
+    Builder->Crc = DtSdiCrc_Best();
     return Builder;
 }
 
@@ -673,4 +674,11 @@ DtapiResult DtSdiBuilder_SetWorkerPool(DtSdiBuilder* Builder, DtWorkerPool* Pool
 void DtSdiBuilder_UseConv(DtSdiBuilder* Builder, const DtSdiConv* Conv)
 {
     Builder->Conv = Conv;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_UseCrc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiBuilder_UseCrc(DtSdiBuilder* Builder, DtSdiCrcFunc Crc)
+{
+    Builder->Crc = Crc;
 }
