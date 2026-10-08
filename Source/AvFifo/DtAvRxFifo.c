@@ -100,7 +100,7 @@ static void AvRxThread(void* Context)
 
     OsThread_SetName("DtAvRx");
 
-    OsThread_RaisePriority();
+    OsThread_RaisePriority(OS_THREAD_PRIORITY_RING);
     while (DtAtomic_Load(&Fifo->StopRequested) == 0)
     {
         int Packets = 0;

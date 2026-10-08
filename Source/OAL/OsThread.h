@@ -45,10 +45,18 @@ void OsThread_Join(OsThread* Thread);
 // name, the thread carries on without one; nothing depends on it.
 void OsThread_SetName(const char* Name);
 
-// Raises the priority of the calling thread. Returns 0, or -1 when the platform refuses,
-// which on Linux is normal without the right privilege. A refusal is not an error: the
-// thread still runs, only with less margin on a busy system.
-int OsThread_RaisePriority(void);
+// The priorities a thread of the library asks for, highest first. Both are above the
+// machine's ordinary threads.
+typedef enum OsThreadPriority
+{
+    OS_THREAD_PRIORITY_RING, // Keeps a card's buffer going: short work, on time
+    OS_THREAD_PRIORITY_POOL, // A worker pool's thread: the bulk of a frame's work
+} OsThreadPriority;
+
+// Raises the priority of the calling thread to Priority. Returns 0, or -1 when the
+// platform refuses, which on Linux is normal without the right privilege. A refusal is
+// not an error: the thread still runs, only with less margin on a busy system.
+int OsThread_RaisePriority(OsThreadPriority Priority);
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Event -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 

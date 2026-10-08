@@ -62,14 +62,18 @@ DT_TEST(StartRejectsMissingFunction)
 DT_TEST(RaisingPriorityDoesNotFailHere)
 {
     // Allowed to be refused on Linux without privilege, but not to misbehave. On Windows
-    // HIGHEST needs no privilege, so there it has to succeed.
-    int Result = OsThread_RaisePriority();
-
+    // HIGHEST and ABOVE_NORMAL need no privilege, so there both have to succeed.
+    const OsThreadPriority Priorities[] = {OS_THREAD_PRIORITY_POOL,
+                                           OS_THREAD_PRIORITY_RING};
+    for (size_t i = 0; i < sizeof(Priorities) / sizeof(Priorities[0]); i++)
+    {
+        int Result = OsThread_RaisePriority(Priorities[i]);
 #if defined(_WIN32)
-    DT_ASSERT_EQ(Result, 0);
+        DT_ASSERT_EQ(Result, 0);
 #else
-    DT_ASSERT(Result == 0 || Result == -1);
+        DT_ASSERT(Result == 0 || Result == -1);
 #endif
+    }
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Event +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

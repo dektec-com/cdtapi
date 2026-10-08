@@ -667,6 +667,13 @@ CDTAPI_API DtapiResult DtWorkerPool_SetDispatch(DtWorkerPool* Pool,
 // spare. More than four per frame gain little, as the work then waits for memory. At
 // least two are needed: with one thread nothing is divided.
 //
+// The threads ask for a priority above the machine's ordinary threads and below the
+// library's threads that keep a card's buffer going, so that the short work that keeps
+// the card fed comes first and a frame's bulk next: SCHED_FIFO 10 on Linux, against 20,
+// and THREAD_PRIORITY_ABOVE_NORMAL on Windows, against THREAD_PRIORITY_HIGHEST. On Linux
+// the kernel grants a real-time priority only to a program with CAP_SYS_NICE or an
+// rtprio limit; without either, every thread of the library runs as an ordinary one.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_INVALID_ARG  Pool is NULL, or NumThreads is below 2
 //   DTAPI_E_IN_USE       a channel that uses the pool has a signal: it has sized its

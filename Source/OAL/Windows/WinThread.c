@@ -116,12 +116,15 @@ void OsThread_Join(OsThread* Thread)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_RaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// THREAD_PRIORITY_HIGHEST. Time-critical is deliberately not used: a stuck time-critical
-// thread can starve the rest of the machine.
+// THREAD_PRIORITY_HIGHEST for a ring's thread, THREAD_PRIORITY_ABOVE_NORMAL for a
+// pool's. Time-critical is deliberately not used: a stuck time-critical thread can
+// starve the rest of the machine.
 //
-int OsThread_RaisePriority(void)
+int OsThread_RaisePriority(OsThreadPriority Priority)
 {
-    return SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) ? 0 : -1;
+    const int Level = Priority == OS_THREAD_PRIORITY_RING ? THREAD_PRIORITY_HIGHEST
+                                                          : THREAD_PRIORITY_ABOVE_NORMAL;
+    return SetThreadPriority(GetCurrentThread(), Level) ? 0 : -1;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Event +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

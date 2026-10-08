@@ -97,7 +97,7 @@ static void AvTxThread(void* Context)
 
     OsThread_SetName("DtAvTx");
 
-    OsThread_RaisePriority();
+    OsThread_RaisePriority(OS_THREAD_PRIORITY_RING);
     while (DtAtomic_Load(&Fifo->StopRequested) == 0)
     {
         DtAvFrame* Frame = DtAvFrameFifo_Pop(&Fifo->Fifo);

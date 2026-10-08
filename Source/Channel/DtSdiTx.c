@@ -345,7 +345,7 @@ static void SignalKeeperThread(void* Context)
 
     OsThread_SetName("DtSdiTxKeeper");
 
-    OsThread_RaisePriority();
+    OsThread_RaisePriority(OS_THREAD_PRIORITY_RING);
     OsMutex_Lock(Sdi->Tx.Port.Lock);
     OsDrv* Drv = DrvOf(Sdi);
     DtDrvObject Txf = Sdi->Txf;

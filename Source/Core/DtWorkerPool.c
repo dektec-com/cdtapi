@@ -132,6 +132,7 @@ static void PoolThreadMain(void* Context)
     DtWorkerPool* Pool = Self->Pool;
 
     OsThread_SetName(Self->Name);
+    OsThread_RaisePriority(OS_THREAD_PRIORITY_POOL);
     for (;;)
     {
         if (OsEvent_Wait(Self->Go, -1) != OS_WAIT_SIGNALLED)

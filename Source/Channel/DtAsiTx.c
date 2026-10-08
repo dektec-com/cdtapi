@@ -292,7 +292,7 @@ static void ConverterThread(void* Context)
 
     OsThread_SetName("DtAsiTx");
 
-    OsThread_RaisePriority();
+    OsThread_RaisePriority(OS_THREAD_PRIORITY_RING);
     OsMutex_Lock(Asi->Tx.Port.Lock);
     while (!Asi->StopRequested)
     {
