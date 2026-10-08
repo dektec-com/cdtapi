@@ -6,8 +6,10 @@
 //
 // Receives --count frames of SMPTE ST 2110 video or audio from a multicast group on an
 // IP port. Prints a line per frame: its number, its size, its rows, its time of day, its
-// RTP timestamp and a 64-bit hash of its bytes. At the end it prints what the
-// FIFO counted.
+// RTP timestamp and a 64-bit hash of its bytes. A frame of the examples' test pattern
+// ends the line with its frame number, as "number 1234", and with "gap of 3", "repeat"
+// or "back" when the number does not count up by one (see ExamplePattern.h). At the end
+// it prints what the FIFO counted.
 //
 //     9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b
 //     9211000001:1  frame 0  5184000 bytes  1080 rows  tod 1800000000.100000000  rtp
@@ -89,9 +91,11 @@ static bool FormatFrom(const char* Name, St2110_RxFrameFormat* Format)
 // Reads Count frames, waiting up to TimeoutMs for each, prints a line per frame and
 // then the statistics. Returns the program's exit code.
 //
-static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Count,
-                         int TimeoutMs)
+static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port,
+                         St2110_RxFrameFormat Format, int Count, int TimeoutMs)
 {
+    ExampleNumberCheck Numbers;
+    memset(&Numbers, 0, sizeof(Numbers));
     int Exit = EXAMPLE_OK;
     for (int Number = 0; Number < Count; Number++)
     {
@@ -109,11 +113,16 @@ static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Coun
             Exit = EXAMPLE_NOTHING;
             break;
         }
+        uint32_t Code = 0;
+        const bool Found = ExampleAv_ReadNumber(Frame, Format, &Code);
+        char Text[64];
+        ExampleNumberCheck_Describe(&Numbers, Found, Code, Text, sizeof(Text));
         printf(
-            "%lld:%d  frame %d  %d bytes  %d rows  tod %u.%09u  rtp %u  hash %016llX\n",
+            "%lld:%d  frame %d  %d bytes  %d rows  tod %u.%09u  rtp %u  hash %016llX%s\n",
             (long long)Port->SerialNumber, Port->Port, Number, Frame->NumValidBytes,
             Frame->NumRows, Frame->ToD.Seconds, Frame->ToD.Nanoseconds, Frame->RtpTime,
-            (unsigned long long)Example_Hash(Frame->Data, (size_t)Frame->NumValidBytes));
+            (unsigned long long)Example_Hash(Frame->Data, (size_t)Frame->NumValidBytes),
+            Text);
         unsigned int Result = AvFifo_RxFifo_ReturnToMemPool(Fifo, Frame);
         if (Result != DTAPI_OK)
             return ExampleAv_Failed("AvFifo_RxFifo_ReturnToMemPool", Result);
@@ -300,7 +309,7 @@ static int AttachAndReceive(DtDevice* Device, AvFifo_RxFifo* Fifo,
         return ExampleAv_Failed("AvFifo_RxFifo_Start", Result);
 
     ExampleAv_PrintStream(Port, ExampleAv_RxPipeKind(Fifo), Config, FormatName);
-    Exit = ReceiveFrames(Fifo, Port, Count, TimeoutMs);
+    Exit = ReceiveFrames(Fifo, Port, Format, Count, TimeoutMs);
     AvFifo_RxFifo_Stop(Fifo);
     return Exit;
 }

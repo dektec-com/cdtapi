@@ -13,7 +13,10 @@
 //
 // The line gives the image size, the number of audio samples per channel, the channels
 // that carry audio, and the number of other ancillary packets. At a 1001 frame rate it
-// also gives the frame's place in the audio cadence, as "cadence 3".
+// also gives the frame's place in the audio cadence, as "cadence 3". A frame of the
+// examples' test pattern ends the line with its frame number, as "number 1234", and with
+// "gap of 3", "repeat" or "back" when the number does not count up by one (see
+// ExamplePattern.h).
 //
 // --out also writes the image and the audio to two files:
 //   - <out>.yuv  the images, planar 4:2:2 with 10 bits in 16-bit words, which FFmpeg
@@ -45,8 +48,9 @@
 #include <string.h>
 
 // Example includes
-#include "Common/ExampleCommon.h" // The API and what the examples share.
-#include "cdtapi_sdi.h"           // The SDI parser.
+#include "Common/ExampleCommon.h"  // The API and what the examples share.
+#include "Common/ExamplePattern.h" // Reading the test pattern's frame number.
+#include "cdtapi_sdi.h"            // The SDI parser.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -91,6 +95,9 @@ typedef struct Receiver
     int32_t* Samples[DT_SDI_AUDIO_MAX_CHANNELS]; // Room for each channel's samples
     DtSdiAncPacket Packets[MAX_PACKETS];         // The other ancillary packets
     uint16_t Words[MAX_WORDS];                   // Their user data words
+
+    // The frame numbers of the examples' test pattern.
+    ExampleNumberCheck Numbers;
 
     // The output files; NULL without --out.
     FILE* Yuv;
@@ -279,9 +286,19 @@ static bool WriteFrameData(Receiver* R)
 //
 // Prints the line for frame Number, just parsed, as the file's header describes it.
 //
-static void PrintFrame(const Receiver* R, const DtHwFuncDesc* Port, int64_t Number,
+static void PrintFrame(Receiver* R, const DtHwFuncDesc* Port, int64_t Number,
                        const DtSdiAncData* Anc)
 {
+    // The test pattern's frame number, from the luma of the line that carries its code.
+    const int Line = ExamplePattern_CodeLine(R->Height);
+    const uint16_t* Luma = (const uint16_t*)(R->Image.Planes[0] +
+                                             (size_t)Line * (size_t)R->Image.Strides[0]);
+    uint32_t Code = 0;
+    const bool Found =
+        Line < R->Height && ExamplePattern_ReadNumber(Luma, R->Width, &Code);
+    char Text[64];
+    ExampleNumberCheck_Describe(&R->Numbers, Found, Code, Text, sizeof(Text));
+
     printf("%s  frame %lld  %dx%d  audio %d samples", Port->DeviceName, (long long)Number,
            R->Width, R->Height, R->Audio.Channels[0].NumSamples);
 
@@ -305,7 +322,7 @@ static void PrintFrame(const Receiver* R, const DtHwFuncDesc* Port, int64_t Numb
         printf(" none");
     if (R->Audio.FrameNumber > 0)
         printf("  cadence %d", R->Audio.FrameNumber);
-    printf("  packets %d\n", Anc->NumPackets);
+    printf("  packets %d%s\n", Anc->NumPackets, Text);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

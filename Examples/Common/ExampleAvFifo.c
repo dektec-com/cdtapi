@@ -341,6 +341,56 @@ void ExampleAv_SourceFrame(ExampleAvSource* Src, int64_t Number, uint8_t* Data)
         PackArea(Config, &Src->Pattern, &Areas[a], Data);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_ReadNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Takes the luma of the line that carries the code, as 10-bit values, from the frame's
+// format: in 10-bit pixel groups Y0 is the bits after Cb and Y1 the last ten; in 8-bit
+// groups and in planar 8-bit each luma byte is shifted up by two.
+//
+bool ExampleAv_ReadNumber(const AvFifo_Frame* Frame, St2110_RxFrameFormat Format,
+                          uint32_t* Number)
+{
+    uint16_t Luma[8192];
+    const int Rows = Frame->NumRows;
+    const int Line = ExamplePattern_CodeLine(Rows);
+
+    *Number = 0;
+    if (Frame->Is420 || Rows <= 0 || Line >= Rows || Frame->NumValidBytes <= 0)
+        return false;
+    const size_t RowBytes = (size_t)Frame->NumValidBytes / (size_t)Rows;
+    int Width = 0;
+    if (Format == St2110_RxFrameFormat_Uyvy422_10b)
+    {
+        Width = (int)(RowBytes / 5 * 2);
+        const uint8_t* Row = Frame->Data + (size_t)Line * RowBytes;
+        for (int p = 0; p < Width / 2 && Width <= 8192; p++)
+        {
+            const uint8_t* Group = Row + 5 * (size_t)p;
+            Luma[2 * p] = (uint16_t)((Group[1] & 0x3F) << 4 | Group[2] >> 4);
+            Luma[2 * p + 1] = (uint16_t)((Group[3] & 3) << 8 | Group[4]);
+        }
+    }
+    else if (Format == St2110_RxFrameFormat_Uyvy422_8b ||
+             Format == St2110_RxFrameFormat_Uyvy422_10b_to_8b)
+    {
+        Width = (int)(RowBytes / 2);
+        const uint8_t* Row = Frame->Data + (size_t)Line * RowBytes;
+        for (int x = 0; x < Width && Width <= 8192; x++)
+            Luma[x] = (uint16_t)(Row[2 * (size_t)x + 1] << 2);
+    }
+    else if (Format == St2110_RxFrameFormat_Yuv422p_8b)
+    {
+        // The Y plane comes first, one byte per pixel; Cb and Cr together are as large.
+        Width = (int)(RowBytes / 2);
+        const uint8_t* Row = Frame->Data + (size_t)Line * (size_t)Width;
+        for (int x = 0; x < Width && Width <= 8192; x++)
+            Luma[x] = (uint16_t)(Row[x] << 2);
+    }
+    if (Width <= 0 || Width > 8192)
+        return false;
+    return ExamplePattern_ReadNumber(Luma, Width, Number);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_AttachTx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

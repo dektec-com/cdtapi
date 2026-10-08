@@ -100,6 +100,12 @@ void ExampleAv_SourceFree(ExampleAvSource* Src);
 // every channel, as 24-bit samples, most significant byte first.
 void ExampleAv_SourceFrame(ExampleAvSource* Src, int64_t Number, uint8_t* Data);
 
+// Reads the frame number of the examples' test pattern from Frame, a frame of video that
+// a receive FIFO delivered in format Format. Returns false when the frame carries none,
+// or is in a format this does not read: raw, or 4:2:0; *Number is then 0.
+bool ExampleAv_ReadNumber(const AvFifo_Frame* Frame, St2110_RxFrameFormat Format,
+                          uint32_t* Number);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Attach a FIFO to port Port (from 1) of Device, with the pipe Config asks for.

@@ -28,6 +28,7 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // The test pattern of one image size.
@@ -50,6 +51,14 @@ typedef struct ExamplePatternArea
     int Width; // Pixels
     int Lines; // Lines
 } ExamplePatternArea;
+
+// What a receiver remembers of the frame numbers it read. A zeroed ExampleNumberCheck
+// has read none.
+typedef struct ExampleNumberCheck
+{
+    bool Seen;     // A number was read before
+    uint32_t Last; // The number read last
+} ExampleNumberCheck;
 
 // Where the test tone is. A zeroed ExampleTone starts at its beginning.
 typedef struct ExampleTone
@@ -84,6 +93,13 @@ int ExamplePattern_CodeLine(int Height);
 // pixels wide, as 10-bit values. An 8-bit sample is shifted up by two first. Returns
 // false when the line holds no code; *Number is then 0.
 bool ExamplePattern_ReadNumber(const uint16_t* Luma, int Width, uint32_t* Number);
+
+// Writes to Text, of Size bytes, what a receiver adds to a frame's line about the frame
+// number it read: "  number 1234", followed by "  gap of 3" when 3 numbers were skipped,
+// "  repeat" when the number is the one before, or "  back" when it is lower. Found and
+// Number are what ExamplePattern_ReadNumber gave; without a number Text is empty.
+void ExampleNumberCheck_Describe(ExampleNumberCheck* Check, bool Found, uint32_t Number,
+                                 char* Text, size_t Size);
 
 // Writes the next Count samples of the test tone to Samples: a 1 kHz sine at -20 dBFS,
 // at 48 kHz, continuing where the last call with Tone stopped. Each sample is an

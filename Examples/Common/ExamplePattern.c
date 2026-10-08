@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -346,6 +347,33 @@ bool ExamplePattern_ReadNumber(const uint16_t* Luma, int Width, uint32_t* Number
     }
     *Number = Code;
     return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleNumberCheck_Describe -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The numbers count modulo 2 to the 32nd, so a step of less than half that range is
+// forward, and a larger one back.
+//
+void ExampleNumberCheck_Describe(ExampleNumberCheck* Check, bool Found, uint32_t Number,
+                                 char* Text, size_t Size)
+{
+    if (Size > 0)
+        Text[0] = '\0';
+    if (!Found)
+        return;
+    const int Used = snprintf(Text, Size, "  number %u", Number);
+    if (Check->Seen && Used > 0 && (size_t)Used < Size)
+    {
+        const uint32_t Step = Number - Check->Last;
+        if (Step == 0)
+            snprintf(Text + Used, Size - (size_t)Used, "  repeat");
+        else if (Step >= 0x80000000u)
+            snprintf(Text + Used, Size - (size_t)Used, "  back");
+        else if (Step > 1)
+            snprintf(Text + Used, Size - (size_t)Used, "  gap of %u", Step - 1);
+    }
+    Check->Seen = true;
+    Check->Last = Number;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleTone_Next -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

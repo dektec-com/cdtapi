@@ -5,7 +5,12 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Receives --count raw SDI frames from an input port, and prints a line per frame: its
-// number, its size and a 64-bit hash of its bytes, the one DtTransmitFrames prints.
+// number, its size and a 64-bit hash of its bytes, the one DtTransmitFrames prints. A
+// frame of the examples' test pattern ends the line with its frame number, as "number
+// 1234", and with "gap of 3", "repeat" or "back" when the number does not count up by
+// one (see ExamplePattern.h). The program reads the number from the one line that
+// carries it, through a view of the raw frame; a 2160p frame, whose lines are spread
+// over its four links, it parses whole. An 8-bit frame gives no number.
 //
 // --out also writes each frame to <out><number>.raw. --detect first detects the I/O
 // standard of the signal and prints it. --threads converts the frames on a pool of that
@@ -34,7 +39,9 @@
 #include <string.h>
 
 // Example includes
-#include "Common/ExampleCommon.h" // The API and what the examples share.
+#include "Common/ExampleCommon.h"  // The API and what the examples share.
+#include "Common/ExamplePattern.h" // Reading the test pattern's frame number.
+#include "cdtapi_sdi.h"            // The view and the parser.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -99,13 +106,135 @@ static bool WriteFrame(const char* Prefix, int64_t Number, const char* Frame, in
     return fclose(File) == 0 && Written;
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame numbers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// What the program needs to read the frame number of the examples' test pattern from a
+// raw frame.
+typedef struct NumberReader
+{
+    int VidStd;          // The frames' video standard
+    int BitsPerSymbol;   // 10 or 16
+    int Width;           // The image width in pixels
+    int Height;          // The image height in lines
+    DtSdiView* View;     // Points at the frame just received; NULL to read no numbers
+    uint16_t* Luma;      // The luma of the code's line
+    DtSdiParser* Parser; // 2160p only: parses the whole image
+    DtSdiImage Image;    // 2160p only: the image, planar 10-bit
+    ExampleNumberCheck Check;
+} NumberReader;
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumberReaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Sets up *Reader for the frames Channel receives in RxMode. When the frames have 8-bit
+// symbols, or the port's standard has no image, *Reader reads no numbers. Returns false
+// when there is not enough memory.
+//
+static bool NumberReaderInit(NumberReader* Reader, DtInpChannel* Channel, int RxMode)
+{
+    int Value = -1;
+    int Strides[3];
+
+    memset(Reader, 0, sizeof(*Reader));
+    Reader->BitsPerSymbol = (RxMode & DTAPI_RXMODE_SDI_10B) == DTAPI_RXMODE_SDI_10B   ? 10
+                            : (RxMode & DTAPI_RXMODE_SDI_16B) == DTAPI_RXMODE_SDI_16B ? 16
+                                                                                      : 8;
+    if (Reader->BitsPerSymbol == 8 ||
+        DtInpChannel_GetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, &Value, &Reader->VidStd,
+                                 NULL, NULL) != DTAPI_OK ||
+        DtSdiImage_GetSize(Reader->VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Reader->Width,
+                           &Reader->Height, Strides) != DTAPI_OK)
+    {
+        return true;
+    }
+
+    Reader->View = DtSdiView_Alloc();
+    Reader->Luma = (uint16_t*)malloc((size_t)Reader->Width * sizeof(uint16_t));
+    if (Reader->View == NULL || Reader->Luma == NULL)
+        return false;
+    if (Reader->Height < 2160)
+        return true;
+
+    // A 2160p line is spread over the four links, so the whole image is parsed.
+    Reader->Parser = DtSdiParser_Alloc();
+    if (Reader->Parser == NULL)
+        return false;
+    Reader->Image.Format = DT_SDI_PIXFMT_YUV422P_10B;
+    Reader->Image.Fields = DT_SDI_FIELDS_WOVEN;
+    for (int p = 0; p < 3; p++)
+    {
+        Reader->Image.Strides[p] = Strides[p];
+        Reader->Image.Planes[p] =
+            (uint8_t*)malloc((size_t)Strides[p] * (size_t)Reader->Height);
+        if (Reader->Image.Planes[p] == NULL)
+            return false;
+    }
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumberReaderFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Frees what NumberReaderInit allocated. A zeroed *Reader is freed too.
+//
+static void NumberReaderFree(NumberReader* Reader)
+{
+    for (int p = 0; p < 3; p++)
+        free(Reader->Image.Planes[p]);
+    DtSdiParser_Free(Reader->Parser);
+    free(Reader->Luma);
+    DtSdiView_Free(Reader->View);
+    memset(Reader, 0, sizeof(*Reader));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Reads the frame number from the raw frame Frame, of Size bytes, and writes what the
+// frame's line says about it to Text, of TextSize bytes; see
+// ExampleNumberCheck_Describe(). Each luma sample is every second symbol of the line,
+// after the Cb or Cr before it.
+//
+static void ReadNumber(NumberReader* Reader, char* Frame, int Size, char* Text,
+                       size_t TextSize)
+{
+    const int Line = ExamplePattern_CodeLine(Reader->Height);
+    uint32_t Number = 0;
+    bool Found = false;
+
+    if (Reader->View != NULL &&
+        DtSdiView_SetRawFrame(Reader->View, Frame, (size_t)Size, Reader->VidStd,
+                              Reader->BitsPerSymbol) == DTAPI_OK)
+    {
+        DtSdiSymbolPtr Symbols;
+        if (Reader->Parser != NULL)
+        {
+            if (DtSdiParser_Parse(Reader->Parser, Reader->View, &Reader->Image, NULL,
+                                  NULL) == DTAPI_OK)
+            {
+                const uint8_t* Luma = Reader->Image.Planes[0] +
+                                      (size_t)Line * (size_t)Reader->Image.Strides[0];
+                Found = ExamplePattern_ReadNumber((const uint16_t*)Luma, Reader->Width,
+                                                  &Number);
+            }
+        }
+        else if (DtSdiView_GetActiveLine(Reader->View, Line, &Symbols) == DTAPI_OK)
+        {
+            for (int x = 0; x < Reader->Width; x++)
+                Reader->Luma[x] = DtSdiSymbolPtr_Get(&Symbols, 2 * (size_t)x + 1);
+            Found = ExamplePattern_ReadNumber(Reader->Luma, Reader->Width, &Number);
+        }
+    }
+    ExampleNumberCheck_Describe(&Reader->Check, Found, Number, Text, TextSize);
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Receive +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Receive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Sets the receive mode, starts receiving and reads Count frames, waiting up to
 // TimeoutMs for each. Returns the program's exit code.
 //
 static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
-                   int64_t Count, int64_t TimeoutMs, const char* Out, char* Frame)
+                   int64_t Count, int64_t TimeoutMs, const char* Out, char* Frame,
+                   NumberReader* Reader)
 {
     unsigned int Result = DtInpChannel_SetRxMode(Channel, RxMode);
 
@@ -132,8 +261,11 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
             return Example_Failed("DtInpChannel_ReadFrame", Result);
         }
 
-        printf("%s  frame %lld  %d bytes  hash %016llX\n", Port->DeviceName, (long long)i,
-               Size, (unsigned long long)Example_Hash(Frame, (size_t)Size));
+        char Text[64];
+        ReadNumber(Reader, Frame, Size, Text, sizeof(Text));
+        printf("%s  frame %lld  %d bytes  hash %016llX%s\n", Port->DeviceName,
+               (long long)i, Size, (unsigned long long)Example_Hash(Frame, (size_t)Size),
+               Text);
         if (Out != NULL && !WriteFrame(Out, i, Frame, Size))
         {
             printf("Cannot write frame %lld to %s\n", (long long)i, Out);
@@ -145,12 +277,13 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives the channel a pool of NumThreads threads to convert its frames on. The channel
-// itself picks how many of them a frame needs (NumThreads 0 in SetWorkerPool): 4 for
-// 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and none up to 3G-SDI. The channel
-// keeps the pool, so the program releases its own reference at once.
+// Gives the channel a pool of NumThreads threads to convert its frames on, and the
+// parser, when there is one, the same pool. Each picks how many of them a frame needs
+// (NumThreads 0 in SetWorkerPool): 4 for 2160p50 and 2160p60, 2 for 2160p24 to 2160p30,
+// and none up to 3G-SDI. Both keep the pool, so the program releases its own reference
+// at once.
 //
-static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
+static unsigned int GivePool(DtInpChannel* Channel, DtSdiParser* Parser, int NumThreads)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     unsigned int Result =
@@ -158,14 +291,17 @@ static unsigned int GivePool(DtInpChannel* Channel, int NumThreads)
 
     if (Result == DTAPI_OK)
         Result = DtInpChannel_SetWorkerPool(Channel, Pool, 0);
+    if (Result == DTAPI_OK && Parser != NULL)
+        Result = DtSdiParser_SetWorkerPool(Parser, Pool, 0);
     DtWorkerPool_Freep(&Pool);
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndReceive -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Attaches Device and Channel to Port, gives the channel a pool of Threads threads when
-// asked, detects and prints the I/O standard when asked, and receives the frames.
+// Attaches Device and Channel to Port, sets up the reader of the frame numbers, gives the
+// channel and its parser a pool of Threads threads when asked, detects and prints the
+// I/O standard when asked, and receives the frames.
 // Returns the program's exit code.
 //
 static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame,
@@ -181,11 +317,21 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
         printf("%s  ", Port->DeviceName);
         return Example_Failed("DtInpChannel_AttachToPort", Result);
     }
-    Result = Threads > 0 ? GivePool(Channel, (int)Threads) : DTAPI_OK;
+    // The reader of the frame numbers needs the port's standard, and gets the pool for
+    // its parser.
+    NumberReader Reader;
+    if (!NumberReaderInit(&Reader, Channel, RxMode))
+    {
+        NumberReaderFree(&Reader);
+        DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
+        return Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
+    }
+    Result = Threads > 0 ? GivePool(Channel, Reader.Parser, (int)Threads) : DTAPI_OK;
     if (Result != DTAPI_OK)
     {
         printf("%s  ", Port->DeviceName);
-        Example_Failed("DtInpChannel_SetWorkerPool", Result);
+        Example_Failed("SetWorkerPool", Result);
+        NumberReaderFree(&Reader);
         DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
         return EXAMPLE_FAILED;
     }
@@ -208,7 +354,8 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
     }
 
     int Exit = Receive(Channel, Port, RxMode, Count, TimeoutMs,
-                       Example_Value(Argc, Argv, "--out"), Frame);
+                       Example_Value(Argc, Argv, "--out"), Frame, &Reader);
+    NumberReaderFree(&Reader);
     DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
     return Exit;
 }
