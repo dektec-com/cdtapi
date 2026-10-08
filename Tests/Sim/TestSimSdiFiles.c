@@ -25,6 +25,7 @@
 #include "OAL/OsThread.h"           // Waiting for frames on the clock.
 #include "OAL/Sim/SimChSdiRx.h"     // The emulated source's frames.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
+#include "OAL/Sim/SimSdiTx.h"       // Sending as fast as the channel writes.
 #include "Sdi/DtSdiView.h"          // Whether a frame lent ran across the ring's end.
 #include "Video/DtSdiFrame.h"       // Frame sizes.
 #include "Video/DtVidStd.h"         // Which standards are 4K.
@@ -1364,6 +1365,212 @@ DT_TEST(LostFramesLatchTheOverflow)
     remove(SOURCE_FILE);
 }
 
+// Encodes the raw frame Raw, of 10-bit symbols, into the room that an output channel
+// lent to View, and marks the frame built. The builder will do this from plan 0033's
+// step D. Band is the 4K encoder's band buffer, and NULL for other standards.
+static void EncodeIntoLentFrame(DtSdiView* View, const uint8_t* Raw, uint16_t* Band)
+{
+    const DtSdiFrameLayout* Layout = &View->Geo.Layout;
+
+    for (int Line = 0; Line < Layout->NumLines; Line++)
+    {
+        const size_t At = (size_t)Line * View->LineNumBits;
+        uint8_t* Coded = DtSdiView_TxCodedLines(View, Line);
+        if (Layout->Is4k)
+            DtSdiFrame_EncodeLine4k(
+                Layout, 10, Raw + At / 8, Line, Coded + Layout->TxLineHeaderNumBytes,
+                Coded + Layout->TxStride + Layout->TxLineHeaderNumBytes, Band);
+        else
+            DtSdiFrame_EncodeLine(Layout, 10, Raw + At / 8, (int)(At % 8), Coded);
+    }
+    View->IsBuilt = true;
+}
+
+// Checks that frames built in the room an output channel lends go out exactly as they
+// were built, also a frame whose lines run across the end of the transmit ring. The
+// channel starts sending after the first two frames, so that the later ones wait for
+// room. The sink must hold the frames committed, in order, with no black frame between
+// them. At most one frame may follow them: the black frame that ends the run. In 625i,
+// 720p50, 1080i50 and 2160p50.
+DT_TEST(CommittedFramesGoOut)
+{
+    static const int Standards[] = {DTAPI_VIDSTD_625I50, DTAPI_VIDSTD_720P50,
+                                    DTAPI_VIDSTD_1080I50, DTAPI_VIDSTD_2160P50};
+
+    for (size_t s = 0; s < sizeof(Standards) / sizeof(Standards[0]); s++)
+    {
+        const int VidStd = Standards[s];
+        Fixture Fix;
+        if (!Start(&Fix, DtFailures))
+            return;
+        SimDtPcie_SetTxRealTime(false);
+        DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+        // Two frames of the pattern, sent in turn.
+        uint8_t* Frames[2] = {NULL, NULL};
+        size_t Size = 0;
+        size_t Padded = 0;
+        for (int f = 0; f < 2; f++)
+        {
+            Frames[f] = PatternFrame(VidStd, (uint32_t)f, &Size, &Padded);
+            DT_ASSERT(Frames[f] != NULL);
+        }
+        DtSdiView* View = DtSdiView_Alloc();
+        Fix.Out = DtOutpChannel_Alloc();
+        DT_ASSERT(View != NULL && Fix.Out != NULL);
+        DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
+        DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+        DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+
+        // Lend, build and commit frames until three frames after the first one whose
+        // lines run across the end of the ring.
+        uint16_t* Band = NULL;
+        int Count = 0;
+        int Wrapped = -1;
+        while (Count < 64 && (Wrapped < 0 || Count < Wrapped + 3))
+        {
+            DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 10000));
+            if (Band == NULL && View->Geo.Is4k)
+            {
+                Band = (uint16_t*)malloc(DtSdiFrame_NumBandSymbols(&View->Geo.Layout) *
+                                         sizeof(uint16_t));
+                DT_ASSERT(Band != NULL);
+            }
+            if (Wrapped < 0 && View->WrapLineIndex >= 0)
+                Wrapped = Count;
+            EncodeIntoLentFrame(View, Frames[Count % 2], Band);
+            DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix.Out, View));
+            DT_ASSERT(!View->HasFrame);
+            if (++Count == 2)
+                DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+        }
+        DT_ASSERT(Wrapped >= 0);
+        DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+        DtOutpChannel_Freep(&Fix.Out);
+        DtDevice_Freep(&Fix.Device);
+        SimDtPcie_Reset(); // Closes the file
+
+        for (int i = 0; i < Count; i++)
+        {
+            uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)i, Padded, Size);
+            DT_ASSERT(Sent != NULL);
+            DT_ASSERT_MEM(Sent, Frames[i % 2], Size);
+            free(Sent);
+        }
+        uint8_t* After = ReadFrameAt(SINK_FILE, (size_t)Count + 1, Padded, Size);
+        DT_ASSERT(After == NULL);
+        free(After);
+        free(Band);
+        free(Frames[0]);
+        free(Frames[1]);
+        DtSdiView_Free(View);
+        FINISH(Fix);
+        remove(SINK_FILE);
+    }
+}
+
+// Checks what an output channel refuses while it lends room for a frame, and that it
+// drops a lent frame when it goes idle, clears its FIFO or detaches:
+// - AcquireFrame refuses an idle channel;
+// - from the first AcquireFrame until the channel goes idle, a second AcquireFrame,
+//   Write and WriteFrame return DTAPI_E_IN_USE;
+// - the parser and DtSdiView_GetActiveLine refuse the room, which is still being built;
+// - CommitFrame refuses a frame not built, a view the channel did not lend, and a frame
+//   committed already;
+// - AcquireFrame refuses after a Write that left part of a frame;
+// - AcquireFrame waits for room, and returns DTAPI_E_TIMEOUT when the ring stays full.
+DT_TEST(LendingRefusesAndDrops)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    SimDtPcie_SetTxRealTime(false);
+    size_t Size = 0;
+    size_t Padded = 0;
+    uint8_t* Frame = PatternFrame(DTAPI_VIDSTD_625I50, 0, &Size, &Padded);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiView* Other = DtSdiView_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Frame != NULL && View != NULL && Other != NULL && Parser != NULL &&
+              Fix.Out != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_625I50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Fix.Out, View, 100), DTAPI_E_IDLE);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+
+    // While the room is lent.
+    DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000));
+    DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000), DTAPI_E_IN_USE);
+    DT_ASSERT(View->HasFrame);
+    DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Fix.Out, Other, 1000), DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Out, Frame, (int)Size, 1000),
+                 DTAPI_E_IN_USE);
+    DT_ASSERT_EQ(DtOutpChannel_Write(Fix.Out, Frame, 1024), DTAPI_E_IN_USE);
+    DtSdiSymbolPtr Symbols;
+    DT_ASSERT_EQ(DtSdiView_GetActiveLine(View, 1, &Symbols), DTAPI_E_STATE);
+    DT_ASSERT_EQ(DtSdiParser_Parse(Parser, View, NULL, NULL, NULL), DTAPI_E_STATE);
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Fix.Out, View), DTAPI_E_STATE);
+    DT_ASSERT(View->HasFrame);
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Fix.Out, Other), DTAPI_E_INVALID_ARG);
+    EncodeIntoLentFrame(View, Frame, NULL);
+    DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix.Out, View));
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Fix.Out, View), DTAPI_E_INVALID_ARG);
+
+    // The run goes on after the commit, so writing is still refused.
+    DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Out, Frame, (int)Size, 1000),
+                 DTAPI_E_IN_USE);
+
+    // Going idle drops the lent frame and ends the run, so that writing works again.
+    DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_IDLE));
+    DT_ASSERT(!View->HasFrame);
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Fix.Out, View), DTAPI_E_IDLE);
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Out, Frame, (int)Size, 1000));
+
+    // Clearing the FIFO drops the lent frame too.
+    DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000));
+    DT_ASSERT_OK(DtOutpChannel_ClearFifo(Fix.Out));
+    DT_ASSERT(!View->HasFrame);
+
+    // A Write that left part of a frame.
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_Write(Fix.Out, Frame, (int)(Size / 2 / 4 * 4)));
+    DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000), DTAPI_E_INCOMP_FRAME);
+    DT_ASSERT(!View->HasFrame);
+    DT_ASSERT_OK(DtOutpChannel_ClearFifo(Fix.Out));
+
+    // While holding nothing goes out, so the ring fills up and AcquireFrame times out.
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    int Lent = 0;
+    DtapiResult Result;
+    while ((Result = DtOutpChannel_AcquireFrame(Fix.Out, View, 50)) == DTAPI_OK &&
+           Lent < 200)
+    {
+        View->IsBuilt = true;
+        DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix.Out, View));
+        Lent++;
+    }
+    DT_ASSERT_EQ(Result, DTAPI_E_TIMEOUT);
+    DT_ASSERT(Lent > 2);
+    DT_ASSERT(!View->HasFrame);
+
+    // Detaching drops the lent frame.
+    DT_ASSERT_OK(DtOutpChannel_ClearFifo(Fix.Out));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 1000));
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, 0));
+    DT_ASSERT(!View->HasFrame);
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Fix.Out, View), DTAPI_E_NOT_ATTACHED);
+
+    free(Frame);
+    DtSdiParser_Free(Parser);
+    DtSdiView_Free(Other);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+}
+
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
@@ -1371,4 +1578,5 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(FourKThroughDispatch), DT_RUN(TwoChannelsShareAPoolOfEight),
              DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(AcquireLendsTheFrames),
              DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
+             DT_RUN(CommittedFramesGoOut), DT_RUN(LendingRefusesAndDrops),
              DT_RUN(LeavesAFileForTheExamples))

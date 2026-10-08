@@ -18,6 +18,7 @@
 #include "DtSdiTx.h"            // Interface being implemented.
 #include "OAL/OsDmaBuffer.h"    // The DMA buffer.
 #include "OAL/OsThread.h"       // The thread, its event, sleeping.
+#include "Sdi/DtSdiView.h"      // The view of a lent frame.
 #include "Video/DtFrameProps.h" // The frame rate.
 #include "Video/DtSdiFrame.h"   // The buffer's format and the raw frame.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
@@ -134,6 +135,13 @@ typedef struct DtSdiTx
     size_t PartialLineBytes; // Bytes in PartialLine
     size_t FrameBytesLeft;   // Raw bytes of the frame, padding included, not yet taken
 
+    // A program can borrow room for a frame in the buffer and build the frame there. A
+    // lending run starts at the first lend and ends when the channel goes idle or its
+    // buffer is freed. During a run the program is responsible for sending on time, so
+    // the channel inserts no black frames.
+    bool Lending;        // A lending run is going on
+    DtSdiView* LentView; // The view that holds the lent room; NULL if none
+
     // The thread that keeps the signal while sending.
     OsThread* KeeperThread;
     bool StopRequested;
@@ -247,6 +255,19 @@ static DtapiResult DmaBufferLoad(DtSdiTx* Sdi, size_t* Load)
 static int UnsentFrames(const DtSdiTx* Sdi)
 {
     return (Sdi->NextFrameId - (Sdi->FirstEventSeen ? Sdi->SendingFrameId : 0)) & 0xFFFF;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EndLending -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Drops the lent frame without sending it, and ends the lending run. The view that held
+// the frame then describes no frame.
+//
+static void EndLending(DtSdiTx* Sdi)
+{
+    if (Sdi->LentView != NULL)
+        DtSdiView_Forget(Sdi->LentView);
+    Sdi->LentView = NULL;
+    Sdi->Lending = false;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForgetPartialFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -394,9 +415,10 @@ static void SignalKeeperThread(void* Context)
             }
         }
 
-        // The frame going out is the last: a black frame follows it.
+        // When the frame going out is the last one, put a black frame after it. Not
+        // during a lending run: then sending on time is the program's task.
         size_t Load;
-        if (Sdi->BlackAllowed && UnsentFrames(Sdi) <= 1 &&
+        if (Sdi->BlackAllowed && !Sdi->Lending && UnsentFrames(Sdi) <= 1 &&
             DmaBufferLoad(Sdi, &Load) == DTAPI_OK)
             InsertBlack(Sdi, Load);
         OsEvent_Set(Sdi->RoomEvent);
@@ -593,6 +615,7 @@ static DtapiResult HoldToIdle(DtSdiTx* Sdi)
     DtapiResult Result = BlocksToIdle(Sdi);
 
     ForgetPartialFrame(Sdi);
+    EndLending(Sdi);
     Sdi->Tx.TxControl = DTAPI_TXCTRL_IDLE;
     return Result;
 }
@@ -693,6 +716,7 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
 //
 static void FreeStandardBuffers(DtSdiTx* Sdi)
 {
+    EndLending(Sdi);
     if (Sdi->BufferRegistered)
     {
         DtPcieCmd_CdmacSetOpMode(DrvOf(Sdi), Sdi->Cdmac, DT_BLOCK_OPMODE_IDLE);
@@ -1276,6 +1300,10 @@ static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t BytesLeft)
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
     DtapiResult Result = DTAPI_OK;
 
+    // A program that lends frames does not also write them.
+    if (Sdi->Lending)
+        return DTAPI_E_IN_USE;
+
     while (Result == DTAPI_OK)
     {
         if (*Sdi->Tx.Port.WaitingDetaches > 0)
@@ -1475,6 +1503,72 @@ static DtapiResult FindDriverBlocks(DtSdiTx* Sdi)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Functions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LendFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Lends the room for the next frame, at the write offset, to View. The frame header is
+// written at once, and in 2160p the line header of every coded line, so that the builder
+// only writes the lines' sections. The write offset stays where it is until the frame is
+// committed.
+//
+static DtapiResult LendFrame(DtTx* Tx, DtSdiView* View, void* Holder, uint64_t Deadline)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+
+    if (Sdi->LentView != NULL)
+        return DTAPI_E_IN_USE;
+    if (Sdi->WriteStage != DT_SDITX_STAGE_SEARCH || Sdi->PartialLineBytes > 0)
+        return DTAPI_E_INCOMP_FRAME;
+
+    // The run starts now, so that no black frame follows while this call waits.
+    Sdi->Lending = true;
+    DtapiResult Result = WaitForRoom(Sdi, Deadline);
+    if (Result != DTAPI_OK)
+        return Result;
+
+    WriteFrameHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
+    const size_t LinesStart =
+        WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes);
+    Result = DtSdiView_SetTxFrame(View, Layout, Sdi->DmaBuffer.Data, Sdi->DmaBuffer.Size,
+                                  LinesStart, Holder);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (Layout->TxLineHeaderNumBytes > 0)
+    {
+        for (int Line = 0; Line < Layout->NumLines; Line++)
+        {
+            uint8_t* Coded = DtSdiView_TxCodedLines(View, Line);
+            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Coded);
+            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Coded + Layout->TxStride);
+        }
+    }
+    Sdi->LentView = View;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CommitLentFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Copies the line that wraps around the ring's end into place, then moves the write
+// offset past the frame, so that the card sends it.
+//
+static DtapiResult CommitLentFrame(DtTx* Tx, DtSdiView* View)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+
+    if (Sdi->LentView == NULL || Sdi->LentView != View)
+        return DTAPI_E_INVALID_ARG;
+    if (!View->IsBuilt)
+        return DTAPI_E_STATE;
+
+    DtSdiView_StoreWrapLine(View);
+    DtapiResult Result = CommitFrame(Sdi);
+    if (Result == DTAPI_OK)
+        Sdi->FifoUfl = false;
+    Sdi->LentView = NULL;
+    DtSdiView_Forget(View);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Release -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Lets go of the buffer and the exclusive access, ignoring failures. Releasing the
@@ -1662,6 +1756,9 @@ static DtapiResult WriteFrame(DtTx* Tx, const uint8_t* Frame, int FrameSize,
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
+    // A program that lends frames does not also write them.
+    if (Sdi->Lending)
+        return DTAPI_E_IN_USE;
     if (Sdi->WriteStage != DT_SDITX_STAGE_SEARCH || Sdi->PartialLineBytes > 0)
         return DTAPI_E_INCOMP_FRAME;
     return WriteOneFrame(Sdi, Frame, FrameSize, Deadline);
@@ -1691,6 +1788,7 @@ static void WaitUntilSent(DtTx* Tx)
 
     StopSignalKeeper(Sdi);
     ForgetPartialFrame(Sdi);
+    EndLending(Sdi);
     while (Sdi->NextFrameId != 0)
     {
         size_t Load;
@@ -1759,6 +1857,8 @@ static const DtTxBackend g_SdiTxBackend = {
     .SetTxPolarity = SetTxPolarity,
     .Write = Write,
     .WriteFrame = WriteFrame,
+    .LendFrame = LendFrame,
+    .CommitLentFrame = CommitLentFrame,
     .WakeWaitingWrite = WakeWaitingWrite,
     .WaitUntilSent = WaitUntilSent,
 };

@@ -40,16 +40,20 @@ struct DtSdiView
     uint8_t* Frame;     // The raw frame; NULL for a frame of an input channel
     size_t FrameSize;   // Bytes in Frame
     size_t LineNumBits; // Bits of one raw line
-    void* Holder;       // The input channel that holds the frame; NULL for a raw frame
+    void* Holder;       // The channel that lent the frame; NULL for a raw frame
 
     // For a frame in a ring only.
-    const uint8_t* RingBase;  // The ring
+    uint8_t* RingBase;        // The ring
     size_t RingSize;          // Bytes in the ring
     size_t LinesStart;        // Where the frame's first coded line starts in the ring
     size_t CodedBytesPerLine; // Bytes of the coded lines of one raw line
     int WrapLineIndex;        // The raw line that wraps around the ring's end; -1 if none
     uint8_t* WrapLine;        // A copy of that line, in one piece
     size_t WrapLineRoom;      // Bytes allocated for WrapLine
+
+    // For room for a frame in a transmit ring only.
+    bool IsTx;    // The view describes room in an output channel's transmit ring
+    bool IsBuilt; // The builder has written the whole frame since it was lent
 };
 
 // Buffers for decoding one 2160p line of a frame in a ring before it is read. Each thread
@@ -97,8 +101,33 @@ DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link
 // Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD, or DTAPI_E_OUT_OF_MEM if there is no memory
 // for the copy. After a failure View describes no frame.
 DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
-                                   const uint8_t* RingBase, size_t RingSize,
-                                   size_t LinesStart, void* Holder);
+                                   uint8_t* RingBase, size_t RingSize, size_t LinesStart,
+                                   void* Holder);
+
+// Points View at room for one frame of Layout in a transmit ring, for the builder to
+// write the frame into.
+//   Layout      the layout of the coded lines, with the card's alignment
+//   RingBase    the transmit ring, RingSize bytes
+//   LinesStart  where the frame's first coded line goes, from the ring's start
+//   Holder      the output channel that lent the room
+// The coded lines of the one raw line that would wrap around the ring's end go to a
+// buffer of the view instead. DtSdiView_StoreWrapLine() copies them into the ring.
+//
+// Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD, or DTAPI_E_OUT_OF_MEM if there is no memory
+// for that buffer. After a failure View describes no frame.
+DtapiResult DtSdiView_SetTxFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
+                                 uint8_t* RingBase, size_t RingSize, size_t LinesStart,
+                                 void* Holder);
+
+// Returns where the coded lines of raw line LineIndex (from 0) of a transmit view go:
+// into the ring, or into the view's buffer for the line that wraps around the ring's
+// end. A 2160p line has two coded lines, each Layout->TxStride bytes and each starting
+// with its line header; other lines have one, without a header.
+uint8_t* DtSdiView_TxCodedLines(const DtSdiView* View, int LineIndex);
+
+// Copies the coded lines of the line that wraps around the ring's end from the view's
+// buffer into the ring, in two pieces. Does nothing when no line wraps.
+void DtSdiView_StoreWrapLine(const DtSdiView* View);
 
 // Makes View describe no frame and clears its holder.
 void DtSdiView_Forget(DtSdiView* View);

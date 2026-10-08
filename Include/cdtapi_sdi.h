@@ -167,7 +167,8 @@ CDTAPI_API DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd,
 // it is the payload ID of the first link.
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_STATE           the view does not describe a frame
+//   DTAPI_E_STATE           the view does not describe a frame, or describes a frame
+//                           that an output channel lent, which is still being built
 //   DTAPI_E_NOT_FOUND       the frame carries no payload ID; *PayloadId is then 0
 //   DTAPI_E_OUT_OF_MEM      no memory to read the frame's lines with
 CDTAPI_API DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId);

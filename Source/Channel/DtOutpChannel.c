@@ -25,6 +25,7 @@
 #include "DtPcieAbi.h"         // Firmware statuses.
 #include "DtSdiTx.h"           // The SDI side.
 #include "OAL/OsThread.h"      // The lock, sleeping, the clock.
+#include "Sdi/DtSdiView.h"     // The view of a lent frame.
 #include "cdtapi.h"            // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -217,18 +218,50 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AcquireFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A stub until plan 0033's step C: it checks its arguments only.
+// The argument checks, then the channel's, then the side's, as for WriteFrame. A view
+// that holds a lent frame is left alone; any other view describes no frame after a
+// failure.
 //
 DtapiResult DtOutpChannel_AcquireFrame(DtOutpChannel* OutpChannel, DtSdiView* Frame,
                                        int TimeOut)
 {
-    (void)TimeOut;
+    uint64_t StartMs = OsTime_MonotonicMs();
+
     if (OutpChannel == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
+    if (TimeOut != -1 && TimeOut <= 0)
+        return DTAPI_E_INVALID_TIMEOUT;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
+
+    DtTx* Tx = OutpChannel->Tx;
+    DtapiResult Result = DTAPI_OK;
+    if (Frame->Holder != NULL)
+    {
+        OsMutex_Unlock(OutpChannel->Lock);
+        return DTAPI_E_IN_USE;
+    }
+    if (OutpChannel->WaitingDetaches > 0)
+        Result = DTAPI_E_CANCELLED;
+    else if (Tx->TxControl == DTAPI_TXCTRL_IDLE)
+        Result = DTAPI_E_IDLE;
+    else if (OutpChannel->Writing)
+        Result = DTAPI_E_IN_USE;
+    else if (Tx->Backend->LendFrame == NULL)
+        Result = DTAPI_E_NOT_SDI_MODE;
+    else
+    {
+        uint64_t Deadline =
+            TimeOut == -1 ? DT_TX_NO_DEADLINE : StartMs + (uint64_t)TimeOut;
+
+        OutpChannel->Writing = true;
+        Result = Tx->Backend->LendFrame(Tx, Frame, OutpChannel, Deadline);
+        OutpChannel->Writing = false;
+    }
+    if (Result != DTAPI_OK)
+        DtSdiView_Forget(Frame);
     OsMutex_Unlock(OutpChannel->Lock);
-    return DTAPI_E_NOT_SUPPORTED;
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -770,7 +803,7 @@ DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int Latched)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_CommitFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A stub until plan 0033's step C: it checks its arguments only.
+// The argument checks, then the channel's, then the side's.
 //
 DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel, DtSdiView* Frame)
 {
@@ -778,8 +811,19 @@ DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel, DtSdiView* Fra
         return DTAPI_E_INVALID_ARG;
     if (LockAttached(OutpChannel) != DTAPI_OK)
         return DTAPI_E_NOT_ATTACHED;
+
+    DtTx* Tx = OutpChannel->Tx;
+    DtapiResult Result;
+    if (OutpChannel->WaitingDetaches > 0)
+        Result = DTAPI_E_CANCELLED;
+    else if (Tx->TxControl == DTAPI_TXCTRL_IDLE)
+        Result = DTAPI_E_IDLE;
+    else if (Tx->Backend->CommitLentFrame == NULL)
+        Result = DTAPI_E_NOT_SDI_MODE;
+    else
+        Result = Tx->Backend->CommitLentFrame(Tx, Frame);
     OsMutex_Unlock(OutpChannel->Lock);
-    return DTAPI_E_NOT_SUPPORTED;
+    return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

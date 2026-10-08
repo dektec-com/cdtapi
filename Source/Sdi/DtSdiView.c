@@ -75,6 +75,8 @@ void DtSdiView_Forget(DtSdiView* View)
     View->Holder = NULL;
     View->RingBase = NULL;
     View->WrapLineIndex = -1;
+    View->IsTx = false;
+    View->IsBuilt = false;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_LinkHanc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -183,7 +185,7 @@ DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
     if (View == NULL || Symbols == NULL)
         return DTAPI_E_INVALID_ARG;
     memset(Symbols, 0, sizeof(*Symbols));
-    if (!View->HasFrame)
+    if (!View->HasFrame || View->IsTx)
         return DTAPI_E_STATE;
     if (Line < 0 || Line >= View->Geo.Height)
         return DTAPI_E_INVALID_LINE;
@@ -262,7 +264,7 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
     if (View == NULL || PayloadId == NULL)
         return DTAPI_E_INVALID_ARG;
     *PayloadId = 0;
-    if (!View->HasFrame)
+    if (!View->HasFrame || View->IsTx)
         return DTAPI_E_STATE;
 
     DtSdiLineScratch Scratch;
@@ -319,6 +321,8 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
     View->Geo = Geo;
     View->BitsPerSymbol = BitsPerSymbol;
     View->RingBase = NULL;
+    View->IsTx = false;
+    View->IsBuilt = false;
     View->WrapLineIndex = -1;
     View->Frame = (uint8_t*)Frame;
     View->FrameSize = Size;
@@ -332,8 +336,8 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
 // A frame is smaller than the ring, so at most one of its lines wraps around the end.
 //
 DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
-                                   const uint8_t* RingBase, size_t RingSize,
-                                   size_t LinesStart, void* Holder)
+                                   uint8_t* RingBase, size_t RingSize, size_t LinesStart,
+                                   void* Holder)
 {
     DtSdiView_Forget(View);
     DtSdiGeometry Geo;
@@ -380,4 +384,81 @@ DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layo
     View->Holder = Holder;
     View->HasFrame = true;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetTxFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A frame is smaller than the ring, so at most one of its lines wraps around the end.
+// The view only reserves a buffer for that line; nothing is copied until the frame is
+// committed.
+//
+DtapiResult DtSdiView_SetTxFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
+                                 uint8_t* RingBase, size_t RingSize, size_t LinesStart,
+                                 void* Holder)
+{
+    DtSdiView_Forget(View);
+    DtSdiGeometry Geo;
+    DtapiResult Result = DtSdiGeometry_Init(&Geo, Layout->VidStd);
+    if (Result != DTAPI_OK)
+        return Result;
+    // Use the card's alignment for the sections, not the geometry's default.
+    Geo.Layout = *Layout;
+
+    const size_t Bytes = DtSdiFrame_TxCodedBytesPerLine(&Geo.Layout);
+    int Wrap = -1;
+    for (int Line = 0; Line < Geo.Layout.NumLines && Wrap < 0; Line++)
+    {
+        const size_t Offset = (LinesStart + (size_t)Line * Bytes) % RingSize;
+        if (Offset + Bytes > RingSize)
+            Wrap = Line;
+    }
+    if (Wrap >= 0 && View->WrapLineRoom < Bytes)
+    {
+        DtAlloc_Free(View->WrapLine);
+        View->WrapLine = (uint8_t*)DtAlloc_Malloc(Bytes);
+        View->WrapLineRoom = View->WrapLine == NULL ? 0 : Bytes;
+        if (View->WrapLine == NULL)
+            return DTAPI_E_OUT_OF_MEM;
+    }
+
+    View->Geo = Geo;
+    View->BitsPerSymbol = 10;
+    View->Frame = NULL;
+    View->FrameSize = 0;
+    View->LineNumBits = DtSdiFrame_RawLineNumBits(&Geo.Layout, 10);
+    View->RingBase = RingBase;
+    View->RingSize = RingSize;
+    View->LinesStart = LinesStart % RingSize;
+    View->CodedBytesPerLine = Bytes;
+    View->WrapLineIndex = Wrap;
+    View->IsTx = true;
+    View->IsBuilt = false;
+    View->Holder = Holder;
+    View->HasFrame = true;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_StoreWrapLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void DtSdiView_StoreWrapLine(const DtSdiView* View)
+{
+    if (View->WrapLineIndex < 0)
+        return;
+    const size_t Bytes = View->CodedBytesPerLine;
+    const size_t Offset =
+        (View->LinesStart + (size_t)View->WrapLineIndex * Bytes) % View->RingSize;
+    const size_t First = View->RingSize - Offset;
+    memcpy(View->RingBase + Offset, View->WrapLine, First);
+    memcpy(View->RingBase, View->WrapLine + First, Bytes - First);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_TxCodedLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+uint8_t* DtSdiView_TxCodedLines(const DtSdiView* View, int LineIndex)
+{
+    if (LineIndex == View->WrapLineIndex)
+        return View->WrapLine;
+    const size_t Offset =
+        (View->LinesStart + (size_t)LineIndex * View->CodedBytesPerLine) % View->RingSize;
+    return View->RingBase + Offset;
 }

@@ -1060,9 +1060,7 @@ typedef struct DtOutpChannel DtOutpChannel;
 //   DTAPI_E_NOT_SDI_MODE     the port sends ASI
 //   DTAPI_E_TIMEOUT          no room in time
 //   DTAPI_E_CANCELLED        the channel was detached meanwhile
-// After a failure Frame describes no frame.
-//
-// Not yet implemented: until plan 0033 is done, it returns DTAPI_E_NOT_SUPPORTED.
+// After a failure Frame describes no frame, unless it already held a lent frame.
 CDTAPI_API DtapiResult DtOutpChannel_AcquireFrame(DtOutpChannel* OutpChannel,
                                                   DtSdiView* Frame, int TimeOut);
 
@@ -1116,9 +1114,8 @@ CDTAPI_API DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int 
 //   DTAPI_E_INVALID_ARG  Frame describes no frame this channel lent
 //   DTAPI_E_STATE        the builder has not built the frame since it was lent
 //   DTAPI_E_IDLE         the channel went idle meanwhile, and the frame was dropped
-//   DTAPI_E_CANCELLED    the channel was detached meanwhile
-//
-// Not yet implemented: until plan 0033 is done, it returns DTAPI_E_NOT_SUPPORTED.
+//   DTAPI_E_CANCELLED    the channel is being detached
+//   DTAPI_E_NOT_SDI_MODE the port sends ASI
 CDTAPI_API DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel,
                                                  DtSdiView* Frame);
 

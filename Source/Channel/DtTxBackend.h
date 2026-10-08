@@ -114,6 +114,21 @@ struct DtTxBackend
     DtapiResult (*WriteFrame)(DtTx* Tx, const uint8_t* Frame, int FrameSize,
                               uint64_t Deadline);
 
+    // These two lend room for a frame in the buffer, for AcquireFrame and CommitFrame.
+    // They are called as Write. Without them (NULL), those calls return
+    // DTAPI_E_NOT_SDI_MODE.
+    // - LendFrame waits until Deadline for room for one frame, then points View at it and
+    //   stores Holder in the view. It returns what WriteFrame returns, and DTAPI_E_IN_USE
+    //   when a frame is lent already. It starts a lending run, in which the side inserts
+    //   no black frames and refuses Write and WriteFrame.
+    // - CommitLentFrame hands the frame lent to View to the card. It returns
+    //   DTAPI_E_INVALID_ARG when View holds no frame this side lent, and DTAPI_E_STATE
+    //   when the builder has not built the frame.
+    // Going idle, clearing the FIFO, detaching and changing the standard drop a lent
+    // frame and end the lending run.
+    DtapiResult (*LendFrame)(DtTx* Tx, DtSdiView* View, void* Holder, uint64_t Deadline);
+    DtapiResult (*CommitLentFrame)(DtTx* Tx, DtSdiView* View);
+
     // Wakes a write that waits for room, so that a detach can go ahead.
     void (*WakeWaitingWrite)(DtTx* Tx);
 

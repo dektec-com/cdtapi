@@ -432,15 +432,11 @@ DT_TEST(OutputChannelCalls)
     DT_ASSERT(IsOneOf(DtOutpChannel_WriteFrame(Channel, Frame, (int)sizeof(Frame), 20),
                       DTAPI_E_IDLE, DTAPI_E_INVALID_SIZE));
 
-    // Lending room for a frame in the transmit buffer: on an idle channel the room is
-    // refused, and a view that holds no lent frame cannot be committed. Until plan 0033
-    // is done, both return DTAPI_E_NOT_SUPPORTED.
+    // Lending room for a frame in the transmit buffer: an idle channel refuses both.
     DtSdiView* View = DtSdiView_Alloc();
     DT_ASSERT(View != NULL);
-    DT_ASSERT(IsOneOf(DtOutpChannel_AcquireFrame(Channel, View, 20), DTAPI_E_IDLE,
-                      DTAPI_E_NOT_SUPPORTED));
-    DT_ASSERT(IsOneOf(DtOutpChannel_CommitFrame(Channel, View), DTAPI_E_INVALID_ARG,
-                      DTAPI_E_NOT_SUPPORTED));
+    DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Channel, View, 20), DTAPI_E_IDLE);
+    DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Channel, View), DTAPI_E_IDLE);
     DtSdiView_Free(View);
 
     DT_ASSERT_OK(DtOutpChannel_Detach(Channel, 1));

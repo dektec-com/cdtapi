@@ -391,7 +391,7 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
 {
     if (Parser == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
-    if (!Frame->HasFrame)
+    if (!Frame->HasFrame || Frame->IsTx)
         return DTAPI_E_STATE;
     DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
