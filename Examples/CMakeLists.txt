@@ -22,6 +22,9 @@ set(ExampleMailboxPrograms DtNmos2110)
 # Programs of DVB-ASI, which also take the test streams of ExampleTsStream.c.
 set(ExampleTsPrograms DtReceiveTs DtTransmitTs)
 
+# Programs that send or check the test pattern and the test tone of ExamplePattern.c.
+set(ExamplePatternPrograms DtTransmitSdi)
+
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Programs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
 # Adds one program.
@@ -45,6 +48,11 @@ function(cdtapi_add_example Program)
         list(APPEND Sources
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.h")
+    endif()
+    if(Program IN_LIST ExamplePatternPrograms)
+        list(APPEND Sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExamplePattern.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExamplePattern.h")
     endif()
     add_executable(${Target} ${Sources})
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "Examples" FILES ${Sources})

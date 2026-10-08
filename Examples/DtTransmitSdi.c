@@ -11,8 +11,8 @@
 // No frame is copied. The image and the audio come from:
 //   --in       the files <in>.yuv and <in>.wav, as DtReceiveSdi --out writes them;
 //              after the last image the first comes again, and so does the audio
-//   otherwise  a test pattern: grey bars with a white bar that moves each frame, and a
-//              1 kHz tone at -20 dBFS on channels 1 and 2
+//   otherwise  the examples' test pattern, with the frame number in the picture, and a
+//              1 kHz tone at -20 dBFS on channels 1 and 2 (see ExamplePattern.h)
 // The program prints one line per frame:
 //
 //     9217800001:5  frame 0  1920x1080  audio 1920 samples
@@ -48,8 +48,9 @@
 #include <string.h>
 
 // Example includes
-#include "Common/ExampleCommon.h" // The API and what the examples share.
-#include "cdtapi_sdi.h"           // The SDI builder.
+#include "Common/ExampleCommon.h"  // The API and what the examples share.
+#include "Common/ExamplePattern.h" // The test pattern and the test tone.
+#include "cdtapi_sdi.h"            // The SDI builder.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -65,15 +66,6 @@
 // The frames put in the buffer before the card starts sending. They give the program
 // time to spare when building a frame takes longer once.
 #define FRAMES_BEFORE_SENDING 3
-
-// One period of a 1 kHz sine at 48 kHz, at -20 dBFS, as 24-bit values.
-static const int32_t g_Tone[48] = {
-    0,       109493,  217113,  321018,  419430,  510666,  593164,  665513,
-    726475,  775007,  810278,  831684,  838861,  831684,  810278,  775007,
-    726475,  665513,  593164,  510666,  419430,  321018,  217113,  109493,
-    0,       -109493, -217113, -321018, -419430, -510666, -593164, -665513,
-    -726475, -775007, -810278, -831684, -838861, -831684, -810278, -775007,
-    -726475, -665513, -593164, -510666, -419430, -321018, -217113, -109493};
 
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI output"},
@@ -100,15 +92,15 @@ typedef struct Source
     // The image of the next frame, planar 10-bit with the fields woven.
     DtSdiImage Image;
 
+    // The test pattern, when there are no input files.
+    ExamplePattern Pattern;
+
     // The input files, or NULL for the test pattern.
     FILE* Yuv;
     FILE* Wav;
-    long WavData;       // Where the samples start in the WAV file
-    int WavChannels;    // The channels in the WAV file
-    int WavBytes;       // Bytes per sample: 2 or 3
-    int64_t ToneSample; // The test tone's next sample
-    int BarX;           // Where the test pattern's bar is in the image; -1 before the
-                        // first frame
+    long WavData;    // Where the samples start in the WAV file
+    int WavChannels; // The channels in the WAV file
+    int WavBytes;    // Bytes per sample: 2 or 3
 } Source;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -187,14 +179,14 @@ static bool OpenWav(Source* Src, const char* Path)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OpenSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets up the image for VidStd, and opens <In>.yuv and <In>.wav when In is not NULL.
-// Returns false, after printing why, when that fails.
+// Sets up the image for VidStd: the test pattern when In is NULL, or else a buffer for
+// the images of <In>.yuv, and opens <In>.yuv and <In>.wav. Returns false, after printing
+// why, when that fails.
 //
 static bool OpenSource(Source* Src, int VidStd, const char* In)
 {
     int Strides[3] = {0, 0, 0};
     Src->VidStd = VidStd;
-    Src->BarX = -1;
     if (DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Src->Width, &Src->Height,
                            Strides) != DTAPI_OK)
     {
@@ -203,6 +195,22 @@ static bool OpenSource(Source* Src, int VidStd, const char* In)
     }
     Src->Image.Format = DT_SDI_PIXFMT_YUV422P_10B;
     Src->Image.Fields = DT_SDI_FIELDS_WOVEN;
+    if (In == NULL)
+    {
+        // The pattern's planes hold 16-bit samples, line after line without a gap.
+        if (!ExamplePattern_Init(&Src->Pattern, Src->Width, Src->Height))
+        {
+            printf("Out of memory\n");
+            return false;
+        }
+        Src->Image.Planes[0] = (uint8_t*)Src->Pattern.Y;
+        Src->Image.Planes[1] = (uint8_t*)Src->Pattern.Cb;
+        Src->Image.Planes[2] = (uint8_t*)Src->Pattern.Cr;
+        Src->Image.Strides[0] = 2 * Src->Width;
+        Src->Image.Strides[1] = Src->Width;
+        Src->Image.Strides[2] = Src->Width;
+        return true;
+    }
     for (int p = 0; p < 3; p++)
     {
         Src->Image.Strides[p] = Strides[p];
@@ -213,8 +221,6 @@ static bool OpenSource(Source* Src, int VidStd, const char* In)
             return false;
         }
     }
-    if (In == NULL)
-        return true;
 
     char Path[1024];
     snprintf(Path, sizeof(Path), "%s.yuv", In);
@@ -256,44 +262,6 @@ static bool ReadImage(Source* Src)
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakePattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Draws the test pattern of frame Number: seven grey bars from black to white, and a
-// white bar a sixteenth of the width wide that moves 16 pixels each frame. The colour
-// samples are all 512, no colour.
-//
-// Only the first frame draws the whole image. After that only the white bar moves: its
-// old place gets the grey bars back, and it is drawn at its new place. Drawing a whole
-// 2160p image takes longer than a frame lasts at 50 Hz.
-//
-static void MakePattern(Source* Src, int64_t Number)
-{
-    const int BarWidth = Src->Width / 16;
-    const int BarX = (int)((Number * 16) % Src->Width);
-    const bool First = Src->BarX < 0;
-    const int GreyFrom = First ? 0 : Src->BarX;
-    const int GreyTo = First ? Src->Width : Src->BarX + BarWidth;
-    for (int y = 0; y < Src->Height; y++)
-    {
-        uint16_t* Y =
-            (uint16_t*)(Src->Image.Planes[0] + (size_t)y * (size_t)Src->Image.Strides[0]);
-        for (int x = GreyFrom; x < GreyTo && x < Src->Width; x++)
-            Y[x] = (uint16_t)(64 + (x * 7 / Src->Width) * 146);
-        for (int x = BarX; x < BarX + BarWidth && x < Src->Width; x++)
-            Y[x] = 940;
-        if (First)
-        {
-            uint16_t* Cb = (uint16_t*)(Src->Image.Planes[1] +
-                                       (size_t)y * (size_t)Src->Image.Strides[1]);
-            uint16_t* Cr = (uint16_t*)(Src->Image.Planes[2] +
-                                       (size_t)y * (size_t)Src->Image.Strides[2]);
-            for (int x = 0; x < Src->Width / 2; x++)
-                Cb[x] = Cr[x] = 512;
-        }
-    }
-    Src->BarX = BarX;
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadAudio -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Fills the first Channels arrays of Samples with Count samples each from the WAV file,
@@ -322,23 +290,6 @@ static bool ReadAudio(Source* Src, int32_t** Samples, int Channels, int Count)
         }
     }
     return true;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeTone -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// Fills Samples[0] and Samples[1] with the next Count samples of the 1 kHz test tone.
-// The samples are int32_t with the 24 bits at the top.
-//
-static void MakeTone(Source* Src, int32_t** Samples, int Count)
-{
-    for (int s = 0; s < Count; s++)
-    {
-        const int32_t Value =
-            (int32_t)((uint32_t)g_Tone[(Src->ToneSample + s) % 48] << 8);
-        Samples[0][s] = Value;
-        Samples[1][s] = Value;
-    }
-    Src->ToneSample += Count;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -373,8 +324,9 @@ static int BuildFrame(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiView* 
     }
     else
     {
-        MakePattern(Src, Number);
-        MakeTone(Src, Samples, NumSamples);
+        ExamplePattern_Draw(&Src->Pattern, Number);
+        ExamplePattern_Tone(&Src->Pattern, Samples[0], NumSamples);
+        memcpy(Samples[1], Samples[0], (size_t)NumSamples * sizeof(int32_t));
     }
     DtSdiAudio Audio;
     memset(&Audio, 0, sizeof(Audio));
@@ -549,7 +501,8 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CloseSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Closes the input files and frees the image.
+// Closes the input files and frees the image: the test pattern's, or the buffer for the
+// images of the YUV file.
 //
 static void CloseSource(Source* Src)
 {
@@ -557,8 +510,13 @@ static void CloseSource(Source* Src)
         fclose(Src->Yuv);
     if (Src->Wav != NULL)
         fclose(Src->Wav);
-    for (int p = 0; p < 3; p++)
-        free(Src->Image.Planes[p]);
+    if (Src->Pattern.Y != NULL)
+        ExamplePattern_Free(&Src->Pattern);
+    else
+    {
+        for (int p = 0; p < 3; p++)
+            free(Src->Image.Planes[p]);
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

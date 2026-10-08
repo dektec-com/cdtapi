@@ -170,7 +170,8 @@ included, and 2 when it found nothing, such as no ports or no signal.
 Every program includes `cdtapi.h` and `cdtapi_service.h`, and the ST 2110 programs
 `cdtapi_avfifo.h` as well, through `Common/ExampleCommon.h` and
 `Common/ExampleAvFifo.h`. The ASI programs
-make and check their streams with `Common/ExampleTsStream.c`. None of the library's
+make and check their streams with `Common/ExampleTsStream.c`, and the SDI programs draw
+their test pattern and test tone with `Common/ExamplePattern.c`. None of the library's
 internal headers is used, so what a program does, an application can do. CTest runs every
 program against the emulator.
 
