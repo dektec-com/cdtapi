@@ -5,8 +5,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Sends --count SDI frames of the video standard --vidstd on an output port. The SDI
-// builder puts each frame together from an image and audio. The image and the audio
-// come from:
+// builder puts each frame together from an image and audio, straight into the card's
+// transmit buffer: the channel lends room for a frame (DtOutpChannel_AcquireFrame), the
+// builder builds the frame there, and the channel sends it (DtOutpChannel_CommitFrame).
+// No frame is copied. The image and the audio come from:
 //   --in       the files <in>.yuv and <in>.wav, as DtReceiveSdi --out writes them;
 //              after the last image the first comes again, and so does the audio
 //   otherwise  a test pattern: grey bars with a white bar that moves each frame, and a
@@ -19,10 +21,15 @@
 // the size --vidstd gives. The WAV file holds PCM at 48 kHz with 16 or 24 bits; its first
 // 16 channels are sent.
 //
+// A program that builds frames in lent room must keep up with the card itself: the
+// channel then sends no black frames of its own. The program puts three frames in the
+// buffer before the card starts sending. When a frame comes too late after that, the card
+// runs out of data, and the channel latches DTAPI_TX_FIFO_UFL; --flags shows it.
+//
 // --checksums makes the builder fill in the line CRCs and the packet checksums, which
-// the card otherwise fills in itself. --threads gives the channel and the builder a pool
-// of that many threads, which 2160p needs. --flags prints the channel's latched flags at
-// the end. The program waits until the card has sent every frame before it detaches.
+// the card otherwise fills in itself. --threads gives the builder a pool of that many
+// threads, which 2160p needs. --flags prints the channel's latched flags at the end. The
+// program waits until the card has sent every frame before it detaches.
 // The port must be an output; DtConfigPort makes it one. Exits with 0 when every frame is
 // written, 2 when there is no SDI output, and 1 when a call fails or the command line is
 // wrong.
@@ -53,7 +60,11 @@
 #define MAX_WAV_CHANNELS 64
 
 // Milliseconds to wait for room in the card's buffer for a frame.
-#define WRITE_TIMEOUT_MS 2000
+#define ACQUIRE_TIMEOUT_MS 2000
+
+// The frames put in the buffer before the card starts sending. They give the program
+// time to spare when building a frame takes longer once.
+#define FRAMES_BEFORE_SENDING 3
 
 // One period of a 1 kHz sine at 48 kHz, at -20 dBFS, as 24-bit values.
 static const int32_t g_Tone[48] = {
@@ -75,8 +86,8 @@ static const ExampleOption g_Options[] = {
     {"--checksums", false, "Make the builder fill in the line CRCs and packet checksums"},
     {"--flags", false, "Print the latched flags after the last frame"},
     {"--threads", true,
-     "Build and transmit over a pool of this many threads of the library's own, two or "
-     "more; one thread without it"},
+     "Build over a pool of this many threads of the library's own, two or more; one "
+     "thread without it"},
 };
 
 // Where the images and the audio come from.
@@ -96,6 +107,8 @@ typedef struct Source
     int WavChannels;    // The channels in the WAV file
     int WavBytes;       // Bytes per sample: 2 or 3
     int64_t ToneSample; // The test tone's next sample
+    int BarX;           // Where the test pattern's bar is in the image; -1 before the
+                        // first frame
 } Source;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -181,6 +194,7 @@ static bool OpenSource(Source* Src, int VidStd, const char* In)
 {
     int Strides[3] = {0, 0, 0};
     Src->VidStd = VidStd;
+    Src->BarX = -1;
     if (DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Src->Width, &Src->Height,
                            Strides) != DTAPI_OK)
     {
@@ -248,26 +262,36 @@ static bool ReadImage(Source* Src)
 // white bar a sixteenth of the width wide that moves 16 pixels each frame. The colour
 // samples are all 512, no colour.
 //
+// Only the first frame draws the whole image. After that only the white bar moves: its
+// old place gets the grey bars back, and it is drawn at its new place. Drawing a whole
+// 2160p image takes longer than a frame lasts at 50 Hz.
+//
 static void MakePattern(Source* Src, int64_t Number)
 {
     const int BarWidth = Src->Width / 16;
     const int BarX = (int)((Number * 16) % Src->Width);
+    const bool First = Src->BarX < 0;
+    const int GreyFrom = First ? 0 : Src->BarX;
+    const int GreyTo = First ? Src->Width : Src->BarX + BarWidth;
     for (int y = 0; y < Src->Height; y++)
     {
         uint16_t* Y =
             (uint16_t*)(Src->Image.Planes[0] + (size_t)y * (size_t)Src->Image.Strides[0]);
-        uint16_t* Cb =
-            (uint16_t*)(Src->Image.Planes[1] + (size_t)y * (size_t)Src->Image.Strides[1]);
-        uint16_t* Cr =
-            (uint16_t*)(Src->Image.Planes[2] + (size_t)y * (size_t)Src->Image.Strides[2]);
-        for (int x = 0; x < Src->Width; x++)
+        for (int x = GreyFrom; x < GreyTo && x < Src->Width; x++)
+            Y[x] = (uint16_t)(64 + (x * 7 / Src->Width) * 146);
+        for (int x = BarX; x < BarX + BarWidth && x < Src->Width; x++)
+            Y[x] = 940;
+        if (First)
         {
-            const bool OnBar = x >= BarX && x < BarX + BarWidth;
-            Y[x] = (uint16_t)(OnBar ? 940 : 64 + (x * 7 / Src->Width) * 146);
+            uint16_t* Cb = (uint16_t*)(Src->Image.Planes[1] +
+                                       (size_t)y * (size_t)Src->Image.Strides[1]);
+            uint16_t* Cr = (uint16_t*)(Src->Image.Planes[2] +
+                                       (size_t)y * (size_t)Src->Image.Strides[2]);
+            for (int x = 0; x < Src->Width / 2; x++)
+                Cb[x] = Cr[x] = 512;
         }
-        for (int x = 0; x < Src->Width / 2; x++)
-            Cb[x] = Cr[x] = 512;
     }
+    Src->BarX = BarX;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadAudio -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -317,15 +341,16 @@ static void MakeTone(Source* Src, int32_t** Samples, int Count)
     Src->ToneSample += Count;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildAndWrite -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Builds frame Number into Frame and writes it to the channel. The builder says how many
-// audio samples per channel this frame takes, which varies at a 1001 frame rate.
-// Returns the program's exit code.
+// Builds frame Number in room that the channel lends, and hands it to the card. The
+// image and the audio are made ready first, so that the room is lent only while the
+// builder writes. The builder says how many audio samples per channel this frame takes,
+// which varies at a 1001 frame rate. Returns the program's exit code.
 //
-static int BuildAndWrite(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiView* View,
-                         Source* Src, int32_t** Samples, uint8_t* Frame, size_t FrameSize,
-                         const DtHwFuncDesc* Port, int64_t Number)
+static int BuildFrame(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiView* View,
+                      Source* Src, int32_t** Samples, const DtHwFuncDesc* Port,
+                      int64_t Number)
 {
     int NumSamples = 0;
     unsigned int Result =
@@ -361,16 +386,21 @@ static int BuildAndWrite(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiVie
         Audio.Channels[c].NumSamples = NumSamples;
     }
 
-    // Build the frame in the program's buffer, then hand it to the channel.
-    Result = DtSdiView_SetRawFrame(View, Frame, FrameSize, Src->VidStd, 10);
-    if (Result == DTAPI_OK)
-        Result = DtSdiBuilder_Build(Builder, View, &Src->Image, &Audio, NULL);
+    // Borrow room for the frame in the card's buffer, build the frame there, and hand it
+    // to the card. A frame that is not committed is dropped when the channel detaches.
+    Result = DtOutpChannel_AcquireFrame(Channel, View, ACQUIRE_TIMEOUT_MS);
+    if (Result != DTAPI_OK)
+    {
+        printf("%s  ", Port->DeviceName);
+        return Example_Failed("DtOutpChannel_AcquireFrame", Result);
+    }
+    Result = DtSdiBuilder_Build(Builder, View, &Src->Image, &Audio, NULL);
     if (Result != DTAPI_OK)
         return Example_Failed("DtSdiBuilder_Build", Result);
-    Result = DtOutpChannel_WriteFrame(Channel, Frame, (int)FrameSize, WRITE_TIMEOUT_MS);
+    Result = DtOutpChannel_CommitFrame(Channel, View);
     printf("%s  ", Port->DeviceName);
     if (Result != DTAPI_OK)
-        return Example_Failed("DtOutpChannel_WriteFrame", Result);
+        return Example_Failed("DtOutpChannel_CommitFrame", Result);
     printf("frame %lld  %dx%d  audio %d samples\n", (long long)Number, Src->Width,
            Src->Height, NumSamples);
     return EXAMPLE_OK;
@@ -378,21 +408,17 @@ static int BuildAndWrite(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiVie
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the first frame while the channel holds, then starts sending and writes the
+// Builds the first frames while the channel holds, then starts sending and builds the
 // other frames. Returns the program's exit code.
 //
 static int Transmit(DtOutpChannel* Channel, DtSdiBuilder* Builder, Source* Src,
                     const DtHwFuncDesc* Port, int64_t Count, bool Flags)
 {
-    size_t FrameSize = 0;
     DtSdiView* View = DtSdiView_Alloc();
     int32_t* Samples[NUM_CHANNELS] = {NULL};
     int MaxSamples = 0;
-    unsigned int Result = DtSdiView_RawFrameSize(Src->VidStd, 10, &FrameSize);
-    if (Result == DTAPI_OK)
-        Result = DtSdiAudio_MaxSamples(Src->VidStd, &MaxSamples);
-    uint8_t* Frame = Result == DTAPI_OK ? (uint8_t*)malloc(FrameSize) : NULL;
-    bool Allocated = View != NULL && Frame != NULL;
+    unsigned int Result = DtSdiAudio_MaxSamples(Src->VidStd, &MaxSamples);
+    bool Allocated = View != NULL && Result == DTAPI_OK;
     for (int c = 0; c < NUM_CHANNELS && Allocated; c++)
     {
         Samples[c] = (int32_t*)malloc((size_t)MaxSamples * sizeof(int32_t));
@@ -411,11 +437,12 @@ static int Transmit(DtOutpChannel* Channel, DtSdiBuilder* Builder, Source* Src,
             Exit = Example_Failed("DtOutpChannel_SetTxControl", Result);
         }
     }
+    const int64_t BeforeSending =
+        Count < FRAMES_BEFORE_SENDING ? Count : FRAMES_BEFORE_SENDING;
     for (int64_t i = 0; i < Count && Exit == EXAMPLE_OK; i++)
     {
-        Exit = BuildAndWrite(Channel, Builder, View, Src, Samples, Frame, FrameSize, Port,
-                             i);
-        if (Exit == EXAMPLE_OK && i == 0)
+        Exit = BuildFrame(Channel, Builder, View, Src, Samples, Port, i);
+        if (Exit == EXAMPLE_OK && i == BeforeSending - 1)
         {
             Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
             if (Result != DTAPI_OK)
@@ -443,27 +470,23 @@ static int Transmit(DtOutpChannel* Channel, DtSdiBuilder* Builder, Source* Src,
 
     for (int c = 0; c < NUM_CHANNELS; c++)
         free(Samples[c]);
-    free(Frame);
     DtSdiView_Free(View);
     return Exit;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives the channel and the builder a pool of NumThreads threads. Each picks how many of
-// them a frame needs (NumThreads 0): 4 for 2160p50 and 2160p60, 2 for 2160p24 to
-// 2160p30, and none up to 3G-SDI. Both keep the pool, so the program releases its own
-// reference at once.
+// Gives the builder a pool of NumThreads threads. The builder picks how many of them a
+// frame needs (NumThreads 0): 4 for 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and
+// none up to 3G-SDI. The channel needs no pool: it copies no frames. The builder keeps
+// the pool, so the program releases its own reference at once.
 //
-static unsigned int GivePool(DtOutpChannel* Channel, DtSdiBuilder* Builder,
-                             int NumThreads)
+static unsigned int GivePool(DtSdiBuilder* Builder, int NumThreads)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     unsigned int Result =
         Pool == NULL ? DTAPI_E_OUT_OF_MEM : DtWorkerPool_StartThreads(Pool, NumThreads);
 
-    if (Result == DTAPI_OK)
-        Result = DtOutpChannel_SetWorkerPool(Channel, Pool, 0);
     if (Result == DTAPI_OK)
         Result = DtSdiBuilder_SetWorkerPool(Builder, Pool, 0);
     DtWorkerPool_Freep(&Pool);
@@ -472,10 +495,9 @@ static unsigned int GivePool(DtOutpChannel* Channel, DtSdiBuilder* Builder,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches Device and Channel to Port, gives the channel and the builder a pool when
-// asked, sets the I/O standard and the 10-bit transmit mode, and sends. The transmit mode
-// comes last because changing the standard between SDI and ASI resets it. Returns the
-// program's exit code.
+// Attaches Device and Channel to Port, gives the builder a pool when asked, sets the I/O
+// standard, and sends. The transmit mode is left as it is: room that the channel lends
+// always holds 10-bit symbols in the card's format. Returns the program's exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              DtSdiBuilder* Builder, const DtHwFuncDesc* Port, int LinkStd,
@@ -492,7 +514,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
     }
 
     const char* What = "SetWorkerPool";
-    Result = Threads > 0 ? GivePool(Channel, Builder, (int)Threads) : DTAPI_OK;
+    Result = Threads > 0 ? GivePool(Builder, (int)Threads) : DTAPI_OK;
     int Value = -1;
     int SubValue = -1;
     if (Result == DTAPI_OK)
@@ -505,12 +527,6 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
         What = "DtOutpChannel_SetIoConfig";
         Result = DtOutpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value, SubValue,
                                            -1, -1);
-    }
-    if (Result == DTAPI_OK)
-    {
-        What = "DtOutpChannel_SetTxMode";
-        Result = DtOutpChannel_SetTxMode(Channel,
-                                         DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, 0);
     }
     if (Result != DTAPI_OK)
     {

@@ -215,8 +215,8 @@ cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
 # The SDI parser and builder. The round trip runs DtTransmitSdi into a file through the
 # emulator's SDI sink, then DtReceiveSdi from that file through its SDI source, and then
 # DtTransmitSdi again from the image and audio files that DtReceiveSdi wrote. The tests
-# do not check for underflows: the emulator takes frames in real time, and a slow build
-# can be late, which makes the channel send a black frame in between.
+# do not check for underflows: the emulator takes frames in real time, and a slow build,
+# such as a debug or ASan build, can be late and let the emulated card run out of data.
 set(SdiRoundTrip "${CMAKE_CURRENT_BINARY_DIR}/TransmitSdi_1080i50.sdi")
 set(SdiOut "${CMAKE_CURRENT_BINARY_DIR}/ReceiveSdi")
 cdtapi_example_test(TransmitSdiPattern DtTransmitSdi

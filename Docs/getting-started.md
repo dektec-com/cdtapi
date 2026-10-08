@@ -233,15 +233,33 @@ it, so give it back as soon as the parser is done. `DtInpChannel_ReadFrame` stil
 too; it copies the frame into a buffer, which the parser can then read through a view
 of that buffer.
 
-To send, a program builds each frame in its own buffer and writes it:
+To send, a program borrows room for each frame in the card's transmit buffer, builds
+the frame there, and hands it to the card:
 
     DtSdiBuilder_GetNumAudioSamples(Builder, VidStd, 0, &NumSamples); // Per channel
-    DtSdiView_SetRawFrame(View, Frame, FrameSize, VidStd, 10);
+    DtOutpChannel_AcquireFrame(Out, View, 1000);           // Room for the next frame
     DtSdiBuilder_Build(Builder, View, &Image, &Audio, NULL);
-    DtOutpChannel_WriteFrame(Out, Frame, (int)FrameSize, 1000);
+    DtOutpChannel_CommitFrame(Out, View);                  // The card sends it
 
 At a 1001 frame rate, such as 59.94 Hz, the number of audio samples per frame varies
 with the audio cadence, so ask the builder before each frame.
+
+Building in the card's buffer saves copying each frame: about a quarter of the time up
+to 3G-SDI, and about two thirds in 2160p. The room always holds 10-bit symbols,
+whatever the transmit mode. A program that sends this way must keep up with the card
+itself. From the first `AcquireFrame` until the channel goes idle, the channel sends no
+black frames of its own: when a frame comes too late, the card runs out of data, the
+receiver loses the signal for a moment, and the channel latches `DTAPI_TX_FIFO_UFL`. So
+put a few frames in the buffer before setting the channel to send. In that time
+`DtOutpChannel_Write` and `DtOutpChannel_WriteFrame` return `DTAPI_E_IN_USE`.
+
+A program can also build each frame in its own buffer and write it with
+`DtOutpChannel_WriteFrame`, which copies it into the card's buffer. The channel then
+fills a gap with a black frame when the program is late:
+
+    DtSdiView_SetRawFrame(View, Frame, FrameSize, VidStd, 10);
+    DtSdiBuilder_Build(Builder, View, &Image, &Audio, NULL);
+    DtOutpChannel_WriteFrame(Out, Frame, (int)FrameSize, 1000);
 
 The image can be in six pixel formats, among them v210, UYVY and planar 4:2:2, in 8 or
 10 bits. The audio is PCM or raw AES3 subframes, on up to 16 channels, interleaved or
