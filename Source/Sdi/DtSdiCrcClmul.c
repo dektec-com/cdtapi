@@ -165,11 +165,9 @@ static uint32_t BitsAt(uint64_t Low, uint64_t High, int First)
     return (uint32_t)(Low >> First | High << (64 - First)) & 0x3FF;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FoldRun -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_FoldClmul -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The CRC of the Blocks times 128 bits at Bits.
-//
-static uint32_t FoldRun(const uint8_t* Bits, size_t Blocks, const uint32_t* Table)
+uint32_t DtSdiCrc_FoldClmul(const uint8_t* Bits, size_t Blocks, const uint32_t* Table)
 {
     const __m128i Fold1 =
         _mm_set_epi64x((long long)FOLD_SECOND_HALF, (long long)FOLD_FIRST_HALF);
@@ -217,15 +215,11 @@ void DtSdiCrc_StreamsClmulUnchecked(const uint16_t* Words, size_t Count, int Str
     }
 
     // Ten bytes for eight words; each step writes sixteen, the next overwriting the rest.
-    enum
-    {
-        BYTES = DT_SDICRC_CLMUL_MAX_WORDS / 8 * 10 + 16
-    };
-    uint8_t Bits[DT_SDICRC_MAX_STREAMS][BYTES];
+    uint8_t Bits[DT_SDICRC_MAX_STREAMS][DT_SDICRC_CLMUL_RUN_BYTES];
     uint8_t* Runs[DT_SDICRC_MAX_STREAMS];
     for (int s = 0; s < DT_SDICRC_MAX_STREAMS; s++)
         Runs[s] = Bits[s];
     PackStreams(Words, Count, Streams, Runs);
     for (int s = 0; s < Streams; s++)
-        Crcs[s] = FoldRun(Bits[s], Count / 64 * 5, Table);
+        Crcs[s] = DtSdiCrc_FoldClmul(Bits[s], Count / 64 * 5, Table);
 }

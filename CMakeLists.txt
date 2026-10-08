@@ -153,6 +153,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64|x86|i[3-6]86)$")
         Source/AvFifo/DtAvPixConvAvx2.c
         Source/Sdi/DtSdiConvSsse3.c
         Source/Sdi/DtSdiConvAvx2.c
+        Source/Sdi/DtSdiCrcAvx2.c
         Source/Sdi/DtSdiCrcClmul.c
         Source/Video/DtSdi4kSsse3.c)
     set(CDTAPI_HAVE_SSSE3 ON)
@@ -296,9 +297,11 @@ if(CDTAPI_HAVE_SSSE3)
             PROPERTIES COMPILE_OPTIONS -mavx2)
         set_source_files_properties("${SdiDir}/DtSdiCrcClmul.c"
             PROPERTIES COMPILE_OPTIONS "-mpclmul;-mssse3")
+        set_source_files_properties("${SdiDir}/DtSdiCrcAvx2.c"
+            PROPERTIES COMPILE_OPTIONS "-mpclmul;-mavx2")
     else()
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
-            "${SdiDir}/DtSdiConvAvx2.c"
+            "${SdiDir}/DtSdiConvAvx2.c" "${SdiDir}/DtSdiCrcAvx2.c"
             PROPERTIES COMPILE_OPTIONS /arch:AVX2)
     endif()
 endif()

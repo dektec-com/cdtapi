@@ -423,7 +423,8 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
 //
 // Measures what the line CRCs and the packets' checksums cost the builder, from v210
 // with the fastest conversions in one thread, in the standards that have a line CRC:
-// left to the transmitter, by table, and with PCLMULQDQ.
+// left to the transmitter, by table, and with PCLMULQDQ, its words packed with SSSE3 and
+// with AVX2.
 //
 static int BenchChecksums(DtSdiView* View, int Seconds)
 {
@@ -433,12 +434,14 @@ static int BenchChecksums(DtSdiView* View, int Seconds)
         fprintf(stderr, "Out of memory\n");
         return 1;
     }
-    static const char* Columns[3] = {"no CRC", "CRC by table", "CRC, PCLMULQDQ"};
-    const DtSdiCrcFunc Crcs[3] = {NULL, DtSdiCrc_Streams, DtSdiCrc_Clmul()};
+    static const char* Columns[4] = {"no CRC", "CRC by table", "PCLMULQDQ, SSSE3",
+                                     "PCLMULQDQ, AVX2"};
+    const DtSdiCrcFunc Crcs[4] = {NULL, DtSdiCrc_Streams, DtSdiCrc_Clmul(),
+                                  DtSdiCrc_Avx2()};
     printf("\nThe builder from v210 with its line CRCs and checksums, one thread: "
            "ms/frame and %% period\n");
     printf("%-10s %4s  %-14s", "standard", "bits", "format");
-    for (int c = 0; c < 3; c++)
+    for (int c = 0; c < 4; c++)
         printf("  %16s", Columns[c]);
     printf("\n");
 
@@ -464,7 +467,7 @@ static int BenchChecksums(DtSdiView* View, int Seconds)
         FillNoise(Image.Planes[0], (size_t)Image.Strides[0] * (size_t)Height);
         DtSdiView_SetRawFrame(View, Frame, Size, Std->VidStd, 10);
         printf("%-10s %4d  %-14s", Std->Name, 10, "v210");
-        for (int c = 0; c < 3; c++)
+        for (int c = 0; c < 4; c++)
         {
             double Ms = -1.0;
             if (c == 0 || Crcs[c] != NULL)

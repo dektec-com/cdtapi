@@ -86,15 +86,13 @@ DT_TEST(PortableEqualsTheDefinition)
     }
 }
 
-// PCLMULQDQ gives the portable version's CRC, for every length it takes itself and for
-// those it leaves.
-DT_TEST(ClmulEqualsPortable)
+// Each version with PCLMULQDQ, packing with SSSE3 or with AVX2, gives the portable
+// version's CRC, for every length it takes itself and for those it leaves.
+static void EqualsPortable(DtSdiCrcFunc Clmul, const char* Name, int* DtFailures)
 {
-    Setup();
-    const DtSdiCrcFunc Clmul = DtSdiCrc_Clmul();
     if (Clmul == NULL)
     {
-        printf("  (no PCLMULQDQ: skipped)\n");
+        printf("  (no %s: skipped)\n", Name);
         return;
     }
     for (size_t Count = 0; Count <= MAX_WORDS; Count += Count < 128 ? 1 : 32)
@@ -112,20 +110,29 @@ DT_TEST(ClmulEqualsPortable)
                 for (int s = 0; s < Streams; s++)
                 {
                     if (Got[s] != Want[s])
-                        DT_FAIL("%zu words, stream %d of %d, from %zu: %05X, not %05X",
-                                Count, s, Streams, Start, (unsigned)Got[s],
-                                (unsigned)Want[s]);
+                        DT_FAIL(
+                            "%s, %zu words, stream %d of %d, from %zu: %05X, not %05X",
+                            Name, Count, s, Streams, Start, (unsigned)Got[s],
+                            (unsigned)Want[s]);
                 }
             }
         }
     }
 }
 
-// The fastest version is one of the two.
+DT_TEST(ClmulEqualsPortable)
+{
+    Setup();
+    EqualsPortable(DtSdiCrc_Clmul(), "PCLMULQDQ with SSSE3", DtFailures);
+    EqualsPortable(DtSdiCrc_Avx2(), "PCLMULQDQ with AVX2", DtFailures);
+}
+
+// The fastest version is one of the three.
 DT_TEST(BestIsAVersion)
 {
     const DtSdiCrcFunc Best = DtSdiCrc_Best();
-    DT_ASSERT(Best == DtSdiCrc_Streams || Best == DtSdiCrc_Clmul());
+    DT_ASSERT(Best == DtSdiCrc_Streams || Best == DtSdiCrc_Clmul() ||
+              Best == DtSdiCrc_Avx2());
 }
 
 // The builder, with the line CRCs on, makes the same frames with either version: in 720p,
@@ -133,8 +140,8 @@ DT_TEST(BestIsAVersion)
 // the frame before.
 DT_TEST(BuilderAgrees)
 {
-    const DtSdiCrcFunc Clmul = DtSdiCrc_Clmul();
-    if (Clmul == NULL)
+    const DtSdiCrcFunc Clmul = DtSdiCrc_Best();
+    if (Clmul == DtSdiCrc_Streams)
     {
         printf("  (no PCLMULQDQ: skipped)\n");
         return;

@@ -38,6 +38,10 @@ typedef void (*DtSdiCrcFunc)(const uint16_t* Words, size_t Count, int Streams,
 void DtSdiCrc_Streams(const uint16_t* Words, size_t Count, int Streams,
                       const uint32_t* Table, uint32_t* Crcs);
 
+// The version with PCLMULQDQ whose words AVX2 packs, sixteen at a time rather than
+// eight, or NULL where the processor lacks either or the library was built without them.
+DtSdiCrcFunc DtSdiCrc_Avx2(void);
+
 // The version with PCLMULQDQ and SSSE3, or NULL where the processor lacks them or the
 // library was built without them. It packs each stream's words into a run of bits and
 // folds that 128 bits a step; streams that do not come to whole steps of 128 bits, or of
@@ -51,10 +55,19 @@ DtSdiCrcFunc DtSdiCrc_Best(void);
 // stream, and room to spare.
 #define DT_SDICRC_CLMUL_MAX_WORDS 4096
 
-// The version with PCLMULQDQ itself, without the check of the processor. Only for
-// DtSdiCrc.c, which checks first.
+// The bytes a run of that many words takes packed, and room for the last step's writing.
+#define DT_SDICRC_CLMUL_RUN_BYTES (DT_SDICRC_CLMUL_MAX_WORDS / 8 * 10 + 16)
+
+// The versions with PCLMULQDQ themselves, without the check of the processor. Only for
+// DtSdiCrc.c, which checks first, and for each other.
+void DtSdiCrc_StreamsAvx2Unchecked(const uint16_t* Words, size_t Count, int Streams,
+                                   const uint32_t* Table, uint32_t* Crcs);
 void DtSdiCrc_StreamsClmulUnchecked(const uint16_t* Words, size_t Count, int Streams,
                                     const uint32_t* Table, uint32_t* Crcs);
+
+// The CRC of the Blocks times 128 bits of a packed run at Bits, folded with PCLMULQDQ.
+// Only for the versions with PCLMULQDQ.
+uint32_t DtSdiCrc_FoldClmul(const uint8_t* Bits, size_t Blocks, const uint32_t* Table);
 
 // Makes Builder work out its line CRCs with Crc rather than the fastest version, for the
 // tests and the benchmark that compare them.

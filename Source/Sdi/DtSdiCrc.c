@@ -19,7 +19,8 @@
 #endif
 
 // CDTAPI includes
-#include "DtSdiCrc.h" // Interface being implemented.
+#include "AvFifo/DtAvPixConv.h" // The check for AVX2.
+#include "DtSdiCrc.h"           // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Choice +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -45,10 +46,26 @@ static bool HasPclmul(void)
 }
 #endif
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtSdiCrcFunc DtSdiCrc_Avx2(void)
+{
+#if defined(CDTAPI_HAVE_AVX2)
+    return DtSdiCrc_Clmul() != NULL && DtAvPixConv_Avx2() != NULL
+               ? DtSdiCrc_StreamsAvx2Unchecked
+               : NULL;
+#else
+    return NULL;
+#endif
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_Best -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtSdiCrcFunc DtSdiCrc_Best(void)
 {
+    const DtSdiCrcFunc Avx2 = DtSdiCrc_Avx2();
+    if (Avx2 != NULL)
+        return Avx2;
     const DtSdiCrcFunc Clmul = DtSdiCrc_Clmul();
     return Clmul != NULL ? Clmul : DtSdiCrc_Streams;
 }
