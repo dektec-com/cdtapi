@@ -1366,8 +1366,8 @@ DT_TEST(LostFramesLatchTheOverflow)
 }
 
 // Encodes the raw frame Raw, of 10-bit symbols, into the room that an output channel
-// lent to View, and marks the frame built. The builder will do this from plan 0033's
-// step D. Band is the 4K encoder's band buffer, and NULL for other standards.
+// lent to View, and marks the frame built. This tests the channel without the builder.
+// Band is the 4K encoder's band buffer, and NULL for other standards.
 static void EncodeIntoLentFrame(DtSdiView* View, const uint8_t* Raw, uint16_t* Band)
 {
     const DtSdiFrameLayout* Layout = &View->Geo.Layout;
@@ -1464,6 +1464,153 @@ DT_TEST(CommittedFramesGoOut)
         free(Frames[0]);
         free(Frames[1]);
         DtSdiView_Free(View);
+        FINISH(Fix);
+        remove(SINK_FILE);
+    }
+}
+
+// Points Audio at two channels of PCM, the first 2048 samples of Pcm and the next 2048.
+static void TwoChannels(DtSdiAudio* Audio, int32_t* Pcm)
+{
+    memset(Audio, 0, sizeof(*Audio));
+    Audio->Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        Audio->Channels[c].Samples = Pcm + 2048 * c;
+        Audio->Channels[c].NumSamples = 2048;
+    }
+}
+
+// Checks that the builder builds a frame in the room an output channel lends exactly as
+// it builds a raw frame. The frames carry a picture from the emulator's pattern and two
+// channels of audio, and run across the end of the transmit ring. After the run, a new
+// builder with the same settings builds the same frames as raw frames, and each must
+// equal what the channel sent, byte for byte. With and without the line CRCs, in one
+// thread and over a pool, in 625i, 720p23.98, 720p50, 1080i50, 1080p50 and 2160p50.
+// A HANC section of 720p23.98 is not a whole number of groups of four symbols.
+DT_TEST(BuilderFillsLentFrames)
+{
+    static const struct
+    {
+        int VidStd;
+        bool Checksums;
+        int NumThreads;
+    } Cases[] = {{DTAPI_VIDSTD_625I50, false, 1},  {DTAPI_VIDSTD_720P23_98, true, 1},
+                 {DTAPI_VIDSTD_720P50, false, 3},  {DTAPI_VIDSTD_1080I50, true, 3},
+                 {DTAPI_VIDSTD_1080P50, false, 1}, {DTAPI_VIDSTD_2160P50, false, 4},
+                 {DTAPI_VIDSTD_2160P50, true, 1}};
+
+    for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]); c++)
+    {
+        const int VidStd = Cases[c].VidStd;
+        const int NumThreads = Cases[c].NumThreads;
+        Fixture Fix;
+        if (!Start(&Fix, DtFailures))
+            return;
+        SimDtPcie_SetTxRealTime(false);
+        DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+        // Two pictures from the emulator's pattern, and a ramp for the audio.
+        DtSdiParser* Parser = DtSdiParser_Alloc();
+        DtSdiView* Raw = DtSdiView_Alloc();
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+        int32_t* Pcm = (int32_t*)malloc(2 * 2048 * sizeof(int32_t));
+        DT_ASSERT(Parser != NULL && Raw != NULL && View != NULL && Builder != NULL &&
+                  Pcm != NULL);
+        for (int i = 0; i < 2 * 2048; i++)
+            Pcm[i] = (int32_t)((uint32_t)i << 12);
+        int Width = 0;
+        int Height = 0;
+        int Strides[3];
+        DT_ASSERT_OK(DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Width,
+                                        &Height, Strides));
+        const size_t Y = 2 * (size_t)Width * (size_t)Height;
+        uint8_t* Pictures[2] = {NULL, NULL};
+        DtSdiImage Images[2];
+        size_t Size = 0;
+        size_t Padded = 0;
+        size_t Bytes = 0;
+        for (int p = 0; p < 2; p++)
+        {
+            uint8_t* Frame = PatternFrame(VidStd, (uint32_t)p, &Size, &Padded);
+            DT_ASSERT(Frame != NULL);
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frame, Size, VidStd, 10));
+            Pictures[p] = ParsedImage(Parser, Raw, &Bytes);
+            DT_ASSERT(Pictures[p] != NULL);
+            free(Frame);
+            DtSdiImage Image = {DT_SDI_PIXFMT_YUV422P_10B,
+                                DT_SDI_FIELDS_WOVEN,
+                                {Pictures[p], Pictures[p] + Y, Pictures[p] + Y + Y / 2},
+                                {2 * Width, Width, Width}};
+            Images[p] = Image;
+        }
+
+        // The builder's settings, which the builder of the raw frames repeats.
+        if (NumThreads > 1)
+        {
+            Fix.Pool = ThreadPool(NumThreads);
+            DT_ASSERT(Fix.Pool != NULL);
+        }
+        DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, Cases[c].Checksums));
+        DT_ASSERT_OK(DtSdiBuilder_SetWorkerPool(Builder, Fix.Pool, NumThreads));
+
+        Fix.Out = DtOutpChannel_Alloc();
+        DT_ASSERT(Fix.Out != NULL);
+        DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
+        DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+        DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+
+        // Build frames in lent room until two frames after the first whose lines run
+        // across the end of the ring. The channel starts sending after the first two.
+        int Count = 0;
+        int Wrapped = -1;
+        while (Count < 64 && (Wrapped < 0 || Count < Wrapped + 2))
+        {
+            DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 10000));
+            if (Wrapped < 0 && View->WrapLineIndex >= 0)
+                Wrapped = Count;
+            DtSdiAudio Audio;
+            TwoChannels(&Audio, Pcm);
+            DT_ASSERT_OK(
+                DtSdiBuilder_Build(Builder, View, &Images[Count % 2], &Audio, NULL));
+            DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix.Out, View));
+            if (++Count == 2)
+                DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+        }
+        DT_ASSERT(Wrapped >= 0);
+        DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+        DtOutpChannel_Freep(&Fix.Out);
+        DtDevice_Freep(&Fix.Device);
+        SimDtPcie_Reset(); // Closes the file
+
+        // The same frames built as raw frames by a new builder with the same settings.
+        DtSdiBuilder* Again = DtSdiBuilder_Alloc();
+        uint8_t* Expected = (uint8_t*)malloc(Size);
+        DT_ASSERT(Again != NULL && Expected != NULL);
+        DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Again, Cases[c].Checksums));
+        DT_ASSERT_OK(DtSdiBuilder_SetWorkerPool(Again, Fix.Pool, NumThreads));
+        for (int i = 0; i < Count; i++)
+        {
+            DtSdiAudio Audio;
+            TwoChannels(&Audio, Pcm);
+            DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Expected, Size, VidStd, 10));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Again, Raw, &Images[i % 2], &Audio, NULL));
+            uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)i, Padded, Size);
+            DT_ASSERT(Sent != NULL);
+            DT_ASSERT_MEM(Sent, Expected, Size);
+            free(Sent);
+        }
+
+        free(Expected);
+        free(Pictures[0]);
+        free(Pictures[1]);
+        free(Pcm);
+        DtSdiBuilder_Free(Again);
+        DtSdiBuilder_Free(Builder);
+        DtSdiView_Free(View);
+        DtSdiView_Free(Raw);
+        DtSdiParser_Free(Parser);
         FINISH(Fix);
         remove(SINK_FILE);
     }
@@ -1578,5 +1725,5 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(FourKThroughDispatch), DT_RUN(TwoChannelsShareAPoolOfEight),
              DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(AcquireLendsTheFrames),
              DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
-             DT_RUN(CommittedFramesGoOut), DT_RUN(LendingRefusesAndDrops),
-             DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
+             DT_RUN(LendingRefusesAndDrops), DT_RUN(LeavesAFileForTheExamples))

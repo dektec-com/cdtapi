@@ -129,6 +129,10 @@ typedef struct BuildJob
     bool PayloadId; // The builder writes its own payload ID; false if the program has one
     int Unit;       // Bands start on a multiple of this many lines. It is 2 if every
                     // other line starts part-way through a byte, else 1.
+    bool InPlace;   // The frame is room that an output channel lent: each line goes
+                    // straight into its coded lines
+    bool MakeRaw;   // MakeLine puts the whole line in Band->Line. In 2160p built in
+                    // place it does so only when the line CRCs need it.
 } BuildJob;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -312,6 +316,29 @@ static void PutBlack(const DtSdiGeometry* Geo, uint16_t* Line)
         Line[First + k] = (k & 1) == 0 ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetImageLines4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Reads the two image lines that raw line LineIndex of a 2160p frame carries into
+// Band->Image: the upper line, which links 1 and 2 carry, and the lower line, which
+// links 3 and 4 carry. Without an image both lines are black.
+//
+static void GetImageLines4k(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
+{
+    const DtSdiGeometry* Geo = &Job->Frame->Geo;
+
+    if (Job->Image == NULL)
+    {
+        const size_t Count = 2 * (size_t)Geo->Width;
+        for (size_t k = 0; k < Count; k++)
+            Band->Image[0][k] = Band->Image[1][k] =
+                (k & 1) == 0 ? DT_SDIBUILDER_BLANK_C : DT_SDIBUILDER_BLANK_Y;
+        return;
+    }
+    const int k = LineIndex - Geo->PictureFirstIndex;
+    DtSdiImage_GetLine(Job->Image, Geo, 2 * k, Band->Image[0], Job->Builder->Conv);
+    DtSdiImage_GetLine(Job->Image, Geo, 2 * k + 1, Band->Image[1], Job->Builder->Conv);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Builds raw line LineIndex in Band->Line.
@@ -324,6 +351,9 @@ static void PutBlack(const DtSdiGeometry* Geo, uint16_t* Line)
 // the image is read straight into the line, because the samples are in the same order.
 // In 2160p it is read into Band->Image first and then split over the links. Without an
 // image the line is black.
+//
+// In 2160p built in place, the line goes into the coded lines from Band->Words and
+// Band->Image, so the words are put in Band->Line only when the line CRCs need it.
 //
 static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
 {
@@ -425,7 +455,7 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
     }
 
     // Interleaves the words made for each stream into the line.
-    for (int s = 0; s < Streams; s++)
+    for (int s = 0; Job->MakeRaw && s < Streams; s++)
     {
         const uint16_t* W = Band->Words[s];
         uint16_t* To = Raw + Geo->StreamFirst[s];
@@ -437,16 +467,15 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
     if (!Vanc)
     {
         uint16_t* Active = Raw + (size_t)Hanc * (size_t)Streams;
-        if (Image == NULL)
-            PutBlack(Geo, Raw);
-        else if (Geo->Is4k)
+        if (Geo->Is4k && (Image != NULL || Job->InPlace))
         {
-            const int k = LineIndex - Geo->PictureFirstIndex;
-            DtSdiImage_GetLine(Image, Geo, 2 * k, Band->Image[0], Builder->Conv);
-            DtSdiImage_GetLine(Image, Geo, 2 * k + 1, Band->Image[1], Builder->Conv);
-            Builder->Conv->Join4k(Band->Image[0], Band->Image[1], (size_t)Geo->LinkWidth,
-                                  Active);
+            GetImageLines4k(Job, Band, LineIndex);
+            if (Job->MakeRaw)
+                Builder->Conv->Join4k(Band->Image[0], Band->Image[1],
+                                      (size_t)Geo->LinkWidth, Active);
         }
+        else if (Image == NULL)
+            PutBlack(Geo, Raw);
         else
             DtSdiImage_GetLine(Image, Geo, ImageLineOf(Geo, LineIndex), Active,
                                Builder->Conv);
@@ -465,6 +494,101 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackSection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Packs Count symbols as 10-bit symbols into the section of Bytes bytes at Out, and
+// clears the rest of the section. Count need not be a multiple of four: a HANC section
+// of 720p23.98 and 720p24 is not.
+//
+static void PackSection(const DtSdiConv* Conv, const uint16_t* Symbols, size_t Count,
+                        uint8_t* Out, size_t Bytes)
+{
+    const size_t Whole = Count / 4 * 4;
+    size_t Byte = Whole / 4 * 5;
+    uint32_t Bits = 0; // Bits not yet written, the first in the lowest bit
+    int NumBits = 0;
+
+    Conv->Pack10(Symbols, Whole, Out);
+    for (size_t i = Whole; i < Count; i++)
+    {
+        Bits |= (uint32_t)(Symbols[i] & 0x3FF) << NumBits;
+        for (NumBits += 10; NumBits >= 8; NumBits -= 8, Bits >>= 8)
+            Out[Byte++] = (uint8_t)Bits;
+    }
+    if (NumBits > 0)
+        Out[Byte++] = (uint8_t)Bits;
+    memset(Out + Byte, 0, Bytes - Byte);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteCodedLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Writes raw line LineIndex, which MakeLine has just made, into its coded lines in the
+// room that an output channel lent. The line headers are there already.
+//
+// Up to 3G the line's HANC part goes into the HANC section and its active part into the
+// video section. In 2160p each link's C and Y words, interleaved, go into the link's
+// HANC section; links 1 and 2 are in the first coded line, links 3 and 4 in the second.
+// On a line of the vertical blanking each link's active part takes half of the video
+// section. On a line of the picture the video section of the first coded line holds the
+// upper image line, as links 1 and 2 carry it in turn, and that of the second coded line
+// the lower image line. Band->Line serves as scratch in 2160p.
+//
+static void WriteCodedLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
+{
+    const DtSdiGeometry* Geo = &Job->Frame->Geo;
+    const DtSdiFrameLayout* Layout = &Geo->Layout;
+    const DtSdiConv* Conv = Job->Builder->Conv;
+    const size_t HancBytes = (size_t)Layout->SectionBytesHanc;
+    const size_t VideoBytes = (size_t)Layout->SectionBytesActive;
+    uint8_t* Coded = DtSdiView_TxCodedLines(Job->Frame, LineIndex);
+
+    if (!Geo->Is4k)
+    {
+        const size_t Hanc = (size_t)Layout->LineNumSymsHanc;
+        PackSection(Conv, Band->Line, Hanc, Coded, HancBytes);
+        PackSection(Conv, Band->Line + Hanc, (size_t)Layout->LineNumSymsActive,
+                    Coded + HancBytes, VideoBytes);
+        return;
+    }
+
+    const bool Vanc = DtSdiGeometry_IsVanc(Geo, LineIndex);
+    const size_t HancWords = (size_t)Geo->StreamHancWords;
+    const size_t Words = HancWords + (Vanc ? (size_t)Geo->StreamActiveWords : 0);
+    const size_t HalfSymbols = (size_t)Layout->SectionNumSymsActive / 2;
+    const size_t HalfBytes = HalfSymbols / 4 * 5;
+    uint8_t* Lines[2] = {Coded + Layout->TxLineHeaderNumBytes,
+                         Coded + Layout->TxStride + Layout->TxLineHeaderNumBytes};
+
+    // Stream 2L is the C stream of link L + 1, and stream 2L + 1 its Y stream.
+    for (int Link = 0; Link < 4; Link++)
+    {
+        const uint16_t* C = Band->Words[2 * Link];
+        const uint16_t* Y = Band->Words[2 * Link + 1];
+        uint16_t* Symbols = Band->Line;
+        uint8_t* Line = Lines[Link / 2];
+        const size_t Side = (size_t)(Link & 1);
+
+        for (size_t k = 0; k < Words; k++)
+        {
+            Symbols[2 * k] = C[k];
+            Symbols[2 * k + 1] = Y[k];
+        }
+        PackSection(Conv, Symbols, 2 * HancWords, Line + Side * HancBytes, HancBytes);
+        if (Vanc)
+            PackSection(Conv, Symbols + 2 * HancWords, HalfSymbols,
+                        Line + 2 * HancBytes + Side * HalfBytes, HalfBytes);
+    }
+    for (int h = 0; h < 2; h++)
+    {
+        uint8_t* Video = Lines[h] + 2 * HancBytes;
+        if (Vanc)
+            memset(Video + 2 * HalfBytes, 0, VideoBytes - 2 * HalfBytes);
+        else
+            PackSection(Conv, Band->Image[h], (size_t)Layout->SectionNumSymsActive, Video,
+                        VideoBytes);
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildBand -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Builds one piece of a frame's job. The piece makes and writes its share of the
@@ -474,7 +598,8 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
 // on in HD and up, the band also needs the CRC of the line before its first line. So
 // unless the band starts the frame, it makes that line first, only for its CRC. The
 // band that ends the frame writes the frame's padding and keeps the CRC for the next
-// frame.
+// frame. In room that an output channel lent, each line goes straight into its coded
+// lines, and the frame has no padding.
 //
 static void BuildBand(void* Context, int PieceIndex, int NumPieces)
 {
@@ -497,6 +622,18 @@ static void BuildBand(void* Context, int PieceIndex, int NumPieces)
         MakeLine(Job, Band, First - 1);
     }
     DtSdiEmbed_CursorAt(&Builder->Embed, First, &Band->Cursor);
+
+    if (Job->InPlace)
+    {
+        for (int LineIndex = First; LineIndex < End; LineIndex++)
+        {
+            MakeLine(Job, Band, LineIndex);
+            WriteCodedLine(Job, Band, LineIndex);
+        }
+        if (End == NumLines)
+            memcpy(Builder->LastCrc, Band->LastCrc, sizeof(Builder->LastCrc));
+        return;
+    }
 
     const size_t LineSymbols =
         (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) * (size_t)Geo->NumStreams;
@@ -574,7 +711,8 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
 // that the room it leaves for the program's packets is known. The CRC of the first line
 // covers the last line of the frame built before, when that frame has the same
 // standard. In the first frame, or after a change of standard, it covers only the
-// line's own EAV and line number.
+// line's own EAV and line number. A frame built in room that an output channel lent is
+// marked built, so that the channel takes it.
 //
 DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
                                const DtSdiImage* Image, DtSdiAudio* Audio,
@@ -582,7 +720,8 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
 {
     if (Builder == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
-    if (!Frame->HasFrame || Frame->Holder != NULL)
+    // An input channel's frame is read-only; room an output channel lent is not.
+    if (!Frame->HasFrame || (Frame->Holder != NULL && !Frame->IsTx))
         return DTAPI_E_STATE;
     const DtSdiGeometry* Geo = &Frame->Geo;
 
@@ -610,16 +749,21 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     }
     // Makes each band start on a line that starts on a byte boundary, so that no two
     // bands write the same byte. In 10 bits, a line of 720p23.98 and 720p24 ends
-    // part-way through a byte.
+    // part-way through a byte. In room that an output channel lent, every coded line
+    // starts on a byte boundary.
     const size_t LineBits = (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) *
                             (size_t)Geo->NumStreams * (size_t)Frame->BitsPerSymbol;
     int Unit = 1;
-    while ((LineBits * (size_t)Unit) % 8 != 0)
+    while (!Frame->IsTx && (LineBits * (size_t)Unit) % 8 != 0)
         Unit++;
     const uint32_t Vpid = DtSmpte352_Make(Geo->VidStd);
-    BuildJob Job = {Builder, Frame, Image, Anc, Vpid, PayloadId, Unit};
+    const bool MakeRaw = !(Frame->IsTx && Geo->Is4k) || Builder->Checksums;
+    BuildJob Job = {Builder,   Frame, Image,       Anc,    Vpid,
+                    PayloadId, Unit,  Frame->IsTx, MakeRaw};
     DtJobRunner_Run(&Builder->Runner, BuildBand, &Job);
     DtSdiEmbed_End(&Builder->Embed);
+    if (Frame->IsTx)
+        Frame->IsBuilt = true;
     return DTAPI_OK;
 }
 
