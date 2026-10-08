@@ -321,9 +321,10 @@ CDTAPI_API DtapiResult GetFrameProperties(const AvFifo_Frame* Frame,
 //
 // Only one thread may use a FIFO at a time.
 //
-// The FIFO's thread asks for a high priority: SCHED_FIFO 20 on Linux, which the kernel
-// grants only to a program with CAP_SYS_NICE or an rtprio limit, and
-// THREAD_PRIORITY_HIGHEST on Windows. Refused, it runs as an ordinary thread.
+// The FIFO's thread runs at a high priority: SCHED_FIFO 20 on Linux and
+// THREAD_PRIORITY_HIGHEST on Windows. On Linux the kernel only grants this to a program
+// that has CAP_SYS_NICE or an rtprio limit; without it the thread runs at normal
+// priority.
 //
 // A function that fails returns an error and sets the text GetLastException() returns
 // on the calling thread. GetFromMemPool and SetMaxSize, which return no result, also set

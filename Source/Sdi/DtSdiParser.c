@@ -62,8 +62,8 @@ struct DtSdiParser
     DtSdiParserBand* Bands;
     int NumBands;
 
-    // The blanking's symbols: a section of a raw line, and one stream's words of it; and
-    // a 2160p line of a frame in a ring, decoded.
+    // Buffers for reading the blanking: the symbols of one section of a line, the words
+    // of one stream of it, and a decoded 2160p line of a frame in a ring.
     DtSdiLineScratch Scratch;
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
     uint16_t StreamWords[DT_SDIPARSER_MAX_WIDTH];
@@ -249,9 +249,10 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
     const int First = Where->InHanc ? Geo->StreamEavWords : 0;
     const int End = Where->InHanc ? SectionWords - Geo->StreamSavWords : SectionWords;
 
-    // Audio alone is in link 1: the other links need no reading. The horizontal blanking
-    // of a 2160p frame in a ring is a section of each link's own, its C and Y words in
-    // turn, read where it lies rather than from the whole line decoded.
+    // Audio is only in link 1, so without a packet list the other links are skipped.
+    // For a 2160p frame in a ring, each link's horizontal blanking is a separate section
+    // with C and Y words alternating; it is read directly from there instead of decoding
+    // the whole line.
     const bool AllLinks = Anc != NULL;
     const bool PerLink = Geo->Is4k && Frame->RingBase != NULL && Where->InHanc;
     if (!PerLink)
@@ -424,10 +425,11 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         DtSdiLineScratch_Free(&Parser->Scratch);
     }
 
-    // A rate without a cadence has no place in one, whatever the control packet says. In
-    // SD the audio frame number's lowest bits are the place, as many as the cadence
-    // needs, and the bits above may count frames to show a switch (SMPTE ST 272, 14.4);
-    // a place beyond the cadence is none.
+    // Clean up FrameNumber, the frame's place in the audio cadence:
+    // - At a rate without a cadence it is always 0, whatever a control packet says.
+    // - In SD only the lowest bits of the audio frame number give the place (as many as
+    //   the cadence length needs); the higher bits may hold a frame counter (SMPTE ST
+    //   272, 14.4). A place beyond the cadence length means none, so 0.
     const int Length = DtSdiAudio_CadenceLength(Frame->Geo.VidStd);
     if (Audio != NULL && Length == 1)
         Audio->FrameNumber = 0;

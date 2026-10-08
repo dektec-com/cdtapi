@@ -96,9 +96,9 @@ void OsThread_Join(OsThread* Thread)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_RaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A modest real-time priority under SCHED_FIFO: 20 for a ring's thread, 10 for a pool's.
-// Without CAP_SYS_NICE or a matching rlimit the kernel refuses, which is reported rather
-// than treated as an error.
+// Sets a moderate real-time priority with SCHED_FIFO: 20 for a ring thread, 10 for a
+// pool thread. The kernel refuses unless the program has CAP_SYS_NICE or an rtprio
+// limit; the refusal is returned, not treated as an error.
 //
 int OsThread_RaisePriority(OsThreadPriority Priority)
 {

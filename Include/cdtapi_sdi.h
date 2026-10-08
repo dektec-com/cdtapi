@@ -514,15 +514,17 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 // packets and the audio. The builder keeps audio off the line after the switching
 // point; the program's packets may go on any line.
 //
-// A program may make the payload ID and the audio packets itself, for instance to send
-// on the packets the parser listed with a filter of every DID. A payload ID among the
-// program's packets takes the place of the builder's, which then writes none. Packets
-// with the DID of audio the builder takes only when Audio is NULL: the program then
-// embeds the audio itself, with the BCH codes of HD and up and the switching point its
-// concern, and the builder only checks that the packets fit. In SD the builder writes
-// no audio control packet, which SMPTE ST 272 leaves optional at 48 kHz; a program that
-// wants one sends its own, on the second line after a switching line, which the builder
-// takes beside its own audio too and puts before it, as the standard asks.
+// A program can also supply the payload ID and the audio packets itself, for example to
+// pass on all packets that the parser listed:
+// - Payload ID: if the program's packets contain one, the builder writes none of its own.
+// - Audio: the builder accepts audio packets from the program only when Audio is NULL.
+//   The program is then responsible for them, including the BCH codes of HD and up and
+//   keeping them off the line after the switching point. The builder only checks that
+//   they fit.
+// - SD audio control packets: the builder never writes them, because SMPTE ST 272 makes
+//   them optional at 48 kHz. A program that wants one adds its own, on the second line
+//   after a switching line. The builder accepts it even when it embeds the audio itself,
+//   and places it before the audio, as the standard requires.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_STATE           Frame describes no frame, or a frame of an input channel,
@@ -530,8 +532,8 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //   DTAPI_E_INVALID_FORMAT  as for DtSdiParser_Parse()
 //   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(); or Audio->FrameNumber is not a
 //                           place in the cadence of the frame's rate; or a packet has
-//                           the DID of audio while Audio is not NULL, but for an
-//                           audio control packet in SD
+//                           an audio DID while Audio is not NULL (SD audio control
+//                           packets excepted)
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes;
 //                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking it names

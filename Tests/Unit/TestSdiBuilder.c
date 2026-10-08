@@ -867,7 +867,7 @@ DT_TEST(Refusals)
     for (size_t b = 0; b < Size; b++)
         DT_ASSERT_EQ(Frame[b], 0xA5);
 
-    // A packet with the DID of audio while the builder embeds audio of its own.
+    // An audio packet from the program is refused while the builder embeds audio.
     int32_t Own[1920] = {0};
     DtSdiAudio Embedded;
     memset(&Embedded, 0, sizeof(Embedded));
@@ -881,7 +881,7 @@ DT_TEST(Refusals)
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
                  DTAPI_E_INVALID_ARG);
 
-    // Nor an audio control packet of HD, which the builder writes itself.
+    // So is an HD audio control packet, which the builder writes itself.
     AudioPacket.Did = 0xE3;
     AudioPacket.NumWords = 11;
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
@@ -1613,7 +1613,7 @@ DT_TEST(WorkerPool)
 #define OWN_MAX_PACKETS 8192
 #define OWN_MAX_WORDS (OWN_MAX_PACKETS * 64)
 
-// The buffers of OwnAudioAndPayloadId.
+// Buffers for OwnAudioAndPayloadId and SdAudioControlOfTheProgram.
 typedef struct OwnBufs
 {
     int32_t Pcm[6][AUDIO_MAX];
@@ -1621,10 +1621,12 @@ typedef struct OwnBufs
     uint16_t Words[OWN_MAX_WORDS];
 } OwnBufs;
 
-// A frame's packets, every DID, as the parser lists them, built again by a builder that
-// embeds no audio of its own, give the frame back word for word: the payload ID and the
-// audio are then the program's, and the builder writes neither of its own. A payload ID
-// of the program's own takes the place of the builder's. In SD, HD, 3G and 2160p.
+// Checks that a program can supply its own audio packets and payload ID.
+//
+// A frame is built with audio and parsed with a filter for every DID. Those packets,
+// given to a builder without audio of its own, must give the same frame word for word:
+// the builder then adds no audio and no payload ID of its own. Then a different payload
+// ID from the program must replace the builder's. In SD, HD, 3G and 2160p.
 DT_TEST(OwnAudioAndPayloadId)
 {
     static const char* Names[] = {"625I50", "1080I50", "1080P50", "2160P50"};
@@ -1651,8 +1653,7 @@ DT_TEST(OwnAudioAndPayloadId)
         memset(&T, 0, sizeof(T));
         DT_ASSERT(First != NULL && Again != NULL && TestImage_Alloc(&T, F, FullPattern));
 
-        // The first frame: the builder's audio and payload ID, and two packets of the
-        // program's.
+        // The first frame: the builder's audio and payload ID, and two program packets.
         DtSdiAudio Audio;
         memset(&Audio, 0, sizeof(Audio));
         for (int c = 0; c < 6; c++)
@@ -1673,7 +1674,7 @@ DT_TEST(OwnAudioAndPayloadId)
         DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, &T.Image, &Audio, &Anc));
         DtSdiBuilder_Free(Builder);
 
-        // Every packet of it, built again without audio of the builder's own.
+        // Parse all its packets and build the frame again from them, without audio.
         DtSdiAncData List;
         memset(&List, 0, sizeof(List));
         List.Packets = B->Packets;
@@ -1701,7 +1702,7 @@ DT_TEST(OwnAudioAndPayloadId)
             DT_FAIL("%s: the frame built again differs from byte %zu on", F->Name, b);
         }
 
-        // A payload ID of the program's own in the place of the builder's.
+        // Replace the payload ID in the list with a different one.
         for (int p = 0; p < List.NumPackets; p++)
         {
             const DtSdiAncPacket* P = &B->Packets[p];
@@ -1738,10 +1739,11 @@ DT_TEST(OwnAudioAndPayloadId)
     free(B);
 }
 
-// In SD the builder writes no audio control packet, and takes the program's own beside
-// its audio, before the audio of its line, as SMPTE ST 272 has it. The parser takes the
-// place in the cadence from it: in 525i the lowest three bits of AF1-2, here 4 below a
-// counter of 3 that the bits above may carry.
+// Checks SD audio control packets from the program. The builder writes none itself, but
+// accepts the program's alongside its own audio and puts it before the audio of its
+// line (SMPTE ST 272). The parser reads the frame number from it: in 525i the lowest
+// three bits of AF1-2. Here the frame number is 4, with a counter of 3 in the higher
+// bits, which the parser must ignore.
 DT_TEST(SdAudioControlOfTheProgram)
 {
     const SdiFormat* F = NULL;
@@ -1774,9 +1776,9 @@ DT_TEST(SdAudioControlOfTheProgram)
         Audio.Channels[c].NumSamples = AUDIO_MAX;
     }
 
-    // AF1-2 and AF3-4 of frame 4 with a counter of 3 above it, 48 kHz, channels 1 and 2
-    // active, no delay: each word's bit 9 the complement of bit 8, ACT's bit 8 its
-    // parity.
+    // The 18 words of the control packet: AF1-2 and AF3-4 hold frame 4 with counter 3,
+    // RATE is 48 kHz, ACT marks channels 1 and 2 active, and there is no delay. Bit 9 of
+    // each word is the inverse of bit 8; bit 8 of ACT is its parity.
     uint16_t Words[18];
     for (int w = 0; w < 18; w++)
         Words[w] = 0x200;
@@ -1788,7 +1790,7 @@ DT_TEST(SdAudioControlOfTheProgram)
     DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
     DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Anc));
 
-    // The program's packet as sent, before the audio of its line.
+    // The program's packet must come back unchanged, before the audio on its line.
     const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_BOTH, 0, 0};
     DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
     DtSdiAncData List;

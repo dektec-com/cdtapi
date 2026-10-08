@@ -77,15 +77,16 @@ typedef struct DtSdiRx
     size_t WrapLineBufferBytes;
     size_t SymbolsPerBand;
 
-    // Reading, and the frame lent, at the head of the ring: its view, header and the
-    // ring's load when it was lent.
+    // The read state. InSync is true while each frame follows the one before as expected.
     bool InSync;
-    int ExpectedFrameId;
-    int64_t FramePeriodNs; // The standard's frame period
-    int64_t LastArrivalNs; // When the last frame read arrived, by its header
-    DtSdiView* LentView;
-    DtSdiFrameRxHeader LentHeader;
-    size_t LentAvailable;
+    int ExpectedFrameId;   // The frame ID the next frame should have
+    int64_t FramePeriodNs; // The frame period of the configured standard
+    int64_t LastArrivalNs; // The arrival time of the last frame read, from its header
+
+    // The frame lent by LendFrame, if any.
+    DtSdiView* LentView;           // The view it was lent to; NULL if none is lent
+    DtSdiFrameRxHeader LentHeader; // Its header
+    size_t LentAvailable;          // The ring's load when it was lent
 } DtSdiRx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -97,7 +98,8 @@ static OsDrv* DrvOf(const DtSdiRx* Sdi)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ForgetLent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The lent frame is gone with the ring or its contents: its view describes no frame.
+// Drops the lent frame, for when the ring is released or restarted. The view it was lent
+// to then describes no frame.
 //
 static void ForgetLent(DtSdiRx* Sdi)
 {
@@ -473,7 +475,7 @@ static DtapiResult ApplyRxControl(DtSdiRx* Sdi, int RxControl)
     if (Sdi->Rx.RxControl == RxControl)
         return DTAPI_OK;
 
-    // Reading starts at the ring's start again: a lent frame is gone.
+    // Receiving restarts at the start of the ring, so a lent frame is gone.
     ForgetLent(Sdi);
 
     DtapiResult Result;
@@ -726,11 +728,14 @@ static void DecodeLines(void* Context, int Index, int Count)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteLostFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Latches the overflow flag when the frame at the head of the ring is later than the one
-// expected by as many frame periods as its arrival is later: the card drops a frame it
-// has no room for whole, before the ring looks full, and its frame ID runs on. A frame
-// that arrives at another time follows a signal that went and came back, which is not
-// an overflow.
+// Sets the overflow flag if the card dropped frames before the frame at the head of the
+// ring.
+//
+// When the card has no room for a frame it drops it, and its frame counter keeps
+// counting. So if the frame ID is N higher than expected and the frame also arrived N
+// frame periods later than expected (within half a period), N frames were lost. If the
+// arrival time does not match, the signal was lost and came back, which is not an
+// overflow.
 //
 static void NoteLostFrames(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header)
 {
@@ -750,19 +755,20 @@ static void NoteLostFrames(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Finds the next whole frame at the head of the ring and decodes its header into
-// *Header. Returns DTAPI_OK with *Found true when there is one, the read offset at it and
-// *Available the ring's load; DTAPI_OK with *Found false when there is none yet; or a
-// driver failure.
+// Finds the next complete frame at the head of the ring and decodes its header into
+// *Header.
 //
-// Out of sync, a header is searched for; a header that is not the one expected puts the
-// channel out of sync, and the search starts again from that header. A header of the
-// frame format whose frame ID is later than the one expected, by as much as its arrival
-// is later, follows frames the card dropped, which latches the overflow flag. A frame
-// whose first or last line is not where it should be lost lines when the card's DMA
-// reached the read offset, and holds the start of a later frame, where the card
-// resumed: it is skipped, which latches the overflow flag too, and the search starts
-// again after its header.
+// Returns DTAPI_OK with *Found true if there is one. The read offset is then at the frame
+// and *Available is the ring's load. Returns DTAPI_OK with *Found false if no complete
+// frame has arrived yet, or the driver's error.
+//
+// While out of sync, it searches the ring for a header. While in sync, it expects the
+// next frame's header at the read offset; any other header puts it out of sync, and the
+// search starts again from there. Two cases also set the overflow flag:
+// - The header is valid but its frame ID is later than expected (see NoteLostFrames).
+// - The frame is cut short: its first or last line is not where it should be. This
+//   happens when the card's DMA ran into the read offset, dropped data, and resumed at a
+//   later frame. The frame is skipped and the search starts after its header.
 //
 static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* Available,
                              bool* Found)
@@ -833,8 +839,9 @@ static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* A
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FinishFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Moves past the frame at the head of the ring, of Header and found with the ring's load
-// Available, and sets *ArrivalTime to when it arrived.
+// Moves the read offset past the frame at the head of the ring, and sets *ArrivalTime to
+// the arrival time in its header. Header and Available are what FindFrame returned for
+// that frame.
 //
 static DtapiResult FinishFrame(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header,
                                size_t Available, DtTimeOfDay* ArrivalTime)
@@ -859,9 +866,9 @@ static DtapiResult FinishFrame(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Delivers the next frame into Buffer when the ring holds all of it, and the time of
-// arrival its header gives into *ArrivalTime. Returns DTAPI_OK with *Delivered true for a
-// frame, DTAPI_OK with *Delivered false when there is none yet, or a driver failure.
+// Copies the next frame into Buffer if the ring holds all of it, and sets *ArrivalTime to
+// its arrival time. Returns DTAPI_OK with *Delivered true if a frame was copied, DTAPI_OK
+// with *Delivered false if none has arrived yet, or the driver's error.
 //
 static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
                                 bool* Delivered)
@@ -900,8 +907,9 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LendFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The frame at the head of the ring stays there, and the read offset with it, until it is
-// given back: the card cannot write over it meanwhile.
+// Lends the frame at the head of the ring to View without copying it, and sets *Lent to
+// whether there was one. The read offset stays at the frame until ReturnFrame gives it
+// back, so the card cannot overwrite it. Lending needs 10-bit symbols.
 //
 static DtapiResult LendFrame(DtRx* Rx, DtSdiView* View, void* Holder,
                              DtTimeOfDay* ArrivalTime, bool* Lent)
@@ -937,6 +945,8 @@ static DtapiResult LendFrame(DtRx* Rx, DtSdiView* View, void* Holder,
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReturnFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Takes back the frame lent to View and moves the read offset past it.
 //
 static DtapiResult ReturnFrame(DtRx* Rx, DtSdiView* View)
 {

@@ -19,17 +19,19 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
-// A view of one SDI frame: its format and where its memory is. DtSdiView_SetRawFrame
-// points it at a raw frame; an input channel, with DtSdiView_SetRingFrame, at a frame in
-// its receive buffer, the ring.
+// Describes one SDI frame: its format and where its data is. A view points either at a
+// raw frame (DtSdiView_SetRawFrame) or at a frame in an input channel's receive buffer,
+// the ring (DtSdiView_SetRingFrame).
 //
-// In the ring a frame is its coded lines, one a raw line, two for 2160p, one after the
-// other, each its horizontal blanking and its active part in sections of their own
-// that start on a byte. A frame can run across the end of the ring: the one line that
-// does is copied into WrapLine when the frame is lent, so that every line can be read in
-// one piece. Up to 3G a section holds its symbols as a raw line does, so a line is read
-// where it lies, section by section; a 2160p line, whose links two coded lines share in
-// their own way, is decoded first.
+// In the ring, each raw line is stored as one coded line, or two for 2160p. A coded line
+// holds the line's horizontal blanking and its active part, each in a section that
+// starts on a byte. The frame can wrap around the end of the ring; the one line that
+// does is copied into WrapLine when the frame is lent, so that every line can be read
+// in one piece.
+//
+// Up to 3G, a section stores the symbols in the same order as a raw line, so a line can
+// be read directly from the ring. A 2160p line has its own layout across two coded lines
+// and is decoded first.
 struct DtSdiView
 {
     bool HasFrame;      // The view describes a frame
@@ -40,60 +42,63 @@ struct DtSdiView
     size_t LineNumBits; // Bits of one raw line
     void* Holder;       // The input channel that holds the frame; NULL for a raw frame
 
-    // A frame in a ring: the ring, where the frame's first coded line starts in it, and
-    // the bytes of a raw line's coded lines; the line that runs across the end of the
-    // ring, -1 for none, its copy, and the bytes the copy has room for.
-    const uint8_t* RingBase;
-    size_t RingSize;
-    size_t LinesStart;
-    size_t CodedBytesPerLine;
-    int WrapLineIndex;
-    uint8_t* WrapLine;
-    size_t WrapLineRoom;
+    // For a frame in a ring only.
+    const uint8_t* RingBase;  // The ring
+    size_t RingSize;          // Bytes in the ring
+    size_t LinesStart;        // Where the frame's first coded line starts in the ring
+    size_t CodedBytesPerLine; // Bytes of the coded lines of one raw line
+    int WrapLineIndex;        // The raw line that wraps around the ring's end; -1 if none
+    uint8_t* WrapLine;        // A copy of that line, in one piece
+    size_t WrapLineRoom;      // Bytes allocated for WrapLine
 };
 
-// The buffers that a 2160p line of a frame in a ring is decoded into, to be read: of one
-// thread that reads lines.
+// Buffers for decoding one 2160p line of a frame in a ring before it is read. Each thread
+// that reads lines needs its own.
 typedef struct DtSdiLineScratch
 {
     uint8_t* Raw;      // The raw line
     uint16_t* Symbols; // The band buffer of DtSdiFrame_DecodeLine4k
 } DtSdiLineScratch;
 
-// Gives Scratch the buffers a line of View's frame needs: none but for 2160p in a ring.
-// Returns false when there is no memory.
+// Allocates the buffers Scratch needs to read lines of View's frame. Only a 2160p frame
+// in a ring needs any. Returns false if there is not enough memory.
 bool DtSdiLineScratch_Alloc(DtSdiLineScratch* Scratch, const DtSdiView* View);
 
-// Frees Scratch's buffers. A scratch that has none, or is all zero, is fine.
+// Frees Scratch's buffers. Scratch may have none, or be all zero.
 void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch);
 
 // Returns where symbol Symbol (from 0) of raw line LineIndex (from 0) of the frame View
 // describes lies. The view must describe a raw frame.
 DtSdiSymbolPtr DtSdiView_RawSymbols(const DtSdiView* View, int LineIndex, size_t Symbol);
 
-// Returns where symbol Symbol of raw line LineIndex lies, for a run of symbols that stays
-// within the line's horizontal blanking, or within its active part: of a raw frame or a
-// frame in a ring. A 2160p line in a ring is decoded into Scratch first, which
-// DtSdiLineScratch_Alloc prepared; the pointer then stays good until Scratch takes the
-// next line.
+// Returns a pointer to symbol Symbol of raw line LineIndex, in a raw frame or in a ring.
+// The symbols read from it must stay within either the line's horizontal blanking or its
+// active part.
+//
+// A 2160p line in a ring is decoded into Scratch first; Scratch must have been prepared
+// with DtSdiLineScratch_Alloc. The pointer is then valid until the next call with the
+// same Scratch.
 DtSdiSymbolPtr DtSdiView_LineSymbols(const DtSdiView* View, int LineIndex, size_t Symbol,
                                      DtSdiLineScratch* Scratch);
 
-// Returns where the horizontal blanking of link Link (1 to 4) of raw line LineIndex of
-// a 2160p frame in a ring starts: a section of its own in the coded lines, the link's
-// C and Y words in turn, C first, as an HD line has them, EAV and SAV included.
+// Returns a pointer to the horizontal blanking of link Link (1 to 4) of raw line
+// LineIndex, for a 2160p frame in a ring. Each link's blanking is a separate section,
+// with C and Y words alternating, C first, as in an HD line, from EAV to SAV.
 DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link);
 
-// Points View at a frame of Layout, the layout of the ring's coded lines with the
-// card's alignment, in a ring of RingSize bytes at RingBase, its first coded line
-// LinesStart bytes from the ring's start, 10 bits a symbol, held by Holder; copies the
-// line that runs across the end of the ring.
+// Points View at a frame in a ring and copies the line that wraps around the ring's end,
+// if any.
+//   Layout      the layout of the coded lines, with the card's alignment
+//   RingBase    the ring, RingSize bytes
+//   LinesStart  where the frame's first coded line starts, from the ring's start
+//   Holder      the input channel that holds the frame
+// The symbols are 10 bits.
 //
-// Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD, or DTAPI_E_OUT_OF_MEM when there is no room
-// for that copy; on a failure View describes no frame.
+// Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD, or DTAPI_E_OUT_OF_MEM if there is no memory
+// for the copy. After a failure View describes no frame.
 DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
                                    const uint8_t* RingBase, size_t RingSize,
                                    size_t LinesStart, void* Holder);
 
-// Makes View describe no frame, and forgets its holder.
+// Makes View describe no frame and clears its holder.
 void DtSdiView_Forget(DtSdiView* View);

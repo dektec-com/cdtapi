@@ -4,10 +4,10 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// A view of a raw frame is the frame's address and its geometry: where each line starts
-// follows from the line's index, as every raw line has the same number of bits. A view
-// of a frame in a ring finds a line's coded lines from its index the same way, in the
-// ring or, for the one line that runs across its end, in the view's copy.
+// A view of a raw frame stores the frame's address and its geometry. Every raw line has
+// the same number of bits, so a line's start follows from its index. A view of a frame
+// in a ring finds a line's coded lines the same way: in the ring, or in the view's copy
+// for the one line that wraps around the ring's end.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -29,7 +29,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodedLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The coded lines of raw line LineIndex of a frame in a ring, in one piece.
+// Returns the coded lines of raw line LineIndex of a frame in a ring, in one piece.
 //
 static const uint8_t* CodedLine(const DtSdiView* View, int LineIndex)
 {
@@ -80,7 +80,7 @@ void DtSdiView_Forget(DtSdiView* View)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_LinkHanc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The first coded line of a 2160p line holds the horizontal blanking of links 1 and 2,
-// the second that of links 3 and 4, each section padded to the alignment.
+// the second that of links 3 and 4. Each section is padded to the card's alignment.
 //
 DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link)
 {
@@ -97,8 +97,8 @@ DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_LineSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Up to 3G a coded line is the line's horizontal blanking and then its active part,
-// each a section that starts on a byte, its symbols as a raw line has them.
+// Up to 3G, a coded line holds the horizontal blanking and then the active part. Each is
+// a section that starts on a byte and stores the symbols as a raw line does.
 //
 DtSdiSymbolPtr DtSdiView_LineSymbols(const DtSdiView* View, int LineIndex, size_t Symbol,
                                      DtSdiLineScratch* Scratch)
@@ -328,8 +328,7 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRingFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A frame's coded lines take less than the ring, so at most one of them runs across its
-// end.
+// A frame is smaller than the ring, so at most one of its lines wraps around the end.
 //
 DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
                                    const uint8_t* RingBase, size_t RingSize,
@@ -340,7 +339,7 @@ DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layo
     DtapiResult Result = DtSdiGeometry_Init(&Geo, Layout->VidStd);
     if (Result != DTAPI_OK)
         return Result;
-    // The sections are padded to the card's alignment, not to the geometry's own.
+    // Use the card's alignment for the sections, not the geometry's default.
     Geo.Layout = *Layout;
 
     const size_t Bytes = DtSdiFrame_RxCodedBytesPerLine(&Geo.Layout);

@@ -95,13 +95,14 @@ struct DtSdiBuilder
     int NumBands;
 };
 
-// Which of the program's packets of a section PutPackets writes: in SD the audio control
-// packets go before the builder's audio, as SMPTE ST 272 has them, the rest after it.
+// Selects which of the program's packets PutPackets writes. In SD the program's audio
+// control packets must come before the builder's audio (SMPTE ST 272), so they are
+// written separately from the other packets.
 typedef enum PacketKind
 {
-    PACKETS_ALL,
-    PACKETS_SD_CONTROL,
-    PACKETS_REST,
+    PACKETS_ALL,        // Every packet
+    PACKETS_SD_CONTROL, // Only SD audio control packets
+    PACKETS_REST,       // Every packet except SD audio control packets
 } PacketKind;
 
 // A frame a job of bands builds.
@@ -112,9 +113,9 @@ typedef struct BuildJob
     const DtSdiImage* Image;
     const DtSdiAncData* Anc;
     uint32_t Vpid;
-    bool PayloadId; // The builder writes the payload ID: the program's packets hold none
-    int Unit;       // Lines that a band boundary does not split: 2 where every other
-                    // line starts half-way through a byte
+    bool PayloadId; // The builder writes its own payload ID; false if the program has one
+    int Unit;       // Bands start on a multiple of this many lines: 2 if every other line
+                    // starts in the middle of a byte, else 1
 } BuildJob;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -163,7 +164,7 @@ static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Returns whether P is an audio control packet of SD, EC to EF.
+// Returns whether P is an SD audio control packet (DID EC to EF).
 //
 static bool IsSdControl(const DtSdiGeometry* Geo, const DtSdiAncPacket* P)
 {
@@ -173,12 +174,15 @@ static bool IsSdControl(const DtSdiGeometry* Geo, const DtSdiAncPacket* P)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Checks the program's packets and that each section has room for them, counting in
-// Builder->Used the words each section's packets take. Packets with the DID of audio
-// are the program's to send only when the builder embeds no audio of its own, Audio
-// being NULL; in SD, where the builder writes no audio control packet, the program may
-// send its own beside the builder's audio. *PayloadId is set to whether the builder
-// writes the payload ID: not when the program's packets hold one.
+// Checks the program's packets and that each section of the frame has room for them.
+// Builder->Used receives the number of words the packets take in each section.
+//
+// Audio packets from the program are refused while the builder embeds its own audio
+// (HasAudio). One exception: in SD the builder writes no audio control packets, so the
+// program may add its own.
+//
+// Sets *PayloadId to whether the builder should write its own payload ID, which it does
+// unless the program's packets contain one.
 //
 static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
                                 const DtSdiAncData* Anc, bool HasAudio, bool* PayloadId)
@@ -235,8 +239,8 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the program's packets of kind Kind for one section into Words from Pos on, in
-// the order the program gave them. Returns where the next word goes.
+// Writes the program's packets of kind Kind for one section into Words, starting at
+// Pos, in the order the program gave them. Returns the position after the last one.
 //
 static int PutPackets(const DtSdiGeometry* Geo, const DtSdiAncData* Anc, int LineIndex,
                       bool InHanc, int Stream, PacketKind Kind, bool Checksum,
@@ -297,12 +301,16 @@ static void PutBlack(const DtSdiGeometry* Geo, uint16_t* Line)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Makes raw line LineIndex in Band->Line. Its horizontal blanking is made stream by
-// stream in Band->Words and then woven into the line; so is its active part on a
-// line of the vertical blanking, with the program's packets. The active part of a line
-// of the image is the job's image, read straight into the line in SD, HD and 3G, where
-// the image's order of samples is the line's, and into Band->Image in 2160p; without
-// an image, it is black.
+// Builds raw line LineIndex in Band->Line.
+//
+// The horizontal blanking is built stream by stream in Band->Words and then interleaved
+// into the line. On a line of the vertical blanking the active part is built the same
+// way, with the program's packets in it.
+//
+// On a line of the image, the active part comes from the job's image. In SD, HD and 3G
+// the image is read straight into the line, because the samples are in the same order.
+// In 2160p it is read into Band->Image first and then split over the links. Without an
+// image the line is black.
 //
 static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
 {
@@ -354,9 +362,11 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
         W[Hanc - 2] = 0x000;
         W[Hanc - 1] = (uint16_t)Sav;
 
-        // The horizontal blanking: the payload ID first, unless the program sends its
-        // own, then in SD the program's audio control packets, then the audio, then the
-        // rest of the program's packets.
+        // The horizontal blanking, in this order:
+        // 1. the payload ID, unless the program sends its own;
+        // 2. in SD, the program's audio control packets;
+        // 3. the builder's audio;
+        // 4. the rest of the program's packets.
         int Pos = Geo->StreamEavWords;
         if (Job->PayloadId && HasPayloadId(Geo, LineIndex, s))
         {
@@ -427,8 +437,8 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
                                Builder->Conv);
     }
 
-    // The CRC over this line's active part, for the next line's: of every stream at
-    // once, by its place in the line.
+    // Compute the CRC of this line's active part for every stream; the next line carries
+    // it. Crcs is indexed by a stream's position in the line, LastCrc by stream number.
     if (Streams > 1 && Builder->Checksums)
     {
         uint32_t Crcs[DT_SDICRC_MAX_STREAMS];

@@ -1043,8 +1043,8 @@ DT_TEST(LeavesAFileForTheExamples)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames lent +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The image of a frame, parsed into planar 10-bit: Width * Height * 4 bytes, Y then Cb
-// then Cr. NULL when that fails.
+// Parses the image of a frame into planar 10-bit and returns it: Width * Height * 4
+// bytes, Y then Cb then Cr. Returns NULL if parsing fails.
 static uint8_t* ParsedImage(DtSdiParser* Parser, DtSdiView* View, size_t* Bytes)
 {
     int VidStd = 0;
@@ -1073,8 +1073,8 @@ static uint8_t* ParsedImage(DtSdiParser* Parser, DtSdiView* View, size_t* Bytes)
     return Image;
 }
 
-// What a frame's blanking holds: every packet, the audio's and the payload ID's too,
-// and the audio as PCM.
+// The contents of a frame's blanking: every packet, including audio and payload ID, and
+// the audio as PCM.
 typedef struct Blanking
 {
     DtSdiAncPacket Packets[4096];
@@ -1084,7 +1084,7 @@ typedef struct Blanking
     DtSdiAudio Audio;
 } Blanking;
 
-// Parses the blanking of View into B. False when the parse fails.
+// Parses the blanking of View into B. Returns false if parsing fails.
 static bool ParseBlankingOf(DtSdiParser* Parser, DtSdiView* View, Blanking* B)
 {
     memset(&B->Anc, 0, sizeof(B->Anc));
@@ -1103,7 +1103,7 @@ static bool ParseBlankingOf(DtSdiParser* Parser, DtSdiView* View, Blanking* B)
     return DtSdiParser_Parse(Parser, View, NULL, &B->Audio, &B->Anc) == DTAPI_OK;
 }
 
-// Returns NULL when A and B hold the same, else what differs.
+// Compares two parsed blankings. Returns NULL if they are equal, else what differs.
 static const char* SameBlanking(const Blanking* A, const Blanking* B)
 {
     if (A->Anc.NumPackets != B->Anc.NumPackets)
@@ -1130,12 +1130,13 @@ static const char* SameBlanking(const Blanking* A, const Blanking* B)
     return NULL;
 }
 
-// A channel lends the frames of a file the source plays, where they lie in its ring,
-// until one has run across the end of the ring: each, parsed, gives the image of one of
-// the file's frames and its blanking, every packet and the audio, as the raw frame's;
-// up to 3G each active line reads as in the raw frame too. While a frame is lent,
-// ReadFrame, the builder and a raw frame for the view are refused; given back, it cannot
-// be given back again. In 625i, 720p50, 1080i50 and 2160p50.
+// Checks that a channel lends the frames of a played file correctly, until a frame has
+// wrapped around the end of the ring. For each lent frame:
+// - the parsed image equals one of the file's frames;
+// - the parsed blanking (every packet and the audio) equals the raw frame's;
+// - up to 3G, every active line read in place equals the raw frame's.
+// While a frame is lent, ReadFrame, the builder and setting a raw frame on the view are
+// refused, and a frame cannot be released twice. In 625i, 720p50, 1080i50 and 2160p50.
 DT_TEST(AcquireLendsTheFrames)
 {
     static const struct
@@ -1158,7 +1159,7 @@ DT_TEST(AcquireLendsTheFrames)
         DT_ASSERT(WriteFrames(SOURCE_FILE, VidStd, 100, NumFiles, 0));
         DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue(Cases[c].Name, SOURCE_FILE)));
 
-        // The images and the raw frames the file holds.
+        // The images and the raw frames in the file.
         DtSdiParser* Parser = DtSdiParser_Alloc();
         DtSdiView* Raw = DtSdiView_Alloc();
         DtSdiView* View = DtSdiView_Alloc();
@@ -1213,7 +1214,7 @@ DT_TEST(AcquireLendsTheFrames)
                 DT_FAIL("%s, frame %d: the image is none of the file's", Cases[c].Name,
                         Frame);
 
-            // The blanking, every packet and the audio, as the raw frame's.
+            // The blanking (every packet and the audio) equals the raw frame's.
             const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_BOTH, 0, 0};
             DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
             DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frames[Which], Size, VidStd, 10));
@@ -1224,7 +1225,7 @@ DT_TEST(AcquireLendsTheFrames)
                 DT_FAIL("%s, frame %d: %s", Cases[c].Name, Frame, Differs);
             DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, NULL, 0));
 
-            // Every active line where it lies, as in the raw frame, up to 3G.
+            // Up to 3G, every active line read in place equals the raw frame's.
             if (!DtVidStd_Is4k(VidStd))
             {
                 DT_ASSERT_OK(DtSdiView_SetRawFrame(Raw, Frames[Which], Size, VidStd, 10));
@@ -1264,7 +1265,7 @@ DT_TEST(AcquireLendsTheFrames)
                     Frame);
         printf("    %s: %d frames lent\n", Cases[c].Name, Frame);
 
-        // Detaching takes a lent frame back.
+        // Detaching the channel releases a lent frame.
         DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
         DT_ASSERT_OK(DtInpChannel_Detach(Fix.In, 0));
         DT_ASSERT_EQ(DtSdiView_GetFormat(View, NULL, NULL), DTAPI_E_STATE);
@@ -1287,7 +1288,7 @@ DT_TEST(AcquireLendsTheFrames)
     remove(SOURCE_FILE);
 }
 
-// A receive mode of 16 bits a symbol lends nothing.
+// Checks that a channel does not lend frames in a 16-bit receive mode.
 DT_TEST(AcquireNeedsTenBits)
 {
     Fixture Fix;
@@ -1311,9 +1312,10 @@ DT_TEST(AcquireNeedsTenBits)
     remove(SOURCE_FILE);
 }
 
-// A frame held too long loses those after it, as on the card, whose frame ID runs on
-// for the frames it drops: the next frame's ID, later than expected by as much as its
-// arrival, latches DTAPI_RX_FIFO_OVF. Frames that follow on time leave it clear.
+// Checks that holding a lent frame too long sets DTAPI_RX_FIFO_OVF. The emulated card
+// drops the frames it has no room for and keeps counting frame IDs, as the real card
+// does. The next frame's ID then jumps by as much as its arrival time, which sets the
+// flag. Frames that arrive on time leave it clear.
 DT_TEST(LostFramesLatchTheOverflow)
 {
     Fixture Fix;

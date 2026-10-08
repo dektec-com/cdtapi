@@ -667,12 +667,14 @@ CDTAPI_API DtapiResult DtWorkerPool_SetDispatch(DtWorkerPool* Pool,
 // spare. More than four per frame gain little, as the work then waits for memory. At
 // least two are needed: with one thread nothing is divided.
 //
-// The threads ask for a priority above the machine's ordinary threads and below the
-// library's threads that keep a card's buffer going, so that the short work that keeps
-// the card fed comes first and a frame's bulk next: SCHED_FIFO 10 on Linux, against 20,
-// and THREAD_PRIORITY_ABOVE_NORMAL on Windows, against THREAD_PRIORITY_HIGHEST. On Linux
-// the kernel grants a real-time priority only to a program with CAP_SYS_NICE or an
-// rtprio limit; without either, every thread of the library runs as an ordinary one.
+// The threads run at a raised priority: SCHED_FIFO 10 on Linux and
+// THREAD_PRIORITY_ABOVE_NORMAL on Windows. That is above normal threads, but below the
+// library's threads that fill and empty the card's buffers (SCHED_FIFO 20 and
+// THREAD_PRIORITY_HIGHEST), because keeping the card going matters most.
+//
+// On Linux the kernel only grants a real-time priority to a program that has
+// CAP_SYS_NICE or an rtprio limit. Without it, all of the library's threads run at
+// normal priority.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_INVALID_ARG  Pool is NULL, or NumThreads is below 2
@@ -730,8 +732,8 @@ typedef struct DtSdiView DtSdiView;
 // which may be NULL, is set as by DtInpChannel_ReadFrame2().
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_IN_USE           a frame is lent and has not been given back, Frame holds a
-//                            frame lent, or a read on another thread has not returned
+//   DTAPI_E_IN_USE           a lent frame has not been released yet, Frame already holds
+//                            a lent frame, or a read on another thread is still busy
 //   DTAPI_E_INVALID_MODE     the receive mode is not 10 bits a symbol
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
 //   DTAPI_E_NOT_SDI_MODE     the port receives ASI
@@ -806,11 +808,11 @@ CDTAPI_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* F
 
 // Sets *Flags to the channel's current problems, and *Latched to those that occurred
 // since ClearFlags() last cleared them:
-//   DTAPI_RX_FIFO_OVF   data was lost: on SDI the card's buffer was full, or the card
-//                       ran into the frames still to be read and dropped data until it
-//                       could resume at a whole frame, which a frame cut short or the
-//                       next frame's ID and time of arrival show; on ASI packets were
-//                       lost in the card or because the FIFO was full
+//   DTAPI_RX_FIFO_OVF   data was lost. On SDI: the card's buffer was full, so the card
+//                       dropped data and resumed at a later frame. The channel sees
+//                       this as a frame that was cut short, or as a jump in the frame
+//                       ID that matches the arrival times. On ASI: packets were lost in
+//                       the card or because the FIFO was full.
 //   DTAPI_RX_SYNC_ERR   ASI only: a packet arrived without packet sync
 CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags,
                                              int* Latched);
@@ -887,8 +889,8 @@ CDTAPI_API DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer,
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
 //   DTAPI_E_INVALID_SIZE     *FrameSize is negative or not a multiple of 4
 //   DTAPI_E_INVALID_BUF      FrameBuffer is NULL, or its address not a multiple of 4
-//   DTAPI_E_IN_USE           a read on another thread has not returned, or
-//                            DtInpChannel_AcquireFrame() lent a frame not given back
+//   DTAPI_E_IN_USE           a read on another thread is still busy, or a frame lent by
+//                            DtInpChannel_AcquireFrame() has not been released yet
 //   DTAPI_E_NOT_SDI_MODE     the port receives ASI
 //   DTAPI_E_TIMEOUT          no frame arrived in time
 //   DTAPI_E_CANCELLED        the channel was detached meanwhile
@@ -903,10 +905,11 @@ CDTAPI_API DtapiResult DtInpChannel_ReadFrame2(DtInpChannel* InpChannel,
                                                void* FrameBuffer, int* FrameSize,
                                                int TimeOut, DtTimeOfDay* ArrivalTime);
 
-// Gives the frame that Frame describes back to the card, so that it can use that part of
-// its buffer again. Frame then describes no frame. Detaching the channel, a new I/O
-// standard, and setting the receive control or clearing the FIFO take a lent frame back
-// too, and Frame describes no frame after them.
+// Releases the frame that DtInpChannel_AcquireFrame() lent to Frame, so that the card can
+// reuse that part of its buffer. Frame then describes no frame.
+//
+// A lent frame is also released when the channel is detached, its I/O standard changes,
+// the receive control is set, or the FIFO is cleared.
 //
 // Returns DTAPI_OK, or DTAPI_E_INVALID_ARG when Frame describes no frame this channel
 // lent.

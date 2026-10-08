@@ -421,10 +421,10 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchChecksums -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Measures what the line CRCs and the packets' checksums cost the builder, from v210
-// with the fastest conversions in one thread, in the standards that have a line CRC:
-// left to the transmitter, by table, and with PCLMULQDQ, its words packed with SSSE3 and
-// with AVX2.
+// Measures how much the line CRCs and packet checksums add to the builder's time. Builds
+// from v210 in one thread with the fastest conversions, in each standard that has a line
+// CRC, four ways: without CRCs, with the table, and with PCLMULQDQ packing with SSSE3
+// or with AVX2.
 //
 static int BenchChecksums(DtSdiView* View, int Seconds)
 {

@@ -1,15 +1,18 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSdiCrc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - The line CRC by table and with PCLMULQDQ against SMPTE ST 292's definition
+// CDTAPI - Tests the line CRC versions against the definition in SMPTE ST 292
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The portable CRC must equal DtSdiFrame_Crc18 applied word by word, and the version
-// with PCLMULQDQ, where the processor has it, the portable one: on random words, of
-// every length up to 128 and every 32nd beyond, past the longest it takes itself, so
-// that the lengths of the lines with a CRC come in and others it leaves to the portable
-// version; for one stream, the two of HD, the eight of 2160p and three, which it takes
-// word by word. And the builder must make the same frames with each.
+// The tests check that:
+// - the portable version equals DtSdiFrame_Crc18 applied word by word;
+// - each PCLMULQDQ version, where the processor has it, equals the portable version;
+// - the builder makes the same frames with each version.
+//
+// The words are random. The lengths are every length up to 128 and every 32nd length
+// after that, past the longest the PCLMULQDQ versions handle themselves. That includes
+// the line lengths of all standards, and lengths that go to the portable version. The
+// numbers of streams are 1, 2 (HD), 8 (2160p) and 3, which is packed word by word.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -47,8 +50,8 @@ static void Setup(void)
         g_Words[i] = RandomWord();
 }
 
-// The CRC of stream s of Streams that alternate in Words, Count words each, word by word
-// as SMPTE ST 292 defines it.
+// Returns the CRC of stream s of the Streams interleaved streams in Words, Count words
+// each, computed word by word as SMPTE ST 292 defines it.
 static uint32_t Definition(const uint16_t* Words, size_t Count, int Streams, int s)
 {
     uint32_t Crc = 0;
@@ -57,13 +60,13 @@ static uint32_t Definition(const uint16_t* Words, size_t Count, int Streams, int
     return Crc;
 }
 
-// The numbers of streams tried.
+// The numbers of streams tested.
 static const int g_Streams[] = {1, 2, 3, 8};
 #define NUM_STREAMS ((int)(sizeof(g_Streams) / sizeof(g_Streams[0])))
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The table gives the definition's CRC.
+// Checks that the portable version equals the definition.
 DT_TEST(PortableEqualsTheDefinition)
 {
     Setup();
@@ -86,8 +89,8 @@ DT_TEST(PortableEqualsTheDefinition)
     }
 }
 
-// Each version with PCLMULQDQ, packing with SSSE3 or with AVX2, gives the portable
-// version's CRC, for every length it takes itself and for those it leaves.
+// Checks that a PCLMULQDQ version equals the portable version, for every length, both
+// those it handles itself and those it passes on.
 static void EqualsPortable(DtSdiCrcFunc Clmul, const char* Name, int* DtFailures)
 {
     if (Clmul == NULL)
@@ -127,7 +130,7 @@ DT_TEST(ClmulEqualsPortable)
     EqualsPortable(DtSdiCrc_Avx2(), "PCLMULQDQ with AVX2", DtFailures);
 }
 
-// The fastest version is one of the three.
+// Checks that the fastest version is one of the three.
 DT_TEST(BestIsAVersion)
 {
     const DtSdiCrcFunc Best = DtSdiCrc_Best();
@@ -135,9 +138,9 @@ DT_TEST(BestIsAVersion)
               Best == DtSdiCrc_Avx2());
 }
 
-// The builder, with the line CRCs on, makes the same frames with either version: in 720p,
-// 1080i, 1080p and 2160p, two frames each so that the first line's CRC covers a line of
-// the frame before.
+// Checks that the builder, with line CRCs on, makes the same frames with the table and
+// with the fastest version. In 720p, 1080i, 1080p and 2160p, two frames each, so that
+// the first line's CRC also covers the last line of the previous frame.
 DT_TEST(BuilderAgrees)
 {
     const DtSdiCrcFunc Clmul = DtSdiCrc_Best();

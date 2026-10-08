@@ -116,9 +116,9 @@ void OsThread_Join(OsThread* Thread)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- OsThread_RaisePriority -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// THREAD_PRIORITY_HIGHEST for a ring's thread, THREAD_PRIORITY_ABOVE_NORMAL for a
-// pool's. Time-critical is deliberately not used: a stuck time-critical thread can
-// starve the rest of the machine.
+// Sets THREAD_PRIORITY_HIGHEST for a ring thread and THREAD_PRIORITY_ABOVE_NORMAL for a
+// pool thread. TIME_CRITICAL is not used on purpose, because a stuck time-critical thread
+// can starve the rest of the machine.
 //
 int OsThread_RaisePriority(OsThreadPriority Priority)
 {

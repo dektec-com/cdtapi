@@ -815,8 +815,8 @@ DtapiResult DtInpChannel_ReadFrame(DtInpChannel* InpChannel, void* FrameBuffer,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtInpChannel_AcquireFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// As DtInpChannel_ReadFrame2 reads, but the side lends the frame where it lies rather
-// than decoding it into a buffer.
+// Waits for the next frame like DtInpChannel_ReadFrame2, but lends the frame in the
+// card's buffer to Frame instead of copying it into a buffer.
 //
 DtapiResult DtInpChannel_AcquireFrame(DtInpChannel* InpChannel, DtSdiView* Frame,
                                       int TimeOut, DtTimeOfDay* ArrivalTime)

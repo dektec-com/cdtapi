@@ -796,10 +796,10 @@ DT_TEST(FullRingSetsOverflow)
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
     DT_ASSERT_EQ(Load, Max);
 
-    // Three more do not fit: the first is cut short where the ring is full, the other
-    // two are dropped, and the load stays within the FIFO size. The ring's filling up
-    // latches the overflow; the frame cut short is skipped, and the next whole one
-    // follows.
+    // Three more frames do not fit. The first is cut short where the ring is full and
+    // the other two are dropped; the load stays within the FIFO size. The full ring sets
+    // the overflow flag. Reading skips the frame that was cut short and continues with
+    // the next complete one, frame 6.
     SimDtPcie_RunRxEvents(PORT - 1, 12);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT(Load <= Max);

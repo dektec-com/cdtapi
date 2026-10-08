@@ -398,9 +398,9 @@ static bool RingWrite(SimRxChannel* Channel, const uint8_t* Data, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Begins the next frame: its number, whether the source matches the configuration, and
-// its header, which gives the frame's number times the frame period as its time of
-// arrival.
+// Starts the next frame: gives it a number, checks that the source matches the
+// configuration, and writes its header. The header's arrival time is the frame number
+// times the frame period.
 //
 static void StartFrame(SimRxChannel* Channel)
 {
@@ -751,10 +751,13 @@ static double EventPeriodMs(const SimRxChannel* Channel)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteDueEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// On the clock, the format events whose time has come, as a card's receiver writes its
-// frames whether or not anyone waits: a program that only looks at the write offset sees
-// the frames arrive. The frames whose time passed beyond SIM_RX_MAX_DUE_EVENTS are lost,
-// and their numbers used up, as a card's frame ID counts every frame.
+// Writes the frames that are due by the clock, as a card writes frames whether or not
+// anyone reads them. A program that only looks at the write offset therefore still sees
+// frames arrive.
+//
+// At most SIM_RX_MAX_DUE_EVENTS events are written per call. Frames that were due beyond
+// that are lost, but their frame numbers are used up, as a card's frame counter counts
+// every frame.
 //
 static void WriteDueEvents(SimRxChannel* Channel)
 {
