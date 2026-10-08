@@ -1,7 +1,7 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiCrc.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - The line CRC of SMPTE ST 292 over a stream's words: the portable version and
-// the choice of the fastest
+// CDTAPI - Computes the line CRCs of an HD-SDI line in portable C, and picks the fastest
+// version for the processor
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -26,7 +26,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasPclmul -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// CPUID leaf 1, ECX bit 1, and bit 9 for the SSSE3 that packs the words.
+// Returns whether the processor has PCLMULQDQ (CPUID leaf 1, ECX bit 1) and SSSE3 (bit
+// 9). The SSSE3 version needs both: SSSE3 packs the words, PCLMULQDQ reduces them.
 //
 #if defined(CDTAPI_HAVE_SSSE3)
 static bool HasPclmul(void)
@@ -85,8 +86,9 @@ DtSdiCrcFunc DtSdiCrc_Clmul(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_Streams -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The register's lower ten bits and the word select one entry of the table, and the
-// bits above are shifted in on it: the CRC is linear.
+// Computes each stream's CRC one word at a time. The table gives the effect of the low
+// 10 bits of the register combined with the next word; the rest of the register is
+// shifted down by 10 bits and added. This works because the CRC is linear.
 //
 void DtSdiCrc_Streams(const uint16_t* Words, size_t Count, int Streams,
                       const uint32_t* Table, uint32_t* Crcs)

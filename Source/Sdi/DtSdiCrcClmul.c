@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiCrcClmul.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - The line CRC of SMPTE ST 292 with PCLMULQDQ
+// CDTAPI - Computes the line CRCs of an HD-SDI line with PCLMULQDQ and SSSE3
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -21,35 +21,42 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Folding +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The words are packed into a run of bits as they go on the line, the least significant
-// bit of the first word first, which loads into 128-bit registers with the run's first
-// bit in bit 0: the reflected order of the CRC. With A the polynomial of a register's
-// first 64 bits and B that of its last, the register stands for A x^64 + B, and 128 bits
-// later for (A x^64 + B) x^128, which modulo the CRC's polynomial P is A (x^192 mod P) +
-// B (x^128 mod P): two carry-less products, of fewer than 128 bits, that take the
-// register's place against the next 128 bits of the run. A carry-less product of two
-// reflected 64-bit values is the product times x, so the constants are x^191 and x^127
-// modulo P, reflected. Four registers take turns, each folded 512 bits on, with x^575
-// and x^511, so that no step waits for the one before; at the end they are folded into
-// one, 128 bits at a time. What is left after the last step, 128 bits, has the run's
-// CRC; the table works it out, two zero bits before it to make thirteen words, which from
-// a register of 0 change nothing.
+// How it works, in three steps:
 //
-// The words are packed eight at a time with SSSE3: the pairs joined by a multiply-add,
-// the pairs of pairs by a shift, and the five bytes of each 40 bits gathered by a
-// shuffle.
+// 1. Pack. Each stream's 10-bit words are packed into a continuous run of bits, in the
+//    order they go out on the line: bit 0 of the first word first. Eight words become
+//    ten bytes.
+//
+// 2. Fold. The run is reduced 128 bits at a time. A register holding 128 bits of the run
+//    is multiplied (carry-less, with PCLMULQDQ) by two constants, which moves its value
+//    128 bits further along the run without changing the CRC. The result is added to
+//    the next 128 bits. This is the standard "folding" method for computing a CRC with
+//    PCLMULQDQ.
+//
+//    To keep the processor busy, four registers are folded side by side, each moving 512
+//    bits per step. At the end the four are folded into one.
+//
+// 3. Finish. The last 128 bits go through the lookup table, 10 bits at a time. Two zero
+//    bits are added at the front to make 130 bits, or 13 words; leading zeros do not
+//    change a CRC that starts from 0.
+//
+// The constants are x^191 and x^127 modulo the CRC polynomial for a 128-bit step, and
+// x^575 and x^511 for a 512-bit step, bit-reversed into 64 bits. The exponents are one
+// less than the distance (192 and 128, 576 and 512) because a carry-less product of two
+// bit-reversed values comes out multiplied by x.
 
-// x^191 mod P and x^127 mod P, each reflected into 64 bits: 128 bits on.
+// The constants that move a register 128 bits on: x^191 and x^127 mod P, bit-reversed.
 #define FOLD_FIRST_HALF 0xC7F3000000000000ull
 #define FOLD_SECOND_HALF 0x4A36C00000000000ull
 
-// x^575 mod P and x^511 mod P, each reflected into 64 bits: 512 bits on.
+// The constants that move a register 512 bits on: x^575 and x^511 mod P, bit-reversed.
 #define FOLD4_FIRST_HALF 0x43F0000000000000ull
 #define FOLD4_SECOND_HALF 0x7CF1800000000000ull
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fold -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Reg moved Fold's distance on, against the bits there.
+// Moves Reg the distance that Constants stands for along the run, and adds Next, the
+// bits found there. Returns the new register.
 //
 static __m128i Fold(__m128i Reg, __m128i Constants, __m128i Next)
 {
@@ -60,7 +67,11 @@ static __m128i Fold(__m128i Reg, __m128i Constants, __m128i Next)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackEight -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Packs the eight words of Words, ten bits each, into ten bytes at Out; writes sixteen.
+// Packs eight 10-bit words into ten bytes at Out. Stores sixteen bytes; the six extra
+// bytes are overwritten by the next call or lie past the end of the run.
+//
+// A multiply-add joins each pair of words into 20 bits, a shift joins two pairs into 40
+// bits, and a byte shuffle gathers the five bytes of each 40 bits.
 //
 static void PackEight(__m128i Words, uint8_t* Out)
 {
@@ -75,11 +86,14 @@ static void PackEight(__m128i Words, uint8_t* Out)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackStreams -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Packs the Count words, a multiple of eight, of each of Streams streams that alternate
-// in Words into Bits[s], eight of each at a time: one stream's are loaded as they lie,
-// two streams' sixteen at a time and parted into even and odd, eight streams' sixty-four
-// at a time and transposed, so that each register holds eight of one stream; any other
-// number word by word.
+// Separates the interleaved streams and packs each into Bits[s], eight words of each
+// stream at a time. Count must be a multiple of eight.
+//
+// - One stream: its words are loaded as they are.
+// - Two streams (HD): sixteen words are loaded and split into even and odd words.
+// - Eight streams (2160p): 64 words are loaded into eight registers and transposed, so
+//   that each register holds eight words of one stream.
+// - Any other number: the words are collected one by one.
 //
 static void PackStreams(const uint16_t* Words, size_t Count, int Streams, uint8_t** Bits)
 {
@@ -152,7 +166,8 @@ static void PackStreams(const uint16_t* Words, size_t Count, int Streams, uint8_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BitsAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The ten bits of the 128 bits Low, High from bit First on; bits before 0 are 0.
+// Returns the 10 bits that start at bit First of the 128-bit value Low, High. Bit
+// positions below 0 read as 0.
 //
 static uint32_t BitsAt(uint64_t Low, uint64_t High, int First)
 {
@@ -166,6 +181,8 @@ static uint32_t BitsAt(uint64_t Low, uint64_t High, int First)
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_FoldClmul -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Runs steps 2 and 3 above. A run of fewer than eight blocks is folded with one register.
 //
 uint32_t DtSdiCrc_FoldClmul(const uint8_t* Bits, size_t Blocks, const uint32_t* Table)
 {
@@ -204,6 +221,8 @@ uint32_t DtSdiCrc_FoldClmul(const uint8_t* Bits, size_t Blocks, const uint32_t* 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_StreamsClmulUnchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
+// Packs every stream of the line, then folds each one.
+//
 void DtSdiCrc_StreamsClmulUnchecked(const uint16_t* Words, size_t Count, int Streams,
                                     const uint32_t* Table, uint32_t* Crcs)
 {
@@ -214,7 +233,6 @@ void DtSdiCrc_StreamsClmulUnchecked(const uint16_t* Words, size_t Count, int Str
         return;
     }
 
-    // Ten bytes for eight words; each step writes sixteen, the next overwriting the rest.
     uint8_t Bits[DT_SDICRC_MAX_STREAMS][DT_SDICRC_CLMUL_RUN_BYTES];
     uint8_t* Runs[DT_SDICRC_MAX_STREAMS];
     for (int s = 0; s < DT_SDICRC_MAX_STREAMS; s++)

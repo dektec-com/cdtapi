@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiCrcAvx2.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
-// CDTAPI - The line CRC of SMPTE ST 292 with PCLMULQDQ, its words packed with AVX2
+// CDTAPI - Computes the line CRCs of an HD-SDI line with PCLMULQDQ and AVX2
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -17,15 +17,15 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Packing +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// As the version with SSSE3 packs eight words, this packs sixteen: the pairs joined by
-// a multiply-add, the pairs of pairs by a shift, and the five bytes of each 40 bits
-// gathered by a shuffle, in each 128-bit lane, whose ten bytes are stored one after the
-// other. The folding is the same.
+// This version differs from the SSSE3 one in one step only: it packs sixteen words at a
+// time instead of eight, using 256-bit registers. The folding is shared, in
+// DtSdiCrc_FoldClmul; PCLMULQDQ works on 128 bits on this generation of processors.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackSixteen -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Packs the sixteen words of Words, ten bits each, eight to a lane, into twenty bytes at
-// Out; writes twenty-six.
+// Packs sixteen 10-bit words into twenty bytes at Out, eight words per 128-bit lane, as
+// PackEight in the SSSE3 version does. Stores 26 bytes; the six extra bytes are
+// overwritten by the next call or lie past the end of the run.
 //
 static void PackSixteen(__m256i Words, uint8_t* Out)
 {
@@ -43,12 +43,17 @@ static void PackSixteen(__m256i Words, uint8_t* Out)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackStreams -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Packs the Count words, a multiple of sixteen, of each of the one, two or eight streams
-// that alternate in Words into Bits[s], sixteen of each at a time: one stream's as they
-// lie; two streams' thirty-two at a time, parted into even and odd in each lane and the
-// halves brought together across the lanes; eight streams' 128 at a time, a lane taking
-// the words of sixteen word places further on, and transposed in each lane, so that the
-// two lanes hold sixteen words of one stream in order.
+// Separates the interleaved streams and packs each into Bits[s], sixteen words of each
+// stream at a time. Handles one, two or eight streams. Count must be a multiple of
+// sixteen.
+//
+// - One stream: its words are loaded as they are.
+// - Two streams (HD): 32 words are loaded, split into even and odd words within each
+//   lane, and the halves are then moved across the lanes so that one register holds 16
+//   words of stream 0 and another 16 words of stream 1.
+// - Eight streams (2160p): eight registers are loaded so that the low lane holds words
+//   0..7 and the high lane words 8..15 of each stream's group; transposing within each
+//   lane then gives one register per stream with its 16 words in order.
 //
 static void PackStreams(const uint16_t* Words, size_t Count, int Streams, uint8_t** Bits)
 {
@@ -63,7 +68,8 @@ static void PackStreams(const uint16_t* Words, size_t Count, int Streams, uint8_
             PackSixteen(_mm256_loadu_si256((const __m256i*)W), Bits[0] + Out);
         else if (Streams == 2)
         {
-            // Each lane: four even words, then four odd; then the even halves together.
+            // Within each lane, put the four even words before the four odd ones, then
+            // put the even halves of both lanes together.
             const __m256i A = _mm256_permute4x64_epi64(
                 _mm256_shuffle_epi8(_mm256_loadu_si256((const __m256i*)W), Part), 0xD8);
             const __m256i B = _mm256_permute4x64_epi64(
@@ -109,7 +115,8 @@ static void PackStreams(const uint16_t* Words, size_t Count, int Streams, uint8_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiCrc_StreamsAvx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Other numbers of streams go to the version with SSSE3.
+// Packs every stream of the line with AVX2, then folds each one. Lines with another
+// number of streams than one, two or eight go to the SSSE3 version.
 //
 void DtSdiCrc_StreamsAvx2Unchecked(const uint16_t* Words, size_t Count, int Streams,
                                    const uint32_t* Table, uint32_t* Crcs)
