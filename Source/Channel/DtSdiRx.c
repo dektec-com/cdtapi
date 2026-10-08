@@ -81,6 +81,8 @@ typedef struct DtSdiRx
     // ring's load when it was lent.
     bool InSync;
     int ExpectedFrameId;
+    int64_t FramePeriodNs; // The standard's frame period
+    int64_t LastArrivalNs; // When the last frame read arrived, by its header
     DtSdiView* LentView;
     DtSdiFrameRxHeader LentHeader;
     size_t LentAvailable;
@@ -255,6 +257,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     Sdi->QuarterFrameMs = FpsDen * 1000 / FpsNum / DT_SDIFRAME_FMT_EVENTS_PER_FRAME;
     if (Sdi->QuarterFrameMs < 1)
         Sdi->QuarterFrameMs = 1;
+    Sdi->FramePeriodNs = (int64_t)FpsDen * 1000000000 / FpsNum;
 
     // The friendly name is the process name and ID, cut to the longest name the driver
     // takes. A process without a name gets the library's.
@@ -721,6 +724,30 @@ static void DecodeLines(void* Context, int Index, int Count)
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteLostFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Latches the overflow flag when the frame at the head of the ring is later than the one
+// expected by as many frame periods as its arrival is later: the card drops a frame it
+// has no room for whole, before the ring looks full, and its frame ID runs on. A frame
+// that arrives at another time follows a signal that went and came back, which is not
+// an overflow.
+//
+static void NoteLostFrames(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header)
+{
+    const int64_t Period = Sdi->FramePeriodNs;
+    if (Period <= 0)
+        return;
+    const int64_t Skipped = (int64_t)((Header->FrameId - Sdi->ExpectedFrameId) & 0xFFFF);
+    const int64_t Arrival =
+        (int64_t)Header->PtpSeconds * 1000000000 + (int64_t)Header->PtpNanoseconds;
+    const int64_t Off = Arrival - Sdi->LastArrivalNs - (Skipped + 1) * Period;
+    if (Off >= -Period / 2 && Off <= Period / 2)
+    {
+        Sdi->FifoOvf = true;
+        Sdi->FifoOvfLatched = true;
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Finds the next whole frame at the head of the ring and decodes its header into
@@ -729,9 +756,13 @@ static void DecodeLines(void* Context, int Index, int Count)
 // driver failure.
 //
 // Out of sync, a header is searched for; a header that is not the one expected puts the
-// channel out of sync, and the search starts again from that header. A frame whose first
-// or last line is not where it should be lost lines when the ring was full, and holds the
-// start of a later frame: it is skipped, and the search starts again after its header.
+// channel out of sync, and the search starts again from that header. A header of the
+// frame format whose frame ID is later than the one expected, by as much as its arrival
+// is later, follows frames the card dropped, which latches the overflow flag. A frame
+// whose first or last line is not where it should be lost lines when the card's DMA
+// reached the read offset, and holds the start of a later frame, where the card
+// resumed: it is skipped, which latches the overflow flag too, and the search starts
+// again after its header.
 //
 static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* Available,
                              bool* Found)
@@ -766,7 +797,11 @@ static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* A
 
         DtRing_PeekAt(&Sdi->Ring, 0, HeaderBytes, sizeof(HeaderBytes));
         DtSdiFrame_DecodeRxHeader(HeaderBytes, Header);
-        if (DtSdiFrame_CheckRxHeader(Layout, Header, Sdi->ExpectedFrameId) == DTAPI_OK)
+        const DtapiResult Check =
+            DtSdiFrame_CheckRxHeader(Layout, Header, Sdi->ExpectedFrameId);
+        if (Check == DTAPI_E_INVALID)
+            NoteLostFrames(Sdi, Header);
+        if (Check == DTAPI_OK)
         {
             uint8_t FirstLineStart[DT_SDIFRAME_LINE_START_BYTES];
 
@@ -785,6 +820,8 @@ static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* A
                 return DTAPI_OK;
             }
 
+            Sdi->FifoOvf = true;
+            Sdi->FifoOvfLatched = true;
             Result = AdvanceReadOffset(Sdi, (size_t)Layout->AlignmentInBytes);
             if (Result != DTAPI_OK)
                 return Result;
@@ -810,6 +847,8 @@ static DtapiResult FinishFrame(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header,
     if (Available - CodedFrameSize + (size_t)Layout->RxStride < Sdi->Ring.MaxLoad)
         Sdi->FifoOvf = false;
     Sdi->ExpectedFrameId = (Header->FrameId + 1) & 0xFFFF;
+    Sdi->LastArrivalNs =
+        (int64_t)Header->PtpSeconds * 1000000000 + (int64_t)Header->PtpNanoseconds;
     if (ArrivalTime != NULL)
     {
         ArrivalTime->Seconds = Header->PtpSeconds;

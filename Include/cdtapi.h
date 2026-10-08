@@ -806,8 +806,11 @@ CDTAPI_API DtapiResult DtInpChannel_GetFifoLoad(DtInpChannel* InpChannel, int* F
 
 // Sets *Flags to the channel's current problems, and *Latched to those that occurred
 // since ClearFlags() last cleared them:
-//   DTAPI_RX_FIFO_OVF   data was lost: on SDI the card's buffer was full, on ASI packets
-//                       were lost in the card or because the FIFO was full
+//   DTAPI_RX_FIFO_OVF   data was lost: on SDI the card's buffer was full, or the card
+//                       ran into the frames still to be read and dropped data until it
+//                       could resume at a whole frame, which a frame cut short or the
+//                       next frame's ID and time of arrival show; on ASI packets were
+//                       lost in the card or because the FIFO was full
 //   DTAPI_RX_SYNC_ERR   ASI only: a packet arrived without packet sync
 CDTAPI_API DtapiResult DtInpChannel_GetFlags(DtInpChannel* InpChannel, int* Flags,
                                              int* Latched);

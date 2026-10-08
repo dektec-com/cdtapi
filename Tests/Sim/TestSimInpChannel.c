@@ -678,7 +678,7 @@ DT_TEST(ReadFrame2GivesTheArrivalTime)
     DT_ASSERT(Arrival.Seconds == 0 && Arrival.Nanoseconds == 0);
     Size = BUFFER_SIZE;
     DT_ASSERT_OK(DtInpChannel_ReadFrame2(Fix.Channel, Fix.Buffer, &Size, 2000, &Arrival));
-    DT_ASSERT(Arrival.Seconds == 1 && Arrival.Nanoseconds == 0);
+    DT_ASSERT(Arrival.Seconds == 0 && Arrival.Nanoseconds == 40000000);
     Size = BUFFER_SIZE;
     DT_ASSERT_OK(DtInpChannel_ReadFrame2(Fix.Channel, Fix.Buffer, &Size, 2000, NULL));
 
@@ -796,11 +796,17 @@ DT_TEST(FullRingSetsOverflow)
     DT_ASSERT_OK(DtInpChannel_GetMaxFifoSize(Fix.Channel, &Max));
     DT_ASSERT_EQ(Load, Max);
 
-    // Three more do not fit, and the load stays within the FIFO size.
+    // Three more do not fit: the first is cut short where the ring is full, the other
+    // two are dropped, and the load stays within the FIFO size. The ring's filling up
+    // latches the overflow; the frame cut short is skipped, and the next whole one
+    // follows.
     SimDtPcie_RunRxEvents(PORT - 1, 12);
     DT_ASSERT_OK(DtInpChannel_GetFifoLoad(Fix.Channel, &Load));
     DT_ASSERT(Load <= Max);
     DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 1, 16, DtFailures));
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 2, 16, DtFailures));
+    SimDtPcie_RunRxEvents(PORT - 1, 4);
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 6, 16, DtFailures));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT_EQ(Latched, DTAPI_RX_FIFO_OVF);
 

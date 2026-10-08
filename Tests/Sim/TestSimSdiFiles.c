@@ -1311,10 +1311,62 @@ DT_TEST(AcquireNeedsTenBits)
     remove(SOURCE_FILE);
 }
 
+// A frame held too long loses those after it, as on the card, whose frame ID runs on
+// for the frames it drops: the next frame's ID, later than expected by as much as its
+// arrival, latches DTAPI_RX_FIFO_OVF. Frames that follow on time leave it clear.
+DT_TEST(LostFramesLatchTheOverflow)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    DT_ASSERT(WriteFrames(SOURCE_FILE, DTAPI_VIDSTD_625I50, 100, 1, 0));
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("625I50", SOURCE_FILE)));
+    SimDtPcie_SetRxRealTime(true);
+    DtSdiView* View = DtSdiView_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(View != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, DTAPI_VIDSTD_625I50));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    int Flags = 0;
+    int Latched = 0;
+    for (int i = 0; i < 5; i++)
+    {
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 2000, NULL));
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+    }
+    DT_ASSERT_OK(DtInpChannel_ClearFlags(Fix.In, DTAPI_RX_FIFO_OVF));
+    for (int i = 0; i < 5; i++)
+    {
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 2000, NULL));
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+    }
+    DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.In, &Flags, &Latched));
+    DT_ASSERT_EQ(Latched & DTAPI_RX_FIFO_OVF, 0);
+
+    DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 2000, NULL));
+    OsTime_SleepMs(400); // Ten frame periods
+    DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+    for (int i = 0; i < 4; i++)
+    {
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 2000, NULL));
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+    }
+    DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.In, &Flags, &Latched));
+    DT_ASSERT((Latched & DTAPI_RX_FIFO_OVF) != 0);
+    SimDtPcie_SetRxRealTime(false);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+}
+
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
              DT_RUN(FourKThroughFiles), DT_RUN(FourKOverThreads),
              DT_RUN(FourKThroughDispatch), DT_RUN(TwoChannelsShareAPoolOfEight),
              DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(AcquireLendsTheFrames),
-             DT_RUN(AcquireNeedsTenBits), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
+             DT_RUN(LeavesAFileForTheExamples))

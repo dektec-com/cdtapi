@@ -399,7 +399,8 @@ static bool RingWrite(SimRxChannel* Channel, const uint8_t* Data, size_t Size)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Begins the next frame: its number, whether the source matches the configuration, and
-// its header.
+// its header, which gives the frame's number times the frame period as its time of
+// arrival.
 //
 static void StartFrame(SimRxChannel* Channel)
 {
@@ -440,8 +441,15 @@ static void StartFrame(SimRxChannel* Channel)
         Fields.ProtocolVersion = 0;
         Fields.Format = Layout->Format;
         Fields.FrameId = (int)(Channel->FrameNumber & 0xFFFF);
-        Fields.PtpSeconds = Channel->FrameNumber;
-        Fields.PtpNanoseconds = 0;
+        int FpsNum = 0;
+        int FpsDen = 0;
+        DtVidStd_FrameRate(Layout->VidStd, &FpsNum, &FpsDen);
+        const uint64_t Periods = (uint64_t)Channel->FrameNumber * (uint64_t)FpsDen;
+        Fields.PtpSeconds = FpsNum > 0 ? (uint32_t)(Periods / (uint64_t)FpsNum) : 0;
+        Fields.PtpNanoseconds =
+            FpsNum > 0
+                ? (uint32_t)(Periods % (uint64_t)FpsNum * 1000000000u / (uint64_t)FpsNum)
+                : 0;
         if (Channel->Faults[SIM_RX_FAULT_SYNC_WORD])
             Fields.SyncWord ^= 0x100;
         if (Channel->Faults[SIM_RX_FAULT_FORMAT])
@@ -745,7 +753,8 @@ static double EventPeriodMs(const SimRxChannel* Channel)
 //
 // On the clock, the format events whose time has come, as a card's receiver writes its
 // frames whether or not anyone waits: a program that only looks at the write offset sees
-// the frames arrive.
+// the frames arrive. The frames whose time passed beyond SIM_RX_MAX_DUE_EVENTS are lost,
+// and their numbers used up, as a card's frame ID counts every frame.
 //
 static void WriteDueEvents(SimRxChannel* Channel)
 {
@@ -762,7 +771,12 @@ static void WriteDueEvents(SimRxChannel* Channel)
             (Channel->NextEventMs > 0 ? Channel->NextEventMs : NowMs) + PeriodMs;
     }
     if (Channel->NextEventMs <= NowMs)
+    {
+        const double Behind = NowMs - Channel->NextEventMs;
+        Channel->NextFrame +=
+            (uint32_t)(Behind / (DT_SDIFRAME_FMT_EVENTS_PER_FRAME * PeriodMs));
         Channel->NextEventMs = NowMs + PeriodMs;
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DispatchCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
