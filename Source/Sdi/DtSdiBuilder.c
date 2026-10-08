@@ -101,8 +101,9 @@ typedef struct BuildJob
     const DtSdiImage* Image;
     const DtSdiAncData* Anc;
     uint32_t Vpid;
-    int Unit; // Lines that a band boundary does not split: 2 where every other line
-              // starts half-way through a byte
+    bool PayloadId; // The builder writes the payload ID: the program's packets hold none
+    int Unit;       // Lines that a band boundary does not split: 2 where every other
+                    // line starts half-way through a byte
 } BuildJob;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -152,13 +153,26 @@ static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Checks the program's packets and that each section has room for them, counting in
-// Builder->Used the words each section's packets take.
+// Builder->Used the words each section's packets take. Packets with the DID of audio
+// are the program's to send only when the builder embeds no audio of its own, Audio
+// being NULL. *PayloadId is set to whether the builder writes the payload ID: not when
+// the program's packets hold one.
 //
 static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
-                                const DtSdiAncData* Anc)
+                                const DtSdiAncData* Anc, bool HasAudio, bool* PayloadId)
 {
     if (Anc->NumPackets < 0 || (Anc->NumPackets > 0 && Anc->Packets == NULL))
         return DTAPI_E_INVALID_ARG;
+
+    *PayloadId = true;
+    for (int p = 0; p < Anc->NumPackets; p++)
+    {
+        if (Anc->Packets[p].Did == DT_SDIANC_DID_PAYLOAD_ID &&
+            Anc->Packets[p].SdidOrDbn == DT_SDIANC_SDID_PAYLOAD_ID)
+        {
+            *PayloadId = false;
+        }
+    }
 
     const int NumLines = Geo->Layout.NumLines;
     memset(Builder->Used, 0, (size_t)NumLines * 2 * 8 * sizeof(Builder->Used[0]));
@@ -175,12 +189,8 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         {
             return DTAPI_E_INVALID_ARG;
         }
-        const uint8_t Did = (uint8_t)P->Did;
-        if (DtSdiAnc_IsAudio(Did) || (Did == DT_SDIANC_DID_PAYLOAD_ID &&
-                                      P->SdidOrDbn == DT_SDIANC_SDID_PAYLOAD_ID))
-        {
+        if (HasAudio && DtSdiAnc_IsAudio((uint8_t)P->Did))
             return DTAPI_E_INVALID_ARG;
-        }
         if (P->Line < 1 || P->Line > NumLines ||
             (!P->InHanc && !DtSdiGeometry_IsVanc(Geo, P->Line - 1)))
         {
@@ -190,7 +200,7 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         const int Stream = StreamOf(Geo, P);
         int* Used = &Builder->Used[Section(P->Line - 1, P->InHanc, Stream)];
         int Room = P->InHanc ? HancRoom : Geo->StreamActiveWords;
-        if (P->InHanc && HasPayloadId(Geo, P->Line - 1, Stream))
+        if (P->InHanc && *PayloadId && HasPayloadId(Geo, P->Line - 1, Stream))
             Room -= DT_SDIBUILDER_PAYLOAD_ID_WORDS;
         if (P->InHanc)
             Room -= DtSdiEmbed_HancWords(&Builder->Embed, Geo, P->Line - 1, Stream);
@@ -260,14 +270,17 @@ static void PutBlack(const DtSdiGeometry* Geo, uint16_t* Line)
 // Makes raw line LineIndex in Band->Line. Its horizontal blanking is made stream by
 // stream in Band->Words and then woven into the line; so is its active part on a
 // line of the vertical blanking, with the program's packets. The active part of a line
-// of the image is the image: Image holds it when HasImage is true, read straight into
-// the line in SD, HD and 3G, where the image's order of samples is the line's, and into
-// Band->Image in 2160p; without, it is black.
+// of the image is the job's image, read straight into the line in SD, HD and 3G, where
+// the image's order of samples is the line's, and into Band->Image in 2160p; without
+// an image, it is black.
 //
-static void MakeLine(const DtSdiBuilder* Builder, DtSdiBuilderBand* Band,
-                     const DtSdiGeometry* Geo, const DtSdiImage* Image,
-                     const DtSdiAncData* Anc, uint32_t Vpid, int LineIndex)
+static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
 {
+    const DtSdiBuilder* Builder = Job->Builder;
+    const DtSdiGeometry* Geo = &Job->Frame->Geo;
+    const DtSdiImage* Image = Job->Image;
+    const DtSdiAncData* Anc = Job->Anc;
+    const uint32_t Vpid = Job->Vpid;
     const int Line = LineIndex + 1;
     const int Streams = Geo->NumStreams;
     const int Hanc = Geo->StreamHancWords;
@@ -311,10 +324,10 @@ static void MakeLine(const DtSdiBuilder* Builder, DtSdiBuilderBand* Band,
         W[Hanc - 2] = 0x000;
         W[Hanc - 1] = (uint16_t)Sav;
 
-        // The horizontal blanking: the payload ID first, then the audio, then the
-        // program's packets.
+        // The horizontal blanking: the payload ID first, unless the program sends its
+        // own, then the audio, then the program's packets.
         int Pos = Geo->StreamEavWords;
-        if (HasPayloadId(Geo, LineIndex, s))
+        if (Job->PayloadId && HasPayloadId(Geo, LineIndex, s))
         {
             const uint16_t Bytes[4] = {DtSdiAnc_WithParity8(Vpid & 0xFF),
                                        DtSdiAnc_WithParity8(Vpid >> 8 & 0xFF),
@@ -414,7 +427,7 @@ static void BuildBand(void* Context, int PieceIndex, int NumPieces)
     if (First > 0 && Builder->Checksums && Geo->NumStreams > 1)
     {
         DtSdiEmbed_CursorAt(&Builder->Embed, First - 1, &Band->Cursor);
-        MakeLine(Builder, Band, Geo, Job->Image, Job->Anc, Job->Vpid, First - 1);
+        MakeLine(Job, Band, First - 1);
     }
     DtSdiEmbed_CursorAt(&Builder->Embed, First, &Band->Cursor);
 
@@ -426,7 +439,7 @@ static void BuildBand(void* Context, int PieceIndex, int NumPieces)
                            Builder->Conv);
     for (int LineIndex = First; LineIndex < End; LineIndex++)
     {
-        MakeLine(Builder, Band, Geo, Job->Image, Job->Anc, Job->Vpid, LineIndex);
+        MakeLine(Job, Band, LineIndex);
         DtSdiSymbolWriter_Put(&Writer, Band->Line, LineSymbols);
     }
     if (End == NumLines)
@@ -512,8 +525,9 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         DtSdiEmbed_Init(&Builder->Embed, Geo);
         Result = DtSdiEmbed_Begin(&Builder->Embed, Audio);
     }
+    bool PayloadId = true;
     if (Result == DTAPI_OK && Anc != NULL)
-        Result = CheckPackets(Builder, Geo, Anc);
+        Result = CheckPackets(Builder, Geo, Anc, Audio != NULL, &PayloadId);
     if (Result == DTAPI_OK && !ConfigureBands(Builder, Geo))
         Result = DTAPI_E_OUT_OF_MEM;
     if (Result != DTAPI_OK)
@@ -532,7 +546,8 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     int Unit = 1;
     while ((LineBits * (size_t)Unit) % 8 != 0)
         Unit++;
-    BuildJob Job = {Builder, Frame, Image, Anc, DtSmpte352_Make(Geo->VidStd), Unit};
+    const uint32_t Vpid = DtSmpte352_Make(Geo->VidStd);
+    BuildJob Job = {Builder, Frame, Image, Anc, Vpid, PayloadId, Unit};
     DtJobRunner_Run(&Builder->Runner, BuildBand, &Job);
     DtSdiEmbed_End(&Builder->Embed);
     return DTAPI_OK;

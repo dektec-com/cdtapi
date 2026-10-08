@@ -514,13 +514,20 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 // packets and the audio. The builder keeps audio off the line after the switching
 // point; the program's packets may go on any line.
 //
+// A program may make the payload ID and the audio packets itself, for instance to send
+// on the packets the parser listed with a filter of every DID. A payload ID among the
+// program's packets takes the place of the builder's, which then writes none. Packets
+// with the DID of audio the builder takes only when Audio is NULL: the program then
+// embeds the audio itself, with the BCH codes of HD and up and the switching point its
+// concern, and the builder only checks that the packets fit.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_STATE           Frame describes no frame, or a frame of an input channel,
 //                           which is read-only
 //   DTAPI_E_INVALID_FORMAT  as for DtSdiParser_Parse()
 //   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(); or Audio->FrameNumber is not a
 //                           place in the cadence of the frame's rate; or a packet has
-//                           the DID of audio or of a payload ID
+//                           the DID of audio while Audio is not NULL
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes;
 //                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking it names

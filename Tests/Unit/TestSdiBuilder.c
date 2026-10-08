@@ -845,10 +845,6 @@ DT_TEST(Refusals)
         {{12, false, false, 0, 0x60, 0x60, 256, g_PacketWords[0], false},
          DTAPI_E_INVALID_ARG},
         {{12, false, false, 0, 0x60, 0x60, 3, NULL, false}, DTAPI_E_INVALID_ARG},
-        {{12, true, false, 0, 0xE7, 0x00, 24, g_PacketWords[0], false},
-         DTAPI_E_INVALID_ARG},
-        {{12, true, false, 0, 0x41, 0x01, 4, g_PacketWords[0], false},
-         DTAPI_E_INVALID_ARG},
     };
     for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]); c++)
     {
@@ -870,6 +866,20 @@ DT_TEST(Refusals)
     Full.NumPackets = 2;
     for (size_t b = 0; b < Size; b++)
         DT_ASSERT_EQ(Frame[b], 0xA5);
+
+    // A packet with the DID of audio while the builder embeds audio of its own.
+    int32_t Own[1920] = {0};
+    DtSdiAudio Embedded;
+    memset(&Embedded, 0, sizeof(Embedded));
+    Embedded.Formats[0] = DT_SDI_AUDIO_PCM;
+    Embedded.Channels[0].Samples = Own;
+    Embedded.Channels[0].Stride = 1;
+    Embedded.Channels[0].NumSamples = 1920;
+    DtSdiAncPacket AudioPacket = {12,   true, false, 0, 0xE7, 0x00, 24, g_PacketWords[0],
+                                  false};
+    DtSdiAncData WithAudio = {&AudioPacket, 0, 1, NULL, 0, 0, 0};
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
+                 DTAPI_E_INVALID_ARG);
 
     // Audio that a frame of 1080i50, 1920 samples a channel, cannot take.
     static int32_t Samples[2048];
@@ -1592,6 +1602,136 @@ DT_TEST(WorkerPool)
     DtWorkerPool_Free(Pool);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The program's own packets +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+#define OWN_MAX_PACKETS 8192
+#define OWN_MAX_WORDS (OWN_MAX_PACKETS * 64)
+
+// The buffers of OwnAudioAndPayloadId.
+typedef struct OwnBufs
+{
+    int32_t Pcm[6][AUDIO_MAX];
+    DtSdiAncPacket Packets[OWN_MAX_PACKETS];
+    uint16_t Words[OWN_MAX_WORDS];
+} OwnBufs;
+
+// A frame's packets, every DID, as the parser lists them, built again by a builder that
+// embeds no audio of its own, give the frame back word for word: the payload ID and the
+// audio are then the program's, and the builder writes neither of its own. A payload ID
+// of the program's own takes the place of the builder's. In SD, HD, 3G and 2160p.
+DT_TEST(OwnAudioAndPayloadId)
+{
+    static const char* Names[] = {"625I50", "1080I50", "1080P50", "2160P50"};
+    FillPacketWords();
+    OwnBufs* B = (OwnBufs*)malloc(sizeof(OwnBufs));
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(B != NULL && Parser != NULL && View != NULL);
+    const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_BOTH, 0, 0};
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
+
+    for (size_t i = 0; i < sizeof(Names) / sizeof(Names[0]); i++)
+    {
+        const SdiFormat* F = NULL;
+        for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+            if (strcmp(g_SdiFormats[j].Name, Names[i]) == 0)
+                F = &g_SdiFormats[j];
+        DT_ASSERT(F != NULL);
+        size_t Size = 0;
+        DT_ASSERT_OK(DtSdiView_RawFrameSize(F->VidStd, 10, &Size));
+        uint8_t* First = (uint8_t*)malloc(Size);
+        uint8_t* Again = (uint8_t*)malloc(Size);
+        TestImage T;
+        memset(&T, 0, sizeof(T));
+        DT_ASSERT(First != NULL && Again != NULL && TestImage_Alloc(&T, F, FullPattern));
+
+        // The first frame: the builder's audio and payload ID, and two packets of the
+        // program's.
+        DtSdiAudio Audio;
+        memset(&Audio, 0, sizeof(Audio));
+        for (int c = 0; c < 6; c++)
+        {
+            Audio.Formats[c / 2] = DT_SDI_AUDIO_PCM;
+            for (int s = 0; s < AUDIO_MAX; s++)
+                B->Pcm[c][s] = (int32_t)(Value24(c, s) << 8);
+            Audio.Channels[c].Samples = B->Pcm[c];
+            Audio.Channels[c].NumSamples = AUDIO_MAX;
+        }
+        DtSdiAncPacket Program[2] = {
+            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false},
+            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false}};
+        DtSdiAncData Anc = {Program, 0, 2, NULL, 0, 0, 0};
+        DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+        DT_ASSERT(Builder != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, First, Size, F->VidStd, 10));
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, &T.Image, &Audio, &Anc));
+        DtSdiBuilder_Free(Builder);
+
+        // Every packet of it, built again without audio of the builder's own.
+        DtSdiAncData List;
+        memset(&List, 0, sizeof(List));
+        List.Packets = B->Packets;
+        List.MaxPackets = OWN_MAX_PACKETS;
+        List.Words = B->Words;
+        List.MaxWords = OWN_MAX_WORDS;
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, NULL, &List));
+        int PayloadIds = 0;
+        int AudioPackets = 0;
+        for (int p = 0; p < List.NumPackets; p++)
+        {
+            PayloadIds += B->Packets[p].Did == 0x41 && B->Packets[p].SdidOrDbn == 0x01;
+            AudioPackets += B->Packets[p].Did >= 0xE0 && B->Packets[p].Did <= 0xFF;
+        }
+        DT_ASSERT(PayloadIds > 0 && AudioPackets > 0);
+        Builder = DtSdiBuilder_Alloc();
+        DT_ASSERT(Builder != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Again, Size, F->VidStd, 10));
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, &T.Image, NULL, &List));
+        if (memcmp(First, Again, Size) != 0)
+        {
+            size_t b = 0;
+            while (First[b] == Again[b])
+                b++;
+            DT_FAIL("%s: the frame built again differs from byte %zu on", F->Name, b);
+        }
+
+        // A payload ID of the program's own in the place of the builder's.
+        for (int p = 0; p < List.NumPackets; p++)
+        {
+            const DtSdiAncPacket* P = &B->Packets[p];
+            if (P->Did == 0x41 && P->SdidOrDbn == 0x01)
+            {
+                const ptrdiff_t At = P->Words - B->Words;
+                for (int w = 0; w < 4; w++)
+                    B->Words[At + w] = 0x2AA;
+            }
+        }
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, &T.Image, NULL, &List));
+        uint32_t PayloadId = 0;
+        DT_ASSERT_OK(DtSdiView_GetPayloadId(View, &PayloadId));
+        DT_ASSERT_EQ(PayloadId, 0xAAAAAAAAu);
+        DtSdiAncData Rebuilt;
+        memset(&Rebuilt, 0, sizeof(Rebuilt));
+        Rebuilt.Packets = B->Packets;
+        Rebuilt.MaxPackets = OWN_MAX_PACKETS;
+        Rebuilt.Words = B->Words;
+        Rebuilt.MaxWords = OWN_MAX_WORDS;
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, NULL, &Rebuilt));
+        int Again41 = 0;
+        for (int p = 0; p < Rebuilt.NumPackets; p++)
+            Again41 += B->Packets[p].Did == 0x41 && B->Packets[p].SdidOrDbn == 0x01;
+        DT_ASSERT_EQ(Again41, PayloadIds);
+
+        DtSdiBuilder_Free(Builder);
+        TestImage_Free(&T);
+        free(Again);
+        free(First);
+    }
+    DtSdiView_Free(View);
+    DtSdiParser_Free(Parser);
+    free(B);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames of the sdi muxer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Builds each frame of <Name>.yuv and compares it with the muxer's in <Name>.raw, symbol
@@ -1713,4 +1853,5 @@ DT_TEST(FramesOfTheSdiMuxer)
 DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
              DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(Aes3RoundTrip),
-             DT_RUN(WorkerPool), DT_RUN(FramesOfTheSdiMuxer))
+             DT_RUN(WorkerPool), DT_RUN(OwnAudioAndPayloadId),
+             DT_RUN(FramesOfTheSdiMuxer))
