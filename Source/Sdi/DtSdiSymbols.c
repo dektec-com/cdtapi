@@ -6,6 +6,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
+// Standard includes
+#include <string.h>
+
 // CDTAPI includes
 #include "DtSdiSymbols.h" // Interface being implemented.
 
@@ -65,11 +68,22 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
 {
     if (Writer->BitsPerSymbol == 16)
     {
-        for (size_t i = 0; i < Count; i++)
+        // Writes each symbol as two bytes, least significant first. On a little-endian
+        // processor that is how the symbols lie in memory already, so they are copied as
+        // they are.
+        const uint16_t One = 1;
+        uint8_t* Next = Writer->Next;
+        if (*(const uint8_t*)&One == 1)
+            memcpy(Next, Symbols, 2 * Count);
+        else
         {
-            *Writer->Next++ = (uint8_t)Symbols[i];
-            *Writer->Next++ = (uint8_t)(Symbols[i] >> 8);
+            for (size_t i = 0; i < Count; i++)
+            {
+                Next[2 * i] = (uint8_t)Symbols[i];
+                Next[2 * i + 1] = (uint8_t)(Symbols[i] >> 8);
+            }
         }
+        Writer->Next = Next + 2 * Count;
         return;
     }
 
