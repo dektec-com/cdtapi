@@ -19,136 +19,151 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Embedding audio +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// The builder embeds audio as DTAPI's matrix does, so that a receiver sees the same
-// packets from either. SMPTE ST 299-1 (HD and up) puts a data packet of one sample of a
-// group of four channels in the C stream, the groups taking turns, and a control packet
-// per group in the Y stream, two lines after each switching line; in 2160p they go on
-// link 1. SMPTE ST 272 (SD) puts up to four samples of a group in a packet, without
-// control packets. No line after a switching line carries audio.
+// The builder embeds audio in the same packets as the DekTec matrix API, so a receiver
+// sees the same packets from either.
 //
-// A sample goes on the first line after the one its moment falls in, as a clock running
-// at the line's sample rate and stepping 48 kHz on tells, no more than a frame's share
-// per line; the clock and the rounding are the matrix's, so that the clock phase words
-// are its too. A frame of a 1001 rate takes its number of samples from the cadence.
+// In HD and up, SMPTE ST 299-1 applies. Each data packet carries one sample of a group
+// of four channels and goes in the C stream. The groups take turns. Each group also has
+// a control packet in the Y stream, two lines after each switching line. In 2160p these
+// packets go on link 1. In SD, SMPTE ST 272 applies. A data packet carries up to four
+// samples of a group, and there are no control packets. In both, the line after a
+// switching line carries no audio.
 //
-// The work goes in steps, so that a refusal changes nothing: DtSdiEmbed_Begin checks
-// the program's audio and plans the frame; once every check has passed,
-// DtSdiEmbed_Start takes up the state that runs on from frame to frame,
-// DtSdiEmbed_Put writes each line's packets, and DtSdiEmbed_End moves the state and the
-// cadence on. DtSdiEmbed_Put writes through a cursor, which DtSdiEmbed_CursorAt sets
-// for any line from the plan, so that bands of lines can be made at the same time.
+// A clock decides which line each sample goes on. The clock ticks at the line's sample
+// rate and steps on by one 48 kHz sample at a time. A sample goes on the first line
+// after the line its moment falls in. A line carries no more than its share of the
+// frame's samples. The clock and its rounding are chosen so that the clock phase words
+// come out the same as well. At a 1001 frame rate, the number of samples in a frame
+// comes from the cadence.
+//
+// The work goes in steps, so that a refused frame changes nothing:
+// 1. DtSdiEmbed_Begin checks the program's audio and plans the frame.
+// 2. Once every check of the frame has passed, DtSdiEmbed_Start takes up the state that
+//    carries on from frame to frame.
+// 3. DtSdiEmbed_Put writes the packets of each line.
+// 4. DtSdiEmbed_End moves the state and the cadence on.
+//
+// DtSdiEmbed_Put writes through a cursor. DtSdiEmbed_CursorAt sets a cursor for any
+// line from the plan, so bands of lines can be built at the same time.
 //
 
 // The longest audio cadence: five frames at 29.97 and 59.94 Hz.
 #define DT_SDIEMBED_MAX_CADENCE 5
 
-// The most lines of a frame, and the most samples of a channel a frame takes.
+// The most lines a frame has, and the most samples per channel a frame carries.
 #define DT_SDIEMBED_MAX_LINES 1125
 #define DT_SDIEMBED_MAX_SAMPLES 2048
 
 // What a channel carries in the frame being built.
 typedef enum DtSdiEmbedSource
 {
-    DT_SDIEMBED_NONE, // Nothing: its group carries no audio
+    DT_SDIEMBED_NONE, // Nothing, because its group carries no audio
     DT_SDIEMBED_PCM,  // The program's PCM samples
     DT_SDIEMBED_AES3, // The program's AES3 subframes
-    DT_SDIEMBED_MUTE, // Silence marked not valid, for a channel its group lacks
+    DT_SDIEMBED_MUTE, // Silence marked not valid, for a channel the program does not send
+                      // in a group that carries audio
 } DtSdiEmbedSource;
 
 // The audio state of a builder.
 typedef struct DtSdiEmbed
 {
-    // Of the standard of the frame being built.
-    int VidStd;          // The DTAPI_VIDSTD_ code
-    bool Sd;             // SMPTE ST 272 rather than ST 299-1
-    int NumLines;        // Lines of a frame, of one link in 2160p
-    int TicksPerLine;    // The clock's ticks per line
-    double Increment;    // The clock's ticks per audio sample
-    double PhaseAtStart; // The clock at the cadence's first sample
-    int CadenceLength;   // Frames in the cadence, 1 at most rates
-    int SamplesInFrame[DT_SDIEMBED_MAX_CADENCE]; // Per place in the cadence
-    int MaxPerLine[DT_SDIEMBED_MAX_CADENCE];     // Per place: the most a line takes
-    DtFrameProps Props;                          // The fields and their switching lines
-    uint8_t Status[2][24]; // Channel status: of PCM, of a mute channel
+    // Set by DtSdiEmbed_Init for the standard of the frame being built.
+    int VidStd;          // The standard, as a DTAPI_VIDSTD_ code
+    bool Sd;             // True for SD, which uses SMPTE ST 272 rather than ST 299-1
+    int NumLines;        // The lines of a frame; in 2160p, those of one link
+    int TicksPerLine;    // The clock ticks in one line
+    double Increment;    // The clock ticks from one audio sample to the next
+    double PhaseAtStart; // The clock's value at the cadence's first sample
+    int CadenceLength;   // The number of frames in the cadence; 1 at most rates
+    // Per place in the cadence: the samples per channel of that frame.
+    int SamplesInFrame[DT_SDIEMBED_MAX_CADENCE];
+    // Per place in the cadence: the most samples one line carries.
+    int MaxPerLine[DT_SDIEMBED_MAX_CADENCE];
+    DtFrameProps Props;    // The fields and their switching lines
+    uint8_t Status[2][24]; // Channel status blocks: [0] for PCM, [1] for mute
 
-    // What runs on from frame to frame, of the standard of StateVidStd: at the start of
-    // the frame being built.
-    int StateVidStd;                          // 0 before the first frame with audio
-    int NextFrameNumber;                      // The cadence's next place, from 1
-    uint8_t Dbn[4];                           // Per group: the next data block number
-    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: its place in the AES3 block
+    // The state that carries on from frame to frame. It belongs to standard StateVidStd
+    // and holds the values at the start of the frame being built.
+    int StateVidStd;     // This state's standard; 0 before the first frame is built
+    int NextFrameNumber; // The cadence's next place, counted from 1
+    uint8_t Dbn[4];      // Per group: the next data block number
+    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: its place in its AES3 block
 
-    // Of the frame being built.
-    int FrameNumber;    // Its place in the cadence, from 1
-    int NumSamples;     // Samples per channel it takes
-    bool HasAudio;      // Any group carries audio
-    bool Group[4];      // The group carries audio
-    unsigned Active[4]; // Per group, a bit per channel the program sends
-    DtSdiEmbedSource Source[DT_SDI_AUDIO_MAX_CHANNELS];
-    const uint8_t* Samples[DT_SDI_AUDIO_MAX_CHANNELS]; // The program's samples
-    size_t Stride[DT_SDI_AUDIO_MAX_CHANNELS];          // In bytes
-    uint8_t Count[DT_SDIEMBED_MAX_LINES];    // Per line: samples per group it carries
-    uint16_t Clock[DT_SDIEMBED_MAX_SAMPLES]; // Per sample: its clock phase, bit 13 MPF
+    // Set by DtSdiEmbed_Begin for the frame being built.
+    int FrameNumber;    // The frame's place in the cadence, counted from 1
+    int NumSamples;     // The samples per channel the frame carries
+    bool HasAudio;      // True when any group carries audio
+    bool Group[4];      // Per group: true when the group carries audio
+    unsigned Active[4]; // Per group: a bit for each channel the program sends
+    DtSdiEmbedSource Source[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: what it carries
+    const uint8_t* Samples[DT_SDI_AUDIO_MAX_CHANNELS];  // Per channel: its samples
+    size_t Stride[DT_SDI_AUDIO_MAX_CHANNELS];           // Per channel: sample step, bytes
+    uint8_t Count[DT_SDIEMBED_MAX_LINES];    // Per line: the samples each group carries
+    uint16_t Clock[DT_SDIEMBED_MAX_SAMPLES]; // Per sample: clock word, MPF in bit 13
 
-    // Per line: the samples a group carries in the lines before it, and in SD its
-    // packets of up to four.
+    // Per line: the samples a group carries on the lines before it.
     int SamplesBefore[DT_SDIEMBED_MAX_LINES + 1];
+    // Per line, used in SD: the packets of up to four samples a group carries on the
+    // lines before it.
     int PacketsBefore[DT_SDIEMBED_MAX_LINES + 1];
 } DtSdiEmbed;
 
-// Where writing the audio of a frame stands at a line: the next sample, each group's
-// next data block number and each channel's place in its AES3 block.
+// The position reached in writing a frame's audio, at the start of a line.
 typedef struct DtSdiEmbedCursor
 {
-    int Next;
-    uint8_t Dbn[4];
-    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS];
+    int Next;                                 // The index of the next sample
+    uint8_t Dbn[4];                           // Per group: the next data block number
+    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: its place in its AES3 block
 } DtSdiEmbedCursor;
 
-// Prepares Embed for the frames of Geo, before DtSdiEmbed_Begin: the clock and the
-// cadence of the standard. The state that runs on from frame to frame starts afresh when
-// the first frame of another standard is built.
+// Prepares Embed for the frames of Geo's standard. Works out the clock and the cadence
+// of the standard. Call it before DtSdiEmbed_Begin. The state that carries on from frame
+// to frame starts afresh when the first frame of another standard is built.
 void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo);
 
-// Returns in *NumSamples the samples per channel the next frame takes at place
-// FrameNumber in the cadence, or at the cadence's own next place for 0. Embed must have
-// had DtSdiEmbed_Init.
+// Gets the number of samples per channel that a frame takes at place FrameNumber in the
+// cadence, in *NumSamples. FrameNumber 0 stands for the cadence's next place. Embed must
+// have had DtSdiEmbed_Init.
 //
-// Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a FrameNumber that is no place.
+// Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a FrameNumber that is not a place in the
+// cadence.
 DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
                                   int* NumSamples);
 
 // Checks the program's audio for the next frame and plans where its samples go. Audio
-// may be NULL, for a frame without audio. Sets Audio->NumSamplesUsed to the samples per
-// channel the frame takes, or 0 when the program sends no channel.
+// may be NULL for a frame without audio. Sets Audio->NumSamplesUsed to the samples per
+// channel the frame takes, or to 0 when the program sends no channel.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_INVALID_FORMAT  a pair's format is not one of the enum
-//   DTAPI_E_INVALID_ARG     a negative stride, or a FrameNumber that is no place
+//   DTAPI_E_INVALID_ARG     a negative stride, or a FrameNumber that is not a place in
+//                           the cadence
 //   DTAPI_E_BUF_TOO_SMALL   a channel offers fewer samples than the frame takes
 DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio);
 
-// Sets *Cursor to where writing the planned frame stands at the start of line
-// LineIndex; the frame's number of lines gives its end.
+// Sets *Cursor to the position that writing the planned frame has reached at the start
+// of line LineIndex. A LineIndex equal to the frame's number of lines gives the end of
+// the frame.
 void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex,
                          DtSdiEmbedCursor* Cursor);
 
-// Returns the words the audio packets take in the horizontal blanking of stream Stream
-// of line LineIndex.
+// Returns the number of words the audio packets take in the horizontal blanking of
+// stream Stream on line LineIndex.
 int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int LineIndex,
                          int Stream);
 
-// Writes the audio packets of stream Stream of line LineIndex into Words from Pos on,
-// with their checksums worked out when Checksum is true, from *Cursor on, which it
-// moves on. The streams of a line go in order, and so do the lines one cursor writes.
-// Returns the index of the word after them.
+// Writes the audio packets of stream Stream on line LineIndex into Words, starting at
+// index Pos. Takes the samples from *Cursor on, and moves *Cursor past them. Works out
+// the packets' checksums when Checksum is true. Call it for the streams of a line in
+// order, and for the lines that one cursor writes in order. Returns the index of the word
+// after the last packet.
 int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIndex,
                    int Stream, uint16_t* Words, int Pos, bool Checksum);
 
-// Starts writing the frame planned: the data block numbers and the places in the AES3
-// blocks start afresh when the frame's standard is not that of the frame before.
+// Starts writing the planned frame. When the frame's standard differs from that of the
+// frame before, the data block numbers and the places in the AES3 blocks start afresh.
 void DtSdiEmbed_Start(DtSdiEmbed* Embed);
 
-// Ends a frame that was built: the data block numbers and AES3 blocks move on to where
-// the frame ends, and the cadence to its next place.
+// Ends a frame that was built. Moves the data block numbers and the places in the AES3
+// blocks on to where the frame ends, and moves the cadence on to its next place.
 void DtSdiEmbed_End(DtSdiEmbed* Embed);

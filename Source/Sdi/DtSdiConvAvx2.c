@@ -4,11 +4,13 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Built only for x86 processors, with AVX2 enabled for this file alone: the library takes
-// these conversions only after CPUID reports AVX2 and the operating system saves its
-// registers. Unpacking, packing and limiting take sixteen symbols a step, two blocks of
-// eight as the SSSE3 version takes them, one in each half of the register; the pixel
-// formats and the links of 2160p are the SSSE3 version's.
+// This file is built only for x86 processors, with AVX2 enabled for this file alone. The
+// library uses these conversions only after CPUID reports AVX2 and the operating system
+// saves its registers.
+//
+// Unpacking, packing and limiting take sixteen symbols in each step. Each half of the
+// register holds a block of eight, handled as the SSSE3 version handles it. The pixel
+// formats and the links of 2160p use the SSSE3 version.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,8 +27,9 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unpack10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sixteen symbols from twenty bytes a step: ten bytes in each half. A step reads
-// twenty-six bytes, so the last block is left to the SSSE3 version.
+// Unpacks sixteen symbols from twenty bytes in each step, ten bytes in each half. A step
+// reads twenty-six bytes, so a step runs only while 24 symbols or more remain. The SSSE3
+// version converts the rest.
 //
 static void Unpack10(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 {
@@ -51,8 +54,10 @@ static void Unpack10(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Twenty bytes from sixteen symbols a step, each half's ten stored after the other's;
-// the six bytes each store writes past its ten the next store overwrites.
+// Packs sixteen symbols into twenty bytes in each step. Each half of the register holds
+// ten of the bytes, and the second half is stored right after the first. Each store
+// writes six bytes past its ten, and the next store overwrites them. A step runs only
+// while 24 symbols or more remain, and the SSSE3 version converts the rest.
 //
 static void Pack10(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
@@ -94,7 +99,8 @@ static void Limit(uint16_t* Symbols, size_t Count)
     DtSdiConv_Ssse3Unchecked()->Limit(Symbols + i, Count - i);
 }
 
-// The pixel formats, as the SSSE3 version converts them.
+// The conversions below hand the pixel formats and the links of 2160p to the SSSE3
+// version.
 
 static void ToPlanar10(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_t* Cb,
                        uint8_t* Cr)

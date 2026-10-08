@@ -4,12 +4,12 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The parser reads a frame line by line: each line's symbols into a buffer of its own,
-// one value a word, and from there into the image. The image's lines divide into bands
-// over a worker pool, each band with buffers of its own; the blanking is read in the
-// calling thread after them, line by line, as the audio and the list of packets run
-// through the frame in order. This is the portable version, the reference that the
-// vector versions must equal.
+// The parser reads a frame line by line. It first reads a line's symbols into a buffer,
+// one value per word, and then writes them into the image. The image lines are divided
+// into bands that run on a worker pool, and each band has buffers of its own. After the
+// image, the calling thread reads the blanking line by line. It does this in one thread
+// because the audio samples and the list of packets must come out in the frame's order.
+// This is the portable version. The vector versions must give the same results.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -29,21 +29,23 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The widest image, 2160p, in pixels: a line has twice as many symbols.
+// The width in pixels of the widest image, 2160p. A line has twice as many symbols.
 #define DT_SDIPARSER_MAX_WIDTH 3840
 
-// The symbols of the active parts of one raw 2160p line: the four links' 1920 pixels.
+// The number of symbols in the active parts of one raw 2160p line. Each of the four
+// links carries 1920 pixels.
 #define DT_SDIPARSER_MAX_RAW_ACTIVE (4 * DT_SDIPARSER_MAX_WIDTH)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The buffers of a band of the image: two image lines, as a 2160p line holds two, and
-// the active parts of a raw 2160p line.
+// Holds the buffers that one band of the image works with.
 typedef struct DtSdiParserBand
 {
+    // Two image lines, because one raw 2160p line holds two
     uint16_t Lines[2][2 * DT_SDIPARSER_MAX_WIDTH];
+    // The active parts of one raw 2160p line
     uint16_t RawActive[DT_SDIPARSER_MAX_RAW_ACTIVE];
-    DtSdiLineScratch Scratch; // A 2160p line of a frame in a ring, decoded
+    DtSdiLineScratch Scratch; // A decoded 2160p line of a frame in a ring
 } DtSdiParserBand;
 
 struct DtSdiParser
@@ -51,16 +53,14 @@ struct DtSdiParser
     const DtSdiConv* Conv;      // The conversions
     bool AudioChecks;           // Check the BCH code and checksum of the audio packets
     DtSdiAncFilter* AncFilters; // The packets to list; NULL for the default
-    int NumAncFilters;
+    int NumAncFilters;          // The number of filters in AncFilters
 
-    // The worker pool and the threads the program gave, the pieces the runner was set
-    // up for (0 when it must be set up again), and a band's buffers for each piece.
-    DtWorkerPool* Pool;
-    int NumThreads;
-    DtJobRunner Runner;
-    int RunnerPieces;
-    DtSdiParserBand* Bands;
-    int NumBands;
+    DtWorkerPool* Pool; // The worker pool the program gave
+    int NumThreads;     // The pieces the program asked for; 0 for the standard's number
+    DtJobRunner Runner; // Runs the bands of the image on the pool
+    int RunnerPieces;   // The pieces Runner was set up for; 0 to set it up again
+    DtSdiParserBand* Bands; // The buffers of each piece
+    int NumBands;           // The number of entries in Bands
 
     // Buffers for reading the blanking: the symbols of one section of a line, the words
     // of one stream of it, and a decoded 2160p line of a frame in a ring.
@@ -69,15 +69,15 @@ struct DtSdiParser
     uint16_t StreamWords[DT_SDIPARSER_MAX_WIDTH];
 };
 
-// The image a job of bands writes.
+// Holds what the bands of one image job share.
 typedef struct ImageJob
 {
-    DtSdiParser* Parser;
-    const DtSdiView* Frame;
-    const DtSdiImage* Image;
+    DtSdiParser* Parser;     // The parser, which holds the bands' buffers
+    const DtSdiView* Frame;  // The frame to read
+    const DtSdiImage* Image; // The image to write
 } ImageJob;
 
-// Where a section of a line lies, which the parser searches for packets.
+// Names a section of a line that the parser searches for packets.
 typedef struct Section
 {
     int LineIndex; // The raw line, from 0
@@ -88,8 +88,8 @@ typedef struct Section
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes image lines First up to End of a frame up to 3G into Image, line by line, with
-// the buffers of Band.
+// Writes image lines First up to End into Image, for a frame of a standard up to 3G. It
+// reads each line's active part into the buffers of Band and converts it from there.
 //
 static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
                        const DtSdiImage* Image, int First, int End, const DtSdiConv* Conv)
@@ -109,12 +109,15 @@ static void ParseImage(DtSdiParserBand* Band, const DtSdiView* Frame,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseImage4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the image of a 2160p frame into Image, two lines from each raw line of the
-// picture. In a raw line, the active parts of the four links follow their horizontal
-// blanking, word by word: word n of each link's C stream and then of its Y stream, in
-// groups of eight. Pixel x of a link is the C and Y word n = x of its active part. Link
-// 1 and 2 carry the pixel pairs of the upper image line in turn, link 3 and 4 those of
-// the lower one: Split4k takes them apart.
+// Writes the image of a 2160p frame into Image, for raw picture lines First up to End.
+// Each raw line of the picture gives two lines of the image.
+//
+// In a raw line, the active parts of the four links follow their horizontal blanking.
+// They are interleaved word by word in groups of eight. Group n holds word n of each
+// link's C stream and then word n of each link's Y stream. Pixel x of a link is C and
+// Y word x of its active part. Links 1 and 2 take turns carrying the pixel pairs of the
+// upper image line. Links 3 and 4 do the same for the lower line. Split4k separates the
+// two lines.
 //
 static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
                          const DtSdiImage* Image, int First, int End,
@@ -137,8 +140,9 @@ static void ParseImage4k(DtSdiParserBand* Band, const DtSdiView* Frame,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ImageBand -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A piece of the image's job: its share of the image lines, or in 2160p of the raw
-// lines of the picture, with the buffers of its own band.
+// Parses one piece of the image job, using the buffers of the piece's own band. The
+// piece takes its share of the image lines. In 2160p it takes its share of the raw lines
+// of the picture instead.
 //
 static void ImageBand(void* Context, int PieceIndex, int NumPieces)
 {
@@ -161,10 +165,11 @@ static void ImageBand(void* Context, int PieceIndex, int NumPieces)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets the runner up for the pieces the program asked for or, with 0, those the
-// standard calls for, and gives each piece a band's buffers. When those cannot be had,
-// the parser works in one piece, in the calling thread. Returns false when not even one
-// band's buffers can be had.
+// Sets up the runner and gives each of its pieces a band's buffers. The number of pieces
+// is what the program asked for. When the program asked for 0, it is the number the
+// standard calls for. If the runner or the buffers cannot be set up for that number, the
+// parser works in one piece, in the calling thread. Returns false when not even one
+// band's buffers can be allocated.
 //
 static bool ConfigureBands(DtSdiParser* Parser, const DtSdiGeometry* Geo)
 {
@@ -195,7 +200,8 @@ static bool ConfigureBands(DtSdiParser* Parser, const DtSdiGeometry* Geo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ListPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Adds Found, in stream Stream of Where, to Anc if it has room, or counts it lost.
+// Adds the packet Found to the list in Anc. Stream and Where tell where the packet was
+// found. When Anc has no room for the packet or its words, the packet is counted as lost.
 //
 static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Stream,
                        const DtSdiAncFound* Found, DtSdiAncData* Anc)
@@ -229,10 +235,10 @@ static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Strea
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ScanSection -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads a section of a line, splits it into its streams, and takes the packets in each:
-// audio into Audio, when the program wants it and the packet is link 1's in the
-// horizontal blanking; and the packets the parser's filters want into Anc. Either may be
-// NULL.
+// Reads a section of a line, splits it into its streams, and searches each stream for
+// packets. An audio packet goes into Audio when it is in the horizontal blanking of link
+// 1. A packet that the parser's filters want goes into Anc. Audio and Anc may each be
+// NULL, and then that kind of packet is skipped.
 //
 static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Section* Where,
                         DtSdiAudio* Audio, DtSdiAncData* Anc)
@@ -244,14 +250,14 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
     const size_t FirstSymbol =
         Where->InHanc ? 0 : (size_t)Geo->StreamHancWords * (size_t)Streams;
 
-    // The words to search: those between the timing references, or the whole active
-    // part.
+    // Search the words between the timing references in the horizontal blanking, or the
+    // whole active part.
     const int First = Where->InHanc ? Geo->StreamEavWords : 0;
     const int End = Where->InHanc ? SectionWords - Geo->StreamSavWords : SectionWords;
 
     // Audio is only in link 1, so without a packet list the other links are skipped.
     // For a 2160p frame in a ring, each link's horizontal blanking is a separate section
-    // with C and Y words alternating; it is read directly from there instead of decoding
+    // with C and Y words alternating. It is read directly from there instead of decoding
     // the whole line.
     const bool AllLinks = Anc != NULL;
     const bool PerLink = Geo->Is4k && Frame->RingBase != NULL && Where->InHanc;
@@ -311,9 +317,10 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseBlanking -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Takes the audio and lists the ancillary packets of the frame, line by line: in each
-// line's horizontal blanking, then in the active part of a blanking line. A section that
-// neither audio nor a filter needs is not read.
+// Takes the audio out of the frame and lists its ancillary packets, line by line. For
+// each line it searches the horizontal blanking first. Then, on a line of vertical
+// blanking, it searches the active part. A section that neither the audio nor a filter
+// needs is not read.
 //
 static void ParseBlanking(DtSdiParser* Parser, const DtSdiView* Frame, DtSdiAudio* Audio,
                           DtSdiAncData* Anc)
@@ -376,8 +383,8 @@ void DtSdiParser_Freep(DtSdiParser** Parser)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_Parse -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The arguments are checked before anything is written. The image is read first, then
-// the blanking of every line, for the audio and the ancillary packets together.
+// Checks all arguments before it writes anything. Then it reads the image. After that it
+// reads the blanking of every line, for the audio and the ancillary packets together.
 //
 DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
                               DtSdiImage* Image, DtSdiAudio* Audio, DtSdiAncData* Anc)
@@ -447,7 +454,7 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_SetAncFilter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Checks every filter before it replaces the old ones, so that a failure leaves the
+// Checks every filter before it replaces the old ones. A failure therefore leaves the
 // parser as it was.
 //
 DtapiResult DtSdiParser_SetAncFilter(DtSdiParser* Parser, const DtSdiAncFilter* Filters,
@@ -497,8 +504,9 @@ DtapiResult DtSdiParser_SetAudioChecks(DtSdiParser* Parser, bool Check)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiParser_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The runner takes the pool at once, so that the parser holds its reference from here
-// on; the pieces follow the standard of the next frame.
+// Gives the pool to the runner at once, so that the parser holds a reference to it from
+// this call on. Clearing RunnerPieces makes the next frame set up the pieces again, for
+// that frame's standard.
 //
 DtapiResult DtSdiParser_SetWorkerPool(DtSdiParser* Parser, DtWorkerPool* Pool,
                                       int NumThreads)

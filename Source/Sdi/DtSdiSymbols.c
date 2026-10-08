@@ -11,9 +11,14 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbols_Read -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A 10-bit symbol starts at bit 0, 2, 4 or 6 of a byte, and every fourth symbol at the
-// same one. So at most three symbols are read one by one before the run is on a byte
-// boundary; from there four symbols take five bytes, least significant bit first.
+// Reads 16-bit symbols as little-endian words and keeps their low 10 bits. Reads 10-bit
+// symbols in three parts:
+// 1. One by one, up to the first symbol that starts on a byte boundary. A 10-bit symbol
+//    starts at bit 0, 2, 4 or 6 of a byte, and every fourth symbol starts at the same
+//    bit. So this part reads at most three symbols.
+// 2. Four at a time, with Conv. Four symbols take five bytes, least significant bit
+//    first.
+// 3. The rest one by one.
 //
 void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
                        const DtSdiConv* Conv)
@@ -73,7 +78,7 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
     uint8_t* Next = Writer->Next;
     size_t i = 0;
 
-    // One at a time up to a byte boundary, which comes within four symbols.
+    // Write symbols one at a time until a byte boundary, which comes within four symbols.
     for (; i < Count && NumBits != 0; i++)
     {
         Bits |= (uint64_t)(Symbols[i] & 0x3FF) << NumBits;
@@ -86,13 +91,13 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
         }
     }
 
-    // Then four symbols into five bytes, as many fours as there are.
+    // Then pack each whole group of four symbols into five bytes.
     const size_t Aligned = (Count - i) / 4 * 4;
     Writer->Conv->Pack10(Symbols + i, Aligned, Next);
     Next += Aligned / 4 * 5;
     i += Aligned;
 
-    // And the rest one at a time.
+    // Write the rest one at a time.
     for (; i < Count; i++)
     {
         Bits |= (uint64_t)(Symbols[i] & 0x3FF) << NumBits;

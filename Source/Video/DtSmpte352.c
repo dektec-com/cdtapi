@@ -19,8 +19,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RateCode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The picture rate code of byte 2, bits 3..0, for a frame rate of Num / Den; 0 for one
-// SMPTE ST 352 has no code for.
+// Returns the picture rate code for a frame rate of Num / Den, as byte 2 holds it in
+// bits 3..0. Returns 0 for a rate that is not in the table.
 //
 static uint32_t RateCode(int Num, int Den)
 {
@@ -40,10 +40,15 @@ static uint32_t RateCode(int Num, int Den)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_Make -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Byte 1 and the scan bits of byte 2 per payload: SD 81, both interlaced; 720p 84,
-// progressive picture in a transport that ST 292 does not mark; 1080 85, interlaced,
-// PsF (progressive picture) or progressive; 3G level A 89 and 2160p C0 or CE,
-// progressive. Byte 4 is 01, 10 bits.
+// Chooses byte 1 and the scan bits of byte 2 by payload. Bit 7 of byte 2 marks a
+// progressive transport, and bit 6 a progressive picture.
+// 1. SD: 81, with an interlaced transport and picture.
+// 2. 720p: 84, with a progressive picture. The transport bit stays 0, because SMPTE
+//    ST 292 does not mark it.
+// 3. 1080 lines: 85, interlaced, PsF or progressive. PsF sets only the picture bit.
+// 4. 3G level A: 89, progressive.
+// 5. 2160p: C0 on 6G or CE on 12G, progressive.
+// Byte 4 is 01, which means 10 bits.
 //
 uint32_t DtSmpte352_Make(int VidStd)
 {
@@ -78,7 +83,7 @@ uint32_t DtSmpte352_Make(int VidStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_PayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Byte 1, bits 7..0.
+// Reads byte 1, bits 7..0.
 //
 int DtSmpte352_PayloadId(uint32_t Vpid)
 {
@@ -87,7 +92,7 @@ int DtSmpte352_PayloadId(uint32_t Vpid)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_PictureRate -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Byte 2, bits 3..0.
+// Decodes the rate code in byte 2, bits 3..0.
 //
 void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den)
 {
@@ -143,7 +148,7 @@ void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_IsInterlacedTransport -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Byte 2, bit 7: 0 for an interlaced transport.
+// Reads byte 2, bit 7, which is 0 for an interlaced transport.
 //
 bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid)
 {
@@ -152,7 +157,7 @@ bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_IsInterlacedStructure -.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Byte 2, bit 6: 0 for an interlaced picture.
+// Reads byte 2, bit 6, which is 0 for an interlaced picture.
 //
 bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid)
 {
@@ -161,7 +166,7 @@ bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_Is16x9 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Byte 3, bit 7.
+// Reads byte 3, bit 7.
 //
 bool DtSmpte352_Is16x9(uint32_t Vpid)
 {
@@ -170,7 +175,8 @@ bool DtSmpte352_Is16x9(uint32_t Vpid)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSmpte352_LinkNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Byte 4 holds the link, or for 3G level B the channel, of which two share a link.
+// Reads the link number from byte 4. For 2160p on 3G level B links, byte 4 holds a
+// channel number instead. Two channels share a link, so the channel is divided by two.
 //
 int DtSmpte352_LinkNumber(uint32_t Vpid)
 {
@@ -183,7 +189,7 @@ int DtSmpte352_LinkNumber(uint32_t Vpid)
     case DT_S352_ID_S2081_2160:
     case DT_S352_ID_S2082_2160:
         return (int)((Vpid >> 29) & 0x7);
-    default: // Single-link payloads, 3G level B at 1080 lines included.
+    default: // Single-link payloads, including 3G level B with 1080 lines.
         return 0;
     }
 }

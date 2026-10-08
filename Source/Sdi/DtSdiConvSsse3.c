@@ -4,16 +4,20 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Built only for x86 processors, with SSSE3 enabled for this file alone: the library
-// takes these conversions only after CPUID reports SSSE3. Each conversion works a block
-// at a time while a whole block and what its loads and stores reach past it lie within
-// the run, and leaves the rest to the portable version.
+// This file is built only for x86 processors, with SSSE3 enabled for this file alone.
+// The library uses these conversions only after CPUID reports SSSE3.
 //
-// Ten bytes hold eight 10-bit symbols. Symbol k starts in byte 10k / 8 at bit 10k mod 8,
-// which is 0, 2, 4 or 6: a shuffle puts the two bytes around each symbol in a word, a
-// multiply by 64, 16, 4 or 1 moves the symbol to the top, and a shift right by six
-// brings it down. Packing reverses it: the multiply moves each symbol to its place in
-// its two bytes, and since symbols 0, 2, 4 and 6 share no byte, nor do 1, 3, 5 and 7,
+// Each conversion works a block at a time, as long as the block and every byte its loads
+// and stores reach lie within the run. It leaves the rest of the run to the portable
+// version.
+//
+// Ten bytes hold eight 10-bit symbols. Symbol k starts in byte 10k / 8, at bit 10k mod 8,
+// which is 0, 2, 4 or 6. Unpacking takes three steps:
+// 1. A shuffle puts the two bytes around each symbol in a 16-bit word.
+// 2. A multiply by 64, 16, 4 or 1 moves the symbol to the top of its word.
+// 3. A shift right by six brings it down.
+// Packing reverses these steps. The multiply moves each symbol to its place in its two
+// bytes. Symbols 0, 2, 4 and 6 share no byte, and neither do symbols 1, 3, 5 and 7. So
 // two shuffles and an OR assemble the ten bytes.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -40,7 +44,8 @@ static inline __m128i Legal(__m128i Samples)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Unpack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Eight symbols from the ten bytes at Bytes; reads sixteen.
+// Unpacks eight symbols from the ten bytes at Bytes. It loads sixteen bytes, six more
+// than it uses.
 //
 static inline __m128i Unpack8(const uint8_t* Bytes)
 {
@@ -53,7 +58,8 @@ static inline __m128i Unpack8(const uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The ten bytes of eight symbols, in the low ten bytes of the result, the others 0.
+// Packs eight symbols into ten bytes. The result holds them in its low ten bytes, and its
+// other six bytes are 0.
 //
 static inline __m128i Pack8(__m128i Symbols)
 {
@@ -105,8 +111,9 @@ static void Limit(uint16_t* Symbols, size_t Count)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToPlanar10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sixteen symbols, eight pixels, a step: the Y words of each half to the low eight bytes,
-// and Cb and Cr of each half to four bytes each.
+// Converts sixteen symbols, eight pixels, in each step. Each half of the sixteen is
+// shuffled so that its Y words fill the low eight bytes, and its Cb and Cr words four
+// bytes each. Unpacks then join the two halves.
 //
 static void ToPlanar10(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_t* Cb,
                        uint8_t* Cr)
@@ -132,7 +139,8 @@ static void ToPlanar10(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interleave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The sixteen symbols of eight pixels from their Y, Cb and Cr words: Cb, Y, Cr, Y.
+// Interleaves the Y, Cb and Cr words of eight pixels into sixteen symbols, in the order
+// Cb, Y, Cr, Y. It limits them to 4..1019 and stores them at Symbols.
 //
 static inline void Interleave(__m128i Ys, __m128i Cbs, __m128i Crs, uint16_t* Symbols)
 {
@@ -254,7 +262,8 @@ static void FromUyvy8(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToY210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Each pair of words swapped, Cb Y to Y Cb, and moved to the top.
+// Swaps each pair of words, Cb Y to Y Cb, and shifts each word left by six to put its 10
+// bits at the top.
 //
 static void ToY210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
@@ -288,8 +297,9 @@ static void FromY210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToV210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Twelve symbols, four words, a step. A multiply-add makes the lower twenty bits of each
-// word from its first two symbols; its third is shifted in above them.
+// Converts twelve symbols into four words in each step. A multiply-add makes the low
+// twenty bits of each word from its first two symbols. The word's third symbol is
+// shifted left by 20 and ORed in above them.
 //
 static void ToV210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
@@ -301,13 +311,15 @@ static void ToV210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
             _mm_and_si128(_mm_loadu_si128((const __m128i*)(Symbols + i)), Ten);
         const __m128i B =
             _mm_and_si128(_mm_loadu_si128((const __m128i*)(Symbols + i + 8)), Ten);
-        // Symbols 0 1, 3 4, 6 7 of A and 9 10 (words 1 and 2 of B).
+        // Pairs holds symbols 0 and 1, 3 and 4, 6 and 7, and 9 and 10, a pair in each
+        // 32-bit lane. Symbols 9 and 10 are words 1 and 2 of B.
         const __m128i Pairs =
             _mm_or_si128(_mm_shuffle_epi8(A, _mm_set_epi8(Z, Z, Z, Z, 15, 14, 13, 12, 9,
                                                           8, 7, 6, 3, 2, 1, 0)),
                          _mm_shuffle_epi8(B, _mm_set_epi8(5, 4, 3, 2, Z, Z, Z, Z, Z, Z, Z,
                                                           Z, Z, Z, Z, Z)));
-        // Symbols 2, 5 of A and 8, 11 (words 0 and 3 of B), each in a word of its own.
+        // Thirds holds symbols 2, 5, 8 and 11, one in the low half of each 32-bit lane.
+        // Symbols 8 and 11 are words 0 and 3 of B.
         const __m128i Thirds =
             _mm_or_si128(_mm_shuffle_epi8(A, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, Z, Z,
                                                           11, 10, Z, Z, 5, 4)),
@@ -323,8 +335,9 @@ static void ToV210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FromV210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Four words, twelve symbols, a step: the three symbols of each word cut out by shifts,
-// then put in order by shuffles.
+// Converts four words into twelve symbols in each step. Shifts and masks cut the three
+// symbols out of each word, and shuffles then put them in order. Below, F, S and T are
+// the first, second and third symbol of a word.
 //
 static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 {
@@ -336,15 +349,15 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
         const __m128i First = _mm_and_si128(Words, Ten);
         const __m128i Second = _mm_and_si128(_mm_srli_epi32(Words, 10), Ten);
         const __m128i Third = _mm_and_si128(_mm_srli_epi32(Words, 20), Ten);
-        // Words of word k: First k at 2k, Second k at 2k + 1.
+        // Pairs holds F of word k in 16-bit word 2k, and S of word k in word 2k + 1.
         const __m128i Pairs = _mm_or_si128(First, _mm_slli_epi32(Second, 16));
-        // Symbols 0 to 7: F0 S0 T0 F1 S1 T1 F2 S2.
+        // Low holds symbols 0 to 7, which are F0 S0 T0 F1 S1 T1 F2 S2.
         const __m128i Low =
             _mm_or_si128(_mm_shuffle_epi8(Pairs, _mm_set_epi8(11, 10, 9, 8, Z, Z, 7, 6, 5,
                                                               4, Z, Z, 3, 2, 1, 0)),
                          _mm_shuffle_epi8(Third, _mm_set_epi8(Z, Z, Z, Z, 5, 4, Z, Z, Z,
                                                               Z, 1, 0, Z, Z, Z, Z)));
-        // Symbols 8 to 11: T2 F3 S3 T3.
+        // High holds symbols 8 to 11, which are T2 F3 S3 T3.
         const __m128i High =
             _mm_or_si128(_mm_shuffle_epi8(Pairs, _mm_set_epi8(Z, Z, Z, Z, Z, Z, Z, Z, Z,
                                                               Z, 15, 14, 13, 12, Z, Z)),
@@ -358,10 +371,12 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Split4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Two pixels of each link a step, sixteen raw words: G0 holds pixel 2q of every link,
-// G1 pixel 2q + 1. The upper line takes C and Y of both pixels of link 1, then of link
-// 2: words 3 and 7 of G0, 3 and 7 of G1, then 1 and 5 of each; the lower line the same
-// of links 3 and 4, words 2 and 6, then 0 and 4.
+// Converts two pixels of each link, sixteen raw words, in each step. G0 holds pixel 2q
+// of every link, and G1 holds pixel 2q + 1. Shuffles pick the words of each image line:
+// 1. The upper line takes C and Y of both pixels of link 1, then of link 2. These are
+//    words 3 and 7 of G0 and of G1, then words 1 and 5 of each.
+// 2. The lower line takes the same of links 3 and 4. These are words 2 and 6 of G0 and
+//    of G1, then words 0 and 4 of each.
 //
 static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower)
 {
@@ -389,8 +404,9 @@ static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Join4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The other way round: G0 is lower 4, upper 4, lower 0, upper 0, lower 5, upper 5,
-// lower 1, upper 1, by word; G1 the same of 6, 2, 7 and 3.
+// Reverses Split4k, two pixels of each link in each step. U and L hold eight words of
+// the upper and the lower line. G0 takes, word by word, word 4 of L, word 4 of U, then
+// words 0, 5 and 1 of L and U in the same way. G1 takes words 6, 2, 7 and 3 likewise.
 //
 static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
                    uint16_t* Raw)

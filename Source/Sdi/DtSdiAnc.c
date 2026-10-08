@@ -4,12 +4,18 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// A packet is the ancillary data flag 000, 3FF, 3FF; the data ID; the secondary data ID
-// or, for a data ID of 80 (hex) and up, the data block number; the data count, in its
-// lower eight bits; that many user data words; and the checksum: the sum of the lower
-// nine bits of the data ID through the last user data word, in nine bits, with bit 9
-// the inverse of bit 8. The IDs and the count carry even parity in bit 8 and its
-// inverse in bit 9.
+// An ancillary packet consists of these words, in this order:
+//   1. The ancillary data flag, the three words 000, 3FF and 3FF (hex).
+//   2. The data ID.
+//   3. The secondary data ID. For a data ID of 80 (hex) and up, this is the data block
+//      number instead.
+//   4. The data count, in its lower eight bits.
+//   5. As many user data words as the data count says.
+//   6. The checksum.
+// The two IDs and the data count carry even parity in bit 8 and its inverse in bit 9.
+// The checksum is the sum of the lower nine bits of every word from the data ID through
+// the last user data word, kept to nine bits. Bit 9 of the checksum is the inverse of
+// bit 8.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -18,8 +24,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The words of a packet besides its user data: the flag's three, the IDs' two, the data
-// count and the checksum.
+// The number of words in a packet besides its user data. These are the flag's three
+// words, the two IDs, the data count and the checksum.
 #define DT_SDIANC_OVERHEAD 7
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAnc_Find -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -58,8 +64,8 @@ bool DtSdiAnc_Find(const uint16_t* Words, int Count, int* Pos, DtSdiAncFound* Pa
 //
 bool DtSdiAnc_IsAudio(uint8_t Did)
 {
-    // HD: data E4 to E7, control E0 to E3. SD: control EC to EF, data and extended data
-    // F8 to FF.
+    // HD uses E4 to E7 for data and E0 to E3 for control. SD uses EC to EF for control,
+    // and F8 to FF for data and extended data.
     return (Did >= 0xE0 && Did <= 0xE7) || (Did >= 0xEC && Did <= 0xEF) || Did >= 0xF8;
 }
 

@@ -4,20 +4,25 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The builder writes a frame line by line. Each line is made stream by stream: one in
-// SD, C and Y in HD and 3G, C and Y of four links in 2160p. A stream's words are its
-// timing references (in HD and up with the line number and CRC after EAV), its
-// horizontal blanking with the payload ID and the program's packets in it, and its
-// active part: image, or on a line of the vertical blanking, blanking with the
-// program's packets. Then the streams are woven into the raw line and written.
+// The builder writes a frame line by line. Each line is made stream by stream. There is
+// one stream in SD, C and Y in HD and 3G, and C and Y of each of four links in 2160p. A
+// stream's words are, in order:
+// 1. its timing references, in HD and up with the line number and the CRC after EAV;
+// 2. its horizontal blanking, with the payload ID and the program's packets in it;
+// 3. its active part. This is the image or, on a line of the vertical blanking,
+//    blanking with the program's packets.
+// The streams are then interleaved into the raw line, and the line is written.
 //
-// Blanking is 200 (hex) in a C stream and 040 in a Y stream, alternating from Cb in SD,
-// as DTAPI's matrix and the black frames of DtSdiFrame have it. The payload ID is DTAPI's
-// matrix's: on the line three after each field's switching line, in the Y stream, of
-// every link in 2160p. The audio follows it, as DtSdiEmbed makes it:
-// its control packets in the Y stream and its data in the C stream, in 2160p of link 1.
-// The program's packets come last. The line CRCs and the packets' checksums are left to
-// the transmitter unless the program asks for them. This is the portable version.
+// Blanking is 200 (hex) in a C stream and 040 in a Y stream. In SD the two alternate,
+// starting with Cb. The black frames of DtSdiFrame use the same values. The payload ID
+// goes on the third line after each field's switching line, in the Y stream, and on
+// every link in 2160p. Both match the DekTec matrix API's output. The audio that
+// DtSdiEmbed makes follows the payload ID. Its control packets go in the Y stream and
+// its data in the C stream, on link 1 in 2160p. The program's packets come last. The
+// line CRCs and the packets' checksums are left to the transmitter unless the program
+// asks for them.
+//
+// This is the portable version.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -39,60 +44,68 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The most words of one stream of a line: 4125 in 720p23.98 and 720p24.
+// The most words one stream of a line can have. The longest stream line has 4125
+// words, in 720p23.98 and 720p24.
 #define DT_SDIBUILDER_MAX_STREAM_WORDS 4200
 
-// The most symbols of a raw line: 2160p23.98's, four links of 2 x 2750.
+// The most symbols a raw line can have. The longest raw line is that of 2160p23.98,
+// with four links of 2 x 2750.
 #define DT_SDIBUILDER_MAX_LINE_SYMBOLS 22000
 
-// The widest image, 2160p, in pixels.
+// The width of the widest image, 2160p, in pixels.
 #define DT_SDIBUILDER_MAX_WIDTH 3840
 
-// The sections a frame's packets can go in: each line's two blankings, eight streams.
+// The most sections a frame's packets can go in. Each line has two blankings in each of
+// up to eight streams.
 #define DT_SDIBUILDER_MAX_SECTIONS (1125 * 2 * 8)
 
-// The words of the payload ID packet: flag, IDs, count, four bytes, checksum.
+// The words of the payload ID packet: the flag, the IDs, the count, four bytes and the
+// checksum.
 #define DT_SDIBUILDER_PAYLOAD_ID_WORDS 11
 
-// The blanking of a C and of a Y word.
+// The blanking values of a C word and of a Y word.
 #define DT_SDIBUILDER_BLANK_C 0x200
 #define DT_SDIBUILDER_BLANK_Y 0x040
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= State +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The buffers and the state of a band of lines: the words of each stream made for a
-// line, the line woven, the image lines a 2160p line takes; the CRC over the active
-// part of each stream of the line before; and where the audio stands.
+// The buffers and the state of one band of lines. One piece of a frame's job builds the
+// band.
 typedef struct DtSdiBuilderBand
 {
+    // Per stream: the words made for the current line.
     uint16_t Words[8][DT_SDIBUILDER_MAX_STREAM_WORDS];
+    // The raw line, with the streams interleaved.
     uint16_t Line[DT_SDIBUILDER_MAX_LINE_SYMBOLS];
+    // In 2160p: the two image lines that one raw line takes.
     uint16_t Image[2][2 * DT_SDIBUILDER_MAX_WIDTH];
+    // Per stream: the CRC over the active part of the line before.
     uint32_t LastCrc[8];
+    // The position reached in writing the frame's audio.
     DtSdiEmbedCursor Cursor;
 } DtSdiBuilderBand;
 
 struct DtSdiBuilder
 {
     int VidStd;          // The standard of the frame built last; 0 before the first
-    bool Checksums;      // Work out line CRCs and packet checksums; else leave them to
-                         // the transmitter
-    uint32_t LastCrc[8]; // Per stream: the CRC over the active part of that frame's last
-                         // line, where the first line's CRC starts
+    bool Checksums;      // True to work out line CRCs and packet checksums. False leaves
+                         // them to the transmitter.
+    uint32_t LastCrc[8]; // Per stream: the CRC over the active part of the last line of
+                         // that frame. The next frame's first line CRC starts from it.
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
-    DtSdiCrcFunc Crc;        // The version of the CRC over a line's active part
-    const DtSdiConv* Conv;   // The conversions
-    DtSdiEmbed Embed;        // The audio: of the frame being built, and its cadence
-    int Used[DT_SDIBUILDER_MAX_SECTIONS]; // Per section of the frame: its packets' words
+    DtSdiCrcFunc Crc;      // The function that computes the CRC over a line's active part
+    const DtSdiConv* Conv; // The conversions the builder uses
+    DtSdiEmbed Embed;      // The audio state: the frame being built and the cadence
+    int Used[DT_SDIBUILDER_MAX_SECTIONS]; // Per section of the frame: the words its
+                                          // packets take
 
-    // The worker pool and the threads the program gave, the pieces the runner was set
-    // up for (0 when it must be set up again), and a band for each piece.
-    DtWorkerPool* Pool;
-    int NumThreads;
-    DtJobRunner Runner;
-    int RunnerPieces;
-    DtSdiBuilderBand* Bands;
-    int NumBands;
+    DtWorkerPool* Pool;      // The worker pool the program gave
+    int NumThreads;          // The number of threads the program gave
+    DtJobRunner Runner;      // Runs a frame's job in pieces
+    int RunnerPieces;        // The pieces the runner was set up for; 0 when it must be
+                             // set up again
+    DtSdiBuilderBand* Bands; // A band for each piece
+    int NumBands;            // The number of bands
 };
 
 // Selects which of the program's packets PutPackets writes. In SD the program's audio
@@ -105,24 +118,25 @@ typedef enum PacketKind
     PACKETS_REST,       // Every packet except SD audio control packets
 } PacketKind;
 
-// A frame a job of bands builds.
+// The frame that one job builds, band by band.
 typedef struct BuildJob
 {
-    DtSdiBuilder* Builder;
-    DtSdiView* Frame;
-    const DtSdiImage* Image;
-    const DtSdiAncData* Anc;
-    uint32_t Vpid;
+    DtSdiBuilder* Builder;   // The builder that runs the job
+    DtSdiView* Frame;        // The frame being written
+    const DtSdiImage* Image; // The image, or NULL for a black image
+    const DtSdiAncData* Anc; // The program's packets, or NULL
+    uint32_t Vpid;           // The four bytes of the payload ID
     bool PayloadId; // The builder writes its own payload ID; false if the program has one
-    int Unit;       // Bands start on a multiple of this many lines: 2 if every other line
-                    // starts in the middle of a byte, else 1
+    int Unit;       // Bands start on a multiple of this many lines. It is 2 if every
+                    // other line starts part-way through a byte, else 1.
 } BuildJob;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StreamOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The stream a packet names: SD's one; C or Y in HD and 3G; C or Y of a link in 2160p.
+// Returns the index of the stream a packet goes in. In SD this is the one stream. In HD
+// and 3G it is C or Y. In 2160p it is C or Y of the packet's link.
 //
 static int StreamOf(const DtSdiGeometry* Geo, const DtSdiAncPacket* Packet)
 {
@@ -134,8 +148,8 @@ static int StreamOf(const DtSdiGeometry* Geo, const DtSdiAncPacket* Packet)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Section -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The index of a section: the blanking of line LineIndex, horizontal or vertical, of
-// stream Stream.
+// Returns the index of the section for the blanking of stream Stream on line LineIndex.
+// InHanc selects the horizontal blanking, else the vertical blanking.
 //
 static int Section(int LineIndex, bool InHanc, int Stream)
 {
@@ -144,11 +158,10 @@ static int Section(int LineIndex, bool InHanc, int Stream)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HasPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Returns whether stream Stream of line LineIndex carries the payload ID: three lines
-// after a field's switching line, in SD's one stream and in every Y stream above SD,
-// those of each link of 2160p too. That is where DTAPI's matrix puts it: its comment
-// has 3G and up in every stream, but its code tells HD by "not SD", and the card shows
-// the payload ID of 1080p50 in the Y stream alone.
+// Returns whether stream Stream on line LineIndex carries the payload ID. The payload
+// ID goes on the third line after each field's switching line. It goes in SD's one
+// stream, and above SD in every Y stream, including the Y stream of each link in 2160p.
+// A DekTec card shows the payload ID of 1080p50 in the Y stream alone.
 //
 static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
 {
@@ -265,7 +278,7 @@ static int PutPackets(const DtSdiGeometry* Geo, const DtSdiAncData* Anc, int Lin
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ImageLineOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Returns the image line that raw line LineIndex carries, or -1 for a line of the
-// vertical blanking; for a standard that is not 2160p.
+// vertical blanking. Use it only for standards other than 2160p.
 //
 static int ImageLineOf(const DtSdiGeometry* Geo, int LineIndex)
 {
@@ -333,7 +346,8 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
     {
         uint16_t* W = Band->Words[s];
 
-        // Blanking first: C and Y alternate in SD's one stream, from Cb.
+        // Fills the stream with blanking first. In SD's one stream C and Y alternate,
+        // starting with Cb.
         if (Streams == 1)
         {
             for (int k = 0; k < Made; k++)
@@ -347,7 +361,7 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
                 W[k] = Blank;
         }
 
-        // The timing references, and in HD and up the line number after EAV.
+        // Writes the timing references, and in HD and up the line number after EAV.
         W[0] = 0x3FF;
         W[1] = 0x000;
         W[2] = 0x000;
@@ -390,11 +404,12 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
         }
     }
 
-    // The CRC words of HD and up: each stream's covers the active part of the line
-    // before, then this line's EAV and line number. Ten bits at a time: the CRC is
-    // linear, so the register's lower ten bits and the word select one entry of the
-    // table, and the bits above are shifted in on it. Left to the transmitter, they are
-    // 200 (hex), a CRC of 0 with its bit 9.
+    // Writes the CRC words of HD and up. Each stream's CRC covers the active part of the
+    // line before, then this line's EAV and line number. The CRC takes ten bits at a
+    // time. Because the CRC is linear, the register's lower ten bits XORed with the word
+    // select one entry of the table. The register's upper bits are shifted down and
+    // XORed with that entry. When the CRC is left to the transmitter, the CRC words are
+    // 200 (hex). That is a CRC of 0 with its bit 9 set.
     const uint32_t* Table = Builder->CrcTable;
     for (int s = 0; Streams > 1 && s < Streams; s++)
     {
@@ -409,7 +424,7 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
         W[7] = (uint16_t)DtSdiFrame_WithParity(Crc >> 9);
     }
 
-    // Weave what was made per stream into the line.
+    // Interleaves the words made for each stream into the line.
     for (int s = 0; s < Streams; s++)
     {
         const uint16_t* W = Band->Words[s];
@@ -418,7 +433,7 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
             To[(size_t)k * (size_t)Streams] = W[k];
     }
 
-    // The active part of a line of the image.
+    // Writes the active part of a line of the image.
     if (!Vanc)
     {
         uint16_t* Active = Raw + (size_t)Hanc * (size_t)Streams;
@@ -437,8 +452,9 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
                                Builder->Conv);
     }
 
-    // Compute the CRC of this line's active part for every stream; the next line carries
-    // it. Crcs is indexed by a stream's position in the line, LastCrc by stream number.
+    // Computes the CRC of this line's active part for every stream. The next line
+    // carries it. Crcs is indexed by a stream's position in the line, LastCrc by stream
+    // number.
     if (Streams > 1 && Builder->Checksums)
     {
         uint32_t Crcs[DT_SDICRC_MAX_STREAMS];
@@ -451,11 +467,14 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildBand -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A piece of a frame's job: its share of the frame's lines, made and written with its
-// own band. Where the band starts it takes the audio's cursor from the plan, and with
-// the checksums on the CRC of the line before, which it makes for that, unless the band
-// starts the frame. The band that ends the frame writes its padding and keeps the CRC
-// for the next frame.
+// Builds one piece of a frame's job. The piece makes and writes its share of the
+// frame's lines, using its own band.
+//
+// At its first line, the band takes the audio cursor from the plan. When checksums are
+// on in HD and up, the band also needs the CRC of the line before its first line. So
+// unless the band starts the frame, it makes that line first, only for its CRC. The
+// band that ends the frame writes the frame's padding and keeps the CRC for the next
+// frame.
 //
 static void BuildBand(void* Context, int PieceIndex, int NumPieces)
 {
@@ -499,10 +518,10 @@ static void BuildBand(void* Context, int PieceIndex, int NumPieces)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ConfigureBands -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Sets the runner up for the pieces the program asked for or, with 0, those the
-// standard calls for, and gives each piece a band. When those cannot be had, the
-// builder works in one piece, in the calling thread. Returns false when not even one
-// band can be had.
+// Sets up the runner and gives each piece a band. The number of pieces is the number of
+// threads the program asked for. When the program asked for 0, the standard decides.
+// When the pieces or their bands cannot be had, the builder works in one piece, in the
+// calling thread. Returns false when not even one band can be allocated.
 //
 static bool ConfigureBands(DtSdiBuilder* Builder, const DtSdiGeometry* Geo)
 {
@@ -551,10 +570,11 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_Build -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Every argument is checked before the frame is touched, the audio planned first so
+// Checks every argument before it touches the frame. The audio is planned first, so
 // that the room it leaves for the program's packets is known. The CRC of the first line
-// covers the last line of the frame built before, of the same standard; of the first
-// frame, or after a change of standard, nothing but its own EAV and line number.
+// covers the last line of the frame built before, when that frame has the same
+// standard. In the first frame, or after a change of standard, it covers only the
+// line's own EAV and line number.
 //
 DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
                                const DtSdiImage* Image, DtSdiAudio* Audio,
@@ -588,8 +608,9 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         memset(Builder->LastCrc, 0, sizeof(Builder->LastCrc));
         Builder->VidStd = Geo->VidStd;
     }
-    // A band starts on a line that starts on a byte, so that no two bands write the
-    // same byte: in 10 bits a line of 720p23.98 and 720p24 ends half-way through one.
+    // Makes each band start on a line that starts on a byte boundary, so that no two
+    // bands write the same byte. In 10 bits, a line of 720p23.98 and 720p24 ends
+    // part-way through a byte.
     const size_t LineBits = (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords) *
                             (size_t)Geo->NumStreams * (size_t)Frame->BitsPerSymbol;
     int Unit = 1;
@@ -625,8 +646,9 @@ void DtSdiBuilder_Freep(DtSdiBuilder** Builder)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_GetNumAudioSamples -.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The builder's own audio state, set up for VidStd in a copy, says where its cadence
-// stands.
+// Sets up a copy of the builder's audio state for VidStd and asks the copy for the
+// number of samples. The copy knows where the builder's cadence stands, and the builder
+// itself is left unchanged.
 //
 DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder, int VidStd,
                                             int FrameNumber, int* NumSamples)
@@ -650,8 +672,8 @@ DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Builder, int Vid
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetChecksums -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Turning the CRCs on starts afresh: the first line's CRC covers nothing of the frame
-// before, whose CRCs were not worked out.
+// Turning the CRCs on starts them afresh. The CRCs of the frame before were not worked
+// out, so the first line's CRC covers nothing of that frame.
 //
 DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute)
 {
@@ -665,8 +687,8 @@ DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The runner takes the pool at once, so that the builder holds its reference from here
-// on; the pieces follow the standard of the next frame.
+// Hands the pool to the runner at once, so that the builder holds its reference from
+// this call on. The pieces are set up again for the standard of the next frame.
 //
 DtapiResult DtSdiBuilder_SetWorkerPool(DtSdiBuilder* Builder, DtWorkerPool* Pool,
                                        int NumThreads)

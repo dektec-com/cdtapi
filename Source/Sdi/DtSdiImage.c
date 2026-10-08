@@ -4,9 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Every conversion starts from a line's symbols, one value a 16-bit word, in the order
-// SDI carries them: Cb, Y, Cr, Y. This is the portable version, the reference that the
-// vector versions of plan 0032's step F must equal.
+// Each line of an image is converted to or from the line's symbols. The symbols hold one
+// value in each 16-bit word, in the order SDI carries them: Cb, Y, Cr, Y. The
+// conversions themselves are in DtSdiConv, in a portable version and vector versions.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,8 +25,8 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumPlanes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Returns the planes of Format: 3 for the planar formats, 1 for the others, 0 for one
-// that is not a format.
+// Returns the number of planes of Format: 3 for the planar formats and 1 for the others.
+// Returns 0 for a value that is not a format.
 //
 static int NumPlanes(DtSdiPixelFormat Format)
 {
@@ -47,8 +47,8 @@ static int NumPlanes(DtSdiPixelFormat Format)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LeastStrides -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Fills Strides with the least stride of each plane of an image Width pixels wide in
-// Format, 0 for a plane it does not have.
+// Fills Strides with the least stride, in bytes, of each plane of an image in Format
+// that is Width pixels wide. A plane the format does not have gets 0.
 //
 static void LeastStrides(DtSdiPixelFormat Format, int Width, int Strides[3])
 {
@@ -198,8 +198,8 @@ void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
         break;
     case DT_SDI_PIXFMT_V210:
     {
-        // The words of the line, then zeros up to the least stride: a line is padded
-        // to 128 bytes.
+        // Write the line's words, then zeros up to the least stride. v210 pads each line
+        // to a multiple of 128 bytes.
         int Strides[3];
         LeastStrides(DT_SDI_PIXFMT_V210, Geo->Width, Strides);
         const size_t Written = (Count + 2) / 3 * 4;

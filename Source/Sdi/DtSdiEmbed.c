@@ -4,21 +4,29 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// The clock counts the line's samples, TicksPerLine to a line, and a frame's audio
-// sample n has its moment at PhaseAtStart plus n times Increment, counted in the cadence
-// from its first frame. Each line takes the samples whose moment, rounded, lies before
-// the line's own start, at most MaxPerLine of them; the line after a switching line
-// takes none. The clock is kept in a double and stepped by adding, as the matrix does,
-// so that the rounding and so the clock phase words come out the same.
+// Decides which audio samples go on each line of a frame, and writes them as ancillary
+// packets for the builder: SMPTE ST 299-1 in HD and up, ST 272 in SD.
 //
-// A PCM sample becomes an AES3 subframe: its upper 24 bits, V 0, U 0, C the next bit of
-// the channel status, P even parity over bits 4 to 30, and Z on channels 1 and 3 of a
-// group at the start of each block of 192. The channel status is professional, 48 kHz,
-// stereo, 24 bits, with its CRC. A channel its group lacks carries silence with V set,
-// and the status the matrix gives such a channel: professional, 48 kHz, 16 bits. An AES3
-// subframe of the program keeps its bits but P, which is worked out again.
+// The clock counts the line's samples, TicksPerLine to a line. Audio sample n has its
+// moment at PhaseAtStart plus n times Increment, with n counted from the cadence's first
+// frame. Each line takes the samples whose moment, rounded, lies before the line's own
+// start, at most MaxPerLine of them. The line after a switching line takes none. The
+// clock is kept in a double and stepped by adding. This matches the DekTec matrix API,
+// so the rounding and the clock phase words come out the same.
 //
-// The channel status is kept as DTAPI keeps it: bit n of the block, in the order it is
+// A PCM sample becomes an AES3 subframe as follows:
+// - the audio bits hold the sample's upper 24 bits;
+// - V and U are 0;
+// - C is the next bit of the channel status;
+// - P gives even parity over bits 4 to 30;
+// - Z is set on channels 1 and 3 of a group at the start of each block of 192.
+//
+// The channel status of PCM is professional, 48 kHz, stereo, 24 bits, with its CRC. A
+// channel the program does not send, in a group that carries audio, carries silence with
+// V set. Its channel status is professional, 48 kHz, 16 bits. An AES3 subframe from the
+// program keeps all its bits except P, which is worked out again.
+//
+// The channel status is stored so that bit n of the block, counted in the order it is
 // sent, is bit 7 - n % 8 of byte n / 8.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -35,25 +43,29 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// The audio sample rate, in Hz.
 #define DT_SDIEMBED_SAMPLE_RATE 48000
 
-// The user data words of a HD data packet and of a control packet, and the most
-// samples an SD packet carries.
+// The number of user data words in an HD data packet and in an HD control packet, and
+// the most samples an SD data packet carries.
 #define DT_SDIEMBED_HD_DATA_WORDS 24
 #define DT_SDIEMBED_HD_CONTROL_WORDS 11
 #define DT_SDIEMBED_SD_MAX_PER_PACKET 4
 
-// The words of a packet besides its user data: the flag's three, the IDs' two, the data
-// count and the checksum.
+// The number of words a packet has besides its user data. There are three for the flag,
+// two for the IDs, one for the data count and one for the checksum.
 #define DT_SDIEMBED_PACKET_OVERHEAD 7
 
-// Bit 13 of a sample's clock word: the sample is more than a line late, ST 299-1's MPF.
+// Marks a sample's clock word when the sample is more than a line late. This is bit 13,
+// the MPF bit of SMPTE ST 299-1.
 #define DT_SDIEMBED_MPF 0x2000
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The CRC of a channel status block over its first 23 bytes, as DTAPI keeps the block:
-// x^8 + x^4 + x^3 + x^2 + 1, starting from all ones, the highest bit of each byte first.
+// Computes the CRC of a channel status block over its first 23 bytes. The block is in
+// the bit order described at the top of this file. The polynomial is
+// x^8 + x^4 + x^3 + x^2 + 1. The CRC starts from all ones and takes the highest bit of
+// each byte first.
 //
 static uint8_t Crc8(const uint8_t* Bytes)
 {
@@ -69,6 +81,8 @@ static uint8_t Crc8(const uint8_t* Bytes)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Gcd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns the greatest common divisor of A and B.
+//
 static long long Gcd(long long A, long long B)
 {
     while (B != 0)
@@ -82,6 +96,9 @@ static long long Gcd(long long A, long long B)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSwitchingLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Returns whether line Line, counted from 1, is the switching line of one of the
+// frame's fields.
+//
 static bool IsSwitchingLine(const DtSdiEmbed* Embed, int Line)
 {
     const DtFrameProps* Props = &Embed->Props;
@@ -91,7 +108,7 @@ static bool IsSwitchingLine(const DtSdiEmbed* Embed, int Line)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Parity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// 1 when Bits has an odd number of ones.
+// Returns 1 when Bits has an odd number of ones, else 0.
 //
 static uint32_t Parity(uint32_t Bits)
 {
@@ -105,8 +122,9 @@ static uint32_t Parity(uint32_t Bits)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Aes3Of -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The AES3 subframe of channel Channel's sample Index, and for a channel whose
-// subframes the builder makes, the channel status moved on a bit.
+// Returns the AES3 subframe of sample Index of channel Channel. For a channel whose
+// subframes the builder makes, it also moves the channel's place in its channel status
+// block on by one bit.
 //
 static uint32_t Aes3Of(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Channel,
                        int Index)
@@ -146,15 +164,15 @@ static uint32_t Aes3Of(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Ch
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutHdData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes a data packet of SMPTE ST 299-1 of group Group with sample Index: the clock
-// phase, each channel's subframe a byte a word, and the BCH code. Returns the word after
-// it.
+// Writes an SMPTE ST 299-1 data packet of group Group with sample Index. The packet
+// holds the clock phase, each channel's subframe at one byte per word, and the BCH code.
+// Returns the index of the word after the packet.
 //
 static int PutHdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Group,
                      int Index, uint16_t* Words, int Pos, bool Checksum)
 {
-    // The packet's first 24 words as the BCH code takes them: flag, IDs, count, then
-    // the user data words.
+    // Holds the packet's first 24 words in the layout the BCH code takes. These are the
+    // flag, the IDs and the count, then the user data words.
     uint16_t Coded[6 + DT_SDIEMBED_HD_DATA_WORDS];
     uint16_t* Data = Coded + 6;
     const uint8_t Did = (uint8_t)(DT_SDIANC_DID_HD_AUDIO_DATA_G1 - Group);
@@ -189,9 +207,9 @@ static int PutHdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Grou
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutHdControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the control packet of SMPTE ST 299-1 of group Group: the frame's place in the
-// cadence, 48 kHz, the channels the program sends, and no delays. Returns the word
-// after it.
+// Writes the SMPTE ST 299-1 control packet of group Group. The packet gives the frame's
+// place in the cadence, 48 kHz, the channels the program sends, and no delays. Returns
+// the index of the word after the packet.
 //
 static int PutHdControl(const DtSdiEmbed* Embed, int Group, uint16_t* Words, int Pos,
                         bool Checksum)
@@ -208,9 +226,10 @@ static int PutHdControl(const DtSdiEmbed* Embed, int Group, uint16_t* Words, int
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutSdData -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes a data packet of SMPTE ST 272 of group Group with Count samples from sample
-// First on: for each sample a subframe of three words per channel. Z is set on every
-// channel of a sample from the first whose subframe has it. Returns the word after it.
+// Writes an SMPTE ST 272 data packet of group Group with Count samples, starting at
+// sample First. Each sample takes a subframe of three words for each channel. Once a
+// channel's subframe has Z, Z is set on that channel and on every later channel of the
+// same sample. Returns the index of the word after the packet.
 //
 static int PutSdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Group,
                      int First, int Count, uint16_t* Words, int Pos, bool Checksum)
@@ -241,7 +260,7 @@ static int PutSdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Grou
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Plan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Works out how many samples each line carries, and in HD each sample's clock word.
+// Works out how many samples each line carries and, in HD, each sample's clock word.
 //
 static void Plan(DtSdiEmbed* Embed)
 {
@@ -273,7 +292,7 @@ static void Plan(DtSdiEmbed* Embed)
 
             if (Embed->Sd)
             {
-                // A packet's samples step the clock at once.
+                // Steps the clock by all of a packet's samples at once.
                 Count = Due;
                 for (int Left2 = Due; Left2 > 0; Left2 -= DT_SDIEMBED_SD_MAX_PER_PACKET)
                 {
@@ -301,7 +320,8 @@ static void Plan(DtSdiEmbed* Embed)
         LineStart += Ticks;
     }
 
-    // The samples and, in SD, the packets of up to four of a group before each line.
+    // Counts, for each line, the samples a group carries on the lines before it. In SD
+    // it also counts the packets of up to four samples.
     Embed->SamplesBefore[0] = 0;
     Embed->PacketsBefore[0] = 0;
     for (int Line = 0; Line < Embed->NumLines; Line++)
@@ -372,8 +392,8 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
     if (Short)
         return DTAPI_E_BUF_TOO_SMALL;
 
-    // A group carries all four of its channels: those the program does not send as
-    // silence.
+    // A group carries all four of its channels. The channels the program does not send
+    // carry silence.
     for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
     {
         if (Embed->Group[c / 4] && Embed->Source[c] == DT_SDIEMBED_NONE)
@@ -392,8 +412,10 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_CursorAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// A group's data block number moves on by one a packet, from 1 to 255 and round; a
-// channel whose subframes the builder makes moves on in its AES3 block by one a sample.
+// Works out the cursor from the counts the plan made for the lines before LineIndex. A
+// group's data block number goes up by one per packet, from 1 to 255 and then back to 1.
+// A channel whose subframes the builder makes moves on by one place in its AES3 block
+// per sample.
 //
 void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex, DtSdiEmbedCursor* Cursor)
 {
@@ -460,10 +482,12 @@ int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int 
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The clock's increment is a fraction, the line's samples of a frame times the frame
-// rate over 48 kHz, which one division of two exact integers makes the nearest double,
-// as the matrix's fraction becomes. The cadence gives its odd places the most samples
-// and its even places the fewest, unless the rest of the cadence would then not add up.
+// Sets up the clock, the cadence and the channel status blocks for Geo's standard.
+//
+// The clock's increment is the ticks in a frame times the frame rate, divided by
+// 48 kHz. It is computed as one division of two exact integers, which gives the nearest
+// double. The cadence gives its odd places the most samples. It gives its even places
+// the fewest, unless the rest of the cadence would then not add up.
 //
 void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
 {
@@ -483,7 +507,7 @@ void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
     Embed->Increment =
         (double)(TicksInFrame * Num) / (double)((long long)Den * DT_SDIEMBED_SAMPLE_RATE);
 
-    // The cadence: 48000 Den / Num samples a frame on average.
+    // Works out the cadence. A frame takes 48000 * Den / Num samples on average.
     const long long PerFrameNum = (long long)DT_SDIEMBED_SAMPLE_RATE * Den;
     const long long Length = Num / Gcd(PerFrameNum, Num);
     Embed->CadenceLength = (int)Length;
@@ -501,13 +525,13 @@ void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
         Left -= InFrame;
     }
 
-    // The clock's start, such that the cadence's first frame takes all its samples.
+    // Sets the clock's start so that the cadence's first frame takes all its samples.
     const double Audio = (Embed->SamplesInFrame[0] - 1) * Embed->Increment;
     double Start = (double)TicksInFrame - Audio;
     Embed->PhaseAtStart = Start > 1.0 ? Start - 1.0 : 0.0;
 
-    // The channel status: of PCM, professional, 48 kHz, stereo, 24 bits; of a channel
-    // its group lacks, professional, 48 kHz, 16 bits.
+    // Fills in the channel status blocks. For PCM the status is professional, 48 kHz,
+    // stereo, 24 bits. For a mute channel it is professional, 48 kHz, 16 bits.
     memset(Embed->Status, 0, sizeof(Embed->Status));
     Embed->Status[0][0] = 0x81;
     Embed->Status[0][1] = 0x40;
@@ -533,9 +557,9 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_Put -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// In HD the control packets go in the Y stream, and the data packets in the C stream
-// one sample of each group in turn; in SD each group's samples of the line go in
-// packets of up to four, group after group.
+// In HD the control packets go in the Y stream. The data packets go in the C stream,
+// one sample of each group in turn. In SD each group's samples for the line go in
+// packets of up to four samples, one group after the other.
 //
 int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIndex,
                    int Stream, uint16_t* Words, int Pos, bool Checksum)

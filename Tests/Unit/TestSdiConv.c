@@ -4,12 +4,12 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Every conversion of the SSSE3 and the AVX2 version, where the processor has them, must
-// give what the portable one gives, byte for byte, for runs of every length a line can
-// have and many short ones, from random input; and none may write past its run, which a
-// guard of bytes after each output shows. Nor may the parser and the builder give
-// anything else with them. The portable conversions themselves are checked through the
-// parser's and the builder's tests.
+// Checks that every conversion of the SSSE3 and the AVX2 versions gives the same bytes as
+// the portable version. The versions run only where the processor has them. The input is
+// random. The runs have every length a line can have, and many short lengths. A guard of
+// bytes after each output shows that no conversion writes past its run. The file also
+// checks that the parser and the builder give the same results with each version. The
+// portable conversions themselves are checked by the parser's and the builder's tests.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -25,12 +25,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Runs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-#define MAX_COUNT 7680 // The symbols of a 2160p image line
-#define GUARD 64       // The bytes after an output that must stay as they were
+#define MAX_COUNT 7680 // The number of symbols in a 2160p image line
+#define GUARD 64       // The number of bytes after an output that must stay unchanged
 #define GUARD_BYTE 0x5A
 
-// The lengths tried: every short multiple of 4, and those of the lines of SD, 720p,
-// 1080 and 2160p, and of a 2160p link.
+// Holds the run lengths that are tried. These are every multiple of 4 up to 256, and the
+// line lengths of SD, 720p, 1080 and 2160p and of a 2160p link.
 static size_t g_Counts[64 + 6];
 static int g_NumCounts = 0;
 
@@ -58,16 +58,16 @@ static void Fill(uint8_t* Bytes, size_t Size)
         Bytes[i] = RandomByte();
 }
 
-// Symbols of ten bits, as the conversions take them; the bytes of the pixel formats are
-// of any value.
+// Fills Symbols with random 10-bit values, which is what the conversions take. The bytes
+// of the pixel formats can have any value, so Fill() serves for those.
 static void FillSymbols(uint16_t* Symbols, size_t Count)
 {
     for (size_t i = 0; i < Count; i++)
         Symbols[i] = (uint16_t)((RandomByte() | RandomByte() << 8) & 0x3FF);
 }
 
-// The buffers of a comparison: input, and two outputs of up to three planes each, each
-// plane followed by a guard.
+// Holds the buffers of one comparison. There is one input and there are two outputs.
+// Each output has up to three planes, and a guard follows each plane.
 typedef struct Bufs
 {
     uint16_t Symbols[MAX_COUNT];
@@ -84,8 +84,9 @@ static void ClearOut(Bufs* B)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Comparisons +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Compares the bytes the two versions wrote to the planes, Sizes[p] bytes each, and that
-// the guards after them stayed. Returns NULL, or what differs.
+// Compares the bytes that the two versions wrote to each plane, Sizes[p] bytes per plane.
+// Also checks that the guards after the planes are unchanged. Returns NULL, or a message
+// that says what differs.
 static const char* SameBytes(const Bufs* B, const size_t Sizes[3], char* Message,
                              size_t MessageSize)
 {
@@ -106,6 +107,8 @@ static const char* SameBytes(const Bufs* B, const size_t Sizes[3], char* Message
     return NULL;
 }
 
+// Compares the first Count symbols that the two versions wrote, and checks that the guard
+// after them is unchanged. Returns NULL, or a message that says what differs.
 static const char* SameSymbols(const Bufs* B, size_t Count, char* Message,
                                size_t MessageSize)
 {
@@ -185,7 +188,8 @@ static const char* Compare(const DtSdiConv* Conv, Bufs* B, size_t Count, char* M
     TO(ToV210, V210, B->Symbols, Count, B->Out[v][0]);
     FROM(FromV210, B->In[0], Count, B->OutSymbols[v]);
 
-    // Limit works in place, on symbols of ten bits: on two copies of the same ones.
+    // Limit works in place on 10-bit symbols. Each version gets its own copy of the same
+    // symbols.
     ClearOut(B);
     for (int v = 0; v < 2; v++)
     {
@@ -199,8 +203,9 @@ static const char* Compare(const DtSdiConv* Conv, Bufs* B, size_t Count, char* M
         snprintf(Message, MessageSize, "Limit of %zu: %s", Count, Failure);
         return Message;
     }
-    // The links of 2160p: as many pairs of pixels as the run's symbols hold sixteen
-    // raw words; the upper and the lower line one after the other in the output.
+    // Checks Split4k and Join4k, which convert between a 2160p line and its links. The
+    // test uses one pair of pixels for every sixteen raw words in the run. The output
+    // holds the upper line followed by the lower line.
     const size_t Pixels = Count / 16 * 2;
     if (Pixels > 0)
     {
@@ -231,7 +236,8 @@ static const char* Compare(const DtSdiConv* Conv, Bufs* B, size_t Count, char* M
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Compares every conversion of Conv with the portable one. Returns NULL, or what differs.
+// Compares every conversion of Conv with the portable version, three times for each run
+// length. Returns NULL, or a message that says what differs.
 static const char* CheckVersion(const DtSdiConv* Conv, char* Message, size_t MessageSize)
 {
     MakeCounts();
@@ -246,6 +252,8 @@ static const char* CheckVersion(const DtSdiConv* Conv, char* Message, size_t Mes
     return Failure;
 }
 
+// Checks that every SSSE3 conversion gives the same result as the portable one. Skips the
+// test where the processor has no SSSE3.
 DT_TEST(Ssse3EqualsPortable)
 {
     const DtSdiConv* Conv = DtSdiConv_Ssse3();
@@ -260,6 +268,8 @@ DT_TEST(Ssse3EqualsPortable)
         DT_FAIL("SSSE3: %s", Failure);
 }
 
+// Checks that every AVX2 conversion gives the same result as the portable one. Skips the
+// test where the processor has no AVX2.
 DT_TEST(Avx2EqualsPortable)
 {
     const DtSdiConv* Conv = DtSdiConv_Avx2();
@@ -274,7 +284,7 @@ DT_TEST(Avx2EqualsPortable)
         DT_FAIL("AVX2: %s", Failure);
 }
 
-// The fastest version is one of the three.
+// Checks that the fastest version is one of the three versions.
 DT_TEST(BestIsAVersion)
 {
     const DtSdiConv* Best = DtSdiConv_Best();
@@ -283,13 +293,16 @@ DT_TEST(BestIsAVersion)
               Best == DtSdiConv_Avx2());
 }
 
-// An image in a pixel format: planes of the least strides, filled with random bytes.
+// Holds an image in one pixel format. Each plane has the smallest stride the format
+// allows and is filled with random bytes.
 typedef struct Image
 {
     DtSdiImage Image;
     size_t Bytes[3];
 } Image;
 
+// Allocates the planes of an image of VidStd in Format and fills them with random bytes.
+// Returns false if the size is unknown or memory runs out.
 static bool Image_Alloc(Image* I, int VidStd, DtSdiPixelFormat Format)
 {
     memset(I, 0, sizeof(*I));
@@ -328,10 +341,11 @@ static bool Image_Same(const Image* A, const Image* B)
     return true;
 }
 
-// The parser and the builder give the same with every version as with the portable one,
-// in every pixel format: each builds a frame from the same random image and parses that
-// frame back. In 525i, 720p24 with its lines that start half-way through a byte, 1080i
-// and 2160p, in 10 and 16 bits a symbol.
+// Checks that the parser and the builder give the same result with every version as with
+// the portable one, in every pixel format. Each version builds a frame from the same
+// random image and parses that frame back. The test compares both the frames and the
+// parsed images. It runs in 525i, 720p24, 1080i and 2160p, with 10 and 16 bits a symbol.
+// The lines of 720p24 start part-way through a byte.
 DT_TEST(ParserAndBuilderAgree)
 {
     static const int Stds[] = {DTAPI_VIDSTD_525I59_94, DTAPI_VIDSTD_720P24,

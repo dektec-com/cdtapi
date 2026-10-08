@@ -4,19 +4,23 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Parses one raw frame over and over for a while per case, through the public API only,
-// so that what is measured is what a program gets. For each standard, symbol size and
-// pixel format it prints the milliseconds a frame takes, how much of the frame period
-// that is, and the millions of cycles a frame where the system says what clock it runs
-// at: the number that carries to another machine.
+// Measures how long the parser and the builder take for one frame. Each case parses or
+// builds one raw frame over and over for a set time. The benchmark uses only the public
+// API, so it measures what a program gets. For each standard, symbol size and pixel
+// format, it prints the milliseconds a frame takes and the share of the frame period
+// that is. Where the system reports its clock, the blanking table also prints the
+// millions of cycles a frame takes. That number carries over to another machine.
 //
-// The frame's content does not matter to the image's speed, so it is noise. A second
-// table measures the walk over the blanking for audio and ancillary packets, a third the
-// builder, from images of noise, a fourth both over a worker pool. The first and the
-// third have a column for each version of the conversions: portable, SSSE3 and AVX2;
-// the fourth takes the fastest.
+// The content of the frames and images does not affect the speed, so it is noise. The
+// benchmark prints five tables:
+// - the parser's image, with a column for each version of the conversions (portable,
+//   SSSE3 and AVX2);
+// - the parser's walk over the blanking for audio and ancillary packets;
+// - the builder, with a column for each version of the conversions;
+// - the builder with its line CRCs and checksums;
+// - the parser and the builder over a worker pool, with the fastest version.
 //
-// Not a test: it asserts nothing about time.
+// This is not a test. It asserts nothing about time.
 //
 // Usage: BenchSdi [seconds per case]
 
@@ -72,11 +76,12 @@ static const PixelFormat g_Formats[] = {
 static const int g_Bits[] = {10, 16};
 #define NUM_BITS ((int)(sizeof(g_Bits) / sizeof(g_Bits[0])))
 
-// The versions of the conversions: portable, SSSE3 and AVX2; one the processor or the
-// build lacks is NULL, and its column says so.
+// Names the versions of the conversions: portable, SSSE3 and AVX2. A version that the
+// processor or the build lacks is NULL, and its column shows "-".
 #define NUM_VERSIONS 3
 static const char* g_VersionNames[NUM_VERSIONS] = {"portable", "SSSE3", "AVX2"};
 
+// Fills Versions with the portable, the SSSE3 and the AVX2 version of the conversions.
 static void GetVersions(const DtSdiConv* Versions[NUM_VERSIONS])
 {
     Versions[0] = DtSdiConv_C();
@@ -84,7 +89,7 @@ static void GetVersions(const DtSdiConv* Versions[NUM_VERSIONS])
     Versions[2] = DtSdiConv_Avx2();
 }
 
-// Prints the head of a table with a column per version.
+// Prints the header of a table that has a column for each version.
 static void PrintVersionHead(const char* First)
 {
     printf("%-10s %4s  %-14s", "standard", First, "format");
@@ -93,7 +98,8 @@ static void PrintVersionHead(const char* First)
     printf("\n");
 }
 
-// Prints a cell: milliseconds a frame and the share of the frame period.
+// Prints one cell of a table: the milliseconds a frame takes and the share of the frame
+// period that is. Prints "-" where Ms is negative.
 static void PrintCell(double Ms, double FrameRate)
 {
     if (Ms < 0.0)
@@ -105,6 +111,8 @@ static void PrintCell(double Ms, double FrameRate)
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Measuring +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FillNoise -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Fills Bytes with pseudo-random bytes. Every call gives the same bytes.
 //
 static void FillNoise(uint8_t* Bytes, size_t Size)
 {
@@ -118,8 +126,8 @@ static void FillNoise(uint8_t* Bytes, size_t Size)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives Image planes with the least strides for VidStd in Format. Returns false when
-// there is no memory.
+// Allocates the planes of Image for VidStd in Format, each with the smallest stride the
+// format allows. Returns false when the size is unknown or there is no memory.
 //
 static bool AllocImage(DtSdiImage* Image, int VidStd, DtSdiPixelFormat Format)
 {
@@ -142,6 +150,8 @@ static bool AllocImage(DtSdiImage* Image, int VidStd, DtSdiPixelFormat Format)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeImage -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// Frees the planes that AllocImage() allocated and clears Image.
+//
 static void FreeImage(DtSdiImage* Image)
 {
     for (int p = 0; p < 3; p++)
@@ -151,9 +161,10 @@ static void FreeImage(DtSdiImage* Image)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Measure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Parses View into Image, Audio and Anc, any of which may be NULL, for Seconds, and
-// returns the milliseconds a frame took, or a negative number when the parser refused.
-// Packets that do not fit in Anc are no failure.
+// Parses View over and over for Seconds and returns the milliseconds a frame took. The
+// parser fills Image, Audio and Anc, and any of them may be NULL. Returns a negative
+// number when the parser refuses the frame. Packets that do not fit in Anc are not a
+// failure.
 //
 static double Measure(DtSdiParser* Parser, const DtSdiView* View, DtSdiImage* Image,
                       DtSdiAudio* Audio, DtSdiAncData* Anc, int Seconds)
@@ -175,10 +186,10 @@ static double Measure(DtSdiParser* Parser, const DtSdiView* View, DtSdiImage* Im
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchBlanking -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Measures the walk over every line's blanking that takes out a frame's audio, all 16
-// channels as PCM, and lists its ancillary packets, without the image: the cost of audio
-// and ancillary data on top of the image's. A frame of noise holds few packets, so it is
-// the walk that is measured, not the copying of packets.
+// Measures what audio and ancillary data add to the time the parser takes for the image.
+// The parser walks over the blanking of every line, without the image. It takes out the
+// frame's audio, all 16 channels as PCM, and lists the ancillary packets. A frame of
+// noise holds few packets, so this measures the walk and not the copying of packets.
 //
 static int BenchBlanking(DtSdiParser* Parser, DtSdiView* View, int Seconds, double GHz)
 {
@@ -242,9 +253,9 @@ static int BenchBlanking(DtSdiParser* Parser, DtSdiView* View, int Seconds, doub
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchWorkers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Measures the parser's image and the builder over a worker pool of the library's own
-// threads, 1, 2, 4 and 8 pieces, in the formats a program most likely asks for: what
-// the pool gains.
+// Measures how much a worker pool speeds up the parser's image and the builder. The pool
+// has 8 of the library's own threads, and the work is split into 1, 2, 4 and 8 pieces.
+// The formats are v210 and planar 10-bit, which a program most likely asks for.
 //
 static int BenchWorkers(DtSdiView* View, int Seconds, double GHz)
 {
@@ -341,9 +352,10 @@ static int BenchWorkers(DtSdiView* View, int Seconds, double GHz)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchBuilder -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Measures the builder: a whole frame of 10-bit symbols from an image of noise in each
-// format, the timing references, line numbers and payload ID included, the line CRCs
-// and checksums left to the transmitter as by default; per version.
+// Measures how long the builder takes for a whole frame of 10-bit symbols, with each
+// version of the conversions. The builder starts from an image of noise in each format.
+// The frame includes the timing references, the line numbers and the payload ID. The
+// builder leaves the line CRCs and checksums to the transmitter, which is the default.
 //
 static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
 {

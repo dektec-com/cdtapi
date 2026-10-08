@@ -14,9 +14,9 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Payload fields +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// These functions read the fields of a VPID, the SMPTE ST 352 payload identifier that
-// an SDI signal carries. The VPID is passed as the SDI receiver reports it: four bytes,
-// with byte 1 in the least significant bits.
+// A VPID is the SMPTE ST 352 payload identifier that an SDI signal carries. These
+// functions make a VPID and read its fields. A VPID is passed as the SDI receiver
+// reports it: four bytes, with byte 1 in the least significant bits.
 //
 
 // The payload identifiers (byte 1) that the library recognises.
@@ -30,29 +30,35 @@
 #define DT_S352_ID_S2081_2160 0xC0    // 2160 lines on 6G, SMPTE ST 2081-10
 #define DT_S352_ID_S2082_2160 0xCE    // 2160 lines on 12G, SMPTE ST 2082-10
 
-// Returns the VPID a transmitter puts on video standard VidStd, in the same order: byte 1
-// in the least significant bits. Byte 1 is the payload: of SMPTE ST 259 in SD, ST 292 in
-// HD, ST 425-1 level A in 3G, and ST 2081-10 or ST 2082-10 for 2160p on one 6G or 12G
-// link. Byte 2 is the picture rate, with bit 7 set for a progressive transport and bit 6
-// for a progressive picture; byte 3 is 0; byte 4 says 10 bits. Returns 0 for a standard
-// a channel does not carry.
+// Returns the VPID that a transmitter puts on video standard VidStd, with byte 1 in the
+// least significant bits. The four bytes are:
+// 1. The payload identifier. It is that of SMPTE ST 259 in SD, ST 292 in HD and ST 425-1
+//    level A in 3G. For 2160p on one 6G or 12G link, it is that of ST 2081-10 or
+//    ST 2082-10.
+// 2. The picture rate. Bit 7 is set for a progressive transport, and bit 6 for a
+//    progressive picture.
+// 3. Zero.
+// 4. The bit depth, which is 10 bits.
+// Returns 0 for an unknown standard and for a 3G level B standard.
 uint32_t DtSmpte352_Make(int VidStd);
 
-// Returns the payload identifier: byte 1 of the VPID.
+// Returns the payload identifier, which is byte 1 of the VPID.
 int DtSmpte352_PayloadId(uint32_t Vpid);
 
-// Returns the picture rate in *Num / *Den, as a reduced fraction. Returns 0/0 for a rate
+// Returns the picture rate as the reduced fraction *Num / *Den. Returns 0/0 for a rate
 // code the library does not recognise.
 void DtSmpte352_PictureRate(uint32_t Vpid, int* Num, int* Den);
 
-// Return whether the transport is interlaced, and whether the picture is. A progressive
-// picture in an interlaced transport is PsF.
+// Returns whether the transport is interlaced.
 bool DtSmpte352_IsInterlacedTransport(uint32_t Vpid);
+
+// Returns whether the picture is interlaced. A progressive picture in an interlaced
+// transport is PsF.
 bool DtSmpte352_IsInterlacedStructure(uint32_t Vpid);
 
 // Returns whether the picture aspect ratio is 16:9; false means 4:3.
 bool DtSmpte352_Is16x9(uint32_t Vpid);
 
-// Returns the number, from 0, of the link that carries this VPID, for a payload that has
-// more than one link. Returns 0 for any other payload.
+// Returns the number of the link that carries this VPID, counting from 0, for a payload
+// that has more than one link. Returns 0 for any other payload.
 int DtSmpte352_LinkNumber(uint32_t Vpid);

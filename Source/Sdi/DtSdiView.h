@@ -67,8 +67,8 @@ bool DtSdiLineScratch_Alloc(DtSdiLineScratch* Scratch, const DtSdiView* View);
 // Frees Scratch's buffers. Scratch may have none, or be all zero.
 void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch);
 
-// Returns where symbol Symbol (from 0) of raw line LineIndex (from 0) of the frame View
-// describes lies. The view must describe a raw frame.
+// Returns a pointer to symbol Symbol (from 0) of raw line LineIndex (from 0), in the
+// frame View describes. The view must describe a raw frame.
 DtSdiSymbolPtr DtSdiView_RawSymbols(const DtSdiView* View, int LineIndex, size_t Symbol);
 
 // Returns a pointer to symbol Symbol of raw line LineIndex, in a raw frame or in a ring.

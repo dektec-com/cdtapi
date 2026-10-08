@@ -21,8 +21,8 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The most words of horizontal blanking a stream of a line has between its timing
-// references: 4125 - 1280 - 12 in 720p23.98 and 720p24.
+// Bounds the words of horizontal blanking that one stream of a line has between its
+// timing references. The largest number is 4125 - 1280 - 12, in 720p23.98 and 720p24.
 #define DT_SDIVIEW_MAX_HANC_WORDS 4096
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -212,8 +212,8 @@ DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd, int* BitsPer
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Looks for the payload ID in the horizontal blanking of the Y stream of link 1 of line
-// LineIndex, and sets *PayloadId to its four bytes when it is there.
+// Looks for the payload ID in raw line LineIndex and, when it is there, sets *PayloadId
+// to its four bytes. It searches the horizontal blanking in link 1's Y stream.
 //
 static bool FindPayloadId(const DtSdiView* View, int LineIndex, DtSdiLineScratch* Scratch,
                           uint32_t* PayloadId)
@@ -252,9 +252,10 @@ static bool FindPayloadId(const DtSdiView* View, int LineIndex, DtSdiLineScratch
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// SMPTE ST 352 puts the payload ID three lines after field 1's switching line. A frame
-// that has it elsewhere in field 1's vertical blanking is read too: FFmpeg's sdi muxer,
-// for one, puts it three lines later in 525 lines.
+// Looks first in the line where SMPTE ST 352 puts the payload ID, three lines after the
+// switching line of field 1. If it is not there, looks in the other lines of field 1's
+// vertical blanking. Some sources put it elsewhere. FFmpeg's sdi muxer, for one, puts it
+// three lines later in 525-line video.
 //
 DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
 {

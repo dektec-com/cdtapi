@@ -18,11 +18,14 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BenchClockGHz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The clock the processor says it is running at, or zero where it does not say. Cycles
-// are the time a conversion takes times this clock, and that is the number that carries
-// to another machine: divide it by the clock of a core there for the time it would need.
-// Neither the nominal clock nor the time-stamp counter serves, since both miss the turbo
-// a lightly loaded desktop runs at, which is most of the difference with a server.
+// Returns the clock in GHz that the processor reports it is running at, or zero where it
+// does not report one. On Linux, this is the highest "cpu MHz" in /proc/cpuinfo.
+//
+// The benchmarks multiply a conversion's time by this clock to get its cycles. Cycles
+// carry over to another machine. Divide them by the clock of a core there to get the time
+// the conversion would take. The nominal clock and the time-stamp counter are not used,
+// because both miss the turbo clock of a lightly loaded desktop. That turbo clock is most
+// of the difference with a server.
 //
 static inline double BenchClockGHz(void)
 {

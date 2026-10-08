@@ -16,11 +16,13 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// The stream alignment the layout is made with. A raw frame does not depend on it.
+// The stream alignment, in bits, that the layout is made with. A raw frame does not
+// depend on it.
 #define DT_SDIGEOMETRY_ALIGNMENT_BITS 64
 
-// Where each link's words lie in a group of eight words of a raw 2160p line: the C words
-// of links 4, 2, 3 and 1, then their Y words. g_LinkPlace[L] is the place of link L + 1.
+// Gives the place of each link's words in a group of eight words of a raw 2160p line.
+// The group holds the C words of links 4, 2, 3 and 1, then their Y words in the same
+// order. g_LinkPlace[L] is the place of link L + 1 among the four.
 static const int g_LinkPlace[4] = {3, 1, 2, 0};
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -42,7 +44,8 @@ DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd)
     Geo->SwitchingIndex = Props.Fields[0].SwitchingLine - 1;
     Geo->Props = Props;
 
-    // The streams. Of 2160p, Props describes one link, whose streams are those of HD.
+    // Set up the streams. For 2160p, Props describes one link, whose streams are those
+    // of HD.
     const bool IsSd = DtFrameProps_IsSd(&Props);
     const int PerLink = IsSd ? 1 : 2;
     Geo->NumStreams = Geo->Is4k ? 8 : PerLink;

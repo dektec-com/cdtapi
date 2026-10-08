@@ -1,6 +1,6 @@
 // #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
-// CDTAPI - The conversions of SDI symbols, in portable C, and the choice of version
+// CDTAPI - The portable conversions of SDI symbols, and the choice of version
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -14,7 +14,7 @@
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Legal -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Limits a sample to 4..1019: SDI keeps 0 to 3 and 1020 to 1023 for timing references.
+// Limits a sample to 4..1019. SDI keeps 0 to 3 and 1020 to 1023 for timing references.
 //
 static inline uint16_t Legal(unsigned Sample)
 {
@@ -148,7 +148,8 @@ static void FromUyvy8(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToY210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Each pair of pixels: Y0, Cb, Y1, Cr, the 10 bits at the top of each word.
+// Writes each pair of pixels as four words in the order Y0, Cb, Y1, Cr. A shift left by
+// six puts each symbol's 10 bits at the top of its word.
 //
 static void ToY210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
@@ -205,9 +206,13 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Split4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Pixel x of link L (from 0) is pixel X of its image line: its pixel pair x / 2 is the
-// image's pair 2 * (x / 2) for links 1 and 3, and that plus one for links 2 and 4. Its C
-// word is word 8x + Place[L] of the raw line, its Y word four after.
+// Copies each link's C and Y words from the raw line to their pixel in the image line.
+// The loop counts links from 0, so Link 0 is link 1. For pixel x of a link:
+// 1. The pixel lies in the link's pixel pair x / 2.
+// 2. That pair is pair 2 * (x / 2) of the image line for links 1 and 3, and the pair
+//    after it for links 2 and 4. Links 1 and 2 fill the upper line, 3 and 4 the lower.
+// 3. In the raw line, the pixel's C word is word 8x + g_LinkPlace[Link]. Its Y word lies
+//    four words further on.
 //
 static const int g_LinkPlace[4] = {3, 1, 2, 0};
 
@@ -281,7 +286,8 @@ const DtSdiConv* DtSdiConv_C(void)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Ssse3 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// SSSE3 is there when the pixel conversions found it: they ask the processor.
+// Asks the pixel conversions whether the processor has SSSE3, since they already check
+// the processor for it.
 //
 const DtSdiConv* DtSdiConv_Ssse3(void)
 {

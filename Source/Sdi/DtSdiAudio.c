@@ -4,19 +4,27 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// SMPTE ST 299-1 (HD and up) puts four channels, a group, in each data packet: two
-// clock words, then four words a channel, then six words of BCH code. A channel's four
-// words carry the AES3 subframe from bit 4 of the first word up, eight bits a word: the
-// 24 bits of audio, then V, U, C and P; bit 3 of the first word of channels 1 and 3 of
-// the group is Z, the start of an AES3 block. So the lower bytes of the four words, the
-// first lowest, are the subframe in the layout of DT_SDI_AUDIO_AES3.
+// This file takes audio samples out of the audio packets of SMPTE ST 299-1 and ST 272.
 //
-// SMPTE ST 272 (SD) puts subframes of three words in a data packet, each for the
-// channel of the group that bits 1 and 2 of its first word name: Z in bit 0 of the first
-// word, then 20 bits of audio over the three words from bit 3 of the first, then V, U, C
-// and P in bits 5 to 8 of the third. Its audio becomes the upper 20 of the 24 bits.
+// In SMPTE ST 299-1 (HD and up), each data packet carries one group of four channels.
+// The packet's user data words are laid out as follows:
+//   1. Two clock words.
+//   2. Four words for each channel, eight bits per word. They carry the AES3 subframe
+//      from bit 4 of the first word up: the 24 bits of audio, then V, U, C and P.
+//   3. Six words of BCH code.
+// Bit 3 of the first word of channels 1 and 3 of the group is Z. It marks the start of an
+// AES3 block. So the lower bytes of a channel's four words, the first word in the lowest
+// bits, form the subframe in the layout of DT_SDI_AUDIO_AES3.
 //
-// A control packet's first user data word is the frame's place in the audio cadence.
+// In SMPTE ST 272 (SD), a data packet carries subframes of three words each. Bits 1 and
+// 2 of a subframe's first word name its channel within the group. The other bits are:
+//   1. Z, in bit 0 of the first word.
+//   2. 20 bits of audio, from bit 3 of the first word through the three words.
+//   3. V, U, C and P, in bits 5 to 8 of the third word.
+// The 20 bits of audio become the upper 20 of the 24 bits of a sample.
+//
+// The first user data word of a control packet is the frame's place in the audio
+// cadence.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -27,16 +35,21 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
+// The audio sample rate in Hz.
 #define DT_SDIAUDIO_SAMPLE_RATE 48000
 
-// The user data words of a HD data packet before the BCH code, and the code's words.
+// The number of user data words in an HD data packet before the BCH code, and the
+// number of words of the code.
 #define DT_SDIAUDIO_HD_DATA_WORDS 18
 #define DT_SDIAUDIO_HD_BCH_WORDS 6
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutSample -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes the subframe Aes3 as sample of channel Channel (from 0), in the format of its
-// pair, where the program wants it and has room; and counts it.
+// Stores the AES3 subframe Aes3 as the next sample of channel Channel, counting from 0.
+// The sample is written in the format chosen for the channel's pair. It is written only
+// when the program wants that channel and its buffer has room. Whether or not it is
+// written, the sample is counted. It also marks the channel present, and marks it
+// invalid when V is set.
 //
 static void PutSample(DtSdiAudio* Audio, int Channel, uint32_t Aes3)
 {
@@ -59,8 +72,9 @@ static void PutSample(DtSdiAudio* Audio, int Channel, uint32_t Aes3)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- HdBchHolds -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Returns whether the six BCH words of a HD data packet hold: the code over the lower
-// bytes of its flag, IDs, data count and first 18 user data words, one byte a word.
+// Returns whether the six BCH words of an HD data packet are correct. They are correct
+// when their lower bytes equal the code that DtSdiAudio_HdBch() works out over the
+// packet.
 //
 static bool HdBchHolds(const DtSdiAncFound* Found)
 {
@@ -78,9 +92,12 @@ static bool HdBchHolds(const DtSdiAncFound* Found)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_HdBch -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Each byte goes into a register of six bytes, the code's: the byte xored with the
-// register's lowest byte selects what the shift brings in, the generator of ST 299-1,
-// which the multiplication spreads over the bytes it touches.
+// Works out the code byte by byte in a register of six bytes, the size of the code. For
+// each word, the loop does three things:
+//   1. It xors the word's lower byte with the register's lowest byte.
+//   2. It shifts the register down by one byte.
+//   3. It xors the result of step 1 into each byte that the generator of SMPTE ST 299-1
+//      touches. Multiplying by the constant copies the byte into each of them.
 //
 uint64_t DtSdiAudio_HdBch(const uint16_t* Words)
 {
@@ -127,8 +144,9 @@ void DtSdiAudio_Begin(DtSdiAudio* Audio)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_CadenceLength -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// A frame holds 48000 Den / Num samples on average; the cadence is the denominator of
-// that fraction in its lowest terms.
+// Works out the cadence from the frame rate Num / Den. A frame holds
+// DT_SDIAUDIO_SAMPLE_RATE * Den / Num samples on average. The cadence length is the
+// denominator of that fraction in its lowest terms.
 //
 int DtSdiAudio_CadenceLength(int VidStd)
 {
@@ -225,9 +243,9 @@ void DtSdiAudio_TakeSd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check
         return;
     }
     if ((Did & 1) == 0)
-        return; // Extended data, the four bits below the 20, which this leaves out
+        return; // Skip extended data, the four bits below the 20 bits of audio
 
-    // A data packet: FF for group 1, FD, FB, F9 for group 4.
+    // A data packet: FF, FD, FB and F9 for groups 1 to 4.
     const int Group = (0xFF - Did) / 2;
     if (Check && !Found->ChecksumOk)
         Audio->NumPacketErrors[Group]++;
