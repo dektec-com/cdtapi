@@ -8,8 +8,8 @@
 // with PCLMULQDQ, where the processor has it, the portable one: on random words, of
 // every length up to 128 and every 32nd beyond, past the longest it takes itself, so
 // that the lengths of the lines with a CRC come in and others it leaves to the portable
-// version; with the words next to each other and a stream apart. And the builder must
-// make the same frames with each.
+// version; for one stream, the two of HD, the eight of 2160p and three, which it takes
+// word by word. And the builder must make the same frames with each.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
@@ -26,12 +26,12 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Runs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-#define MAX_STEP 8
+#define MAX_STREAMS DT_SDICRC_MAX_STREAMS
 #define MAX_WORDS (DT_SDICRC_CLMUL_MAX_WORDS + 64)
 
 static uint32_t g_Seed = 12345;
 static uint32_t g_Table[1024];
-static uint16_t g_Words[MAX_WORDS * MAX_STEP];
+static uint16_t g_Words[MAX_WORDS * MAX_STREAMS + 4];
 
 static uint16_t RandomWord(void)
 {
@@ -47,14 +47,19 @@ static void Setup(void)
         g_Words[i] = RandomWord();
 }
 
-// The CRC of Count words Step apart, word by word as SMPTE ST 292 defines it.
-static uint32_t Definition(const uint16_t* Words, size_t Count, size_t Step)
+// The CRC of stream s of Streams that alternate in Words, Count words each, word by word
+// as SMPTE ST 292 defines it.
+static uint32_t Definition(const uint16_t* Words, size_t Count, int Streams, int s)
 {
     uint32_t Crc = 0;
     for (size_t k = 0; k < Count; k++)
-        Crc = DtSdiFrame_Crc18(Crc, Words[k * Step]);
+        Crc = DtSdiFrame_Crc18(Crc, Words[k * (size_t)Streams + (size_t)s]);
     return Crc;
 }
+
+// The numbers of streams tried.
+static const int g_Streams[] = {1, 2, 3, 8};
+#define NUM_STREAMS ((int)(sizeof(g_Streams) / sizeof(g_Streams[0])))
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -65,13 +70,18 @@ DT_TEST(PortableEqualsTheDefinition)
     static const size_t Counts[] = {0, 1, 7, 64, 720, 1280, 1920, 2048};
     for (size_t c = 0; c < sizeof(Counts) / sizeof(Counts[0]); c++)
     {
-        for (size_t Step = 1; Step <= MAX_STEP; Step *= 2)
+        for (int n = 0; n < NUM_STREAMS; n++)
         {
-            const uint32_t Want = Definition(g_Words, Counts[c], Step);
-            const uint32_t Got = DtSdiCrc_Words(g_Words, Counts[c], Step, g_Table);
-            if (Got != Want)
-                DT_FAIL("%zu words, step %zu: %05X, not %05X", Counts[c], Step,
-                        (unsigned)Got, (unsigned)Want);
+            const int Streams = g_Streams[n];
+            uint32_t Crcs[MAX_STREAMS];
+            DtSdiCrc_Streams(g_Words, Counts[c], Streams, g_Table, Crcs);
+            for (int s = 0; s < Streams; s++)
+            {
+                const uint32_t Want = Definition(g_Words, Counts[c], Streams, s);
+                if (Crcs[s] != Want)
+                    DT_FAIL("%zu words, stream %d of %d: %05X, not %05X", Counts[c], s,
+                            Streams, (unsigned)Crcs[s], (unsigned)Want);
+            }
         }
     }
 }
@@ -89,16 +99,23 @@ DT_TEST(ClmulEqualsPortable)
     }
     for (size_t Count = 0; Count <= MAX_WORDS; Count += Count < 128 ? 1 : 32)
     {
-        for (size_t Step = 1; Step <= MAX_STEP; Step *= 2)
+        for (int n = 0; n < NUM_STREAMS; n++)
         {
+            const int Streams = g_Streams[n];
             for (size_t Start = 0; Start < 3; Start++)
             {
                 const uint16_t* Words = g_Words + Start;
-                const uint32_t Want = DtSdiCrc_Words(Words, Count, Step, g_Table);
-                const uint32_t Got = Clmul(Words, Count, Step, g_Table);
-                if (Got != Want)
-                    DT_FAIL("%zu words, step %zu, from %zu: %05X, not %05X", Count, Step,
-                            Start, (unsigned)Got, (unsigned)Want);
+                uint32_t Want[MAX_STREAMS];
+                uint32_t Got[MAX_STREAMS];
+                DtSdiCrc_Streams(Words, Count, Streams, g_Table, Want);
+                Clmul(Words, Count, Streams, g_Table, Got);
+                for (int s = 0; s < Streams; s++)
+                {
+                    if (Got[s] != Want[s])
+                        DT_FAIL("%zu words, stream %d of %d, from %zu: %05X, not %05X",
+                                Count, s, Streams, Start, (unsigned)Got[s],
+                                (unsigned)Want[s]);
+                }
             }
         }
     }
@@ -108,7 +125,7 @@ DT_TEST(ClmulEqualsPortable)
 DT_TEST(BestIsAVersion)
 {
     const DtSdiCrcFunc Best = DtSdiCrc_Best();
-    DT_ASSERT(Best == DtSdiCrc_Words || Best == DtSdiCrc_Clmul());
+    DT_ASSERT(Best == DtSdiCrc_Streams || Best == DtSdiCrc_Clmul());
 }
 
 // The builder, with the line CRCs on, makes the same frames with either version: in 720p,
@@ -137,7 +154,7 @@ DT_TEST(BuilderAgrees)
                   Folding != NULL);
         DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Table, true));
         DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Folding, true));
-        DtSdiBuilder_UseCrc(Table, DtSdiCrc_Words);
+        DtSdiBuilder_UseCrc(Table, DtSdiCrc_Streams);
         DtSdiBuilder_UseCrc(Folding, Clmul);
         for (int n = 0; n < 2; n++)
         {

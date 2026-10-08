@@ -434,7 +434,7 @@ static int BenchChecksums(DtSdiView* View, int Seconds)
         return 1;
     }
     static const char* Columns[3] = {"no CRC", "CRC by table", "CRC, PCLMULQDQ"};
-    const DtSdiCrcFunc Crcs[3] = {NULL, DtSdiCrc_Words, DtSdiCrc_Clmul()};
+    const DtSdiCrcFunc Crcs[3] = {NULL, DtSdiCrc_Streams, DtSdiCrc_Clmul()};
     printf("\nThe builder from v210 with its line CRCs and checksums, one thread: "
            "ms/frame and %% period\n");
     printf("%-10s %4s  %-14s", "standard", "bits", "format");

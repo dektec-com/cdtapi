@@ -295,7 +295,7 @@ if(CDTAPI_HAVE_SSSE3)
             "${SdiDir}/DtSdiConvAvx2.c"
             PROPERTIES COMPILE_OPTIONS -mavx2)
         set_source_files_properties("${SdiDir}/DtSdiCrcClmul.c"
-            PROPERTIES COMPILE_OPTIONS -mpclmul)
+            PROPERTIES COMPILE_OPTIONS "-mpclmul;-mssse3")
     else()
         set_source_files_properties("${PixConvDir}/DtAvPixConvAvx2.c"
             "${SdiDir}/DtSdiConvAvx2.c"

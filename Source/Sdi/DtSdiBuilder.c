@@ -427,12 +427,15 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
                                Builder->Conv);
     }
 
-    // The CRC over this line's active part, for the next line's.
-    for (int s = 0; Streams > 1 && Builder->Checksums && s < Streams; s++)
+    // The CRC over this line's active part, for the next line's: of every stream at
+    // once, by its place in the line.
+    if (Streams > 1 && Builder->Checksums)
     {
-        const uint16_t* From = Raw + (size_t)Hanc * (size_t)Streams + Geo->StreamFirst[s];
-        Band->LastCrc[s] =
-            Builder->Crc(From, (size_t)(Total - Hanc), (size_t)Streams, Table);
+        uint32_t Crcs[DT_SDICRC_MAX_STREAMS];
+        Builder->Crc(Raw + (size_t)Hanc * (size_t)Streams, (size_t)(Total - Hanc),
+                     Streams, Table, Crcs);
+        for (int s = 0; s < Streams; s++)
+            Band->LastCrc[s] = Crcs[Geo->StreamFirst[s]];
     }
 }
 

@@ -18,24 +18,30 @@
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= The CRC +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
-// SMPTE ST 292's CRC-18, x^18 + x^5 + x^4 + 1, over Count 10-bit words Step words apart,
-// least significant bit first, from a register of 0: the CRC a line carries over the
-// active part of the line before. Table holds the CRC of each 10-bit word from a register
-// of 0, as DtSdiFrame_Crc18 gives it. Every version gives the same result as the
-// portable one, which is the reference.
+// SMPTE ST 292's CRC-18, x^18 + x^5 + x^4 + 1, over a stream's 10-bit words, least
+// significant bit first, from a register of 0: the CRC a line carries over the active
+// part of the line before. A line's streams alternate word by word, so a version takes
+// them all at once: Count words of each of Streams streams, at most
+// DT_SDICRC_MAX_STREAMS, from Words, and sets Crcs[i] to the CRC of the stream whose
+// first word is Words[i]. Table holds the CRC of each 10-bit word from a register of 0,
+// as DtSdiFrame_Crc18 gives it. Every version gives the same result as the portable one,
+// which is the reference.
+
+// The most streams a line has: those of four links of 2160p, C and Y each.
+#define DT_SDICRC_MAX_STREAMS 8
 
 // A version of the CRC.
-typedef uint32_t (*DtSdiCrcFunc)(const uint16_t* Words, size_t Count, size_t Step,
-                                 const uint32_t* Table);
+typedef void (*DtSdiCrcFunc)(const uint16_t* Words, size_t Count, int Streams,
+                             const uint32_t* Table, uint32_t* Crcs);
 
 // The portable version: ten bits a step, through Table.
-uint32_t DtSdiCrc_Words(const uint16_t* Words, size_t Count, size_t Step,
-                        const uint32_t* Table);
+void DtSdiCrc_Streams(const uint16_t* Words, size_t Count, int Streams,
+                      const uint32_t* Table, uint32_t* Crcs);
 
-// The version with PCLMULQDQ, or NULL where the processor lacks it or the library was
-// built without it. It packs the words into a run of bits and folds that 128 bits a
-// step; a run that does not come to whole steps of 128 bits, or of more than
-// DT_SDICRC_CLMUL_MAX_WORDS words, it leaves to the portable version.
+// The version with PCLMULQDQ and SSSE3, or NULL where the processor lacks them or the
+// library was built without them. It packs each stream's words into a run of bits and
+// folds that 128 bits a step; streams that do not come to whole steps of 128 bits, or of
+// more than DT_SDICRC_CLMUL_MAX_WORDS words, it leaves to the portable version.
 DtSdiCrcFunc DtSdiCrc_Clmul(void);
 
 // The fastest version the processor has.
@@ -47,8 +53,8 @@ DtSdiCrcFunc DtSdiCrc_Best(void);
 
 // The version with PCLMULQDQ itself, without the check of the processor. Only for
 // DtSdiCrc.c, which checks first.
-uint32_t DtSdiCrc_WordsClmulUnchecked(const uint16_t* Words, size_t Count, size_t Step,
-                                      const uint32_t* Table);
+void DtSdiCrc_StreamsClmulUnchecked(const uint16_t* Words, size_t Count, int Streams,
+                                    const uint32_t* Table, uint32_t* Crcs);
 
 // Makes Builder work out its line CRCs with Crc rather than the fastest version, for the
 // tests and the benchmark that compare them.
