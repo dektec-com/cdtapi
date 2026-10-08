@@ -7,10 +7,10 @@
 // Makes an IP port of a DekTec card an NMOS node, registered with the registry at
 // --registry. The node has the port as its device, and on it a receiver (--receive) or a
 // sender (--send) of an AV FIFO. An NMOS controller can then connect them (IS-05):
-// the receiver receives the stream the controller names, and the sender sends a moving
-// test pattern, or with --audio a tone, to where the controller says. The program runs
-// for --seconds, and prints each change. The node's clock is that of the port's PTP
-// clock slave, which it checks once a second:
+// the receiver receives the stream the controller names, and the sender sends the
+// examples' test pattern, or with --audio their test tone, to where the controller
+// says. The program runs for --seconds, and prints each change. The node's clock is that
+// of the port's PTP clock slave, which it checks once a second:
 //
 //     9211000001:1  node 0b5c3a1e-... at http://192.168.1.20:41005
 //     9211000001:1  clock PTP 00-1b-19-ff-fe-00-00-01 locked
@@ -180,41 +180,6 @@ static void PrintChange(const DtHwFuncDesc* Port, bool Receiver, bool Enabled,
                Receiver ? "receive" : "send to", Ip[0], Ip[1], Ip[2], Ip[3], UdpPort);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Fills frame Number with the test pattern DtTransmit2110 sends: vertical bars that move
-// to the left, or a 1 kHz square wave for audio.
-//
-static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, int Size)
-{
-    if (Config->Channels > 0)
-    {
-        int Bytes = 3 * Config->Channels;
-        for (int i = 0; i + Bytes <= Size; i += Bytes)
-        {
-            int Sample = (i / Bytes + Number * Config->SamplesPerFrame) % 48;
-            uint32_t Value = Sample < 24 ? 0x200000u : 0xE00000u;
-            for (int c = 0; c < Config->Channels; c++)
-            {
-                Data[i + 3 * c] = (uint8_t)(Value >> 16);
-                Data[i + 3 * c + 1] = (uint8_t)(Value >> 8);
-                Data[i + 3 * c + 2] = (uint8_t)Value;
-            }
-        }
-        return;
-    }
-    for (int Row = 0; Row < Config->Height; Row++)
-    {
-        uint8_t* Line = Data + (size_t)Row * (size_t)ExampleAv_RowBytes(Config);
-        for (int Pixel = 0; Pixel < Config->Width; Pixel += 2)
-        {
-            int Bar = ((Pixel + Number * 16) / 128) % 8;
-            ExampleAv_WritePgroup(Config, Line, Pixel / 2, Bar % 2 == 0 ? 128 : 200,
-                                  16 + Bar * 28, Bar < 4 ? 128 : 80);
-        }
-    }
-}
-
 // The state of the main thread, which owns the FIFO.
 typedef struct Owner
 {
@@ -223,10 +188,11 @@ typedef struct Owner
     AvFifo_RxFifo* Rx; // Of --receive
     AvFifo_TxFifo* Tx; // Of --send
     const ExampleAvConfig* Config;
-    bool Running;     // The FIFO is started
-    int Frames;       // Received or sent since it started
-    int64_t StartNs;  // Send: the time of day of the first frame
-    int64_t PeriodNs; // Send: of a frame
+    ExampleAvSource Source; // Send: the test pattern or the test tone
+    bool Running;           // The FIFO is started
+    int Frames;             // Received or sent since it started
+    int64_t StartNs;        // Send: the time of day of the first frame
+    int64_t PeriodNs;       // Send: of a frame
 } Owner;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PrintFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -312,7 +278,7 @@ static void Send(Owner* O)
         AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(O->Tx, Size);
         if (Frame == NULL)
             return;
-        Pattern(O->Config, O->Frames, Frame->Data, Size);
+        ExampleAv_SourceFrame(&O->Source, O->Frames, Frame->Data);
         Frame->NumValidBytes = Size;
         Frame->NumRows = O->Config->Height;
         Frame->ToD = ExampleAv_FromNs(O->StartNs + (int64_t)O->Frames * O->PeriodNs);
@@ -597,6 +563,8 @@ int main(int Argc, char** Argv)
     O.Port = &Port;
     O.Config = &Config;
     O.PeriodNs = ExampleAv_PeriodNs(&Config);
+    if (!Receives && !ExampleAv_SourceInit(&O.Source, &Config))
+        return EXAMPLE_FAILED;
     O.Device = DtDevice_Alloc();
     if (Receives)
         O.Rx = AvFifo_RxFifo_Alloc();
@@ -621,6 +589,7 @@ int main(int Argc, char** Argv)
     ExampleMailbox_Free(Prog.Mailbox);
     AvFifo_RxFifo_Free(O.Rx);
     AvFifo_TxFifo_Free(O.Tx);
+    ExampleAv_SourceFree(&O.Source);
     DtDevice_Free(O.Device);
     return Exit;
 }

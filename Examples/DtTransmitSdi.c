@@ -92,8 +92,9 @@ typedef struct Source
     // The image of the next frame, planar 10-bit with the fields woven.
     DtSdiImage Image;
 
-    // The test pattern, when there are no input files.
+    // The test pattern and the test tone, when there are no input files.
     ExamplePattern Pattern;
+    ExampleTone Tone;
 
     // The input files, or NULL for the test pattern.
     FILE* Yuv;
@@ -325,7 +326,7 @@ static int BuildFrame(DtOutpChannel* Channel, DtSdiBuilder* Builder, DtSdiView* 
     else
     {
         ExamplePattern_Draw(&Src->Pattern, Number);
-        ExamplePattern_Tone(&Src->Pattern, Samples[0], NumSamples);
+        ExampleTone_Next(&Src->Tone, Samples[0], NumSamples);
         memcpy(Samples[1], Samples[0], (size_t)NumSamples * sizeof(int32_t));
     }
     DtSdiAudio Audio;

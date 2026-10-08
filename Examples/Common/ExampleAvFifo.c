@@ -211,33 +211,134 @@ DtTimeOfDay ExampleAv_FromNs(int64_t Ns)
     return ToD;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_WritePgroup -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// A pixel group is Cb, Y, Cr, Y. Ten-bit samples are a bit stream, most significant bit
-// first, of the eight-bit values shifted up by two.
-//
-void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Index,
-                           int Blue, int Luma, int Red)
-{
-    if (Config->EightBit)
-    {
-        uint8_t* Group = Row + (size_t)Index * 4;
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-        Group[0] = (uint8_t)Blue;
-        Group[1] = (uint8_t)Luma;
-        Group[2] = (uint8_t)Red;
-        Group[3] = (uint8_t)Luma;
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PackArea -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Packs Area of the pattern's image into Data, a frame of video in the sample size of
+// Config. A pixel group is two pixels: Cb, Y, Cr and Y. In 10 bits the samples follow one
+// another, most significant bit first, so that a group takes five bytes; in 8 bits each
+// sample is the top 8 bits of the 10-bit one. The area is widened to whole groups.
+//
+static void PackArea(const ExampleAvConfig* Config, const ExamplePattern* Pattern,
+                     const ExamplePatternArea* Area, uint8_t* Data)
+{
+    const int First = Area->X / 2;
+    const int End = (Area->X + Area->Width + 1) / 2;
+    const size_t RowBytes = (size_t)ExampleAv_RowBytes(Config);
+
+    for (int y = Area->Y; y < Area->Y + Area->Lines; y++)
+    {
+        const uint16_t* Luma = Pattern->Y + (size_t)y * (size_t)Pattern->Width;
+        const uint16_t* Blue = Pattern->Cb + (size_t)y * (size_t)(Pattern->Width / 2);
+        const uint16_t* Red = Pattern->Cr + (size_t)y * (size_t)(Pattern->Width / 2);
+        uint8_t* Row = Data + (size_t)y * RowBytes;
+        for (int p = First; p < End; p++)
+        {
+            const uint32_t Cb = Blue[p];
+            const uint32_t Y0 = Luma[2 * p];
+            const uint32_t Cr = Red[p];
+            const uint32_t Y1 = Luma[2 * p + 1];
+            if (Config->EightBit)
+            {
+                uint8_t* Group = Row + (size_t)p * 4;
+                Group[0] = (uint8_t)(Cb >> 2);
+                Group[1] = (uint8_t)(Y0 >> 2);
+                Group[2] = (uint8_t)(Cr >> 2);
+                Group[3] = (uint8_t)(Y1 >> 2);
+                continue;
+            }
+            uint8_t* Group = Row + (size_t)p * 5;
+            Group[0] = (uint8_t)(Cb >> 2);
+            Group[1] = (uint8_t)((Cb & 3) << 6 | Y0 >> 4);
+            Group[2] = (uint8_t)((Y0 & 15) << 4 | Cr >> 6);
+            Group[3] = (uint8_t)((Cr & 63) << 2 | Y1 >> 8);
+            Group[4] = (uint8_t)Y1;
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_SourceInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// For video, the pattern's first image is packed once here; for audio, only room for
+// one frame's samples is needed.
+//
+bool ExampleAv_SourceInit(ExampleAvSource* Src, const ExampleAvConfig* Config)
+{
+    memset(Src, 0, sizeof(*Src));
+    Src->Config = Config;
+    if (Config->Channels > 0)
+    {
+        Src->Samples =
+            (int32_t*)malloc((size_t)Config->SamplesPerFrame * sizeof(int32_t));
+        if (Src->Samples == NULL)
+        {
+            printf("Out of memory\n");
+            return false;
+        }
+        return true;
+    }
+
+    Src->Background = (uint8_t*)malloc((size_t)ExampleAv_FrameBytes(Config));
+    if (Src->Background == NULL)
+    {
+        printf("Out of memory\n");
+        return false;
+    }
+    if (!ExamplePattern_Init(&Src->Pattern, Config->Width, Config->Height))
+    {
+        printf("No test pattern for an image of %dx%d; it needs at least 320x240\n",
+               Config->Width, Config->Height);
+        ExampleAv_SourceFree(Src);
+        return false;
+    }
+    const ExamplePatternArea All = {0, 0, Config->Width, Config->Height};
+    PackArea(Config, &Src->Pattern, &All, Src->Background);
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_SourceFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void ExampleAv_SourceFree(ExampleAvSource* Src)
+{
+    ExamplePattern_Free(&Src->Pattern);
+    free(Src->Background);
+    free(Src->Samples);
+    memset(Src, 0, sizeof(*Src));
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleAv_SourceFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A video frame costs one copy of the packed first image, and packing the bar and the
+// box: little enough for any image size and rate.
+//
+void ExampleAv_SourceFrame(ExampleAvSource* Src, int64_t Number, uint8_t* Data)
+{
+    const ExampleAvConfig* Config = Src->Config;
+
+    if (Config->Channels > 0)
+    {
+        ExampleTone_Next(&Src->Tone, Src->Samples, Config->SamplesPerFrame);
+        uint8_t* Out = Data;
+        for (int s = 0; s < Config->SamplesPerFrame; s++)
+        {
+            const uint32_t Value = (uint32_t)Src->Samples[s] >> 8;
+            for (int c = 0; c < Config->Channels; c++)
+            {
+                *Out++ = (uint8_t)(Value >> 16);
+                *Out++ = (uint8_t)(Value >> 8);
+                *Out++ = (uint8_t)Value;
+            }
+        }
         return;
     }
-    uint8_t* Group = Row + (size_t)Index * 5;
-    uint32_t Cb = (uint32_t)Blue << 2;
-    uint32_t Y0 = (uint32_t)Luma << 2;
-    uint32_t Cr = (uint32_t)Red << 2;
-    Group[0] = (uint8_t)(Cb >> 2);
-    Group[1] = (uint8_t)((Cb & 3) << 6 | Y0 >> 4);
-    Group[2] = (uint8_t)((Y0 & 15) << 4 | Cr >> 6);
-    Group[3] = (uint8_t)((Cr & 63) << 2 | Y0 >> 8);
-    Group[4] = (uint8_t)Y0;
+
+    memcpy(Data, Src->Background, (size_t)ExampleAv_FrameBytes(Config));
+    ExamplePattern_Draw(&Src->Pattern, Number);
+    ExamplePatternArea Areas[2];
+    const int Count = ExamplePattern_Changes(&Src->Pattern, Areas);
+    for (int a = 0; a < Count; a++)
+        PackArea(Config, &Src->Pattern, &Areas[a], Data);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=

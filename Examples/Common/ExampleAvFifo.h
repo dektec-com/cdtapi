@@ -9,7 +9,8 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Example includes
-#include "Common/ExampleCommon.h" // The API and what every example shares.
+#include "Common/ExampleCommon.h"  // The API and what every example shares.
+#include "Common/ExamplePattern.h" // The test pattern and the test tone.
 
 // The AV FIFO.
 #include "cdtapi_avfifo.h"
@@ -71,10 +72,33 @@ int64_t ExampleAv_PeriodNs(const ExampleAvConfig* Config);
 int64_t ExampleAv_ToNs(const DtTimeOfDay* ToD);
 DtTimeOfDay ExampleAv_FromNs(int64_t Ns);
 
-// Writes pixel group Index (two pixels with the same luma) into a row of video, in the
-// sample size of Config.
-void ExampleAv_WritePgroup(const ExampleAvConfig* Config, uint8_t* Row, int Index,
-                           int Blue, int Luma, int Red);
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// The examples' test pattern as SMPTE ST 2110-20 video, or their test tone as ST 2110-30
+// audio, in the format of a stream.
+typedef struct ExampleAvSource
+{
+    const ExampleAvConfig* Config; // The stream
+    ExamplePattern Pattern;        // Video: the image of the frame being made
+    uint8_t* Background;           // Video: the first image of the pattern, packed
+    ExampleTone Tone;              // Audio: where the tone is
+    int32_t* Samples;              // Audio: one frame's samples of the tone
+} ExampleAvSource;
+
+// Sets up *Src for the stream of Config, which must stay valid as long as *Src is used.
+// Returns false, after printing why, when the pattern cannot be drawn in the stream's
+// image size, which must be at least 320 by 240 pixels, or when there is not enough
+// memory; *Src then holds nothing to free.
+bool ExampleAv_SourceInit(ExampleAvSource* Src, const ExampleAvConfig* Config);
+
+// Frees what ExampleAv_SourceInit allocated. A zeroed *Src is freed too.
+void ExampleAv_SourceFree(ExampleAvSource* Src);
+
+// Writes frame Number of the stream to Data, of ExampleAv_FrameBytes() bytes. Video: the
+// packed first image, with the parts that changed packed again over it: the moving bar,
+// and the box with the frame number. Audio: the next samples of the tone, the same on
+// every channel, as 24-bit samples, most significant byte first.
+void ExampleAv_SourceFrame(ExampleAvSource* Src, int64_t Number, uint8_t* Data);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Pipes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 

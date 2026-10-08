@@ -30,23 +30,37 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The test pattern of one image size, and the test tone.
+// The test pattern of one image size.
 typedef struct ExamplePattern
 {
-    int Width;          // Pixels per line, even
-    int Height;         // Lines per image
-    uint16_t* Y;        // Width luma samples per line, line after line
-    uint16_t* Cb;       // Width / 2 blue colour difference samples per line
-    uint16_t* Cr;       // Width / 2 red colour difference samples per line
-    uint16_t* GreyY;    // One line of the grey scale's luma, to restore where the bar was
-    int BarX;           // Where the moving bar is; -1 before the first frame
-    int64_t ToneSample; // The test tone's next sample
+    int Width;       // Pixels per line, even
+    int Height;      // Lines per image
+    uint16_t* Y;     // Width luma samples per line, line after line
+    uint16_t* Cb;    // Width / 2 blue colour difference samples per line
+    uint16_t* Cr;    // Width / 2 red colour difference samples per line
+    uint16_t* GreyY; // One line of the grey scale's luma, to restore where the bar was
+    int BarX;        // Where the moving bar is; -1 before the first frame
 } ExamplePattern;
 
+// A rectangle of the image.
+typedef struct ExamplePatternArea
+{
+    int X;     // The left edge, in pixels
+    int Y;     // The top line
+    int Width; // Pixels
+    int Lines; // Lines
+} ExamplePatternArea;
+
+// Where the test tone is. A zeroed ExampleTone starts at its beginning.
+typedef struct ExampleTone
+{
+    int64_t Sample; // The next sample
+} ExampleTone;
+
 // Sets up *Pattern for images of Width by Height pixels and draws the image without the
-// moving bar and the box. Width must be even and at least 64, Height at least 64. Returns
-// false when the size is not supported or there is not enough memory; *Pattern then holds
-// nothing to free.
+// moving bar and the box. Width must be even, and the image at least 320 by 240 pixels,
+// so that the box fits in the grey scale. Returns false when the size is not supported
+// or there is not enough memory; *Pattern then holds nothing to free.
 bool ExamplePattern_Init(ExamplePattern* Pattern, int Width, int Height);
 
 // Frees what ExamplePattern_Init allocated. A zeroed *Pattern is freed too.
@@ -55,6 +69,12 @@ void ExamplePattern_Free(ExamplePattern* Pattern);
 // Makes the image that of frame Number: moves the bar to its place in that frame and
 // draws the box with the number.
 void ExamplePattern_Draw(ExamplePattern* Pattern, int64_t Number);
+
+// Fills Areas with the parts where the image differs from the one ExamplePattern_Init
+// drew: the moving bar and the box. Returns their number: 0 before the first
+// ExamplePattern_Draw, else 2. A program that keeps that first image in its own format
+// converts only these parts again for each frame.
+int ExamplePattern_Changes(const ExamplePattern* Pattern, ExamplePatternArea Areas[2]);
 
 // Returns the image line, from 0, that runs through the middle of the code in an image of
 // Height lines. A receiver reads this line and gives it to ExamplePattern_ReadNumber.
@@ -66,6 +86,6 @@ int ExamplePattern_CodeLine(int Height);
 bool ExamplePattern_ReadNumber(const uint16_t* Luma, int Width, uint32_t* Number);
 
 // Writes the next Count samples of the test tone to Samples: a 1 kHz sine at -20 dBFS,
-// at 48 kHz, continuing where the last call stopped. Each sample is an int32_t with its
-// 24 bits at the top.
-void ExamplePattern_Tone(ExamplePattern* Pattern, int32_t* Samples, int Count);
+// at 48 kHz, continuing where the last call with Tone stopped. Each sample is an
+// int32_t with its 24 bits at the top.
+void ExampleTone_Next(ExampleTone* Tone, int32_t* Samples, int Count);

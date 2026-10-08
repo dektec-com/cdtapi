@@ -4,8 +4,9 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Sends --count frames of SMPTE ST 2110 video, a moving test pattern, or with --audio a
-// tone, from an IP port to a multicast group. Prints a line per frame: its number, its
+// Sends --count frames of SMPTE ST 2110 video, the examples' test pattern with the frame
+// number in the picture, or with --audio their 1 kHz test tone (see ExamplePattern.h),
+// from an IP port to a multicast group. Prints a line per frame: its number, its
 // size, its time of day and its RTP timestamp.
 //
 //     9211000001:1  hardware pipe  239.1.2.3:5004  1920x1080 50Hz 10-bit
@@ -44,49 +45,6 @@ static const ExampleOption g_Options[] = {
     {"--pipe", true, EXAMPLE_PIPE_HELP},
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pattern -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Fills frame Number of Size bytes with the test pattern. Video: vertical bars 128
-// pixels wide that move 16 pixels to the left per frame, in the sample size of Config.
-// Audio: a 1 kHz square wave on every channel, as 24-bit samples, most significant byte
-// first.
-//
-static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, int Size)
-{
-    if (Config->Channels > 0)
-    {
-        int Bytes = 3 * Config->Channels;
-
-        for (int i = 0; i + Bytes <= Size; i += Bytes)
-        {
-            int Sample = (i / Bytes + Number * Config->SamplesPerFrame) % 48;
-            uint32_t Value = Sample < 24 ? 0x200000u : 0xE00000u;
-
-            for (int c = 0; c < Config->Channels; c++)
-            {
-                Data[i + 3 * c] = (uint8_t)(Value >> 16);
-                Data[i + 3 * c + 1] = (uint8_t)(Value >> 8);
-                Data[i + 3 * c + 2] = (uint8_t)Value;
-            }
-        }
-        return;
-    }
-    for (int Row = 0; Row < Config->Height; Row++)
-    {
-        uint8_t* Line = Data + (size_t)Row * (size_t)ExampleAv_RowBytes(Config);
-
-        for (int Pixel = 0; Pixel < Config->Width; Pixel += 2)
-        {
-            int Bar = ((Pixel + Number * 16) / 128) % 8;
-            int Luma = 16 + Bar * 28;
-            int Blue = Bar % 2 == 0 ? 128 : 200;
-            int Red = Bar < 4 ? 128 : 80;
-
-            ExampleAv_WritePgroup(Config, Line, Pixel / 2, Blue, Luma, Red);
-        }
-    }
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendFrames -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Writes Count frames to the FIFO, one frame period apart in time of day, starting a
@@ -94,7 +52,7 @@ static void Pattern(const ExampleAvConfig* Config, int Number, uint8_t* Data, in
 // waits until it is empty. Returns the program's exit code.
 //
 static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc* Port,
-                      const ExampleAvConfig* Config, int Count)
+                      const ExampleAvConfig* Config, ExampleAvSource* Src, int Count)
 {
     DtTimeOfDay Now;
     unsigned int Result = DtDevice_GetTimeOfDay(Device, &Now);
@@ -111,7 +69,7 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
         if (Frame == NULL)
             return ExampleAv_Failed("AvFifo_TxFifo_GetFromMemPool", DTAPI_E_OUT_OF_MEM);
 
-        Pattern(Config, Number, Frame->Data, Size);
+        ExampleAv_SourceFrame(Src, Number, Frame->Data);
         Frame->NumValidBytes = Size;
         Frame->NumRows = Config->Height;
         Frame->ToD = ExampleAv_FromNs(StartNs + (int64_t)Number * PeriodNs);
@@ -151,7 +109,7 @@ static int SendFrames(AvFifo_TxFifo* Fifo, DtDevice* Device, const DtHwFuncDesc*
 //
 static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
                              const DtHwFuncDesc* Port, const ExampleAvConfig* Config,
-                             int Count)
+                             ExampleAvSource* Src, int Count)
 {
     unsigned int Result = DtDevice_AttachToSerial(Device, Port->SerialNumber);
     if (Result != DTAPI_OK)
@@ -200,7 +158,7 @@ static int AttachAndTransmit(DtDevice* Device, AvFifo_TxFifo* Fifo,
         return ExampleAv_Failed("AvFifo_TxFifo_Start", Result);
 
     ExampleAv_PrintStream(Port, ExampleAv_TxPipeKind(Fifo), Config, NULL);
-    int Exit = SendFrames(Fifo, Device, Port, Config, Count);
+    int Exit = SendFrames(Fifo, Device, Port, Config, Src, Count);
     AvFifo_TxFifo_Stop(Fifo);
     return Exit;
 }
@@ -223,6 +181,9 @@ int main(int Argc, char** Argv)
     {
         return EXAMPLE_FAILED;
     }
+    ExampleAvSource Src;
+    if (!ExampleAv_SourceInit(&Src, &Config))
+        return EXAMPLE_FAILED;
 
     DtHwFuncDesc Port;
     int Exit = EXAMPLE_FAILED;
@@ -240,9 +201,10 @@ int main(int Argc, char** Argv)
     else if (Device == NULL || Fifo == NULL)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
-        Exit = AttachAndTransmit(Device, Fifo, &Port, &Config, (int)Count);
+        Exit = AttachAndTransmit(Device, Fifo, &Port, &Config, &Src, (int)Count);
 
     AvFifo_TxFifo_Free(Fifo);
     DtDevice_Free(Device);
+    ExampleAv_SourceFree(&Src);
     return Exit;
 }

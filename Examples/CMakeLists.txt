@@ -22,7 +22,8 @@ set(ExampleMailboxPrograms DtNmos2110)
 # Programs of DVB-ASI, which also take the test streams of ExampleTsStream.c.
 set(ExampleTsPrograms DtReceiveTs DtTransmitTs)
 
-# Programs that send or check the test pattern and the test tone of ExamplePattern.c.
+# Programs that send or check the test pattern and the test tone of ExamplePattern.c. The
+# programs of ST 2110 take it too, through ExampleAvFifo.c.
 set(ExamplePatternPrograms DtTransmitSdi DtTransmitFrames)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Programs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -49,7 +50,7 @@ function(cdtapi_add_example Program)
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExampleTsStream.h")
     endif()
-    if(Program IN_LIST ExamplePatternPrograms)
+    if(Program IN_LIST ExamplePatternPrograms OR Program IN_LIST ExampleAvPrograms)
         list(APPEND Sources
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExamplePattern.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/Common/ExamplePattern.h")

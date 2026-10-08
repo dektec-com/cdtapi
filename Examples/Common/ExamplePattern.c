@@ -286,6 +286,27 @@ void ExamplePattern_Draw(ExamplePattern* Pattern, int64_t Number)
     DrawBox(Pattern, &L, (uint64_t)Number);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExamplePattern_Changes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int ExamplePattern_Changes(const ExamplePattern* Pattern, ExamplePatternArea Areas[2])
+{
+    if (Pattern->BarX < 0)
+        return 0;
+    const Layout L = LayoutOf(Pattern->Width, Pattern->Height);
+    const int BarEnd = Pattern->BarX + L.BarWidth < Pattern->Width
+                           ? Pattern->BarX + L.BarWidth
+                           : Pattern->Width;
+    Areas[0].X = Pattern->BarX;
+    Areas[0].Y = 0;
+    Areas[0].Width = BarEnd - Pattern->BarX;
+    Areas[0].Lines = L.GreyLines;
+    Areas[1].X = L.BoxX;
+    Areas[1].Y = L.BoxY;
+    Areas[1].Width = L.BoxWidth;
+    Areas[1].Lines = L.BoxLines;
+    return 2;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExamplePattern_CodeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 int ExamplePattern_CodeLine(int Height)
@@ -327,11 +348,11 @@ bool ExamplePattern_ReadNumber(const uint16_t* Luma, int Width, uint32_t* Number
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExamplePattern_Tone -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleTone_Next -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void ExamplePattern_Tone(ExamplePattern* Pattern, int32_t* Samples, int Count)
+void ExampleTone_Next(ExampleTone* Tone, int32_t* Samples, int Count)
 {
     for (int s = 0; s < Count; s++)
-        Samples[s] = (int32_t)((uint32_t)g_Tone[(Pattern->ToneSample + s) % 48] << 8);
-    Pattern->ToneSample += Count;
+        Samples[s] = (int32_t)((uint32_t)g_Tone[(Tone->Sample + s) % 48] << 8);
+    Tone->Sample += Count;
 }

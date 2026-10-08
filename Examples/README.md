@@ -15,7 +15,7 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtReceiveTs` | Receives a transport stream from an ASI input, optionally to a file, with the rate, packet size, lock and flags once a second; `--check` checks `DtTransmitTs`'s numbered packets one by one |
 | `DtTransmitTs` | Transmits a transport stream on an ASI output at a set rate: a file, numbered packets, or an MPEG-2 test picture; `--generate` writes either stream to a file instead |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
-| `DtTransmit2110` | Transmits SMPTE ST 2110 video, a moving test pattern, or audio on an IP port: one line per frame with its time of day and RTP timestamp |
+| `DtTransmit2110` | Transmits SMPTE ST 2110 video, the examples' test pattern, or audio, their test tone, on an IP port: one line per frame with its time of day and RTP timestamp |
 | `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
 | `DtPtpSlave` | Shows the PTP clock slave of an IP port, its settings, state and grandmaster, and with `--masters` every master it hears; with `--enable`, `--domain` and the like sets those settings alone, and with `--save` keeps them; needs DtapiService |
 | `DtNmos2110` | An NMOS node whose receiver or sender is an AV FIFO, which a controller connects through IS-05; built with the NMOS bridge only |
@@ -170,8 +170,8 @@ included, and 2 when it found nothing, such as no ports or no signal.
 Every program includes `cdtapi.h` and `cdtapi_service.h`, and the ST 2110 programs
 `cdtapi_avfifo.h` as well, through `Common/ExampleCommon.h` and
 `Common/ExampleAvFifo.h`. The ASI programs
-make and check their streams with `Common/ExampleTsStream.c`, and the SDI programs draw
-their test pattern and test tone with `Common/ExamplePattern.c`. None of the library's
+make and check their streams with `Common/ExampleTsStream.c`, and the programs that send
+SDI or ST 2110 draw their test pattern and test tone with `Common/ExamplePattern.c`. None of the library's
 internal headers is used, so what a program does, an application can do. CTest runs every
 program against the emulator.
 
