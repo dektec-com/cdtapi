@@ -519,7 +519,10 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 // program's packets takes the place of the builder's, which then writes none. Packets
 // with the DID of audio the builder takes only when Audio is NULL: the program then
 // embeds the audio itself, with the BCH codes of HD and up and the switching point its
-// concern, and the builder only checks that the packets fit.
+// concern, and the builder only checks that the packets fit. In SD the builder writes
+// no audio control packet, which SMPTE ST 272 leaves optional at 48 kHz; a program that
+// wants one sends its own, on the second line after a switching line, which the builder
+// takes beside its own audio too and puts before it, as the standard asks.
 //
 // Returns DTAPI_OK, or:
 //   DTAPI_E_STATE           Frame describes no frame, or a frame of an input channel,
@@ -527,7 +530,8 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //   DTAPI_E_INVALID_FORMAT  as for DtSdiParser_Parse()
 //   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(); or Audio->FrameNumber is not a
 //                           place in the cadence of the frame's rate; or a packet has
-//                           the DID of audio while Audio is not NULL
+//                           the DID of audio while Audio is not NULL, but for an
+//                           audio control packet in SD
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes;
 //                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking it names

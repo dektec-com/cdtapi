@@ -881,6 +881,12 @@ DT_TEST(Refusals)
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
                  DTAPI_E_INVALID_ARG);
 
+    // Nor an audio control packet of HD, which the builder writes itself.
+    AudioPacket.Did = 0xE3;
+    AudioPacket.NumWords = 11;
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
+                 DTAPI_E_INVALID_ARG);
+
     // Audio that a frame of 1080i50, 1920 samples a channel, cannot take.
     static int32_t Samples[2048];
     DtSdiAudio Audio;
@@ -1732,6 +1738,103 @@ DT_TEST(OwnAudioAndPayloadId)
     free(B);
 }
 
+// In SD the builder writes no audio control packet, and takes the program's own beside
+// its audio, before the audio of its line, as SMPTE ST 272 has it. The parser takes the
+// place in the cadence from it: in 525i the lowest three bits of AF1-2, here 4 below a
+// counter of 3 that the bits above may carry.
+DT_TEST(SdAudioControlOfTheProgram)
+{
+    const SdiFormat* F = NULL;
+    for (int j = 0; j < SDI_FORMAT_COUNT; j++)
+        if (strcmp(g_SdiFormats[j].Name, "525I59_94") == 0)
+            F = &g_SdiFormats[j];
+    DT_ASSERT(F != NULL);
+    int Switching[2] = {0, 0};
+    SwitchingLines(F, Switching);
+    const int Line = Switching[0] + 2;
+
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(F->VidStd, 10, &Size));
+    uint8_t* Frame = (uint8_t*)malloc(Size);
+    OwnBufs* B = (OwnBufs*)malloc(sizeof(OwnBufs));
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DT_ASSERT(Frame != NULL && B != NULL && View != NULL && Builder != NULL &&
+              Parser != NULL);
+
+    DtSdiAudio Audio;
+    memset(&Audio, 0, sizeof(Audio));
+    Audio.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        for (int s = 0; s < AUDIO_MAX; s++)
+            B->Pcm[c][s] = (int32_t)(Value24(c, s) << 8);
+        Audio.Channels[c].Samples = B->Pcm[c];
+        Audio.Channels[c].NumSamples = AUDIO_MAX;
+    }
+
+    // AF1-2 and AF3-4 of frame 4 with a counter of 3 above it, 48 kHz, channels 1 and 2
+    // active, no delay: each word's bit 9 the complement of bit 8, ACT's bit 8 its
+    // parity.
+    uint16_t Words[18];
+    for (int w = 0; w < 18; w++)
+        Words[w] = 0x200;
+    Words[0] = 0x200 | (3 << 3 | 4);
+    Words[1] = Words[0];
+    Words[3] = 0x200 | 0x3;
+    DtSdiAncPacket Control = {Line, true, false, 0, 0xEF, 0x00, 18, Words, false};
+    DtSdiAncData Anc = {&Control, 0, 1, NULL, 0, 0, 0};
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
+    DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Anc));
+
+    // The program's packet as sent, before the audio of its line.
+    const DtSdiAncFilter All = {true, 0, true, 0, DT_SDI_ANC_SPACE_BOTH, 0, 0};
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
+    DtSdiAncData List;
+    memset(&List, 0, sizeof(List));
+    List.Packets = B->Packets;
+    List.MaxPackets = OWN_MAX_PACKETS;
+    List.Words = B->Words;
+    List.MaxWords = OWN_MAX_WORDS;
+    int32_t Got[2][AUDIO_MAX];
+    DtSdiAudio Received;
+    memset(&Received, 0, sizeof(Received));
+    Received.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        Received.Channels[c].Samples = Got[c];
+        Received.Channels[c].MaxSamples = AUDIO_MAX;
+    }
+    DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Received, &List));
+    DT_ASSERT_EQ(Received.FrameNumber, 4);
+    int Controls = 0;
+    int DataBefore = 0;
+    int DataOnLine = 0;
+    for (int p = 0; p < List.NumPackets; p++)
+    {
+        const DtSdiAncPacket* P = &B->Packets[p];
+        if (P->Did == 0xEF)
+        {
+            Controls++;
+            DT_ASSERT_EQ(P->Line, Line);
+            DT_ASSERT_EQ(P->NumWords, 18);
+            DT_ASSERT(memcmp(P->Words, Words, sizeof(Words)) == 0);
+            DataBefore = DataOnLine;
+        }
+        DataOnLine += P->Did == 0xFF && P->Line == Line;
+    }
+    DT_ASSERT_EQ(Controls, 1);
+    DT_ASSERT_EQ(DataBefore, 0);
+    DT_ASSERT(DataOnLine > 0);
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(B);
+    free(Frame);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frames of the sdi muxer +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // Builds each frame of <Name>.yuv and compares it with the muxer's in <Name>.raw, symbol
@@ -1854,4 +1957,4 @@ DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
              DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(Aes3RoundTrip),
              DT_RUN(WorkerPool), DT_RUN(OwnAudioAndPayloadId),
-             DT_RUN(FramesOfTheSdiMuxer))
+             DT_RUN(SdAudioControlOfTheProgram), DT_RUN(FramesOfTheSdiMuxer))

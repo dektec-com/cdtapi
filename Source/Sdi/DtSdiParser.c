@@ -424,9 +424,22 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
         DtSdiLineScratch_Free(&Parser->Scratch);
     }
 
-    // A rate without a cadence has no place in one, whatever the control packet says.
-    if (Audio != NULL && DtSdiAudio_CadenceLength(Frame->Geo.VidStd) == 1)
+    // A rate without a cadence has no place in one, whatever the control packet says. In
+    // SD the audio frame number's lowest bits are the place, as many as the cadence
+    // needs, and the bits above may count frames to show a switch (SMPTE ST 272, 14.4);
+    // a place beyond the cadence is none.
+    const int Length = DtSdiAudio_CadenceLength(Frame->Geo.VidStd);
+    if (Audio != NULL && Length == 1)
         Audio->FrameNumber = 0;
+    if (Audio != NULL && Length > 1 && Frame->Geo.NumStreams == 1)
+    {
+        int Mask = 1;
+        while (Mask < Length)
+            Mask = Mask << 1 | 1;
+        Audio->FrameNumber &= Mask;
+        if (Audio->FrameNumber > Length)
+            Audio->FrameNumber = 0;
+    }
     return Anc != NULL && Anc->NumLost > 0 ? DTAPI_E_BUF_TOO_SMALL : DTAPI_OK;
 }
 

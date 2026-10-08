@@ -54,6 +54,11 @@ bool DtSdiAnc_Find(const uint16_t* Words, int Count, int* Pos, DtSdiAncFound* Pa
 // Returns whether Did is one of audio's, data or control, in HD or SD.
 bool DtSdiAnc_IsAudio(uint8_t Did);
 
+// The DIDs of SMPTE ST 272's audio control packets of groups 1 and 4, those of groups 2
+// and 3 between them.
+#define DT_SDIANC_DID_SD_CONTROL_1 0xEF
+#define DT_SDIANC_DID_SD_CONTROL_4 0xEC
+
 // Returns whether any packet in the horizontal blanking (InHanc) or the vertical
 // blanking of line Line (from 1) can be listed, so that a parser that wants no audio
 // need not read the rest.

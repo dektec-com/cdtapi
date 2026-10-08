@@ -93,6 +93,15 @@ struct DtSdiBuilder
     int NumBands;
 };
 
+// Which of the program's packets of a section PutPackets writes: in SD the audio control
+// packets go before the builder's audio, as SMPTE ST 272 has them, the rest after it.
+typedef enum PacketKind
+{
+    PACKETS_ALL,
+    PACKETS_SD_CONTROL,
+    PACKETS_REST,
+} PacketKind;
+
 // A frame a job of bands builds.
 typedef struct BuildJob
 {
@@ -150,13 +159,24 @@ static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
     return Geo->NumStreams == 1 || !Geo->StreamIsChroma[Stream];
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdControl -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns whether P is an audio control packet of SD, EC to EF.
+//
+static bool IsSdControl(const DtSdiGeometry* Geo, const DtSdiAncPacket* P)
+{
+    return Geo->NumStreams == 1 && P->Did >= DT_SDIANC_DID_SD_CONTROL_4 &&
+           P->Did <= DT_SDIANC_DID_SD_CONTROL_1;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CheckPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Checks the program's packets and that each section has room for them, counting in
 // Builder->Used the words each section's packets take. Packets with the DID of audio
 // are the program's to send only when the builder embeds no audio of its own, Audio
-// being NULL. *PayloadId is set to whether the builder writes the payload ID: not when
-// the program's packets hold one.
+// being NULL; in SD, where the builder writes no audio control packet, the program may
+// send its own beside the builder's audio. *PayloadId is set to whether the builder
+// writes the payload ID: not when the program's packets hold one.
 //
 static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
                                 const DtSdiAncData* Anc, bool HasAudio, bool* PayloadId)
@@ -189,7 +209,7 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         {
             return DTAPI_E_INVALID_ARG;
         }
-        if (HasAudio && DtSdiAnc_IsAudio((uint8_t)P->Did))
+        if (HasAudio && DtSdiAnc_IsAudio((uint8_t)P->Did) && !IsSdControl(Geo, P))
             return DTAPI_E_INVALID_ARG;
         if (P->Line < 1 || P->Line > NumLines ||
             (!P->InHanc && !DtSdiGeometry_IsVanc(Geo, P->Line - 1)))
@@ -213,19 +233,27 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPackets -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the program's packets for one section into Words from Pos on, in the order
-// the program gave them.
+// Writes the program's packets of kind Kind for one section into Words from Pos on, in
+// the order the program gave them. Returns where the next word goes.
 //
-static void PutPackets(const DtSdiGeometry* Geo, const DtSdiAncData* Anc, int LineIndex,
-                       bool InHanc, int Stream, bool Checksum, uint16_t* Words, int Pos)
+static int PutPackets(const DtSdiGeometry* Geo, const DtSdiAncData* Anc, int LineIndex,
+                      bool InHanc, int Stream, PacketKind Kind, bool Checksum,
+                      uint16_t* Words, int Pos)
 {
     for (int p = 0; Anc != NULL && p < Anc->NumPackets; p++)
     {
         const DtSdiAncPacket* P = &Anc->Packets[p];
-        if (P->Line == LineIndex + 1 && P->InHanc == InHanc && StreamOf(Geo, P) == Stream)
-            Pos = DtSdiAnc_Put(Words, Pos, (uint8_t)P->Did, (uint8_t)P->SdidOrDbn,
-                               P->Words, P->NumWords, Checksum);
+        if (P->Line != LineIndex + 1 || P->InHanc != InHanc || StreamOf(Geo, P) != Stream)
+            continue;
+        if ((Kind == PACKETS_SD_CONTROL && !IsSdControl(Geo, P)) ||
+            (Kind == PACKETS_REST && IsSdControl(Geo, P)))
+        {
+            continue;
+        }
+        Pos = DtSdiAnc_Put(Words, Pos, (uint8_t)P->Did, (uint8_t)P->SdidOrDbn, P->Words,
+                           P->NumWords, Checksum);
     }
+    return Pos;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ImageLineOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -325,7 +353,8 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
         W[Hanc - 1] = (uint16_t)Sav;
 
         // The horizontal blanking: the payload ID first, unless the program sends its
-        // own, then the audio, then the program's packets.
+        // own, then in SD the program's audio control packets, then the audio, then the
+        // rest of the program's packets.
         int Pos = Geo->StreamEavWords;
         if (Job->PayloadId && HasPayloadId(Geo, LineIndex, s))
         {
@@ -336,11 +365,17 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
             Pos = DtSdiAnc_Put(W, Pos, DT_SDIANC_DID_PAYLOAD_ID,
                                DT_SDIANC_SDID_PAYLOAD_ID, Bytes, 4, Builder->Checksums);
         }
+        Pos = PutPackets(Geo, Anc, LineIndex, true, s, PACKETS_SD_CONTROL,
+                         Builder->Checksums, W, Pos);
         Pos = DtSdiEmbed_Put(&Builder->Embed, &Band->Cursor, LineIndex, s, W, Pos,
                              Builder->Checksums);
-        PutPackets(Geo, Anc, LineIndex, true, s, Builder->Checksums, W, Pos);
+        PutPackets(Geo, Anc, LineIndex, true, s, PACKETS_REST, Builder->Checksums, W,
+                   Pos);
         if (Vanc)
-            PutPackets(Geo, Anc, LineIndex, false, s, Builder->Checksums, W, Hanc);
+        {
+            PutPackets(Geo, Anc, LineIndex, false, s, PACKETS_ALL, Builder->Checksums, W,
+                       Hanc);
+        }
     }
 
     // The CRC words of HD and up: each stream's covers the active part of the line
