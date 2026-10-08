@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 set(ExamplePrograms DtListDevices DtConfigPort DtDetectVidStd DtReceiveFrames
-    DtTransmitFrames DtReceive2110 DtTransmit2110 DtListDeviceDescs DtReceiveTs
-    DtTransmitTs DtPtpSlave)
+    DtTransmitFrames DtReceiveSdi DtTransmitSdi DtReceive2110 DtTransmit2110
+    DtListDeviceDescs DtReceiveTs DtTransmitTs DtPtpSlave)
 
 # Programs of SMPTE ST 2110, which also take ExampleAvFifo.c and the AV FIFO header.
 set(ExampleAvPrograms DtReceive2110 DtTransmit2110)
@@ -211,6 +211,42 @@ cdtapi_example_test(TransmitFramesMissingFile DtTransmitFrames
     "^Cannot read no-such-frame0.raw" --in no-such-frame)
 cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
     "^No test pattern for video standard 2160P50" --vidstd 2160P50)
+
+# The SDI parser and builder. The round trip runs DtTransmitSdi into a file through the
+# emulator's SDI sink, then DtReceiveSdi from that file through its SDI source, and then
+# DtTransmitSdi again from the image and audio files that DtReceiveSdi wrote.
+set(SdiRoundTrip "${CMAKE_CURRENT_BINARY_DIR}/TransmitSdi_1080i50.sdi")
+set(SdiOut "${CMAKE_CURRENT_BINARY_DIR}/ReceiveSdi")
+cdtapi_example_test(TransmitSdiPattern DtTransmitSdi
+    "^9217800001:2  frame 0  1920x1080  audio 1920 samples\n9217800001:2  frame 1  1920x1080  audio 1920 samples\n9217800001:2  frame 2 "
+    --port 2 --vidstd 1080I50 --count 3)
+cdtapi_example_test(TransmitSdiCadence DtTransmitSdi
+    "^9217800001:2  frame 0  1280x720  audio 801 samples\n9217800001:2  frame 1  1280x720  audio 800 samples\n"
+    --port 2 --vidstd 720P59_94 --count 2 --threads 4)
+set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${SdiRoundTrip}")
+cdtapi_example_test(TransmitSdiToFile DtTransmitSdi
+    "^9217800001:2  frame 0 .*9217800001:2  frame 2  1920x1080  audio 1920 samples\n9217800001:2  latched none"
+    --port 2 --vidstd 1080I50 --count 3 --checksums --flags)
+set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${SdiRoundTrip}")
+cdtapi_example_test(ReceiveSdiFromFile DtReceiveSdi
+    "^9217800001:1  frame 0  1920x1080  audio 1920 samples  channels 1-4  packets 0\n9217800001:1  frame 1 "
+    --port 1 --vidstd 1080I50 --count 2 --timeout 2000 --out "${SdiOut}")
+set(ExampleExtraEnv "")
+cdtapi_example_test(TransmitSdiFromFiles DtTransmitSdi
+    "^9217800001:2  frame 0  1920x1080  audio 1920 samples\n9217800001:2  frame 1 .*9217800001:2  frame 2 "
+    --port 2 --vidstd 1080I50 --count 3 --in "${SdiOut}")
+set_tests_properties(Example_TransmitSdiToFile PROPERTIES FIXTURES_SETUP SdiRoundTripFile)
+set_tests_properties(Example_ReceiveSdiFromFile PROPERTIES
+    FIXTURES_REQUIRED SdiRoundTripFile FIXTURES_SETUP SdiRoundTripOut)
+set_tests_properties(Example_TransmitSdiFromFiles PROPERTIES
+    FIXTURES_REQUIRED SdiRoundTripOut)
+cdtapi_example_test(ReceiveSdiWithoutSignal DtReceiveSdi
+    "^9217800001:1  no frame within 100 ms" --timeout 100)
+cdtapi_example_test(ReceiveSdiBadChannels DtReceiveSdi
+    "^Give --channels from 1 to 16" --channels 17)
+cdtapi_example_test(TransmitSdiNoVidStd DtTransmitSdi "^Give --vidstd, such as 1080I50")
+cdtapi_example_test(TransmitSdiMissingFile DtTransmitSdi
+    "^Cannot read no-such-file.yuv" --vidstd 1080I50 --in no-such-file)
 
 # The ASI programs set the port's I/O standard to ASI themselves. The emulated card has
 # no signal on its inputs, and each program has a card of its own, so what one sends

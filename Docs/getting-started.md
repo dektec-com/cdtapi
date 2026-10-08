@@ -201,6 +201,62 @@ the header says which codes it returns and what each one means there.
 For the AV FIFO, `GetLastException` gives the text of the calling thread's last failure,
 beside the code the call returned.
 
+## The image and the audio of an SDI frame
+
+An SDI channel reads and writes raw frames: the whole raster with its timing references,
+line numbers, CRCs and blanking. `cdtapi_sdi.h` turns such a frame into what a program
+works with, and back:
+
+- **The parser** takes a frame apart into the image, the embedded audio and the other
+  ancillary packets.
+- **The builder** puts a frame together from an image, audio and ancillary packets, and
+  adds everything else the frame needs.
+
+Both work on a **view**, a `DtSdiView`, which says where the frame is. A view points
+either at a raw frame in the program's memory, or at a frame in an input channel's
+buffer, where the card wrote it. In the second case nothing is copied.
+
+To receive, a program lends each frame from the channel, parses it, and gives it back:
+
+    DtInpChannel_SetRxMode(In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B);
+    DtInpChannel_SetRxControl(In, DTAPI_RXCTRL_RCV);
+    for (;;)
+    {
+        DtInpChannel_AcquireFrame(In, View, 1000, NULL); // The next frame, in place
+        DtSdiParser_Parse(Parser, View, &Image, &Audio, &Anc);
+        DtInpChannel_ReleaseFrame(In, View); // The card may use that memory again
+        ...
+    }
+
+Lending needs a 10-bit receive mode. While a frame is lent, the card cannot write over
+it, so give it back as soon as the parser is done. `DtInpChannel_ReadFrame` still works
+too; it copies the frame into a buffer, which the parser can then read through a view
+of that buffer.
+
+To send, a program builds each frame in its own buffer and writes it:
+
+    DtSdiBuilder_GetNumAudioSamples(Builder, VidStd, 0, &NumSamples); // Per channel
+    DtSdiView_SetRawFrame(View, Frame, FrameSize, VidStd, 10);
+    DtSdiBuilder_Build(Builder, View, &Image, &Audio, NULL);
+    DtOutpChannel_WriteFrame(Out, Frame, (int)FrameSize, 1000);
+
+At a 1001 frame rate, such as 59.94 Hz, the number of audio samples per frame varies
+with the audio cadence, so ask the builder before each frame.
+
+The image can be in six pixel formats, among them v210, UYVY and planar 4:2:2, in 8 or
+10 bits. The audio is PCM or raw AES3 subframes, on up to 16 channels, interleaved or
+planar. The program supplies every buffer.
+
+By default the builder leaves the line CRCs and the packet checksums to the card, which
+fills them in while it sends. `DtSdiBuilder_SetChecksums` makes the builder fill them in
+itself, which a frame needs that goes to a file rather than to a card.
+
+One frame of 2160p is too much work for one thread at 50 or 60 Hz. A `DtWorkerPool`
+from `cdtapi.h` spreads it over several threads: create one, start its threads, and
+give it to the channel, the parser and the builder with their `SetWorkerPool` calls.
+They can share one pool. `DtReceiveSdi` and `DtTransmitSdi` in the examples show all
+of this.
+
 ## DVB-ASI
 
 A port that carries ASI has `IsAsi` set in its `DtHwFuncDesc`. The same channels carry
@@ -278,6 +334,13 @@ through files:
     CDTAPI_SIM_SDI_SOURCE=1:1080I50:frames.sdi   # port 1 receives the file's frames
     CDTAPI_SIM_SDI_SINK=2:sent.sdi               # what port 2 sends goes to the file
 
+Together they let a program receive what another one sent, one after the other:
+
+    CDTAPI_SIM=1 CDTAPI_SIM_SDI_SINK=2:sent.sdi DtTransmitSdi --port 2 \
+        --vidstd 1080I50 --count 50
+    CDTAPI_SIM=1 CDTAPI_SIM_SDI_SOURCE=1:1080I50:sent.sdi DtReceiveSdi --port 1 \
+        --vidstd 1080I50 --count 50 --out received
+
 The port is numbered from 1 and the video standard is a `DTAPI_VIDSTD_` name without
 its prefix. A file holds whole frames of 10-bit symbols, packed least significant bit
 first, each line from its EAV on and each frame padded with zeros to a multiple of 8
@@ -290,7 +353,8 @@ use is reported on stderr and ignored.
 ## Where to go next
 
 - [`Examples/README.md`](../Examples/README.md) lists example programs that configure a
-  port, detect a video standard, receive and transmit SDI frames and ASI transport
+  port, detect a video standard, receive and transmit SDI frames, take the image and
+  the audio out of SDI and put them back in, receive and transmit ASI transport
   streams, and receive and transmit SMPTE ST 2110 video and audio, with the command
   lines to run them.
 - The headers are the reference: each function's comment, and the notes at the head of

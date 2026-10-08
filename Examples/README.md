@@ -10,6 +10,8 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
 | `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files; `--threads` converts them over a pool of threads |
 | `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as a generated test pattern, with the same line per frame; `--threads` codes them over a pool of threads |
+| `DtReceiveSdi` | Receives SDI and takes each frame apart with the SDI parser, where the card wrote it: one line per frame with the image size, the audio samples and channels, and the number of other ancillary packets; `--out` writes the images to a `.yuv` file and the audio to a `.wav` file |
+| `DtTransmitSdi` | Builds SDI frames with the SDI builder from an image and audio, and transmits them: from the `.yuv` and `.wav` files `DtReceiveSdi` wrote, or a test pattern with a moving bar and a 1 kHz tone; `--checksums` makes the builder fill in the CRCs |
 | `DtReceiveTs` | Receives a transport stream from an ASI input, optionally to a file, with the rate, packet size, lock and flags once a second; `--check` checks `DtTransmitTs`'s numbered packets one by one |
 | `DtTransmitTs` | Transmits a transport stream on an ASI output at a set rate: a file, numbered packets, or an MPEG-2 test picture; `--generate` writes either stream to a file instead |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
@@ -29,6 +31,7 @@ The emulated DTA-2178 answers when `CDTAPI_SIM=1` is set:
     CDTAPI_SIM=1 DtConfigPort --port 2 --input --vidstd 1080I50
     CDTAPI_SIM=1 DtDetectVidStd --port 1
     CDTAPI_SIM=1 DtTransmitFrames --port 2 --vidstd 1080I50 --count 3
+    CDTAPI_SIM=1 DtTransmitSdi --port 2 --vidstd 1080I50 --count 3
     CDTAPI_SIM=1 DtTransmitTs --port 2 --count 2000 --rate 40000000
 
 The emulator starts afresh in each process, so a configuration one program sets is gone
@@ -58,6 +61,8 @@ the `SimAvFifo` test suite is where transmission and reception meet.
     DtReceiveFrames --port 1 --count 10 --rxmode 10B --out frame
     DtConfigPort --port 5 --output
     DtTransmitFrames --port 5 --vidstd 1080I50 --in frame --count 250
+    DtReceiveSdi --port 1 --vidstd 1080I50 --count 250 --out capture
+    DtTransmitSdi --port 5 --vidstd 1080I50 --in capture --count 250
 
 A legal frame `DtTransmitFrames` sends through a cable to an input arrives with the hash
 it printed, so the two programs' lines show whether it arrived bit for bit.
