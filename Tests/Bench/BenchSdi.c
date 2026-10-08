@@ -28,10 +28,10 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "BenchCommon.h"  // The clock, the compiler and its flags.
-#include "OAL/OsThread.h" // The monotonic clock.
-#include "Sdi/DtSdiVec.h" // The versions of the conversions.
-#include "cdtapi_sdi.h"   // The parser measured.
+#include "BenchCommon.h"   // The clock, the compiler and its flags.
+#include "OAL/OsThread.h"  // The monotonic clock.
+#include "Sdi/DtSdiConv.h" // The versions of the conversions.
+#include "cdtapi_sdi.h"    // The parser measured.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Cases +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -76,11 +76,11 @@ static const int g_Bits[] = {10, 16};
 #define NUM_VERSIONS 3
 static const char* g_VersionNames[NUM_VERSIONS] = {"portable", "SSSE3", "AVX2"};
 
-static void GetVersions(const DtSdiVec* Versions[NUM_VERSIONS])
+static void GetVersions(const DtSdiConv* Versions[NUM_VERSIONS])
 {
-    Versions[0] = DtSdiVec_C();
-    Versions[1] = DtSdiVec_Ssse3();
-    Versions[2] = DtSdiVec_Avx2();
+    Versions[0] = DtSdiConv_C();
+    Versions[1] = DtSdiConv_Ssse3();
+    Versions[2] = DtSdiConv_Avx2();
 }
 
 // Prints the head of a table with a column per version.
@@ -356,7 +356,7 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
     printf("\nThe builder's image and raster, one thread, per version: ms/frame and "
            "%% period\n");
     PrintVersionHead("bits");
-    const DtSdiVec* Versions[NUM_VERSIONS];
+    const DtSdiConv* Versions[NUM_VERSIONS];
     GetVersions(Versions);
 
     int Status = 0;
@@ -394,7 +394,7 @@ static int BenchBuilder(DtSdiView* View, int Seconds, double GHz)
                 double Ms = -1.0;
                 if (Versions[v] != NULL)
                 {
-                    DtSdiBuilder_UseVec(Builder, Versions[v]);
+                    DtSdiBuilder_UseConv(Builder, Versions[v]);
                     const uint64_t Start = OsTime_MonotonicMs();
                     uint64_t Elapsed = 0;
                     int Frames = 0;
@@ -443,7 +443,7 @@ int main(int Argc, char** Argv)
         printf("Clock %.2f GHz; Mc is millions of cycles a frame\n", GHz);
     printf("\nThe parser's image, one thread, per version: ms/frame and %% period\n");
     PrintVersionHead("bits");
-    const DtSdiVec* Versions[NUM_VERSIONS];
+    const DtSdiConv* Versions[NUM_VERSIONS];
     GetVersions(Versions);
 
     int Status = 0;
@@ -480,7 +480,7 @@ int main(int Argc, char** Argv)
                     double Ms = -1.0;
                     if (Versions[v] != NULL)
                     {
-                        DtSdiParser_UseVec(Parser, Versions[v]);
+                        DtSdiParser_UseConv(Parser, Versions[v]);
                         Ms = Measure(Parser, View, &Image, NULL, NULL, Seconds);
                     }
                     PrintCell(Ms, Std->FrameRate);
@@ -492,7 +492,7 @@ int main(int Argc, char** Argv)
             free(Frame);
         }
     }
-    DtSdiParser_UseVec(Parser, DtSdiVec_Best());
+    DtSdiParser_UseConv(Parser, DtSdiConv_Best());
 
     if (Status == 0)
         Status = BenchBlanking(Parser, View, Seconds, GHz);

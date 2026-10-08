@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiVec.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The conversions of SDI symbols, in portable C, and the choice of version
 //
@@ -7,7 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // CDTAPI includes
-#include "DtSdiVec.h"           // Interface being implemented.
+#include "DtSdiConv.h"          // Interface being implemented.
 #include "AvFifo/DtAvPixConv.h" // Whether the processor has SSSE3 and AVX2.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -246,47 +246,47 @@ static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtSdiVec* DtSdiVec_Avx2(void)
+const DtSdiConv* DtSdiConv_Avx2(void)
 {
 #if defined(CDTAPI_HAVE_AVX2)
-    return DtAvPixConv_Avx2() != NULL ? DtSdiVec_Avx2Unchecked() : NULL;
+    return DtAvPixConv_Avx2() != NULL ? DtSdiConv_Avx2Unchecked() : NULL;
 #else
     return NULL;
 #endif
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Best -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Best -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtSdiVec* DtSdiVec_Best(void)
+const DtSdiConv* DtSdiConv_Best(void)
 {
-    const DtSdiVec* Avx2 = DtSdiVec_Avx2();
+    const DtSdiConv* Avx2 = DtSdiConv_Avx2();
     if (Avx2 != NULL)
         return Avx2;
-    const DtSdiVec* Ssse3 = DtSdiVec_Ssse3();
-    return Ssse3 != NULL ? Ssse3 : DtSdiVec_C();
+    const DtSdiConv* Ssse3 = DtSdiConv_Ssse3();
+    return Ssse3 != NULL ? Ssse3 : DtSdiConv_C();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_C -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_C -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtSdiVec* DtSdiVec_C(void)
+const DtSdiConv* DtSdiConv_C(void)
 {
-    static const DtSdiVec Portable = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                      FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                      FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                      FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Portable = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                       FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                       FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                       FromV210,     Split4k,   Join4k};
     return &Portable;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Ssse3 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Ssse3 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // SSSE3 is there when the pixel conversions found it: they ask the processor.
 //
-const DtSdiVec* DtSdiVec_Ssse3(void)
+const DtSdiConv* DtSdiConv_Ssse3(void)
 {
 #if defined(CDTAPI_HAVE_SSSE3)
-    return DtAvPixConv_Ssse3() != NULL ? DtSdiVec_Ssse3Unchecked() : NULL;
+    return DtAvPixConv_Ssse3() != NULL ? DtSdiConv_Ssse3Unchecked() : NULL;
 #else
     return NULL;
 #endif

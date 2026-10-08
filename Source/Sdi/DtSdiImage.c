@@ -141,7 +141,7 @@ DtapiResult DtSdiImage_Check(const DtSdiImage* Image, const DtSdiGeometry* Geo)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_GetLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        uint16_t* Symbols, const DtSdiVec* Vec)
+                        uint16_t* Symbols, const DtSdiConv* Conv)
 {
     const size_t Count = 2 * (size_t)Geo->Width;
     const uint8_t* In[3];
@@ -153,23 +153,23 @@ void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
     switch (Image->Format)
     {
     case DT_SDI_PIXFMT_UYVY_10B:
-        Vec->Unpack10(In[0], Count, Symbols);
-        Vec->Limit(Symbols, Count);
+        Conv->Unpack10(In[0], Count, Symbols);
+        Conv->Limit(Symbols, Count);
         break;
     case DT_SDI_PIXFMT_UYVY_8B:
-        Vec->FromUyvy8(In[0], Count, Symbols);
+        Conv->FromUyvy8(In[0], Count, Symbols);
         break;
     case DT_SDI_PIXFMT_V210:
-        Vec->FromV210(In[0], Count, Symbols);
+        Conv->FromV210(In[0], Count, Symbols);
         break;
     case DT_SDI_PIXFMT_Y210:
-        Vec->FromY210(In[0], Count, Symbols);
+        Conv->FromY210(In[0], Count, Symbols);
         break;
     case DT_SDI_PIXFMT_YUV422P_10B:
-        Vec->FromPlanar10(In[0], In[1], In[2], Count, Symbols);
+        Conv->FromPlanar10(In[0], In[1], In[2], Count, Symbols);
         break;
     case DT_SDI_PIXFMT_YUV422P_8B:
-        Vec->FromPlanar8(In[0], In[1], In[2], Count, Symbols);
+        Conv->FromPlanar8(In[0], In[1], In[2], Count, Symbols);
         break;
     default:
         break;
@@ -179,7 +179,7 @@ void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiImage_PutLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        const uint16_t* Symbols, const DtSdiVec* Vec)
+                        const uint16_t* Symbols, const DtSdiConv* Conv)
 {
     const size_t Count = 2 * (size_t)Geo->Width;
     uint8_t* Out[3];
@@ -191,10 +191,10 @@ void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
     switch (Image->Format)
     {
     case DT_SDI_PIXFMT_UYVY_10B:
-        Vec->Pack10(Symbols, Count, Out[0]);
+        Conv->Pack10(Symbols, Count, Out[0]);
         break;
     case DT_SDI_PIXFMT_UYVY_8B:
-        Vec->ToUyvy8(Symbols, Count, Out[0]);
+        Conv->ToUyvy8(Symbols, Count, Out[0]);
         break;
     case DT_SDI_PIXFMT_V210:
     {
@@ -203,18 +203,18 @@ void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int L
         int Strides[3];
         LeastStrides(DT_SDI_PIXFMT_V210, Geo->Width, Strides);
         const size_t Written = (Count + 2) / 3 * 4;
-        Vec->ToV210(Symbols, Count, Out[0]);
+        Conv->ToV210(Symbols, Count, Out[0]);
         memset(Out[0] + Written, 0, (size_t)Strides[0] - Written);
         break;
     }
     case DT_SDI_PIXFMT_Y210:
-        Vec->ToY210(Symbols, Count, Out[0]);
+        Conv->ToY210(Symbols, Count, Out[0]);
         break;
     case DT_SDI_PIXFMT_YUV422P_10B:
-        Vec->ToPlanar10(Symbols, Count, Out[0], Out[1], Out[2]);
+        Conv->ToPlanar10(Symbols, Count, Out[0], Out[1], Out[2]);
         break;
     case DT_SDI_PIXFMT_YUV422P_8B:
-        Vec->ToPlanar8(Symbols, Count, Out[0], Out[1], Out[2]);
+        Conv->ToPlanar8(Symbols, Count, Out[0], Out[1], Out[2]);
         break;
     default:
         break;

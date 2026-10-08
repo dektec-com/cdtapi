@@ -16,7 +16,7 @@
 // boundary; from there four symbols take five bytes, least significant bit first.
 //
 void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
-                       const DtSdiVec* Vec)
+                       const DtSdiConv* Conv)
 {
     if (Ptr->BitsPerSymbol == 16)
     {
@@ -34,7 +34,7 @@ void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
     }
 
     const size_t Aligned = (Count - i) / 4 * 4;
-    Vec->Unpack10(Ptr->Byte + ((size_t)Ptr->Bit + 10 * i) / 8, Aligned, Out + i);
+    Conv->Unpack10(Ptr->Byte + ((size_t)Ptr->Bit + 10 * i) / 8, Aligned, Out + i);
     i += Aligned;
 
     for (; i < Count; i++)
@@ -44,9 +44,9 @@ void DtSdiSymbols_Read(const DtSdiSymbolPtr* Ptr, size_t Count, uint16_t* Out,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiSymbolWriter_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void DtSdiSymbolWriter_Init(DtSdiSymbolWriter* Writer, uint8_t* Frame, int BitsPerSymbol,
-                            const DtSdiVec* Vec)
+                            const DtSdiConv* Conv)
 {
-    Writer->Vec = Vec;
+    Writer->Conv = Conv;
     Writer->Next = Frame;
     Writer->Bits = 0;
     Writer->NumBits = 0;
@@ -88,7 +88,7 @@ void DtSdiSymbolWriter_Put(DtSdiSymbolWriter* Writer, const uint16_t* Symbols,
 
     // Then four symbols into five bytes, as many fours as there are.
     const size_t Aligned = (Count - i) / 4 * 4;
-    Writer->Vec->Pack10(Symbols + i, Aligned, Next);
+    Writer->Conv->Pack10(Symbols + i, Aligned, Next);
     Next += Aligned / 4 * 5;
     i += Aligned;
 

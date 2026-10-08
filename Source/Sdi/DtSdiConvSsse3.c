@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiVecSsse3.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#* DtSdiConvSsse3.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The conversions of SDI symbols, with SSSE3
 //
@@ -22,7 +22,7 @@
 #include <tmmintrin.h>
 
 // CDTAPI includes
-#include "DtSdiVec.h" // Interface being implemented.
+#include "DtSdiConv.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -76,7 +76,7 @@ static void Unpack10(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
     size_t i = 0;
     for (; i + 16 <= Count; i += 8)
         _mm_storeu_si128((__m128i*)(Symbols + i), Unpack8(Bytes + i * 10 / 8));
-    DtSdiVec_C()->Unpack10(Bytes + i * 10 / 8, Count - i, Symbols + i);
+    DtSdiConv_C()->Unpack10(Bytes + i * 10 / 8, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -87,7 +87,7 @@ static void Pack10(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
     for (; i + 16 <= Count; i += 8)
         _mm_storeu_si128((__m128i*)(Bytes + i * 10 / 8),
                          Pack8(_mm_loadu_si128((const __m128i*)(Symbols + i))));
-    DtSdiVec_C()->Pack10(Symbols + i, Count - i, Bytes + i * 10 / 8);
+    DtSdiConv_C()->Pack10(Symbols + i, Count - i, Bytes + i * 10 / 8);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Limit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -100,7 +100,7 @@ static void Limit(uint16_t* Symbols, size_t Count)
         __m128i* At = (__m128i*)(Symbols + i);
         _mm_storeu_si128(At, Legal(_mm_loadu_si128(At)));
     }
-    DtSdiVec_C()->Limit(Symbols + i, Count - i);
+    DtSdiConv_C()->Limit(Symbols + i, Count - i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToPlanar10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -127,7 +127,7 @@ static void ToPlanar10(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_
         _mm_storel_epi64((__m128i*)(Cb + i / 2), Cs);
         _mm_storel_epi64((__m128i*)(Cr + i / 2), _mm_srli_si128(Cs, 8));
     }
-    DtSdiVec_C()->ToPlanar10(Symbols + i, Count - i, Y + i, Cb + i / 2, Cr + i / 2);
+    DtSdiConv_C()->ToPlanar10(Symbols + i, Count - i, Y + i, Cb + i / 2, Cr + i / 2);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Interleave -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -157,7 +157,7 @@ static void FromPlanar10(const uint8_t* Y, const uint8_t* Cb, const uint8_t* Cr,
             _mm_and_si128(_mm_loadl_epi64((const __m128i*)(Cr + i / 2)), Ten);
         Interleave(Ys, Cbs, Crs, Symbols + i);
     }
-    DtSdiVec_C()->FromPlanar10(Y + i, Cb + i / 2, Cr + i / 2, Count - i, Symbols + i);
+    DtSdiConv_C()->FromPlanar10(Y + i, Cb + i / 2, Cr + i / 2, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToPlanar8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -189,7 +189,7 @@ static void ToPlanar8(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_t
             Cr[i / 4 + (size_t)b] = (uint8_t)((unsigned)CrWord >> (8 * b));
         }
     }
-    DtSdiVec_C()->ToPlanar8(Symbols + i, Count - i, Y + i / 2, Cb + i / 4, Cr + i / 4);
+    DtSdiConv_C()->ToPlanar8(Symbols + i, Count - i, Y + i / 2, Cb + i / 4, Cr + i / 4);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FromPlanar8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -216,7 +216,7 @@ static void FromPlanar8(const uint8_t* Y, const uint8_t* Cb, const uint8_t* Cr,
             _mm_slli_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(CrWord), Zero), 2);
         Interleave(Ys, Cbs, Crs, Symbols + i);
     }
-    DtSdiVec_C()->FromPlanar8(Y + i / 2, Cb + i / 4, Cr + i / 4, Count - i, Symbols + i);
+    DtSdiConv_C()->FromPlanar8(Y + i / 2, Cb + i / 4, Cr + i / 4, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToUyvy8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -232,7 +232,7 @@ static void ToUyvy8(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
             _mm_srli_epi16(_mm_loadu_si128((const __m128i*)(Symbols + i + 8)), 2);
         _mm_storeu_si128((__m128i*)(Bytes + i), _mm_packus_epi16(A, B));
     }
-    DtSdiVec_C()->ToUyvy8(Symbols + i, Count - i, Bytes + i);
+    DtSdiConv_C()->ToUyvy8(Symbols + i, Count - i, Bytes + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FromUyvy8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -249,7 +249,7 @@ static void FromUyvy8(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
         _mm_storeu_si128((__m128i*)(Symbols + i + 8),
                          Legal(_mm_slli_epi16(_mm_unpackhi_epi8(In, Zero), 2)));
     }
-    DtSdiVec_C()->FromUyvy8(Bytes + i, Count - i, Symbols + i);
+    DtSdiConv_C()->FromUyvy8(Bytes + i, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToY210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -267,7 +267,7 @@ static void ToY210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
         _mm_storeu_si128((__m128i*)(Bytes + 2 * i),
                          _mm_slli_epi16(_mm_shuffle_epi8(In, Swap), 6));
     }
-    DtSdiVec_C()->ToY210(Symbols + i, Count - i, Bytes + 2 * i);
+    DtSdiConv_C()->ToY210(Symbols + i, Count - i, Bytes + 2 * i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FromY210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -283,7 +283,7 @@ static void FromY210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
         _mm_storeu_si128((__m128i*)(Symbols + i),
                          Legal(_mm_srli_epi16(_mm_shuffle_epi8(In, Swap), 6)));
     }
-    DtSdiVec_C()->FromY210(Bytes + 2 * i, Count - i, Symbols + i);
+    DtSdiConv_C()->FromY210(Bytes + 2 * i, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ToV210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -318,7 +318,7 @@ static void ToV210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
                          _mm_slli_epi32(Thirds, 20));
         _mm_storeu_si128((__m128i*)(Bytes + i / 3 * 4), Words);
     }
-    DtSdiVec_C()->ToV210(Symbols + i, Count - i, Bytes + i / 3 * 4);
+    DtSdiConv_C()->ToV210(Symbols + i, Count - i, Bytes + i / 3 * 4);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FromV210 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -353,7 +353,7 @@ static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
         _mm_storeu_si128((__m128i*)(Symbols + i), Legal(Low));
         _mm_storel_epi64((__m128i*)(Symbols + i + 8), Legal(High));
     }
-    DtSdiVec_C()->FromV210(Bytes + i / 3 * 4, Count - i, Symbols + i);
+    DtSdiConv_C()->FromV210(Bytes + i / 3 * 4, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Split4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -419,13 +419,13 @@ static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-const DtSdiVec* DtSdiVec_Ssse3Unchecked(void)
+const DtSdiConv* DtSdiConv_Ssse3Unchecked(void)
 {
-    static const DtSdiVec Ssse3 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                   FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                   FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                   FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Ssse3 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                    FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                    FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                    FromV210,     Split4k,   Join4k};
     return &Ssse3;
 }

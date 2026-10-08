@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiVecAvx2.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiConvAvx2.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The conversions of SDI symbols, with AVX2
 //
@@ -16,7 +16,7 @@
 #include <immintrin.h>
 
 // CDTAPI includes
-#include "DtSdiVec.h" // Interface being implemented.
+#include "DtSdiConv.h" // Interface being implemented.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -46,7 +46,7 @@ static void Unpack10(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
         _mm256_storeu_si256((__m256i*)(Symbols + i),
                             _mm256_and_si256(_mm256_srli_epi16(Moved, 6), Ten));
     }
-    DtSdiVec_Ssse3Unchecked()->Unpack10(Bytes + i * 10 / 8, Count - i, Symbols + i);
+    DtSdiConv_Ssse3Unchecked()->Unpack10(Bytes + i * 10 / 8, Count - i, Symbols + i);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Pack10 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -75,7 +75,7 @@ static void Pack10(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
         _mm_storeu_si128((__m128i*)At, _mm256_castsi256_si128(Packed));
         _mm_storeu_si128((__m128i*)(At + 10), _mm256_extracti128_si256(Packed, 1));
     }
-    DtSdiVec_Ssse3Unchecked()->Pack10(Symbols + i, Count - i, Bytes + i * 10 / 8);
+    DtSdiConv_Ssse3Unchecked()->Pack10(Symbols + i, Count - i, Bytes + i * 10 / 8);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Limit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -91,7 +91,7 @@ static void Limit(uint16_t* Symbols, size_t Count)
         _mm256_storeu_si256(
             At, _mm256_min_epi16(_mm256_max_epi16(_mm256_loadu_si256(At), Low), High));
     }
-    DtSdiVec_Ssse3Unchecked()->Limit(Symbols + i, Count - i);
+    DtSdiConv_Ssse3Unchecked()->Limit(Symbols + i, Count - i);
 }
 
 // The pixel formats, as the SSSE3 version converts them.
@@ -99,77 +99,77 @@ static void Limit(uint16_t* Symbols, size_t Count)
 static void ToPlanar10(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_t* Cb,
                        uint8_t* Cr)
 {
-    DtSdiVec_Ssse3Unchecked()->ToPlanar10(Symbols, Count, Y, Cb, Cr);
+    DtSdiConv_Ssse3Unchecked()->ToPlanar10(Symbols, Count, Y, Cb, Cr);
 }
 
 static void FromPlanar10(const uint8_t* Y, const uint8_t* Cb, const uint8_t* Cr,
                          size_t Count, uint16_t* Symbols)
 {
-    DtSdiVec_Ssse3Unchecked()->FromPlanar10(Y, Cb, Cr, Count, Symbols);
+    DtSdiConv_Ssse3Unchecked()->FromPlanar10(Y, Cb, Cr, Count, Symbols);
 }
 
 static void ToPlanar8(const uint16_t* Symbols, size_t Count, uint8_t* Y, uint8_t* Cb,
                       uint8_t* Cr)
 {
-    DtSdiVec_Ssse3Unchecked()->ToPlanar8(Symbols, Count, Y, Cb, Cr);
+    DtSdiConv_Ssse3Unchecked()->ToPlanar8(Symbols, Count, Y, Cb, Cr);
 }
 
 static void FromPlanar8(const uint8_t* Y, const uint8_t* Cb, const uint8_t* Cr,
                         size_t Count, uint16_t* Symbols)
 {
-    DtSdiVec_Ssse3Unchecked()->FromPlanar8(Y, Cb, Cr, Count, Symbols);
+    DtSdiConv_Ssse3Unchecked()->FromPlanar8(Y, Cb, Cr, Count, Symbols);
 }
 
 static void ToUyvy8(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
-    DtSdiVec_Ssse3Unchecked()->ToUyvy8(Symbols, Count, Bytes);
+    DtSdiConv_Ssse3Unchecked()->ToUyvy8(Symbols, Count, Bytes);
 }
 
 static void FromUyvy8(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 {
-    DtSdiVec_Ssse3Unchecked()->FromUyvy8(Bytes, Count, Symbols);
+    DtSdiConv_Ssse3Unchecked()->FromUyvy8(Bytes, Count, Symbols);
 }
 
 static void ToY210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
-    DtSdiVec_Ssse3Unchecked()->ToY210(Symbols, Count, Bytes);
+    DtSdiConv_Ssse3Unchecked()->ToY210(Symbols, Count, Bytes);
 }
 
 static void FromY210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 {
-    DtSdiVec_Ssse3Unchecked()->FromY210(Bytes, Count, Symbols);
+    DtSdiConv_Ssse3Unchecked()->FromY210(Bytes, Count, Symbols);
 }
 
 static void ToV210(const uint16_t* Symbols, size_t Count, uint8_t* Bytes)
 {
-    DtSdiVec_Ssse3Unchecked()->ToV210(Symbols, Count, Bytes);
+    DtSdiConv_Ssse3Unchecked()->ToV210(Symbols, Count, Bytes);
 }
 
 static void FromV210(const uint8_t* Bytes, size_t Count, uint16_t* Symbols)
 {
-    DtSdiVec_Ssse3Unchecked()->FromV210(Bytes, Count, Symbols);
+    DtSdiConv_Ssse3Unchecked()->FromV210(Bytes, Count, Symbols);
 }
 
 static void Split4k(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower)
 {
-    DtSdiVec_Ssse3Unchecked()->Split4k(Raw, Pixels, Upper, Lower);
+    DtSdiConv_Ssse3Unchecked()->Split4k(Raw, Pixels, Upper, Lower);
 }
 
 static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
                    uint16_t* Raw)
 {
-    DtSdiVec_Ssse3Unchecked()->Join4k(Upper, Lower, Pixels, Raw);
+    DtSdiConv_Ssse3Unchecked()->Join4k(Upper, Lower, Pixels, Raw);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiVec_Avx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Avx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-const DtSdiVec* DtSdiVec_Avx2Unchecked(void)
+const DtSdiConv* DtSdiConv_Avx2Unchecked(void)
 {
-    static const DtSdiVec Avx2 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                  FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                  FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                  FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Avx2 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
+                                   FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
+                                   FromUyvy8,    ToY210,    FromY210,    ToV210,
+                                   FromV210,     Split4k,   Join4k};
     return &Avx2;
 }

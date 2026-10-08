@@ -12,8 +12,8 @@
 #include <stdint.h>
 
 // CDTAPI includes
+#include "DtSdiConv.h"     // The conversions.
 #include "DtSdiGeometry.h" // The image's size.
-#include "DtSdiVec.h"      // The conversions.
 #include "cdtapi_sdi.h"    // The image.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Images +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -30,12 +30,12 @@ DtapiResult DtSdiImage_Check(const DtSdiImage* Image, const DtSdiGeometry* Geo);
 // Reads line Line (from 0) of an image of Geo from Image, in its format, into Symbols:
 // Cb, Y, Cr, Y and so on, 2 * Geo->Width of them, each limited to 4..1019, as timing
 // references keep 0 to 3 and 1020 to 1023. 8-bit samples get two zero bits below.
-// Image must have passed DtSdiImage_Check. Vec converts.
+// Image must have passed DtSdiImage_Check. Conv converts.
 void DtSdiImage_GetLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        uint16_t* Symbols, const DtSdiVec* Vec);
+                        uint16_t* Symbols, const DtSdiConv* Conv);
 
 // Writes line Line (from 0) of an image of Geo into Image, in its format, from the
 // line's symbols: Cb, Y, Cr, Y and so on, 2 * Geo->Width of them, each a value from 0 to
-// 1023. Image must have passed DtSdiImage_Check. Vec converts.
+// 1023. Image must have passed DtSdiImage_Check. Conv converts.
 void DtSdiImage_PutLine(const DtSdiImage* Image, const DtSdiGeometry* Geo, int Line,
-                        const uint16_t* Symbols, const DtSdiVec* Vec);
+                        const uint16_t* Symbols, const DtSdiConv* Conv);

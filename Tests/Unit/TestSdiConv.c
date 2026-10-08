@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSdiVec.c *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#* TestSdiConv.c *#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
 //
 // CDTAPI - The vector conversions of SDI symbols against the portable ones
 //
@@ -19,9 +19,9 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "DtTest.h"       // Test framework.
-#include "Sdi/DtSdiVec.h" // The conversions under test.
-#include "cdtapi_sdi.h"   // The parser and the builder.
+#include "DtTest.h"        // Test framework.
+#include "Sdi/DtSdiConv.h" // The conversions under test.
+#include "cdtapi_sdi.h"    // The parser and the builder.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Runs +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -124,13 +124,13 @@ static const char* SameSymbols(const Bufs* B, size_t Count, char* Message,
     return NULL;
 }
 
-// Runs every conversion of Vec and of the portable version on the same input of Count
+// Runs every conversion of Conv and of the portable version on the same input of Count
 // symbols. Returns NULL, or which conversion differs and how.
-static const char* Compare(const DtSdiVec* Vec, Bufs* B, size_t Count, char* Message,
+static const char* Compare(const DtSdiConv* Conv, Bufs* B, size_t Count, char* Message,
                            size_t MessageSize)
 {
-    const DtSdiVec* C = DtSdiVec_C();
-    const DtSdiVec* V[2] = {C, Vec};
+    const DtSdiConv* C = DtSdiConv_C();
+    const DtSdiConv* V[2] = {C, Conv};
     const char* Failure = NULL;
     char Detail[96];
 
@@ -231,8 +231,8 @@ static const char* Compare(const DtSdiVec* Vec, Bufs* B, size_t Count, char* Mes
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Compares every conversion of Vec with the portable one. Returns NULL, or what differs.
-static const char* CheckVersion(const DtSdiVec* Vec, char* Message, size_t MessageSize)
+// Compares every conversion of Conv with the portable one. Returns NULL, or what differs.
+static const char* CheckVersion(const DtSdiConv* Conv, char* Message, size_t MessageSize)
 {
     MakeCounts();
     Bufs* B = (Bufs*)malloc(sizeof(Bufs));
@@ -241,35 +241,35 @@ static const char* CheckVersion(const DtSdiVec* Vec, char* Message, size_t Messa
     const char* Failure = NULL;
     for (int r = 0; r < 3 && Failure == NULL; r++)
         for (int i = 0; i < g_NumCounts && Failure == NULL; i++)
-            Failure = Compare(Vec, B, g_Counts[i], Message, MessageSize);
+            Failure = Compare(Conv, B, g_Counts[i], Message, MessageSize);
     free(B);
     return Failure;
 }
 
 DT_TEST(Ssse3EqualsPortable)
 {
-    const DtSdiVec* Vec = DtSdiVec_Ssse3();
-    if (Vec == NULL)
+    const DtSdiConv* Conv = DtSdiConv_Ssse3();
+    if (Conv == NULL)
     {
         printf("    skipped: no SSSE3\n");
         return;
     }
     char Message[160];
-    const char* Failure = CheckVersion(Vec, Message, sizeof(Message));
+    const char* Failure = CheckVersion(Conv, Message, sizeof(Message));
     if (Failure != NULL)
         DT_FAIL("SSSE3: %s", Failure);
 }
 
 DT_TEST(Avx2EqualsPortable)
 {
-    const DtSdiVec* Vec = DtSdiVec_Avx2();
-    if (Vec == NULL)
+    const DtSdiConv* Conv = DtSdiConv_Avx2();
+    if (Conv == NULL)
     {
         printf("    skipped: no AVX2\n");
         return;
     }
     char Message[160];
-    const char* Failure = CheckVersion(Vec, Message, sizeof(Message));
+    const char* Failure = CheckVersion(Conv, Message, sizeof(Message));
     if (Failure != NULL)
         DT_FAIL("AVX2: %s", Failure);
 }
@@ -277,10 +277,10 @@ DT_TEST(Avx2EqualsPortable)
 // The fastest version is one of the three.
 DT_TEST(BestIsAVersion)
 {
-    const DtSdiVec* Best = DtSdiVec_Best();
+    const DtSdiConv* Best = DtSdiConv_Best();
     DT_ASSERT(Best != NULL);
-    DT_ASSERT(Best == DtSdiVec_C() || Best == DtSdiVec_Ssse3() ||
-              Best == DtSdiVec_Avx2());
+    DT_ASSERT(Best == DtSdiConv_C() || Best == DtSdiConv_Ssse3() ||
+              Best == DtSdiConv_Avx2());
 }
 
 // An image in a pixel format: planes of the least strides, filled with random bytes.
@@ -339,7 +339,7 @@ DT_TEST(ParserAndBuilderAgree)
     static const DtSdiPixelFormat Formats[] = {
         DT_SDI_PIXFMT_UYVY_10B, DT_SDI_PIXFMT_UYVY_8B,     DT_SDI_PIXFMT_V210,
         DT_SDI_PIXFMT_Y210,     DT_SDI_PIXFMT_YUV422P_10B, DT_SDI_PIXFMT_YUV422P_8B};
-    const DtSdiVec* Versions[3] = {DtSdiVec_C(), DtSdiVec_Ssse3(), DtSdiVec_Avx2()};
+    const DtSdiConv* Versions[3] = {DtSdiConv_C(), DtSdiConv_Ssse3(), DtSdiConv_Avx2()};
     for (size_t s = 0; s < sizeof(Stds) / sizeof(Stds[0]); s++)
     {
         for (int Bits = 10; Bits <= 16; Bits += 6)
@@ -365,8 +365,8 @@ DT_TEST(ParserAndBuilderAgree)
                     DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
                     DtSdiParser* Parser = DtSdiParser_Alloc();
                     DT_ASSERT(Builder != NULL && Parser != NULL);
-                    DtSdiBuilder_UseVec(Builder, Versions[v]);
-                    DtSdiParser_UseVec(Parser, Versions[v]);
+                    DtSdiBuilder_UseConv(Builder, Versions[v]);
+                    DtSdiParser_UseConv(Parser, Versions[v]);
                     DT_ASSERT_OK(
                         DtSdiView_SetRawFrame(View, Frames[v], Size, Stds[s], Bits));
                     DT_ASSERT_OK(
@@ -395,5 +395,5 @@ DT_TEST(ParserAndBuilderAgree)
     }
 }
 
-DT_TEST_MAIN("SdiVec", DT_RUN(Ssse3EqualsPortable), DT_RUN(Avx2EqualsPortable),
+DT_TEST_MAIN("SdiConv", DT_RUN(Ssse3EqualsPortable), DT_RUN(Avx2EqualsPortable),
              DT_RUN(BestIsAVersion), DT_RUN(ParserAndBuilderAgree))

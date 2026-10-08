@@ -1,4 +1,4 @@
-// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiVec.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#*# (C) 2026 DekTec
+// #*#*#*#*#*#*#*#*#*#*#*#*#*#*# DtSdiConv.h *#*#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
 //
 // CDTAPI - The conversions of SDI symbols that the parser and the builder spend their
 // time in, in portable C and with SSSE3 and AVX2
@@ -31,7 +31,7 @@
 // symbols Count * 10 / 8 bytes.
 //
 
-typedef struct DtSdiVec
+typedef struct DtSdiConv
 {
     // Packed 10-bit symbols, the first at bit 0 of Bytes, least significant bit first;
     // Count a multiple of 4.
@@ -68,26 +68,26 @@ typedef struct DtSdiVec
     void (*Split4k)(const uint16_t* Raw, size_t Pixels, uint16_t* Upper, uint16_t* Lower);
     void (*Join4k)(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
                    uint16_t* Raw);
-} DtSdiVec;
+} DtSdiConv;
 
 // Returns the portable conversions.
-const DtSdiVec* DtSdiVec_C(void);
+const DtSdiConv* DtSdiConv_C(void);
 
 // Returns the conversions with SSSE3, or NULL when the processor or the build has none.
-const DtSdiVec* DtSdiVec_Ssse3(void);
+const DtSdiConv* DtSdiConv_Ssse3(void);
 
 // Returns the conversions with AVX2, or NULL when the processor or the build has none.
-const DtSdiVec* DtSdiVec_Avx2(void);
+const DtSdiConv* DtSdiConv_Avx2(void);
 
 // Returns the fastest conversions the processor has.
-const DtSdiVec* DtSdiVec_Best(void);
+const DtSdiConv* DtSdiConv_Best(void);
 
 // The conversions with SSSE3 and AVX2, without asking the processor; for the functions
 // above. They exist only in a build for x86 processors.
-const DtSdiVec* DtSdiVec_Ssse3Unchecked(void);
-const DtSdiVec* DtSdiVec_Avx2Unchecked(void);
+const DtSdiConv* DtSdiConv_Ssse3Unchecked(void);
+const DtSdiConv* DtSdiConv_Avx2Unchecked(void);
 
-// Makes Parser or Builder use Vec rather than the fastest conversions, for the tests and
-// the benchmark that compare them. Vec must outlive their use.
-void DtSdiParser_UseVec(DtSdiParser* Parser, const DtSdiVec* Vec);
-void DtSdiBuilder_UseVec(DtSdiBuilder* Builder, const DtSdiVec* Vec);
+// Makes Parser or Builder use Conv rather than the fastest conversions, for the tests and
+// the benchmark that compare them. Conv must outlive their use.
+void DtSdiParser_UseConv(DtSdiParser* Parser, const DtSdiConv* Conv);
+void DtSdiBuilder_UseConv(DtSdiBuilder* Builder, const DtSdiConv* Conv);
