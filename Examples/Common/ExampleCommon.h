@@ -10,6 +10,7 @@
 
 // Standard includes
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // The API.
@@ -100,3 +101,13 @@ void Example_SleepMs(int Ms);
 // Returns the time in milliseconds on a clock that never goes back, from an arbitrary
 // start; for measuring how long something takes.
 int64_t Example_NowMs(void);
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hashes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Returns a 64-bit hash of Size bytes of Data, to compare frames by. The data's 64-bit
+// words, each read least significant byte first, go round four FNV-1a hashes in turn:
+// word 0 to the first, word 1 to the second, and so on. The bytes after the last whole
+// word go to the first. The four are then hashed together, as four words. Every program
+// that prints a frame's hash uses this one, so that the lines of a sending and a
+// receiving program can be compared.
+uint64_t Example_Hash(const void* Data, size_t Size);

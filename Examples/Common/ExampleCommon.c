@@ -332,3 +332,76 @@ int64_t Example_NowMs(void)
     return (int64_t)Time.tv_sec * 1000 + Time.tv_nsec / 1000000;
 #endif
 }
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Hashes +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadLe64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Returns the eight bytes at Bytes as a number, least significant byte first. On a
+// little-endian processor that is how a number lies in memory, so the bytes are copied
+// as they are; a compiler makes that one load.
+//
+static uint64_t ReadLe64(const uint8_t* Bytes)
+{
+    const uint16_t One = 1;
+    uint64_t Value = 0;
+    if (*(const uint8_t*)&One == 1)
+    {
+        memcpy(&Value, Bytes, sizeof(Value));
+        return Value;
+    }
+    for (int b = 7; b >= 0; b--)
+        Value = Value << 8 | Bytes[b];
+    return Value;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_Hash -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Each step of an FNV-1a hash waits for the multiplication of the step before. Four
+// hashes in four variables do not wait for one another, so the processor runs their
+// steps at the same time, and a 2160p frame takes about as long as reading it from
+// memory.
+//
+uint64_t Example_Hash(const void* Data, size_t Size)
+{
+    const uint8_t* Bytes = (const uint8_t*)Data;
+    const uint64_t Basis = 0xCBF29CE484222325ull;
+    const uint64_t Prime = 0x100000001B3ull;
+    uint64_t A = Basis, B = Basis, C = Basis, D = Basis;
+    size_t i = 0;
+
+    for (; i + 32 <= Size; i += 32)
+    {
+        A = (A ^ ReadLe64(Bytes + i)) * Prime;
+        B = (B ^ ReadLe64(Bytes + i + 8)) * Prime;
+        C = (C ^ ReadLe64(Bytes + i + 16)) * Prime;
+        D = (D ^ ReadLe64(Bytes + i + 24)) * Prime;
+    }
+
+    // The last whole words, fewer than four, go to the hashes in the same order, and the
+    // bytes after them to the first.
+    if (i + 8 <= Size)
+    {
+        A = (A ^ ReadLe64(Bytes + i)) * Prime;
+        i += 8;
+    }
+    if (i + 8 <= Size)
+    {
+        B = (B ^ ReadLe64(Bytes + i)) * Prime;
+        i += 8;
+    }
+    if (i + 8 <= Size)
+    {
+        C = (C ^ ReadLe64(Bytes + i)) * Prime;
+        i += 8;
+    }
+    for (; i < Size; i++)
+        A = (A ^ Bytes[i]) * Prime;
+
+    uint64_t Hash = Basis;
+    Hash = (Hash ^ A) * Prime;
+    Hash = (Hash ^ B) * Prime;
+    Hash = (Hash ^ C) * Prime;
+    Hash = (Hash ^ D) * Prime;
+    return Hash;
+}

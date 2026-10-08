@@ -45,6 +45,10 @@
 // The most frame files --in reads.
 #define MAX_FILES 1000
 
+// The frames put in the buffer before the card starts sending. They give the program
+// time to spare when writing a frame takes longer once, as the first frames do.
+#define FRAMES_BEFORE_SENDING 3
+
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI output"},
     {"--port", true, "The port number; the first SDI output"},
@@ -68,22 +72,6 @@ static const ExampleOption g_Options[] = {
 static bool IsSdiOutput(const DtHwFuncDesc* Port)
 {
     return Port->IsSdi && Port->IsOutput;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Returns the 64-bit FNV-1a hash of Size bytes of Data, the hash DtReceiveFrames prints.
-//
-static uint64_t Fnv1a64(const char* Data, int Size)
-{
-    uint64_t Hash = 0xCBF29CE484222325ull;
-
-    for (int i = 0; i < Size; i++)
-    {
-        Hash ^= (uint8_t)Data[i];
-        Hash *= 0x100000001B3ull;
-    }
-    return Hash;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- TxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -349,13 +337,13 @@ static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* S
     if (Result != DTAPI_OK)
         return Example_Failed("DtOutpChannel_Write", Result);
     printf("frame %lld  %d bytes  hash %016llX\n", (long long)Number, Size,
-           (unsigned long long)Fnv1a64(Frame, Size));
+           (unsigned long long)Example_Hash(Frame, (size_t)Size));
     return EXAMPLE_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Transmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Writes the first frame while the channel holds, then starts sending and writes the
+// Writes the first frames while the channel holds, then starts sending and writes the
 // other frames. Returns the program's exit code.
 //
 static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Src,
@@ -368,12 +356,14 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
         return Example_Failed("DtOutpChannel_SetTxControl", Result);
     }
 
+    const int64_t BeforeSending =
+        Count < FRAMES_BEFORE_SENDING ? Count : FRAMES_BEFORE_SENDING;
     for (int64_t i = 0; i < Count; i++)
     {
         int Exit = WriteNext(Channel, Port, Src, i);
         if (Exit != EXAMPLE_OK)
             return Exit;
-        if (i == 0)
+        if (i == BeforeSending - 1)
         {
             Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
             if (Result != DTAPI_OK)

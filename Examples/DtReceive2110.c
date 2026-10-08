@@ -6,7 +6,7 @@
 //
 // Receives --count frames of SMPTE ST 2110 video or audio from a multicast group on an
 // IP port. Prints a line per frame: its number, its size, its rows, its time of day, its
-// RTP timestamp and a 64-bit FNV-1a hash of its bytes. At the end it prints what the
+// RTP timestamp and a 64-bit hash of its bytes. At the end it prints what the
 // FIFO counted.
 //
 //     9211000001:1  hardware pipe  239.1.2.3:5004  video as 10b
@@ -62,22 +62,6 @@ static const ExampleOption g_Options[] = {
     {"--sdp", true, "An SDP file whose first video or audio flow to receive; with NMOS"},
 };
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Returns the 64-bit FNV-1a hash of Size bytes of Data, to compare frames by.
-//
-static uint64_t Fnv1a64(const uint8_t* Data, int Size)
-{
-    uint64_t Hash = 0xCBF29CE484222325ull;
-
-    for (int i = 0; i < Size; i++)
-    {
-        Hash ^= Data[i];
-        Hash *= 0x100000001B3ull;
-    }
-    return Hash;
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FormatFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Sets *Format to the frame format --format names ("raw", "8b", "10b", also when
@@ -129,7 +113,7 @@ static int ReceiveFrames(AvFifo_RxFifo* Fifo, const DtHwFuncDesc* Port, int Coun
             "%lld:%d  frame %d  %d bytes  %d rows  tod %u.%09u  rtp %u  hash %016llX\n",
             (long long)Port->SerialNumber, Port->Port, Number, Frame->NumValidBytes,
             Frame->NumRows, Frame->ToD.Seconds, Frame->ToD.Nanoseconds, Frame->RtpTime,
-            (unsigned long long)Fnv1a64(Frame->Data, Frame->NumValidBytes));
+            (unsigned long long)Example_Hash(Frame->Data, (size_t)Frame->NumValidBytes));
         unsigned int Result = AvFifo_RxFifo_ReturnToMemPool(Fifo, Frame);
         if (Result != DTAPI_OK)
             return ExampleAv_Failed("AvFifo_RxFifo_ReturnToMemPool", Result);

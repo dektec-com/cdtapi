@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // Receives --count raw SDI frames from an input port, and prints a line per frame: its
-// number, its size and a 64-bit FNV-1a hash of its bytes.
+// number, its size and a 64-bit hash of its bytes, the one DtTransmitFrames prints.
 //
 // --out also writes each frame to <out><number>.raw. --detect first detects the I/O
 // standard of the signal and prints it. --threads converts the frames on a pool of that
@@ -62,22 +62,6 @@ static const ExampleOption g_Options[] = {
 static bool IsSdiInput(const DtHwFuncDesc* Port)
 {
     return Port->IsSdi && Port->IsInput;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Fnv1a64 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Returns the 64-bit FNV-1a hash of Size bytes of Data, to compare frames by.
-//
-static uint64_t Fnv1a64(const char* Data, int Size)
-{
-    uint64_t Hash = 0xCBF29CE484222325ull;
-
-    for (int i = 0; i < Size; i++)
-    {
-        Hash ^= (uint8_t)Data[i];
-        Hash *= 0x100000001B3ull;
-    }
-    return Hash;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RxModeFrom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -149,7 +133,7 @@ static int Receive(DtInpChannel* Channel, const DtHwFuncDesc* Port, int RxMode,
         }
 
         printf("%s  frame %lld  %d bytes  hash %016llX\n", Port->DeviceName, (long long)i,
-               Size, (unsigned long long)Fnv1a64(Frame, Size));
+               Size, (unsigned long long)Example_Hash(Frame, (size_t)Size));
         if (Out != NULL && !WriteFrame(Out, i, Frame, Size))
         {
             printf("Cannot write frame %lld to %s\n", (long long)i, Out);
