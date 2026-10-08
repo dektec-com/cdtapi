@@ -7,16 +7,17 @@
 // Sends --count raw SDI frames on an output port. The frames come from:
 //   --in        the files <in>0.raw, <in>1.raw and so on, as DtReceiveFrames --out
 //               writes them; after the last file, the first comes again
-//   otherwise   a test pattern of the video standard --vidstd: grey bars and a white bar
-//               that moves each frame, with valid line numbers and CRCs
+//   otherwise   the examples' test pattern of the video standard --vidstd, with the
+//               frame number in the picture (see ExamplePattern.h); the SDI builder
+//               builds it into raw frames, with valid line numbers and CRCs
 // --vidstd also sets the port to that standard; --linkstd says how a 4K standard is
 // carried. The program prints a line per frame, as DtReceiveFrames does, so that the
 // hashes of what one port sends and another receives can be compared:
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
-// --threads converts the frames on a pool of that many threads, which 2160p needs on a
-// slow processor. --flags prints the channel's latched flags at the end. The program
+// --threads builds and converts the frames on a pool of that many threads, which 2160p
+// needs. --flags prints the channel's latched flags at the end. The program
 // waits until the card has sent every frame before it detaches. The port must be an
 // output; DtConfigPort makes it one. Exits with 0 when every frame is written, 2 when
 // there is no SDI output, and 1 when a call fails or the command line is wrong.
@@ -35,7 +36,9 @@
 #include <string.h>
 
 // Example includes
-#include "Common/ExampleCommon.h" // The API and what the examples share.
+#include "Common/ExampleCommon.h"  // The API and what the examples share.
+#include "Common/ExamplePattern.h" // The test pattern.
+#include "cdtapi_sdi.h"            // The SDI builder.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Main +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
@@ -54,8 +57,8 @@ static const ExampleOption g_Options[] = {
     {"--count", true, "The number of frames to transmit; without it one, or every file"},
     {"--flags", false, "Print the latched flags after the last frame"},
     {"--threads", true,
-     "Code the frames over a pool of this many threads of the library's own, two or "
-     "more; one thread without it"},
+     "Build and code the frames over a pool of this many threads of the library's own, "
+     "two or more; one thread without it"},
 };
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsSdiOutput -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -184,325 +187,129 @@ static void FreeFrames(Frames* Set)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test pattern +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
-// How the program makes a raw SDI frame. A raw frame holds every line, from its EAV on,
-// in line number order. In HD, each word is there for colour difference and for luma,
-// colour difference first, and the EAV is followed by the line number and the line's
-// CRC; in SD, the samples are in the order of SMPTE 259. The symbols are packed in the
-// transmit mode's size, 10-bit symbols least significant bit first, and the frame is
-// padded with zeros to a multiple of 8 bytes.
+// The examples' test pattern, built into raw frames by the SDI builder. A raw frame holds
+// every line, from its EAV on, in line number order, its symbols packed in the transmit
+// mode's size, and is padded with zeros to a multiple of 8 bytes. The builder writes
+// symbols of 10 or 16 bits. For the 8-bit transmit mode the program builds 16-bit
+// symbols and keeps the top 8 bits of each, and leaves the line CRCs to the card: a CRC
+// over the 10-bit values does not hold for the 8-bit values the card sends.
 //
 
-// What the pattern needs to know of a video standard's lines.
-typedef struct Geometry
+// The test pattern, and what builds its raw frames.
+typedef struct Generator
 {
-    int VidStd;
-    int HancSymbols; // Between EAV and SAV
-    bool TwoFields;  // Interlaced and PsF
-} Geometry;
+    ExamplePattern Pattern; // The image, drawn for each frame
+    DtSdiImage Image;       // The same image, as the builder reads it
+    DtSdiBuilder* Builder;  // Builds the raw frames
+    DtSdiView* View;        // Points the builder at Built
+    int VidStd;             // The frames' video standard
+    int BitsPerSymbol;      // Of the frames sent: 8, 10 or 16
+    uint8_t* Built;         // The frame the builder writes, of 10-bit or 16-bit symbols
+    size_t BuiltSize;       // Bytes of Built
+    char* Frame;            // The frame sent: Built, or its 8-bit copy
+    int FrameSize;          // Bytes of Frame
+} Generator;
 
-static const Geometry g_Geometries[] = {
-    {DTAPI_VIDSTD_525I59_94, 268, true},    {DTAPI_VIDSTD_625I50, 280, true},
-    {DTAPI_VIDSTD_720P23_98, 5666, false},  {DTAPI_VIDSTD_720P24, 5666, false},
-    {DTAPI_VIDSTD_720P25, 5336, false},     {DTAPI_VIDSTD_720P29_97, 4016, false},
-    {DTAPI_VIDSTD_720P30, 4016, false},     {DTAPI_VIDSTD_720P50, 1376, false},
-    {DTAPI_VIDSTD_720P59_94, 716, false},   {DTAPI_VIDSTD_720P60, 716, false},
-    {DTAPI_VIDSTD_1080P23_98, 1636, false}, {DTAPI_VIDSTD_1080P24, 1636, false},
-    {DTAPI_VIDSTD_1080P25, 1416, false},    {DTAPI_VIDSTD_1080P29_97, 536, false},
-    {DTAPI_VIDSTD_1080P30, 536, false},     {DTAPI_VIDSTD_1080PSF23_98, 1636, true},
-    {DTAPI_VIDSTD_1080PSF24, 1636, true},   {DTAPI_VIDSTD_1080PSF25, 1416, true},
-    {DTAPI_VIDSTD_1080PSF29_97, 536, true}, {DTAPI_VIDSTD_1080PSF30, 536, true},
-    {DTAPI_VIDSTD_1080I50, 1416, true},     {DTAPI_VIDSTD_1080I59_94, 536, true},
-    {DTAPI_VIDSTD_1080I60, 536, true},      {DTAPI_VIDSTD_1080P50, 1416, false},
-    {DTAPI_VIDSTD_1080P50B, 1416, false},   {DTAPI_VIDSTD_1080P59_94, 536, false},
-    {DTAPI_VIDSTD_1080P59_94B, 536, false}, {DTAPI_VIDSTD_1080P60, 536, false},
-    {DTAPI_VIDSTD_1080P60B, 536, false},
-};
-
-// The sample values of blanking, of the grey bars and of the white bar.
-#define BLANK_C 0x200
-#define BLANK_Y 0x040
-#define WHITE_Y 0x3AC
-
-// The layout of the pattern's frames, and its buffers.
-typedef struct Pattern
-{
-    int NumLines;      // Lines in a frame
-    int ActiveSymbols; // Symbols in the active part of a line
-    int EavSymbols;    // With the line number and CRC in HD
-    int SavSymbols;    // Symbols of the SAV
-    int LineSymbols;   // Symbols in a whole line
-    int Fields[2][4];  // Start line, end line, first and last active line of each field
-    bool TwoFields;    // Interlaced or PsF
-    int BitsPerSymbol; // 8, 10 or 16
-    int FrameSize;     // Bytes of a frame, padded
-    uint16_t* Line;    // The line being made
-    uint16_t* Video;   // The active part of the current frame's video lines
-    uint32_t ActiveCrc[2]
-                      [2]; // CRC over a blanking and a video line's active part, C and Y
-} Pattern;
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatternInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GeneratorInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Sets up *Pat for frames of VidStd with symbols of BitsPerSymbol bits. Returns false
-// for a standard the pattern does not support, or when there is not enough memory.
+// Sets up *Gen for frames of VidStd with symbols of BitsPerSymbol bits. Returns false,
+// after printing why, for a standard the builder does not build, such as a level-B 3G
+// standard, or when there is not enough memory.
 //
-static bool PatternInit(Pattern* Pat, int VidStd, int BitsPerSymbol)
+static bool GeneratorInit(Generator* Gen, int VidStd, int BitsPerSymbol)
 {
-    const Geometry* Geo = NULL;
+    int Width = 0;
+    int Height = 0;
+    int Strides[3];
+    const int BuiltBits = BitsPerSymbol == 10 ? 10 : 16;
 
-    memset(Pat, 0, sizeof(*Pat));
-    for (size_t i = 0; i < sizeof(g_Geometries) / sizeof(g_Geometries[0]); i++)
+    memset(Gen, 0, sizeof(*Gen));
+    Gen->VidStd = VidStd;
+    Gen->BitsPerSymbol = BitsPerSymbol;
+    if (DtSdiImage_GetSize(VidStd, DT_SDI_PIXFMT_YUV422P_10B, &Width, &Height, Strides) !=
+            DTAPI_OK ||
+        DtSdiView_RawFrameSize(VidStd, BuiltBits, &Gen->BuiltSize) != DTAPI_OK)
     {
-        if (g_Geometries[i].VidStd == VidStd)
-            Geo = &g_Geometries[i];
-    }
-    if (Geo == NULL)
+        printf("No test pattern for video standard %s\n", Example_VidStdName(VidStd));
         return false;
+    }
 
-    const char* Name = Example_VidStdName(VidStd);
-    static const int Fields525[2][4] = {{1, 262, 17, 260}, {263, 525, 280, 522}};
-    static const int Fields625[2][4] = {{1, 312, 23, 310}, {313, 625, 336, 623}};
-    static const int Fields750[2][4] = {{1, 750, 26, 745}, {0, 0, 0, 0}};
-    static const int Fields1125P[2][4] = {{1, 1125, 42, 1121}, {0, 0, 0, 0}};
-    static const int Fields1125I[2][4] = {{1, 563, 21, 560}, {564, 1125, 584, 1123}};
-    const int(*Fields)[4];
-    if (strncmp(Name, "525", 3) == 0)
+    Gen->Builder = DtSdiBuilder_Alloc();
+    Gen->View = DtSdiView_Alloc();
+    Gen->Built = (uint8_t*)malloc(Gen->BuiltSize);
+    if (BitsPerSymbol == 8)
     {
-        Fields = Fields525;
-        Pat->NumLines = 525;
-        Pat->ActiveSymbols = 1440;
-    }
-    else if (strncmp(Name, "625", 3) == 0)
-    {
-        Fields = Fields625;
-        Pat->NumLines = 625;
-        Pat->ActiveSymbols = 1440;
-    }
-    else if (strncmp(Name, "720", 3) == 0)
-    {
-        Fields = Fields750;
-        Pat->NumLines = 750;
-        Pat->ActiveSymbols = 2560;
+        Gen->FrameSize = (int)((Gen->BuiltSize / 2 + 7) / 8 * 8);
+        Gen->Frame = (char*)calloc((size_t)Gen->FrameSize, 1);
     }
     else
     {
-        Fields = Geo->TwoFields ? Fields1125I : Fields1125P;
-        Pat->NumLines = 1125;
-        Pat->ActiveSymbols = 3840;
+        Gen->FrameSize = (int)Gen->BuiltSize;
+        Gen->Frame = (char*)Gen->Built;
     }
-    memcpy(Pat->Fields, Fields, sizeof(Pat->Fields));
-
-    bool IsSd = Pat->NumLines < 750;
-    Pat->EavSymbols = IsSd ? 4 : 16;
-    Pat->SavSymbols = IsSd ? 4 : 8;
-    Pat->LineSymbols =
-        Pat->EavSymbols + Geo->HancSymbols + Pat->SavSymbols + Pat->ActiveSymbols;
-    Pat->TwoFields = Geo->TwoFields;
-    Pat->BitsPerSymbol = BitsPerSymbol;
-    int64_t Bits = (int64_t)Pat->NumLines * Pat->LineSymbols * BitsPerSymbol;
-    Pat->FrameSize = (int)((Bits + 63) / 64 * 8);
-    Pat->Line = (uint16_t*)malloc((size_t)Pat->LineSymbols * sizeof(uint16_t));
-    Pat->Video = (uint16_t*)malloc((size_t)Pat->ActiveSymbols * sizeof(uint16_t));
-    return Pat->Line != NULL && Pat->Video != NULL;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatternFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Frees the buffers of *Pat.
-//
-static void PatternFree(Pattern* Pat)
-{
-    free(Pat->Line);
-    free(Pat->Video);
-    Pat->Line = NULL;
-    Pat->Video = NULL;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Adds one 10-bit word to Crc, the line CRC of SMPTE 292 (x^18 + x^5 + x^4 + 1), least
-// significant bit first, and returns the new CRC.
-//
-static uint32_t Crc18(uint32_t Crc, uint32_t Word)
-{
-    for (int Bit = 0; Bit < 10; Bit++)
+    if (Gen->Builder == NULL || Gen->View == NULL || Gen->Built == NULL ||
+        Gen->Frame == NULL || !ExamplePattern_Init(&Gen->Pattern, Width, Height))
     {
-        uint32_t Feedback = (Crc ^ (Word >> Bit)) & 1;
-
-        Crc >>= 1;
-        if (Feedback != 0)
-            Crc ^= 0x23000;
+        printf("Allocating: DTAPI_E_OUT_OF_MEM\n");
+        return false;
     }
-    return Crc;
+    DtSdiBuilder_SetChecksums(Gen->Builder, BitsPerSymbol != 8);
+
+    // The pattern's planes hold 16-bit samples, line after line without a gap.
+    Gen->Image.Format = DT_SDI_PIXFMT_YUV422P_10B;
+    Gen->Image.Fields = DT_SDI_FIELDS_WOVEN;
+    Gen->Image.Planes[0] = (uint8_t*)Gen->Pattern.Y;
+    Gen->Image.Planes[1] = (uint8_t*)Gen->Pattern.Cb;
+    Gen->Image.Planes[2] = (uint8_t*)Gen->Pattern.Cr;
+    Gen->Image.Strides[0] = 2 * Width;
+    Gen->Image.Strides[1] = Width;
+    Gen->Image.Strides[2] = Width;
+    return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GeneratorFree -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Returns the nine bits of Nine with bit 9 set to the inverse of bit 8, as line numbers
-// and CRC words carry them.
+// Frees what GeneratorInit allocated. A zeroed *Gen is freed too.
 //
-static uint32_t WithParity(uint32_t Nine)
+static void GeneratorFree(Generator* Gen)
 {
-    Nine &= 0x1FF;
-    return Nine | ((Nine >> 8) ^ 1) << 9;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Returns the fourth word of the EAV or SAV of Line: the field, vertical blanking, EAV
-// or SAV, and the protection bits.
-//
-static uint32_t Xyz(const Pattern* Pat, int Line, bool Eav)
-{
-    uint32_t F = Pat->TwoFields && Line >= Pat->Fields[1][0] ? 1 : 0;
-    const int* Field = Pat->Fields[F];
-    uint32_t V = Line < Field[2] || Line > Field[3] ? 1 : 0;
-    uint32_t H = Eav ? 1 : 0;
-
-    return 0x200 | F << 8 | V << 7 | H << 6 | (V ^ H) << 5 | (F ^ H) << 4 | (F ^ V) << 3 |
-           (F ^ V ^ H) << 2;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsVideoLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Returns whether Line is in the active picture of its field.
-//
-static bool IsVideoLine(const Pattern* Pat, int Line)
-{
-    uint32_t F = Pat->TwoFields && Line >= Pat->Fields[1][0] ? 1 : 0;
-
-    return Line >= Pat->Fields[F][2] && Line <= Pat->Fields[F][3];
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// Makes line Line in Pat->Line: blanking, the active video if the line has it, and the
-// EAV and SAV; in HD also the line number, and the CRC. PrevIsVideo says whether the
-// line before has active video, as the CRC is over its active part.
-//
-static void MakeLine(Pattern* Pat, int Line, bool PrevIsVideo)
-{
-    uint16_t* Out = Pat->Line;
-    int ActiveStart = Pat->LineSymbols - Pat->ActiveSymbols;
-
-    for (int i = 0; i < Pat->LineSymbols; i++)
-        Out[i] = (uint16_t)(i % 2 == 0 ? BLANK_C : BLANK_Y);
-    if (IsVideoLine(Pat, Line))
-        memcpy(Out + ActiveStart, Pat->Video,
-               (size_t)Pat->ActiveSymbols * sizeof(uint16_t));
-
-    uint32_t Words[8] = {0x3FF,
-                         0x000,
-                         0x000,
-                         Xyz(Pat, Line, true),
-                         WithParity((uint32_t)Line << 2),
-                         WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
-                         0,
-                         0};
-    uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(Pat, Line, false)};
-    if (Pat->EavSymbols == 4)
-    {
-        for (int i = 0; i < 4; i++)
-        {
-            Out[i] = (uint16_t)Words[i];
-            Out[ActiveStart - 4 + i] = (uint16_t)Sav[i];
-        }
-        return;
-    }
-    for (int Channel = 0; Channel < 2; Channel++)
-    {
-        uint32_t Crc = Pat->ActiveCrc[PrevIsVideo ? 1 : 0][Channel];
-
-        for (int j = 0; j < 6; j++)
-            Crc = Crc18(Crc, Words[j]);
-        Words[6] = WithParity(Crc);
-        Words[7] = WithParity(Crc >> 9);
-        for (int j = 0; j < 8; j++)
-            Out[2 * j + Channel] = (uint16_t)Words[j];
-        for (int j = 0; j < 4; j++)
-            Out[ActiveStart - 8 + 2 * j + Channel] = (uint16_t)Sav[j];
-    }
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeVideo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Makes the active video of frame FrameNumber: eight grey bars, and a white bar a
-// sixteenth of the width wide that moves right by an eighth of its width per frame.
-// Also works out the CRCs over a video line and over a blanking line.
-//
-static void MakeVideo(Pattern* Pat, int64_t FrameNumber)
-{
-    int Samples = Pat->ActiveSymbols / 2;
-    int BarWidth = Samples / 16;
-    int64_t Step = BarWidth / 8 > 0 ? BarWidth / 8 : 1;
-    int WhiteAt = (int)(FrameNumber * Step % (Samples - BarWidth));
-
-    for (int Sample = 0; Sample < Samples; Sample++)
-    {
-        int Luma = BLANK_Y + (WHITE_Y - BLANK_Y) * (Sample * 8 / Samples) / 7;
-
-        if (Sample >= WhiteAt && Sample < WhiteAt + BarWidth)
-            Luma = WHITE_Y;
-        Pat->Video[2 * Sample] = BLANK_C;
-        Pat->Video[2 * Sample + 1] = (uint16_t)Luma;
-    }
-
-    for (int Channel = 0; Channel < 2; Channel++)
-    {
-        uint32_t Blank = 0;
-        uint32_t Video = 0;
-
-        for (int j = Channel; j < Pat->ActiveSymbols; j += 2)
-        {
-            Blank = Crc18(Blank, Channel == 0 ? BLANK_C : BLANK_Y);
-            Video = Crc18(Video, Pat->Video[j]);
-        }
-        Pat->ActiveCrc[0][Channel] = Blank;
-        Pat->ActiveCrc[1][Channel] = Video;
-    }
+    if (Gen->Frame != (char*)Gen->Built)
+        free(Gen->Frame);
+    free(Gen->Built);
+    DtSdiView_Free(Gen->View);
+    DtSdiBuilder_Free(Gen->Builder);
+    ExamplePattern_Free(&Gen->Pattern);
+    memset(Gen, 0, sizeof(*Gen));
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Makes frame FrameNumber of the pattern in Frame, of Pat->FrameSize bytes. (The line
-// before line 1, for the CRC, is the frame's last line, which is blanking in every
-// standard.)
+// Makes frame Number of the pattern in Gen->Frame: draws the image, builds the raw frame,
+// and for 8-bit symbols keeps the top 8 bits of each 16-bit symbol. Returns what the
+// builder returns.
 //
-static void MakeFrame(Pattern* Pat, int64_t FrameNumber, char* Frame)
+static unsigned int MakeFrame(Generator* Gen, int64_t Number)
 {
-    uint8_t* Out = (uint8_t*)Frame;
-    uint64_t Accu = 0;
-    int Have = 0;
+    const int BuiltBits = Gen->BitsPerSymbol == 10 ? 10 : 16;
 
-    memset(Frame, 0, (size_t)Pat->FrameSize);
-    MakeVideo(Pat, FrameNumber);
-    for (int Line = 1; Line <= Pat->NumLines; Line++)
+    ExamplePattern_Draw(&Gen->Pattern, Number);
+    unsigned int Result = DtSdiView_SetRawFrame(Gen->View, Gen->Built, Gen->BuiltSize,
+                                                Gen->VidStd, BuiltBits);
+    if (Result == DTAPI_OK)
+        Result = DtSdiBuilder_Build(Gen->Builder, Gen->View, &Gen->Image, NULL, NULL);
+    if (Result != DTAPI_OK || Gen->BitsPerSymbol != 8)
+        return Result;
+
+    // Each 16-bit symbol is two bytes, least significant first, with its ten bits at the
+    // bottom.
+    const size_t Symbols = Gen->BuiltSize / 2;
+    for (size_t i = 0; i < Symbols; i++)
     {
-        MakeLine(Pat, Line, Line > 1 && IsVideoLine(Pat, Line - 1));
-        for (int i = 0; i < Pat->LineSymbols; i++)
-        {
-            uint32_t Symbol = Pat->Line[i];
-
-            if (Pat->BitsPerSymbol == 16)
-            {
-                *Out++ = (uint8_t)Symbol;
-                *Out++ = (uint8_t)(Symbol >> 8);
-            }
-            else if (Pat->BitsPerSymbol == 8)
-                *Out++ = (uint8_t)(Symbol >> 2);
-            else
-            {
-                Accu |= (uint64_t)Symbol << Have;
-                for (Have += 10; Have >= 8; Have -= 8)
-                {
-                    *Out++ = (uint8_t)Accu;
-                    Accu >>= 8;
-                }
-            }
-        }
+        const unsigned int Symbol =
+            (unsigned int)Gen->Built[2 * i] | (unsigned int)Gen->Built[2 * i + 1] << 8;
+        Gen->Frame[i] = (char)(Symbol >> 2 & 0xFF);
     }
-    if (Have > 0)
-        *Out = (uint8_t)Accu;
+    return DTAPI_OK;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Transmit +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -510,9 +317,8 @@ static void MakeFrame(Pattern* Pat, int64_t FrameNumber, char* Frame)
 // Where the frames come from.
 typedef struct Source
 {
-    Frames Files;    // With --in
-    Pattern Pat;     // Otherwise
-    char* Generated; // Pat.FrameSize bytes
+    Frames Files;  // With --in
+    Generator Gen; // Otherwise
 } Source;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteNext -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -523,8 +329,8 @@ typedef struct Source
 static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Src,
                      int64_t Number)
 {
-    char* Frame = Src->Generated;
-    int Size = Src->Pat.FrameSize;
+    char* Frame = Src->Gen.Frame;
+    int Size = Src->Gen.FrameSize;
 
     if (Src->Files.Count > 0)
     {
@@ -532,7 +338,11 @@ static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* S
         Size = Src->Files.Size[Number % Src->Files.Count];
     }
     else
-        MakeFrame(&Src->Pat, Number, Frame);
+    {
+        unsigned int Built = MakeFrame(&Src->Gen, Number);
+        if (Built != DTAPI_OK)
+            return Example_Failed("DtSdiBuilder_Build", Built);
+    }
 
     unsigned int Result = DtOutpChannel_Write(Channel, Frame, Size);
     printf("%s  ", Port->DeviceName);
@@ -592,13 +402,14 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GivePool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Gives the channel a pool of NumThreads threads to convert its frames on. The channel
-// itself picks how many of them a frame needs, for the standard it has now and after
-// --vidstd (NumThreads 0 in SetWorkerPool): 4 for 2160p50 and 2160p60, 2 for 2160p24 to
-// 2160p30, and none up to 3G-SDI. The channel keeps the pool, so the program releases
-// its own reference at once.
+// Gives the channel a pool of NumThreads threads to convert its frames on, and the
+// builder, when there is one, the same pool to build them on. Each picks how many of
+// them a frame needs, for the standard it has (NumThreads 0 in SetWorkerPool): 4 for
+// 2160p50 and 2160p60, 2 for 2160p24 to 2160p30, and none up to 3G-SDI. Both keep the
+// pool, so the program releases its own reference at once.
 //
-static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
+static unsigned int GivePool(DtOutpChannel* Channel, DtSdiBuilder* Builder,
+                             int NumThreads)
 {
     DtWorkerPool* Pool = DtWorkerPool_Alloc();
     unsigned int Result =
@@ -606,16 +417,18 @@ static unsigned int GivePool(DtOutpChannel* Channel, int NumThreads)
 
     if (Result == DTAPI_OK)
         Result = DtOutpChannel_SetWorkerPool(Channel, Pool, 0);
+    if (Result == DTAPI_OK && Builder != NULL)
+        Result = DtSdiBuilder_SetWorkerPool(Builder, Pool, 0);
     DtWorkerPool_Freep(&Pool);
     return Result;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AttachAndTransmit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Attaches Device and Channel to Port, gives the channel a pool of Threads threads when
-// asked, sets the I/O standard when asked, then the transmit mode, and sends. The
-// transmit mode comes last because changing the standard between SDI and ASI resets it.
-// Returns the program's exit code.
+// Attaches Device and Channel to Port, gives the channel and the builder a pool of
+// Threads threads when asked, sets the I/O standard when asked, then the transmit mode,
+// and sends. The transmit mode comes last because changing the standard between SDI and
+// ASI resets it. Returns the program's exit code.
 //
 static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
                              const DtHwFuncDesc* Port, int TxMode, int VidStd,
@@ -633,7 +446,7 @@ static int AttachAndTransmit(DtDevice* Device, DtOutpChannel* Channel,
     }
 
     const char* What = "DtOutpChannel_SetWorkerPool";
-    Result = Threads > 0 ? GivePool(Channel, (int)Threads) : DTAPI_OK;
+    Result = Threads > 0 ? GivePool(Channel, Src->Gen.Builder, (int)Threads) : DTAPI_OK;
     if (Result == DTAPI_OK && VidStd != DTAPI_VIDSTD_UNKNOWN)
     {
         int Value = -1;
@@ -688,18 +501,7 @@ static bool LoadSource(const char* In, int VidStd, int BitsPerSymbol, Source* Sr
         printf("Give --in, or --vidstd for the test pattern\n");
         return false;
     }
-    if (!PatternInit(&Src->Pat, VidStd, BitsPerSymbol))
-    {
-        printf("No test pattern for video standard %s\n", Example_VidStdName(VidStd));
-        return false;
-    }
-    Src->Generated = (char*)malloc((size_t)Src->Pat.FrameSize);
-    if (Src->Generated == NULL)
-    {
-        printf("Allocating: DTAPI_E_OUT_OF_MEM\n");
-        return false;
-    }
-    return true;
+    return GeneratorInit(&Src->Gen, VidStd, BitsPerSymbol);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- main -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -742,7 +544,7 @@ int main(int Argc, char** Argv)
     if (!LoadSource(Example_Value(Argc, Argv, "--in"), VidStd, BitsPerSymbol, &Src))
     {
         FreeFrames(&Src.Files);
-        PatternFree(&Src.Pat);
+        GeneratorFree(&Src.Gen);
         return EXAMPLE_FAILED;
     }
     if (Count < 0)
@@ -770,7 +572,6 @@ int main(int Argc, char** Argv)
     DtOutpChannel_Free(Channel);
     DtDevice_Free(Device);
     FreeFrames(&Src.Files);
-    PatternFree(&Src.Pat);
-    free(Src.Generated);
+    GeneratorFree(&Src.Gen);
     return Exit;
 }

@@ -23,7 +23,7 @@ set(ExampleMailboxPrograms DtNmos2110)
 set(ExampleTsPrograms DtReceiveTs DtTransmitTs)
 
 # Programs that send or check the test pattern and the test tone of ExamplePattern.c.
-set(ExamplePatternPrograms DtTransmitSdi)
+set(ExamplePatternPrograms DtTransmitSdi DtTransmitFrames)
 
 # .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Programs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 
@@ -218,7 +218,7 @@ cdtapi_example_test(TransmitFramesNothingToSend DtTransmitFrames
 cdtapi_example_test(TransmitFramesMissingFile DtTransmitFrames
     "^Cannot read no-such-frame0.raw" --in no-such-frame)
 cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
-    "^No test pattern for video standard 2160P50" --vidstd 2160P50)
+    "^No test pattern for video standard 1080P50B" --vidstd 1080P50B)
 
 # The SDI parser and builder. The round trip runs DtTransmitSdi into a file through the
 # emulator's SDI sink, then DtReceiveSdi from that file through its SDI source, and then
