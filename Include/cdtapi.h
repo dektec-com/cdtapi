@@ -1033,6 +1033,39 @@ CDTAPI_API DtapiResult DtInpChannel_SetWorkerPool(DtInpChannel* InpChannel,
 
 typedef struct DtOutpChannel DtOutpChannel;
 
+// Lends room for one SDI frame in the card's transmit buffer, so that a program can
+// build the frame there with DtSdiBuilder_Build(), without a copy. Waits up to TimeOut
+// milliseconds for room, or without a limit for -1. Frame, a view from
+// DtSdiView_Alloc(), then describes that room. Its contents are undefined until the
+// builder has written the frame. Hand the frame to the card with
+// DtOutpChannel_CommitFrame(). The channel lends one frame at a time.
+//
+// The lent frame always holds 10-bit symbols in the card's own format, whatever the
+// transmit mode. The transmit mode only applies to DtOutpChannel_Write() and
+// DtOutpChannel_WriteFrame().
+//
+// A program that lends frames is responsible for sending on time. From the first
+// AcquireFrame until the channel goes idle or its FIFO is cleared, the channel inserts
+// no black frames. If the program commits too late, the card runs out of data, and the
+// channel reports DTAPI_TX_FIFO_UFL. In that time Write() and WriteFrame() return
+// DTAPI_E_IN_USE, so that the two ways of writing are not mixed.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_IDLE             the channel is idle; set it to hold or send first
+//   DTAPI_E_IN_USE           a lent frame has not been committed yet, Frame already holds
+//                            a lent frame, or a write on another thread is still busy
+//   DTAPI_E_INCOMP_FRAME     a Write() left part of a frame; complete it with Write() or
+//                            discard it with ClearFifo()
+//   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
+//   DTAPI_E_NOT_SDI_MODE     the port sends ASI
+//   DTAPI_E_TIMEOUT          no room in time
+//   DTAPI_E_CANCELLED        the channel was detached meanwhile
+// After a failure Frame describes no frame.
+//
+// Not yet implemented: until plan 0033 is done, it returns DTAPI_E_NOT_SUPPORTED.
+CDTAPI_API DtapiResult DtOutpChannel_AcquireFrame(DtOutpChannel* OutpChannel,
+                                                  DtSdiView* Frame, int TimeOut);
+
 // Creates an output channel, not yet attached to a port. Returns NULL when there is not
 // enough memory.
 CDTAPI_API DtOutpChannel* DtOutpChannel_Alloc(void);
@@ -1072,6 +1105,22 @@ CDTAPI_API DtapiResult DtOutpChannel_ClearFifo(DtOutpChannel* OutpChannel);
 // Clears the flags given in Latched that GetFlags() keeps set until cleared:
 // DTAPI_TX_FIFO_UFL and DTAPI_TX_DMA_UFL, and on ASI DTAPI_TX_SYNC_ERR.
 CDTAPI_API DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int Latched);
+
+// Hands the frame that DtOutpChannel_AcquireFrame() lent to Frame to the card, which
+// sends it after the frames before it. Frame then describes no frame.
+//
+// A lent frame is dropped, unsent, when the channel is detached, goes idle, or its FIFO
+// is cleared. Frame then describes no frame.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG  Frame describes no frame this channel lent
+//   DTAPI_E_STATE        the builder has not built the frame since it was lent
+//   DTAPI_E_IDLE         the channel went idle meanwhile, and the frame was dropped
+//   DTAPI_E_CANCELLED    the channel was detached meanwhile
+//
+// Not yet implemented: until plan 0033 is done, it returns DTAPI_E_NOT_SUPPORTED.
+CDTAPI_API DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel,
+                                                 DtSdiView* Frame);
 
 // Stops sending and detaches OutpChannel from its port. Data not sent yet is lost, unless
 // DetachMode is DTAPI_WAIT_UNTIL_SENT (2): Detach then first waits until the card has

@@ -215,6 +215,22 @@ static DtapiResult Detach(DtOutpChannel* Chan, int DetachMode, int Tries)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Lifetime +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_AcquireFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// A stub until plan 0033's step C: it checks its arguments only.
+//
+DtapiResult DtOutpChannel_AcquireFrame(DtOutpChannel* OutpChannel, DtSdiView* Frame,
+                                       int TimeOut)
+{
+    (void)TimeOut;
+    if (OutpChannel == NULL || Frame == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+    OsMutex_Unlock(OutpChannel->Lock);
+    return DTAPI_E_NOT_SUPPORTED;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_Alloc -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 DtOutpChannel* DtOutpChannel_Alloc(void)
@@ -750,6 +766,20 @@ DtapiResult DtOutpChannel_ClearFlags(DtOutpChannel* OutpChannel, int Latched)
     DtapiResult Result = OutpChannel->Tx->Backend->ClearFlags(OutpChannel->Tx, Latched);
     OsMutex_Unlock(OutpChannel->Lock);
     return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_CommitFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// A stub until plan 0033's step C: it checks its arguments only.
+//
+DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel, DtSdiView* Frame)
+{
+    if (OutpChannel == NULL || Frame == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+    OsMutex_Unlock(OutpChannel->Lock);
+    return DTAPI_E_NOT_SUPPORTED;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

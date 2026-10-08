@@ -18,6 +18,9 @@
 //     DtOutpChannel_WriteFrame() writes, and that an .sdi file holds after its header.
 //   - A frame in the receive buffer of an input channel, read where the card wrote it.
 //     DtInpChannel_AcquireFrame(), in cdtapi.h, points a view at it.
+//   - Room for a frame in the transmit buffer of an output channel, for the builder to
+//     build the frame in place. DtOutpChannel_AcquireFrame(), in cdtapi.h, points a view
+//     at it.
 //
 // To take frames apart, a program takes these steps:
 // 1. It creates a parser with DtSdiParser_Alloc() and a view with DtSdiView_Alloc().
@@ -141,7 +144,8 @@ CDTAPI_API void DtSdiView_Freep(DtSdiView** View);
 //     720p24 in 10 bits.
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_STATE           the view does not describe a frame
+//   DTAPI_E_STATE           the view does not describe a frame, or describes a frame
+//                           that an output channel lent, which is still being built
 //   DTAPI_E_INVALID_LINE    Line is not a line of the image
 //   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links
 CDTAPI_API DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
@@ -490,7 +494,8 @@ CDTAPI_API void DtSdiParser_Freep(DtSdiParser** Parser);
 // the audio afresh.
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_STATE           Frame does not describe a frame
+//   DTAPI_E_STATE           Frame does not describe a frame, or describes a frame that
+//                           an output channel lent, which is still being built
 //   DTAPI_E_INVALID_FORMAT  Image->Format, Image->Fields or a format in Audio is not a
 //                           value of its enum, or is _NONE where a value is required
 //   DTAPI_E_INVALID_ARG     a plane that the format needs is NULL, or its stride is too
@@ -620,8 +625,9 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //     requires.
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_STATE           Frame does not describe a frame, or describes a frame of an
-//                           input channel, which is read-only
+//   DTAPI_E_STATE           Frame does not describe a frame, or describes a frame that
+//                           an input channel lent, which is read-only. A frame that an
+//                           output channel lent is what the builder writes into
 //   DTAPI_E_INVALID_FORMAT  as for DtSdiParser_Parse()
 //   DTAPI_E_INVALID_ARG     as for DtSdiParser_Parse(). Also when Audio->FrameNumber is
 //                           not a place in the cadence of the frame's rate, or when a
