@@ -288,8 +288,14 @@ CDTAPI_API DtapiResult DtSdiImage_GetSize(int VidStd, DtSdiPixelFormat Format, i
 //   - Planar: a buffer per channel, with Stride 1.
 //
 
-// The maximum number of embedded audio channels in an SDI frame.
-#define DT_SDI_AUDIO_MAX_CHANNELS 16
+// The number of audio channels that DtSdiAudio has room for.
+//
+// The parser and the builder handle channels 1 to 16: four groups of four, as SMPTE
+// ST 299-1 and ST 272 define them. Channels 17 to 32 are reserved for groups 5 to 8 of
+// SMPTE ST 299-2, so that supporting them later does not change this structure. The
+// parser leaves them empty. The builder returns DTAPI_E_NOT_SUPPORTED when a program
+// offers samples on them.
+#define DT_SDI_AUDIO_MAX_CHANNELS 32
 
 // The formats of audio samples. The program chooses one for each pair of channels.
 typedef enum DtSdiAudioFormat
@@ -623,6 +629,8 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //                           control packets are an exception to the latter
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes.
 //                           Audio->NumSamplesUsed is then set to the number it takes
+//   DTAPI_E_NOT_SUPPORTED   a channel from 17 to 32 has samples; see
+//                           DT_SDI_AUDIO_MAX_CHANNELS
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking that it names
 //   DTAPI_E_TOO_LONG        the packets of a line do not fit in its blanking
 //   DTAPI_E_OUT_OF_MEM      there is no memory for the buffers of even one band of

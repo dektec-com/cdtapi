@@ -345,7 +345,7 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
     memset(Embed->Group, 0, sizeof(Embed->Group));
     memset(Embed->Active, 0, sizeof(Embed->Active));
     memset(Embed->Count, 0, sizeof(Embed->Count));
-    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    for (int c = 0; c < DT_SDIAUDIO_CHANNELS; c++)
         Embed->Source[c] = DT_SDIEMBED_NONE;
     memset(Embed->SamplesBefore, 0, sizeof(Embed->SamplesBefore));
     memset(Embed->PacketsBefore, 0, sizeof(Embed->PacketsBefore));
@@ -368,9 +368,17 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
             return DTAPI_E_INVALID_FORMAT;
     }
 
+    // Channels 17 to 32 are reserved; samples on them are refused rather than dropped.
+    for (int c = DT_SDIAUDIO_CHANNELS; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        if (Audio->Formats[c / 2] != DT_SDI_AUDIO_NONE &&
+            Audio->Channels[c].Samples != NULL)
+            return DTAPI_E_NOT_SUPPORTED;
+    }
+
     const int NumSamples = Embed->SamplesInFrame[FrameNumber - 1];
     bool Short = false;
-    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    for (int c = 0; c < DT_SDIAUDIO_CHANNELS; c++)
     {
         const DtSdiAudioChannel* C = &Audio->Channels[c];
         const DtSdiAudioFormat Format = Audio->Formats[c / 2];
@@ -394,7 +402,7 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
 
     // A group carries all four of its channels. The channels the program does not send
     // carry silence.
-    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    for (int c = 0; c < DT_SDIAUDIO_CHANNELS; c++)
     {
         if (Embed->Group[c / 4] && Embed->Source[c] == DT_SDIEMBED_NONE)
         {
@@ -427,7 +435,7 @@ void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex, DtSdiEmbedCurso
         Cursor->Dbn[g] = Embed->Group[g]
                              ? (uint8_t)((Embed->Dbn[g] - 1 + Packets) % 255 + 1)
                              : Embed->Dbn[g];
-    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    for (int c = 0; c < DT_SDIAUDIO_CHANNELS; c++)
     {
         const DtSdiEmbedSource Source = Embed->Source[c];
         Cursor->StatusBit[c] = Source == DT_SDIEMBED_PCM || Source == DT_SDIEMBED_MUTE

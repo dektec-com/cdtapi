@@ -1459,6 +1459,56 @@ DT_TEST(AudioEveryKind)
     free(B);
 }
 
+// Checks the channels that DtSdiAudio reserves for later. In 1080i50 the builder refuses
+// a frame with samples on channel 17 with DTAPI_E_NOT_SUPPORTED, and builds it with
+// channel 1 alone. The parser then gives channel 1 and leaves channels 17 to 32 empty:
+// no samples, not present.
+DT_TEST(ReservedChannels)
+{
+    AudioBufs* B = (AudioBufs*)malloc(sizeof(AudioBufs));
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080I50, 10, &Size));
+    uint8_t* Frame = (uint8_t*)malloc(Size);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DT_ASSERT(B != NULL && Frame != NULL && View != NULL && Builder != NULL &&
+              Parser != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_1080I50, 10));
+
+    memset(&B->In, 0, sizeof(B->In));
+    for (int s = 0; s < AUDIO_MAX; s++)
+        B->Pcm[0][s] = (int32_t)(Value24(0, s) << 8);
+    B->In.Formats[0] = DT_SDI_AUDIO_PCM;
+    B->In.Channels[0].Samples = B->Pcm[0];
+    B->In.Channels[0].NumSamples = AUDIO_MAX;
+    B->In.Formats[8] = DT_SDI_AUDIO_PCM;
+    B->In.Channels[16].Samples = B->Pcm[0];
+    B->In.Channels[16].NumSamples = AUDIO_MAX;
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &B->In, NULL),
+                 DTAPI_E_NOT_SUPPORTED);
+
+    B->In.Channels[16].Samples = NULL;
+    DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &B->In, NULL));
+    AudioBufs_Receive(B);
+    for (int c = 0; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+        B->Out.Channels[c].NumSamples = 99;
+    DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &B->Out, NULL));
+    DT_ASSERT(B->Out.Channels[0].Present);
+    DT_ASSERT_EQ(B->Out.Channels[0].NumSamples, 1920);
+    for (int c = 16; c < DT_SDI_AUDIO_MAX_CHANNELS; c++)
+    {
+        DT_ASSERT_EQ(B->Out.Channels[c].NumSamples, 0);
+        DT_ASSERT(!B->Out.Channels[c].Present);
+    }
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(Frame);
+    free(B);
+}
+
 // Checks how the builder follows the audio cadence of 1080i59.94. The test checks that:
 // - the cadence goes on from a frame number that the program gives;
 // - a frame without audio also moves the cadence on;
@@ -2051,6 +2101,6 @@ DT_TEST(FramesOfTheSdiMuxer)
 
 DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
-             DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(Aes3RoundTrip),
-             DT_RUN(WorkerPool), DT_RUN(OwnAudioAndPayloadId),
+             DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(ReservedChannels),
+             DT_RUN(Aes3RoundTrip), DT_RUN(WorkerPool), DT_RUN(OwnAudioAndPayloadId),
              DT_RUN(SdAudioControlOfTheProgram), DT_RUN(FramesOfTheSdiMuxer))

@@ -15,6 +15,10 @@
 #include "DtSdiAnc.h"   // The packets audio comes in.
 #include "cdtapi_sdi.h" // The audio.
 
+// The audio channels that the parser and the builder carry: four groups of four. The
+// rest of DT_SDI_AUDIO_MAX_CHANNELS is reserved for SMPTE ST 299-2.
+#define DT_SDIAUDIO_CHANNELS 16
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Taking audio apart +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
 // The parser passes each audio packet it finds to DtSdiAudio_TakeHd() or

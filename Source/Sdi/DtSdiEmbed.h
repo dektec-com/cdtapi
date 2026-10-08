@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 // CDTAPI includes
+#include "DtSdiAudio.h"    // The channels carried.
 #include "DtSdiGeometry.h" // The frame's lines and streams.
 #include "cdtapi_sdi.h"    // The audio.
 
@@ -87,7 +88,7 @@ typedef struct DtSdiEmbed
     int StateVidStd;     // This state's standard; 0 before the first frame is built
     int NextFrameNumber; // The cadence's next place, counted from 1
     uint8_t Dbn[4];      // Per group: the next data block number
-    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: its place in its AES3 block
+    int StatusBit[DT_SDIAUDIO_CHANNELS]; // Per channel: its place in its AES3 block
 
     // Set by DtSdiEmbed_Begin for the frame being built.
     int FrameNumber;    // The frame's place in the cadence, counted from 1
@@ -95,9 +96,9 @@ typedef struct DtSdiEmbed
     bool HasAudio;      // True when any group carries audio
     bool Group[4];      // Per group: true when the group carries audio
     unsigned Active[4]; // Per group: a bit for each channel the program sends
-    DtSdiEmbedSource Source[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: what it carries
-    const uint8_t* Samples[DT_SDI_AUDIO_MAX_CHANNELS];  // Per channel: its samples
-    size_t Stride[DT_SDI_AUDIO_MAX_CHANNELS];           // Per channel: sample step, bytes
+    DtSdiEmbedSource Source[DT_SDIAUDIO_CHANNELS]; // Per channel: what it carries
+    const uint8_t* Samples[DT_SDIAUDIO_CHANNELS];  // Per channel: its samples
+    size_t Stride[DT_SDIAUDIO_CHANNELS];           // Per channel: sample step, bytes
     uint8_t Count[DT_SDIEMBED_MAX_LINES];    // Per line: the samples each group carries
     uint16_t Clock[DT_SDIEMBED_MAX_SAMPLES]; // Per sample: clock word, MPF in bit 13
 
@@ -111,9 +112,9 @@ typedef struct DtSdiEmbed
 // The position reached in writing a frame's audio, at the start of a line.
 typedef struct DtSdiEmbedCursor
 {
-    int Next;                                 // The index of the next sample
-    uint8_t Dbn[4];                           // Per group: the next data block number
-    int StatusBit[DT_SDI_AUDIO_MAX_CHANNELS]; // Per channel: its place in its AES3 block
+    int Next;                            // The index of the next sample
+    uint8_t Dbn[4];                      // Per group: the next data block number
+    int StatusBit[DT_SDIAUDIO_CHANNELS]; // Per channel: its place in its AES3 block
 } DtSdiEmbedCursor;
 
 // Prepares Embed for the frames of Geo's standard. Works out the clock and the cadence
