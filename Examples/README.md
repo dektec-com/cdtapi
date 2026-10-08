@@ -8,15 +8,15 @@ file, built with the library unless `CDTAPI_BUILD_EXAMPLES` is off.
 | `DtListDevices` | Lists every port of every device: name, description, and whether it is SDI, ASI, AV FIFO, input or output |
 | `DtConfigPort` | Makes a port an input or output and sets its I/O standard: with `--vidstd` for a video standard, with `--asi` to DVB-ASI |
 | `DtDetectVidStd` | Detects the video standard on an SDI input, once or, with `--timeout`, until one is found |
-| `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size and a hash, optionally the frames to files; `--threads` converts them over a pool of threads |
+| `DtReceiveFrames` | Receives raw SDI frames from an input: one line per frame with its size, a hash and the test pattern's frame number, optionally the frames to files; `--threads` converts them over a pool of threads |
 | `DtTransmitFrames` | Transmits raw SDI frames on an output, from files `DtReceiveFrames` wrote or as the examples' test pattern, which the SDI builder builds into raw frames, with the same line per frame; `--threads` builds and codes them over a pool of threads |
-| `DtReceiveSdi` | Receives SDI and takes each frame apart with the SDI parser, where the card wrote it: one line per frame with the image size, the audio samples and channels, and the number of other ancillary packets; `--out` writes the images to a `.yuv` file and the audio to a `.wav` file |
-| `DtTransmitSdi` | Builds SDI frames with the SDI builder from an image and audio, straight into room the output channel lends in the card's buffer, and transmits them: from the `.yuv` and `.wav` files `DtReceiveSdi` wrote, or a test pattern with a moving bar and a 1 kHz tone; `--checksums` makes the builder fill in the CRCs |
+| `DtReceiveSdi` | Receives SDI and takes each frame apart with the SDI parser, where the card wrote it: one line per frame with the image size, the audio samples and channels, the number of other ancillary packets, and the test pattern's frame number; `--out` writes the images to a `.yuv` file and the audio to a `.wav` file |
+| `DtTransmitSdi` | Builds SDI frames with the SDI builder from an image and audio, straight into room the output channel lends in the card's buffer, and transmits them: from the `.yuv` and `.wav` files `DtReceiveSdi` wrote, or the examples' test pattern and test tone; `--checksums` makes the builder fill in the CRCs |
 | `DtReceiveTs` | Receives a transport stream from an ASI input, optionally to a file, with the rate, packet size, lock and flags once a second; `--check` checks `DtTransmitTs`'s numbered packets one by one |
 | `DtTransmitTs` | Transmits a transport stream on an ASI output at a set rate: a file, numbered packets, or an MPEG-2 test picture; `--generate` writes either stream to a file instead |
 | `DtListDeviceDescs` | Describes every device, one field of its descriptor per line; uses `DtapiDeviceScan`, a CDTAPI addition |
 | `DtTransmit2110` | Transmits SMPTE ST 2110 video, the examples' test pattern, or audio, their test tone, on an IP port: one line per frame with its time of day and RTP timestamp |
-| `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp and a hash, and the statistics at the end |
+| `DtReceive2110` | Receives ST 2110 video or audio on an IP port: one line per frame with its size, rows, time of day, timestamp, a hash and the test pattern's frame number, and the statistics at the end |
 | `DtPtpSlave` | Shows the PTP clock slave of an IP port, its settings, state and grandmaster, and with `--masters` every master it hears; with `--enable`, `--domain` and the like sets those settings alone, and with `--save` keeps them; needs DtapiService |
 | `DtNmos2110` | An NMOS node whose receiver or sender is an AV FIFO, which a controller connects through IS-05; built with the NMOS bridge only |
 
@@ -157,6 +157,35 @@ sets the pace, and the program only keeps the FIFO full: when `AvFifo_TxFifo_Wri
 refuses a frame with `DTAPI_E_FIFO_FULL`, it waits a moment and writes the same frame
 again. A program that paced itself would fall behind the card's clock as soon as a frame
 took longer to make than a frame period, and its frames would go out late.
+
+## The test pattern
+
+The programs that send video send one test pattern, from `Common/ExamplePattern.c`, in
+any image size from 320 by 240 pixels up:
+
+- in the upper two thirds a grey scale from black to white, with a white bar that moves
+  16 pixels to the right each frame;
+- in the lower third the 75% colour bars of SMPTE RP 219;
+- near the top left corner, in a black box, the frame number: as eight digits, and above
+  them as a row of light and dark blocks that a program can read back.
+
+The programs that send audio send a 1 kHz sine at -20 dBFS. The pattern is drawn once;
+each frame then draws only the bar and the box again, so that every program keeps up in
+every standard, 2160p60 included.
+
+The programs that receive read the frame number back and end a frame's line with it.
+When the number does not count up by one, the line says so: "gap of 3" when three
+frames are missing, "repeat" when a frame came twice, and "back" when the number went
+down, as when the sender started again. A frame without the pattern gets no number. So
+a dropped or repeated frame shows without a monitor:
+
+    DtReceiveSdi --port 1 --vidstd 1080I50 --count 250
+    DtTransmitSdi --port 5 --vidstd 1080I50 --count 300
+
+in two shells give lines such as
+
+    9217800001:1  frame 0  1920x1080  audio 1920 samples  channels 1-4  packets 0  number 5
+    9217800001:1  frame 1  1920x1080  audio 1920 samples  channels 1-4  packets 0  number 6
 
 ## Output and exit codes
 
