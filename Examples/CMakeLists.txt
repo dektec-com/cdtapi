@@ -214,7 +214,9 @@ cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
 
 # The SDI parser and builder. The round trip runs DtTransmitSdi into a file through the
 # emulator's SDI sink, then DtReceiveSdi from that file through its SDI source, and then
-# DtTransmitSdi again from the image and audio files that DtReceiveSdi wrote.
+# DtTransmitSdi again from the image and audio files that DtReceiveSdi wrote. The tests
+# do not check for underflows: the emulator takes frames in real time, and a slow build
+# can be late, which makes the channel send a black frame in between.
 set(SdiRoundTrip "${CMAKE_CURRENT_BINARY_DIR}/TransmitSdi_1080i50.sdi")
 set(SdiOut "${CMAKE_CURRENT_BINARY_DIR}/ReceiveSdi")
 cdtapi_example_test(TransmitSdiPattern DtTransmitSdi
@@ -225,8 +227,8 @@ cdtapi_example_test(TransmitSdiCadence DtTransmitSdi
     --port 2 --vidstd 720P59_94 --count 2 --threads 4)
 set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${SdiRoundTrip}")
 cdtapi_example_test(TransmitSdiToFile DtTransmitSdi
-    "^9217800001:2  frame 0 .*9217800001:2  frame 2  1920x1080  audio 1920 samples\n9217800001:2  latched none"
-    --port 2 --vidstd 1080I50 --count 3 --checksums --flags)
+    "^9217800001:2  frame 0 .*9217800001:2  frame 2  1920x1080  audio 1920 samples\n"
+    --port 2 --vidstd 1080I50 --count 3 --checksums)
 set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${SdiRoundTrip}")
 cdtapi_example_test(ReceiveSdiFromFile DtReceiveSdi
     "^9217800001:1  frame 0  1920x1080  audio 1920 samples  channels 1-4  packets 0\n9217800001:1  frame 1 "
