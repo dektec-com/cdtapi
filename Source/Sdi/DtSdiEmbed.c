@@ -12,7 +12,9 @@
 // frame. Each line takes the samples whose moment, rounded, lies before the line's own
 // start, at most MaxPerLine of them. The line after a switching line takes none. The
 // clock is kept in a double and stepped by adding. This matches the DekTec matrix API,
-// so the rounding and the clock phase words come out the same.
+// so the rounding and the clock phase words come out the same. In 3G level B the plan is
+// that of the interface, as SMPTE ST 372 has it, and a picture takes the part of it that
+// its field covers; see DtSdiEmbed.h.
 //
 // A PCM sample becomes an AES3 subframe as follows:
 // - the audio bits hold the sample's upper 24 bits;
@@ -122,15 +124,16 @@ static uint32_t Parity(uint32_t Bits)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Aes3Of -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Returns the AES3 subframe of sample Index of channel Channel. For a channel whose
-// subframes the builder makes, it also moves the channel's place in its channel status
-// block on by one bit.
+// Returns the AES3 subframe of channel Channel for sample Index of the plan, which is
+// sample Index - SampleBase of the program's. For a channel whose subframes the builder
+// makes, it also moves the channel's place in its channel status block on by one bit.
 //
 static uint32_t Aes3Of(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Channel,
                        int Index)
 {
     const DtSdiEmbedSource Source = Embed->Source[Channel];
-    const uint8_t* At = Embed->Samples[Channel] + (size_t)Index * Embed->Stride[Channel];
+    const size_t InFrame = (size_t)(Index - Embed->SampleBase);
+    const uint8_t* At = Embed->Samples[Channel] + InFrame * Embed->Stride[Channel];
     uint32_t Word;
 
     if (Source == DT_SDIEMBED_AES3)
@@ -215,7 +218,7 @@ static int PutHdControl(const DtSdiEmbed* Embed, int Group, uint16_t* Words, int
                         bool Checksum)
 {
     uint16_t Data[DT_SDIEMBED_HD_CONTROL_WORDS];
-    Data[0] = (uint16_t)DtSdiFrame_WithParity((uint32_t)Embed->FrameNumber);
+    Data[0] = (uint16_t)DtSdiFrame_WithParity((uint32_t)Embed->PlanFrame);
     Data[1] = 0x200; // 48 kHz, synchronous
     Data[2] = DtSdiAnc_WithParity8(Embed->Active[Group]);
     for (int i = 3; i < DT_SDIEMBED_HD_CONTROL_WORDS; i++)
@@ -258,13 +261,49 @@ static int PutSdData(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int Grou
     return DtSdiAnc_Put(Words, Pos, Did, Dbn, Data, i, Checksum);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PlanLineOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Returns the line of the plan, counted from 1, that line LineIndex of the frame carries
+// audio for, or 0 for a line that carries none of the plan. In 3G level B that is the
+// interface line of a line of link A; a line of link B carries none.
+//
+static int PlanLineOf(const DtSdiEmbed* Embed, int LineIndex)
+{
+    if (!Embed->LevelB)
+        return LineIndex + 1;
+    if (DtSdiGeometry_LevelBLink(Embed->Field, LineIndex) != 1)
+        return 0;
+    return DtSdiGeometry_LevelBInterfaceLine(Embed->Field, LineIndex);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PlanLinesBefore -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns the number of the plan's lines that come before line LineIndex of the frame. A
+// LineIndex equal to the frame's number of lines gives those before the frame's end. In
+// 3G level B the next line of link A, this line or the one after it, decides; past the
+// picture's last one, the end of its field.
+//
+static int PlanLinesBefore(const DtSdiEmbed* Embed, int LineIndex)
+{
+    if (!Embed->LevelB)
+        return LineIndex > Embed->NumLines ? Embed->NumLines : LineIndex;
+    // A picture has as many lines as a frame of the interface.
+    for (int k = LineIndex; k < LineIndex + 2 && k < Embed->NumLines; k++)
+    {
+        const int Line = PlanLineOf(Embed, k);
+        if (Line > 0)
+            return Line - 1;
+    }
+    return Embed->EndLine - 1;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Plan -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Works out how many samples each line carries and, in HD, each sample's clock word.
 //
 static void Plan(DtSdiEmbed* Embed)
 {
-    const int Place = Embed->FrameNumber - 1;
+    const int Place = Embed->PlanFrame - 1;
     const int Ticks = Embed->TicksPerLine;
     int Base = 1;
     for (int i = 0; i < Place; i++)
@@ -273,7 +312,7 @@ static void Plan(DtSdiEmbed* Embed)
     double Phase = Embed->PhaseAtStart;
     Phase += (Base - 1) * Embed->Increment;
     int LineStart = Ticks + Place * Embed->NumLines * Ticks;
-    int Left = Embed->NumSamples;
+    int Left = Embed->SamplesInFrame[Place];
     int Index = 0;
 
     for (int Line = 1; Line <= Embed->NumLines; Line++)
@@ -334,13 +373,44 @@ static void Plan(DtSdiEmbed* Embed)
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Settle -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Puts the frame at place FrameNumber of the cadence and works out what of the plan it
+// takes. In 3G level B a place of the other field than Field gives way to the next
+// place; the picture then takes its field's lines of the interface frame of that place.
+//
+static void Settle(DtSdiEmbed* Embed, int FrameNumber, int Field)
+{
+    Embed->Field = Field;
+    Embed->SampleBase = 0;
+    if (!Embed->LevelB)
+    {
+        Embed->FrameNumber = FrameNumber;
+        Embed->PlanFrame = FrameNumber;
+        Embed->FirstLine = 1;
+        Embed->EndLine = Embed->NumLines + 1;
+        Embed->NumSamples = Embed->SamplesInFrame[FrameNumber - 1];
+        return;
+    }
+    if ((FrameNumber - 1) % 2 + 1 != Field)
+        FrameNumber = FrameNumber % Embed->CadenceLength + 1;
+    Embed->FrameNumber = FrameNumber;
+    Embed->PlanFrame = (FrameNumber + 1) / 2;
+    Embed->FirstLine = Field == 1 ? 1 : DT_SDIGEOMETRY_LEVELB_FIELD1_END + 1;
+    Embed->EndLine =
+        Field == 1 ? DT_SDIGEOMETRY_LEVELB_FIELD1_END + 1 : Embed->NumLines + 1;
+    Embed->NumSamples = Embed->SamplesInPicture[FrameNumber - 1];
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Embedding +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_Begin -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
+DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio, int Field)
 {
-    int FrameNumber = Embed->StateVidStd == Embed->VidStd ? Embed->NextFrameNumber : 1;
+    const int First = Embed->LevelB ? 2 : 1;
+    int FrameNumber =
+        Embed->StateVidStd == Embed->VidStd ? Embed->NextFrameNumber : First;
     Embed->HasAudio = false;
     memset(Embed->Group, 0, sizeof(Embed->Group));
     memset(Embed->Active, 0, sizeof(Embed->Active));
@@ -352,8 +422,7 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
 
     if (Audio == NULL)
     {
-        Embed->FrameNumber = FrameNumber;
-        Embed->NumSamples = Embed->SamplesInFrame[FrameNumber - 1];
+        Settle(Embed, FrameNumber, Field);
         return DTAPI_OK;
     }
     if (Audio->FrameNumber < 0 || Audio->FrameNumber > Embed->CadenceLength)
@@ -376,7 +445,8 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
             return DTAPI_E_NOT_SUPPORTED;
     }
 
-    const int NumSamples = Embed->SamplesInFrame[FrameNumber - 1];
+    Settle(Embed, FrameNumber, Field);
+    const int NumSamples = Embed->NumSamples;
     bool Short = false;
     for (int c = 0; c < DT_SDIAUDIO_CHANNELS; c++)
     {
@@ -411,26 +481,27 @@ DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio)
             Embed->Stride[c] = 0;
         }
     }
-    Embed->FrameNumber = FrameNumber;
-    Embed->NumSamples = NumSamples;
     if (Embed->HasAudio)
+    {
         Plan(Embed);
+        Embed->SampleBase = Embed->SamplesBefore[Embed->FirstLine - 1];
+    }
     return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiEmbed_CursorAt -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Works out the cursor from the counts the plan made for the lines before LineIndex. A
-// group's data block number goes up by one per packet, from 1 to 255 and then back to 1.
-// A channel whose subframes the builder makes moves on by one place in its AES3 block
-// per sample.
+// Works out the cursor from the counts the plan made for the lines before LineIndex, from
+// the frame's first line of the plan on. A group's data block number goes up by one per
+// packet, from 1 to 255 and then back to 1. A channel whose subframes the builder makes
+// moves on by one place in its AES3 block per sample.
 //
 void DtSdiEmbed_CursorAt(const DtSdiEmbed* Embed, int LineIndex, DtSdiEmbedCursor* Cursor)
 {
-    const int Line = LineIndex > Embed->NumLines ? Embed->NumLines : LineIndex;
-    const int Samples = Embed->SamplesBefore[Line];
+    const int Line = PlanLinesBefore(Embed, LineIndex);
+    const int Samples = Embed->SamplesBefore[Line] - Embed->SampleBase;
     const int Packets = Embed->Sd ? Embed->PacketsBefore[Line] : Samples;
-    Cursor->Next = Samples;
+    Cursor->Next = Embed->SamplesBefore[Line];
     for (int g = 0; g < 4; g++)
         Cursor->Dbn[g] = Embed->Group[g]
                              ? (uint8_t)((Embed->Dbn[g] - 1 + Packets) % 255 + 1)
@@ -465,12 +536,13 @@ int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int 
                          int Stream)
 {
     (void)Geo;
-    if (!Embed->HasAudio || Stream > 1)
+    const int Line = PlanLineOf(Embed, LineIndex);
+    if (!Embed->HasAudio || Stream > 1 || Line == 0)
         return 0;
     int Groups = 0;
     for (int g = 0; g < 4; g++)
         Groups += Embed->Group[g] ? 1 : 0;
-    const int Count = Embed->Count[LineIndex];
+    const int Count = Embed->Count[Line - 1];
 
     if (Embed->Sd)
     {
@@ -483,7 +555,7 @@ int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int 
     }
     if (Stream == 0)
         return Groups * Count * (DT_SDIEMBED_PACKET_OVERHEAD + DT_SDIEMBED_HD_DATA_WORDS);
-    return IsSwitchingLine(Embed, LineIndex + 1 - 2)
+    return IsSwitchingLine(Embed, Line - 2)
                ? Groups * (DT_SDIEMBED_PACKET_OVERHEAD + DT_SDIEMBED_HD_CONTROL_WORDS)
                : 0;
 }
@@ -497,20 +569,28 @@ int DtSdiEmbed_HancWords(const DtSdiEmbed* Embed, const DtSdiGeometry* Geo, int 
 // double. The cadence gives its odd places the most samples. It gives its even places
 // the fewest, unless the rest of the cadence would then not add up.
 //
+// In 3G level B the clock, the lines and the cadence are those of the interface. The
+// samples of each picture are then counted from a plan of each frame of the cadence.
+//
 void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
 {
     if (Embed->VidStd == Geo->VidStd)
         return;
+    DtSdiGeometry Interface;
+    const DtSdiGeometry* Of = Geo;
+    if (Geo->IsLevelB && DtSdiGeometry_Init(&Interface, Geo->InterfaceVidStd) == DTAPI_OK)
+        Of = &Interface;
     Embed->VidStd = Geo->VidStd;
-    Embed->Sd = Geo->NumStreams == 1;
-    Embed->Props = Geo->Props;
-    Embed->NumLines = Geo->Layout.NumLines;
-    const int StreamWords = Geo->StreamHancWords + Geo->StreamActiveWords;
+    Embed->LevelB = Of != Geo;
+    Embed->Sd = Of->NumStreams == 1;
+    Embed->Props = Of->Props;
+    Embed->NumLines = Of->Layout.NumLines;
+    const int StreamWords = Of->StreamHancWords + Of->StreamActiveWords;
     Embed->TicksPerLine = Embed->Sd ? StreamWords / 2 : StreamWords;
 
     int Num = 0;
     int Den = 0;
-    DtVidStd_FrameRate(Geo->VidStd, &Num, &Den);
+    DtVidStd_FrameRate(Of->VidStd, &Num, &Den);
     const long long TicksInFrame = (long long)Embed->TicksPerLine * Embed->NumLines;
     Embed->Increment =
         (double)(TicksInFrame * Num) / (double)((long long)Den * DT_SDIEMBED_SAMPLE_RATE);
@@ -518,15 +598,16 @@ void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
     // Works out the cadence. A frame takes 48000 * Den / Num samples on average.
     const long long PerFrameNum = (long long)DT_SDIEMBED_SAMPLE_RATE * Den;
     const long long Length = Num / Gcd(PerFrameNum, Num);
-    Embed->CadenceLength = (int)Length;
+    Embed->FrameCadence = (int)Length;
+    Embed->CadenceLength = Embed->LevelB ? 2 * (int)Length : (int)Length;
     const int Most = (int)((PerFrameNum + Num - 1) / Num);
     const int Fewest = (int)(PerFrameNum / Num);
     int Left = (int)(PerFrameNum * Length / Num);
     const int Usable = Embed->NumLines - Embed->Props.NumFields;
-    for (int i = 0; i < Embed->CadenceLength; i++)
+    for (int i = 0; i < Embed->FrameCadence; i++)
     {
         int InFrame = Most;
-        if ((i + 1) % 2 == 0 && (Embed->CadenceLength - i) * Most > Left)
+        if ((i + 1) % 2 == 0 && (Embed->FrameCadence - i) * Most > Left)
             InFrame = Fewest;
         Embed->SamplesInFrame[i] = InFrame;
         Embed->MaxPerLine[i] = (InFrame + Usable - 1) / Usable;
@@ -537,6 +618,18 @@ void DtSdiEmbed_Init(DtSdiEmbed* Embed, const DtSdiGeometry* Geo)
     const double Audio = (Embed->SamplesInFrame[0] - 1) * Embed->Increment;
     double Start = (double)TicksInFrame - Audio;
     Embed->PhaseAtStart = Start > 1.0 ? Start - 1.0 : 0.0;
+
+    // Counts the samples of each picture of level B: those of field 1, on the
+    // interface's lines up to DT_SDIGEOMETRY_LEVELB_FIELD1_END, and the rest.
+    for (int i = 0; Embed->LevelB && i < Embed->FrameCadence; i++)
+    {
+        Embed->PlanFrame = i + 1;
+        Embed->NumSamples = Embed->SamplesInFrame[i];
+        Plan(Embed);
+        const int First = Embed->SamplesBefore[DT_SDIGEOMETRY_LEVELB_FIELD1_END];
+        Embed->SamplesInPicture[2 * i] = First;
+        Embed->SamplesInPicture[2 * i + 1] = Embed->SamplesInFrame[i] - First;
+    }
 
     // Fills in the channel status blocks. For PCM the status is professional, 48 kHz,
     // stereo, 24 bits. For a mute channel it is professional, 48 kHz, 16 bits.
@@ -557,9 +650,12 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 {
     if (FrameNumber < 0 || FrameNumber > Embed->CadenceLength)
         return DTAPI_E_INVALID_ARG;
-    if (FrameNumber == 0)
-        FrameNumber = Embed->StateVidStd == Embed->VidStd ? Embed->NextFrameNumber : 1;
-    *NumSamples = Embed->SamplesInFrame[FrameNumber - 1];
+    if (FrameNumber == 0 && Embed->StateVidStd == Embed->VidStd)
+        FrameNumber = Embed->NextFrameNumber;
+    else if (FrameNumber == 0)
+        FrameNumber = Embed->LevelB ? 2 : 1;
+    *NumSamples = Embed->LevelB ? Embed->SamplesInPicture[FrameNumber - 1]
+                                : Embed->SamplesInFrame[FrameNumber - 1];
     return DTAPI_OK;
 }
 
@@ -572,9 +668,10 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIndex,
                    int Stream, uint16_t* Words, int Pos, bool Checksum)
 {
-    if (!Embed->HasAudio || Stream > 1)
+    const int Line = PlanLineOf(Embed, LineIndex);
+    if (!Embed->HasAudio || Stream > 1 || Line == 0)
         return Pos;
-    const int Count = Embed->Count[LineIndex];
+    const int Count = Embed->Count[Line - 1];
 
     if (Embed->Sd)
     {
@@ -597,7 +694,7 @@ int DtSdiEmbed_Put(const DtSdiEmbed* Embed, DtSdiEmbedCursor* Cursor, int LineIn
 
     if (Stream == 1)
     {
-        if (!IsSwitchingLine(Embed, LineIndex + 1 - 2))
+        if (!IsSwitchingLine(Embed, Line - 2))
             return Pos;
         for (int g = 0; g < 4; g++)
             if (Embed->Group[g])
@@ -621,5 +718,5 @@ void DtSdiEmbed_Start(DtSdiEmbed* Embed)
     for (int g = 0; g < 4; g++)
         Embed->Dbn[g] = 1;
     memset(Embed->StatusBit, 0, sizeof(Embed->StatusBit));
-    Embed->NextFrameNumber = 1;
+    Embed->NextFrameNumber = Embed->LevelB ? 2 : 1;
 }

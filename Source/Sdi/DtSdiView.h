@@ -36,6 +36,8 @@ struct DtSdiView
 {
     bool HasFrame;      // The view describes a frame
     DtSdiGeometry Geo;  // The frame's standard and where its image lies
+    int LevelBField;    // 3G level B: the field of the interface frame the picture is,
+                        // 1 or 2; 0 while not known, and for any other standard
     int BitsPerSymbol;  // 10 or 16
     uint8_t* Frame;     // The raw frame; NULL for a frame of an input channel
     size_t FrameSize;   // Bytes in Frame
@@ -103,6 +105,19 @@ DtSdiSymbolPtr DtSdiView_LinkHanc(const DtSdiView* View, int LineIndex, int Link
 DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layout,
                                    uint8_t* RingBase, size_t RingSize, size_t LinesStart,
                                    void* Holder);
+
+// Sets the field of the interface frame that the 3G level-B picture View describes is: 1
+// or 2. A channel calls it when it lends a picture. For any other standard the view keeps
+// 0.
+void DtSdiView_SetLevelBField(DtSdiView* View, int Field);
+
+// Points View at one 3G level-B picture in the layout of level A, in the program's
+// memory, as the card holds it; Field (1 or 2) is its field of the interface frame. It
+// takes the arguments of DtSdiView_SetRawFrame(), which refuses level B, and returns its
+// results; DTAPI_E_INVALID_VIDSTD also when VidStd is not 3G level B, and
+// DTAPI_E_INVALID_ARG also for another Field.
+DtapiResult DtSdiView_SetRawPicture(DtSdiView* View, void* Frame, size_t Size, int VidStd,
+                                    int BitsPerSymbol, int Field);
 
 // Points View at room for one frame of Layout in a transmit ring, for the builder to
 // write the frame into.

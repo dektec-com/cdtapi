@@ -351,6 +351,14 @@ typedef struct DtSdiAudio
 
     // The frame's place in the audio cadence of a 1001 rate, counted from 1. For example,
     // it runs from 1 to 5 at 29.97 Hz. It is 0 for a rate without a cadence.
+    //
+    // In 3G level B the cadence counts pictures. Two pictures make one frame of the
+    // interface, an interlaced 1080i frame of half the picture rate, which carries the
+    // audio. So there are two places for each frame of the interface's cadence: field 1
+    // on the odd places and field 2 on the even ones, 1 and 2 at 50 Hz, 1 to 10 at
+    // 59.94 Hz. The two pictures of an interface frame carry different numbers of
+    // samples. A place of the other field than the picture's gives way to the next
+    // place.
     //   - Parser: set to the frame's place in the cadence.
     //   - Builder: 0 makes the builder follow its own cadence. Another value puts the
     //     frame at that place, and the cadence continues from there.
@@ -366,7 +374,8 @@ typedef struct DtSdiAudio
 
 // Returns in *NumSamples the largest number of audio samples that one channel can have
 // in one frame of video standard VidStd. A channel buffer of this size is always large
-// enough.
+// enough. In 3G level B it is half of the interface frame's samples, and eight more for
+// the difference between its two pictures.
 //
 // Returns DTAPI_OK or DTAPI_E_INVALID_VIDSTD.
 CDTAPI_API DtapiResult DtSdiAudio_MaxSamples(int VidStd, int* NumSamples);
@@ -428,7 +437,8 @@ typedef struct DtSdiAncPacket
     bool OnChroma;         // HD and up: true in the chroma stream, false in the luma
                            // stream. Always false in SD
     int VirtualInterface;  // 3G and 2160p: the virtual interface, counted from 1.
-                           // Builder: 0 means the first
+                           // Builder: 0 means the first. In 3G level B it is the
+                           // link, 1 for A and 2 for B, which the line decides
     uint16_t Did;          // The data ID, 8 bits without parity. The builder adds the
                            // parity
     uint16_t SdidOrDbn;    // The secondary data ID or, for a DID of 0x80 and up, the
@@ -661,10 +671,13 @@ CDTAPI_API void DtSdiBuilder_Freep(DtSdiBuilder** Builder);
 // the frame's place in the cadence.
 //
 // At the 1001 rates the number follows the cadence, for example 1602, 1601, 1602, 1601,
-// 1602 at 29.97 Hz.
+// 1602 at 29.97 Hz. In 3G level B it follows the cadence of pictures; see DtSdiAudio's
+// FrameNumber. The builder's own cadence takes field 2 first, as an output channel sends
+// it, and then the field after the one built last.
 //
 // Returns DTAPI_OK, or:
-//   DTAPI_E_INVALID_VIDSTD  as for DtSdiView_SetRawFrame()
+//   DTAPI_E_INVALID_VIDSTD  VidStd is not a standard of SD, HD, 3G, or 2160p over one
+//                           link
 //   DTAPI_E_INVALID_ARG     FrameNumber is not a place in the cadence of the standard's
 //                           rate
 //   DTAPI_E_OUT_OF_MEM      there is not enough memory for the calculation

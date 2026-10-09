@@ -1,0 +1,392 @@
+// #*#*#*#*#*#*#*#*#*#*#*#*#*# TestSdiLevelB.c *#*#*#*#*#*#*#*#*#*#*#*#*#* (C) 2026 DekTec
+//
+// CDTAPI - 3G level B in the builder and the parser
+//
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// A 3G level-B frame is one picture in the layout of level A, as the card holds it. The
+// tests check that the builder lays out its ancillary data as SMPTE ST 372, ST 352 and
+// ST 299-1 have it on the interface, and that the parser reads it back:
+// - the lines of link A and link B: in field 1 the even lines are link A's, in field 2
+//   the odd ones;
+// - a payload ID on each link, byte 1 8A and byte 4 01 on link A or 41 on link B, on
+//   interface lines 10 and 572: picture lines 20 and 21 in field 1, 19 and 20 in
+//   field 2;
+// - the audio on link A only, as on the 1080i interface of the same rate: a control
+//   packet on interface line 9 or 571 (picture line 18 or 17), and no data on the line
+//   after a switching line, interface line 8 or 570 (picture line 16 or 15);
+// - the samples of a picture: its field's part of the interface frame's, which together
+//   make the interface's cadence.
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
+// Standard includes
+#include <stdlib.h>
+#include <string.h>
+
+// CDTAPI includes
+#include "DtTest.h"            // Test framework.
+#include "Sdi/DtSdiGeometry.h" // The lines of the links.
+#include "Sdi/DtSdiView.h"     // Pictures of level B in the program's memory.
+#include "Video/DtSmpte352.h"  // The payload ID.
+#include "cdtapi_sdi.h"        // Public API under test.
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// The most samples per channel a picture carries in these tests, and the most packets
+// and words the parser lists.
+#define LEVELB_MAX_SAMPLES 1024
+#define LEVELB_MAX_PACKETS 8192
+#define LEVELB_MAX_WORDS (LEVELB_MAX_PACKETS * 32)
+
+// The DIDs of group 1's audio data and control packets in HD.
+#define LEVELB_DID_DATA 0xE7
+#define LEVELB_DID_CONTROL 0xE3
+
+// A picture's buffers, and what the parser found in it.
+typedef struct Picture
+{
+    uint8_t* Frame;
+    size_t Size;
+    DtSdiView* View;
+    int32_t In[2][LEVELB_MAX_SAMPLES];
+    int32_t Out[2][LEVELB_MAX_SAMPLES];
+    DtSdiAudio AudioIn;
+    DtSdiAudio AudioOut;
+    DtSdiAncPacket Packets[LEVELB_MAX_PACKETS];
+    uint16_t Words[LEVELB_MAX_WORDS];
+    DtSdiAncData Anc;
+} Picture;
+
+static Picture* Picture_Alloc(int VidStd)
+{
+    Picture* P = (Picture*)calloc(1, sizeof(Picture));
+    if (P == NULL)
+        return NULL;
+    DtSdiGeometry Geo;
+    if (DtSdiGeometry_Init(&Geo, VidStd) != DTAPI_OK)
+        return NULL;
+    P->Size = DtSdiFrame_RawSize(&Geo.Layout, 10);
+    P->Frame = (uint8_t*)malloc(P->Size);
+    P->View = DtSdiView_Alloc();
+    if (P->Frame == NULL || P->View == NULL)
+        return NULL;
+    return P;
+}
+
+static void Picture_Free(Picture* P)
+{
+    if (P == NULL)
+        return;
+    DtSdiView_Free(P->View);
+    free(P->Frame);
+    free(P);
+}
+
+// Fills channels 1 and 2 of the program's audio with samples that count on from First,
+// so that each picture's samples follow on from the last picture's.
+static void Picture_SetAudio(Picture* P, int First)
+{
+    memset(&P->AudioIn, 0, sizeof(P->AudioIn));
+    P->AudioIn.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        for (int s = 0; s < LEVELB_MAX_SAMPLES; s++)
+            P->In[c][s] = (int32_t)((uint32_t)((First + s) * 2 + c) << 8);
+        P->AudioIn.Channels[c].Samples = P->In[c];
+        P->AudioIn.Channels[c].NumSamples = LEVELB_MAX_SAMPLES;
+    }
+}
+
+// Parses the picture: its audio and all its packets, the audio and payload ID included.
+static DtapiResult Picture_Parse(Picture* P, DtSdiParser* Parser)
+{
+    memset(&P->AudioOut, 0, sizeof(P->AudioOut));
+    P->AudioOut.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        P->AudioOut.Channels[c].Samples = P->Out[c];
+        P->AudioOut.Channels[c].MaxSamples = LEVELB_MAX_SAMPLES;
+    }
+    memset(&P->Anc, 0, sizeof(P->Anc));
+    P->Anc.Packets = P->Packets;
+    P->Anc.MaxPackets = LEVELB_MAX_PACKETS;
+    P->Anc.Words = P->Words;
+    P->Anc.MaxWords = LEVELB_MAX_WORDS;
+    return DtSdiParser_Parse(Parser, P->View, NULL, &P->AudioOut, &P->Anc);
+}
+
+// Returns how many of the listed packets have DID Did on line Line, or on any line for
+// Line 0.
+static int CountPackets(const Picture* P, int Did, int Line)
+{
+    int Count = 0;
+    for (int i = 0; i < P->Anc.NumPackets; i++)
+        if (P->Packets[i].Did == Did && (Line == 0 || P->Packets[i].Line == Line))
+            Count++;
+    return Count;
+}
+
+// Makes a parser that lists every packet.
+static DtSdiParser* ParserOfEverything(void)
+{
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    if (Parser == NULL)
+        return NULL;
+    DtSdiAncFilter All;
+    memset(&All, 0, sizeof(All));
+    All.AnyDid = true;
+    All.Space = DT_SDI_ANC_SPACE_BOTH;
+    DtSdiParser_SetAncFilter(Parser, &All, 1);
+    DtSdiParser_SetAudioChecks(Parser, true);
+    return Parser;
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// Checks the lines of the links against SMPTE ST 372 Figure 2, and the payload ID.
+DT_TEST(LinesAndPayloadId)
+{
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(1, 0), 2);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(1, 0), 0);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(1, 1), 1);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(1, 1), 1);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(1, 41), 21);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(1, 1124), 562);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(1, 1124), 2);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(2, 0), 1);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 0), 563);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 1), 563);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 40), 583);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(2, 41), 2);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 41), 583);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 1124), 1125);
+    DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(2, 1124), 1);
+
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P50B), 0x0100498Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P59_94B), 0x01004A8Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P60B), 0x01004B8Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_2160P50B), 0u);
+
+    DtSdiGeometry Geo;
+    DT_ASSERT_OK(DtSdiGeometry_Init(&Geo, DTAPI_VIDSTD_1080P59_94B));
+    DT_ASSERT(Geo.IsLevelB);
+    DT_ASSERT_EQ(Geo.InterfaceVidStd, DTAPI_VIDSTD_1080I59_94);
+    DT_ASSERT_EQ(DtSdiGeometry_Init(&Geo, DTAPI_VIDSTD_2160P50B), DTAPI_E_INVALID_VIDSTD);
+}
+
+// Checks what a view and the builder and parser refuse: a raw frame of level B, which
+// is the layout of the line and not yet taken, a field other than 1 or 2, and a picture
+// whose field is not known.
+DT_TEST(Refusals)
+{
+    Picture* P = Picture_Alloc(DTAPI_VIDSTD_1080P50B);
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DT_ASSERT(P != NULL && Builder != NULL && Parser != NULL);
+    size_t Size = 0;
+    DT_ASSERT_EQ(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080P50B, 10, &Size),
+                 DTAPI_E_INVALID_VIDSTD);
+    DT_ASSERT_EQ(
+        DtSdiView_SetRawFrame(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10),
+        DTAPI_E_INVALID_VIDSTD);
+    DT_ASSERT_EQ(
+        DtSdiView_SetRawPicture(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10, 3),
+        DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(
+        DtSdiView_SetRawPicture(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50, 10, 1),
+        DTAPI_E_INVALID_VIDSTD);
+    DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
+                                         DTAPI_VIDSTD_1080P50B, 10, 1));
+    DtSdiView_SetLevelBField(P->View, 0);
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
+    DT_ASSERT_EQ(DtSdiParser_Parse(Parser, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    Picture_Free(P);
+}
+
+// Builds the two pictures of an interface frame of 1080p50 level B, field 2 first as a
+// channel sends them, with audio on channels 1 and 2 and a packet of the program on each
+// link. Checks where the parser finds each packet, and that the samples come back.
+DT_TEST(Layout)
+{
+    Picture* P = Picture_Alloc(DTAPI_VIDSTD_1080P50B);
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = ParserOfEverything();
+    DT_ASSERT(P != NULL && Builder != NULL && Parser != NULL);
+    DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, true));
+    int Most = 0;
+    DT_ASSERT_OK(DtSdiAudio_MaxSamples(DTAPI_VIDSTD_1080P50B, &Most));
+
+    const uint16_t Words[3] = {0x101, 0x102, 0x203};
+    int First = 0;
+    int Total = 0;
+    for (int k = 0; k < 4; k++)
+    {
+        const int Field = k % 2 == 0 ? 2 : 1;
+        // The program's packets: one on a line of link A, one on a line of link B.
+        DtSdiAncPacket Own[2];
+        memset(Own, 0, sizeof(Own));
+        for (int i = 0; i < 2; i++)
+        {
+            Own[i].Line = 30 + i;
+            Own[i].InHanc = true;
+            Own[i].Did = 0x50;
+            Own[i].SdidOrDbn = 0x01;
+            Own[i].NumWords = 3;
+            Own[i].Words = Words;
+            Own[i].VirtualInterface = DtSdiGeometry_LevelBLink(Field, 29 + i);
+        }
+        DtSdiAncData Anc;
+        memset(&Anc, 0, sizeof(Anc));
+        Anc.Packets = Own;
+        Anc.NumPackets = 2;
+
+        int Asked = 0;
+        DT_ASSERT_OK(
+            DtSdiBuilder_GetNumAudioSamples(Builder, DTAPI_VIDSTD_1080P50B, 0, &Asked));
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
+                                             DTAPI_VIDSTD_1080P50B, 10, Field));
+        Picture_SetAudio(P, First);
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, P->View, NULL, &P->AudioIn, &Anc));
+        DT_ASSERT_EQ(P->AudioIn.NumSamplesUsed, Asked);
+        DT_ASSERT(Asked <= Most);
+        DT_ASSERT_OK(Picture_Parse(P, Parser));
+
+        // The payload IDs, one on each link.
+        const int LineA = Field == 1 ? 20 : 19;
+        DT_ASSERT_EQ(CountPackets(P, 0x41, 0), 2);
+        for (int i = 0; i < P->Anc.NumPackets; i++)
+        {
+            const DtSdiAncPacket* Q = &P->Packets[i];
+            if (Q->Did != 0x41)
+                continue;
+            const bool OnA = Q->Line == LineA;
+            DT_ASSERT(OnA || Q->Line == LineA + 1);
+            DT_ASSERT_EQ(Q->VirtualInterface, OnA ? 1 : 2);
+            DT_ASSERT(!Q->OnChroma);
+            DT_ASSERT_EQ(Q->Words[0] & 0xFF, 0x8A);
+            DT_ASSERT_EQ(Q->Words[1] & 0xFF, 0x49);
+            DT_ASSERT_EQ(Q->Words[3] & 0xFF, OnA ? 0x01 : 0x41);
+        }
+
+        // The audio: control on interface line 9 or 571, no data on the line after a
+        // switching line, and nothing on link B.
+        DT_ASSERT_EQ(CountPackets(P, LEVELB_DID_CONTROL, 0), 1);
+        DT_ASSERT_EQ(CountPackets(P, LEVELB_DID_CONTROL, Field == 1 ? 18 : 17), 1);
+        DT_ASSERT_EQ(CountPackets(P, LEVELB_DID_DATA, Field == 1 ? 16 : 15), 0);
+        for (int i = 0; i < P->Anc.NumPackets; i++)
+        {
+            const DtSdiAncPacket* Q = &P->Packets[i];
+            if (Q->Did == LEVELB_DID_DATA || Q->Did == LEVELB_DID_CONTROL)
+                DT_ASSERT_EQ(Q->VirtualInterface, 1);
+            if (Q->Did == LEVELB_DID_DATA)
+                DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(Field, Q->Line - 1), 1);
+        }
+        DT_ASSERT_EQ(CountPackets(P, LEVELB_DID_DATA, 0), Asked);
+        DT_ASSERT_EQ(P->AudioOut.NumPacketErrors[0], 0);
+        DT_ASSERT_EQ(P->AudioOut.FrameNumber, Field);
+        DT_ASSERT_EQ(P->AudioOut.Channels[0].NumSamples, Asked);
+        for (int s = 0; s < Asked; s++)
+        {
+            DT_ASSERT_EQ(P->Out[0][s], P->In[0][s]);
+            DT_ASSERT_EQ(P->Out[1][s], P->In[1][s]);
+        }
+
+        // The program's packets, back on their links.
+        DT_ASSERT_EQ(CountPackets(P, 0x50, 0), 2);
+        for (int i = 0; i < P->Anc.NumPackets; i++)
+            if (P->Packets[i].Did == 0x50)
+                DT_ASSERT_EQ(P->Packets[i].VirtualInterface,
+                             DtSdiGeometry_LevelBLink(Field, P->Packets[i].Line - 1));
+        First += Asked;
+        Total += Asked;
+    }
+    // Field 2 and field 1, twice: two interface frames of 1920 samples.
+    DT_ASSERT_EQ(Total, 2 * 1920);
+
+    // A packet that names the wrong link for its line is refused.
+    DtSdiAncPacket Wrong;
+    memset(&Wrong, 0, sizeof(Wrong));
+    Wrong.Line = 30;
+    Wrong.InHanc = true;
+    Wrong.Did = 0x50;
+    Wrong.SdidOrDbn = 0x01;
+    Wrong.VirtualInterface = 3 - DtSdiGeometry_LevelBLink(1, 29);
+    DtSdiAncData Anc;
+    memset(&Anc, 0, sizeof(Anc));
+    Anc.Packets = &Wrong;
+    Anc.NumPackets = 1;
+    DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
+                                         DTAPI_VIDSTD_1080P50B, 10, 1));
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, P->View, NULL, NULL, &Anc),
+                 DTAPI_E_INVALID_LINE);
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    Picture_Free(P);
+}
+
+// Follows the cadence of 1080p59.94 level B over two interface cadences: ten pictures
+// each, field 2 first. The pictures' samples add up to the interface's 8008 per cadence,
+// and the parser gives each picture's place.
+DT_TEST(Cadence)
+{
+    Picture* P = Picture_Alloc(DTAPI_VIDSTD_1080P59_94B);
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = ParserOfEverything();
+    DT_ASSERT(P != NULL && Builder != NULL && Parser != NULL);
+    DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, true));
+    int Most = 0;
+    DT_ASSERT_OK(DtSdiAudio_MaxSamples(DTAPI_VIDSTD_1080P59_94B, &Most));
+
+    int First = 0;
+    int Total = 0;
+    int Place = 2;
+    for (int k = 0; k < 20; k++)
+    {
+        const int Field = k % 2 == 0 ? 2 : 1;
+        int Asked = 0;
+        DT_ASSERT_OK(DtSdiBuilder_GetNumAudioSamples(Builder, DTAPI_VIDSTD_1080P59_94B, 0,
+                                                     &Asked));
+        DT_ASSERT(Asked <= Most);
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
+                                             DTAPI_VIDSTD_1080P59_94B, 10, Field));
+        Picture_SetAudio(P, First);
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, P->View, NULL, &P->AudioIn, NULL));
+        DT_ASSERT_EQ(P->AudioIn.NumSamplesUsed, Asked);
+        DT_ASSERT_OK(Picture_Parse(P, Parser));
+        DT_ASSERT_EQ(P->AudioOut.FrameNumber, Place);
+        DT_ASSERT_EQ(P->AudioOut.Channels[1].NumSamples, Asked);
+        DT_ASSERT_EQ(P->Out[1][0], P->In[1][0]);
+        DT_ASSERT_EQ(P->Out[1][Asked - 1], P->In[1][Asked - 1]);
+        First += Asked;
+        Total += Asked;
+        Place = Place % 10 + 1;
+    }
+    // Places 2 to 10 and 1, twice: each place of the cadence twice.
+    DT_ASSERT_EQ(Total, 2 * 8008);
+
+    // A place of the other field gives way to the next place, of the picture's field.
+    P->AudioIn.FrameNumber = 3;
+    int Asked = 0;
+    DT_ASSERT_OK(
+        DtSdiBuilder_GetNumAudioSamples(Builder, DTAPI_VIDSTD_1080P59_94B, 4, &Asked));
+    DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
+                                         DTAPI_VIDSTD_1080P59_94B, 10, 2));
+    DT_ASSERT_OK(DtSdiBuilder_Build(Builder, P->View, NULL, &P->AudioIn, NULL));
+    DT_ASSERT_EQ(P->AudioIn.NumSamplesUsed, Asked);
+    DT_ASSERT_OK(Picture_Parse(P, Parser));
+    DT_ASSERT_EQ(P->AudioOut.FrameNumber, 4);
+    DT_ASSERT_EQ(
+        DtSdiBuilder_GetNumAudioSamples(Builder, DTAPI_VIDSTD_1080P59_94B, 11, &Asked),
+        DTAPI_E_INVALID_ARG);
+
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    Picture_Free(P);
+}
+
+DT_TEST_MAIN("SdiLevelB", DT_RUN(LinesAndPayloadId), DT_RUN(Refusals), DT_RUN(Layout),
+             DT_RUN(Cadence))

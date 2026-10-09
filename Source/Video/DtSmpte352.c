@@ -47,18 +47,23 @@ static uint32_t RateCode(int Num, int Den)
 //    ST 292 does not mark it.
 // 3. 1080 lines: 85, interlaced, PsF or progressive. PsF sets only the picture bit.
 // 4. 3G level A: 89, progressive.
-// 5. 2160p: C0 on 6G or CE on 12G, progressive.
-// Byte 4 is 01, which means 10 bits.
+// 5. 3G level B: 8A, with a progressive picture on an interlaced transport (SMPTE
+//    ST 372).
+// 6. 2160p: C0 on 6G or CE on 12G, progressive.
+// Byte 4 is 01, which means 10 bits, and link A on level B.
 //
 uint32_t DtSmpte352_Make(int VidStd)
 {
     const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
     DtFrameProps Props;
-    if (Info == NULL || Info->IsLevelB || !DtFrameProps_Init(&Props, VidStd))
+    if (Info == NULL || (Info->IsLevelB && DtVidStd_Is4k(VidStd)) ||
+        !DtFrameProps_Init(&Props, VidStd))
         return 0;
 
     uint32_t Vpid;
-    if (DtVidStd_Is4k(VidStd))
+    if (Info->IsLevelB)
+        Vpid = 0x408A;
+    else if (DtVidStd_Is4k(VidStd))
         Vpid = Info->IoStd == DTAPI_IOCONFIG_12GSDI ? 0xC0CE : 0xC0C0;
     else if (DtFrameProps_IsSd(&Props))
         Vpid = 0x0081;

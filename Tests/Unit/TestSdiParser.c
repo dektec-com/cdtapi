@@ -1521,8 +1521,9 @@ DT_TEST(AudioRefusals)
     DT_ASSERT_OK(NotWanted);
 }
 
-// Checks the largest number of audio samples a frame holds at each frame rate. Also
-// checks that 1080p50 level B gives DTAPI_E_INVALID_VIDSTD.
+// Checks the largest number of audio samples a frame holds at each frame rate. A 3G
+// level-B picture holds half of its interface frame's samples and a little more. 2160p
+// on level-B links gives DTAPI_E_INVALID_VIDSTD.
 DT_TEST(MaxSamplesPerRate)
 {
     static const struct
@@ -1532,7 +1533,8 @@ DT_TEST(MaxSamplesPerRate)
     } Cases[] = {{DTAPI_VIDSTD_1080P23_98, 2002}, {DTAPI_VIDSTD_1080P24, 2000},
                  {DTAPI_VIDSTD_1080I50, 1920},    {DTAPI_VIDSTD_525I59_94, 1602},
                  {DTAPI_VIDSTD_720P50, 960},      {DTAPI_VIDSTD_720P59_94, 801},
-                 {DTAPI_VIDSTD_2160P60, 800}};
+                 {DTAPI_VIDSTD_2160P60, 800},     {DTAPI_VIDSTD_1080P50B, 968},
+                 {DTAPI_VIDSTD_1080P59_94B, 809}, {DTAPI_VIDSTD_1080P60B, 808}};
     for (size_t i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
     {
         int Most = 0;
@@ -1540,7 +1542,7 @@ DT_TEST(MaxSamplesPerRate)
         DT_ASSERT_EQ(Most, Cases[i].Most);
     }
     int Most = 0;
-    DT_ASSERT_EQ(DtSdiAudio_MaxSamples(DTAPI_VIDSTD_1080P50B, &Most),
+    DT_ASSERT_EQ(DtSdiAudio_MaxSamples(DTAPI_VIDSTD_2160P50B, &Most),
                  DTAPI_E_INVALID_VIDSTD);
 }
 

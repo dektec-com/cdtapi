@@ -37,6 +37,13 @@
 // come out the same as well. At a 1001 frame rate, the number of samples in a frame
 // comes from the cadence.
 //
+// In 3G level B the audio goes on link A of the interface, whose clock runs at
+// 74.25 MHz (SMPTE ST 372 6.4). So the plan is made for a frame of the interface, the
+// 1080i standard of the same rate, with its lines, switching lines and cadence. A
+// picture carries the samples on the interface lines of its field, which are the lines
+// of link A in the picture. The cadence then counts pictures: two places for each place
+// of the interface's cadence, field 1 on the odd places and field 2 on the even ones.
+//
 // The work goes in steps, so that a refused frame changes nothing:
 // 1. DtSdiEmbed_Begin checks the program's audio and plans the frame.
 // 2. Once every check of the frame has passed, DtSdiEmbed_Start takes up the state that
@@ -68,18 +75,24 @@ typedef enum DtSdiEmbedSource
 // The audio state of a builder.
 typedef struct DtSdiEmbed
 {
-    // Set by DtSdiEmbed_Init for the standard of the frame being built.
+    // Set by DtSdiEmbed_Init for the standard of the frame being built. In 3G level B
+    // the clock, the lines and the frames are those of the interface.
     int VidStd;          // The standard, as a DTAPI_VIDSTD_ code
     bool Sd;             // True for SD, which uses SMPTE ST 272 rather than ST 299-1
+    bool LevelB;         // True for 3G level B
     int NumLines;        // The lines of a frame; in 2160p, those of one link
     int TicksPerLine;    // The clock ticks in one line
     double Increment;    // The clock ticks from one audio sample to the next
     double PhaseAtStart; // The clock's value at the cadence's first sample
-    int CadenceLength;   // The number of frames in the cadence; 1 at most rates
-    // Per place in the cadence: the samples per channel of that frame.
+    int FrameCadence;    // The number of frames in the cadence; 1 at most rates
+    int CadenceLength;   // The places in the cadence: FrameCadence, or twice that in 3G
+                         // level B, whose places are pictures
+    // Per frame of the cadence: the samples per channel of that frame.
     int SamplesInFrame[DT_SDIEMBED_MAX_CADENCE];
-    // Per place in the cadence: the most samples one line carries.
+    // Per frame of the cadence: the most samples one line carries.
     int MaxPerLine[DT_SDIEMBED_MAX_CADENCE];
+    // 3G level B: per place in the cadence, the samples per channel of that picture.
+    int SamplesInPicture[2 * DT_SDIEMBED_MAX_CADENCE];
     DtFrameProps Props;    // The fields and their switching lines
     uint8_t Status[2][24]; // Channel status blocks: [0] for PCM, [1] for mute
 
@@ -92,6 +105,12 @@ typedef struct DtSdiEmbed
 
     // Set by DtSdiEmbed_Begin for the frame being built.
     int FrameNumber;    // The frame's place in the cadence, counted from 1
+    int PlanFrame;      // The frame of the cadence the plan is for, counted from 1: the
+                        // place, or in 3G level B the interface frame of the picture
+    int FirstLine;      // The first line of the plan the frame takes, counted from 1
+    int EndLine;        // The line after the last one of the plan the frame takes
+    int SampleBase;     // The index in the plan of the frame's first sample
+    int Field;          // 3G level B: the picture's field, 1 or 2; else 0
     int NumSamples;     // The samples per channel the frame carries
     bool HasAudio;      // True when any group carries audio
     bool Group[4];      // Per group: true when the group carries audio
@@ -135,12 +154,16 @@ DtapiResult DtSdiEmbed_NumSamples(const DtSdiEmbed* Embed, int FrameNumber,
 // may be NULL for a frame without audio. Sets Audio->NumSamplesUsed to the samples per
 // channel the frame takes, or to 0 when the program sends no channel.
 //
+// In 3G level B, Field is the picture's field, 1 or 2, and decides the place in the
+// cadence: a place of the other field gives way to the next place, of this field. For
+// any other standard Field is 0.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_INVALID_FORMAT  a pair's format is not one of the enum
 //   DTAPI_E_INVALID_ARG     a negative stride, or a FrameNumber that is not a place in
 //                           the cadence
 //   DTAPI_E_BUF_TOO_SMALL   a channel offers fewer samples than the frame takes
-DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio);
+DtapiResult DtSdiEmbed_Begin(DtSdiEmbed* Embed, DtSdiAudio* Audio, int Field);
 
 // Sets *Cursor to the position that writing the planned frame has reached at the start
 // of line LineIndex. A LineIndex equal to the frame's number of lines gives the end of

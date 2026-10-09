@@ -25,6 +25,28 @@
 // order. g_LinkPlace[L] is the place of link L + 1 among the four.
 static const int g_LinkPlace[4] = {3, 1, 2, 0};
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- InterfaceOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns the 1080i standard of the interface that carries 3G level-B standard VidStd:
+// the interface runs at half the picture rate.
+//
+static int InterfaceOf(int VidStd)
+{
+    switch (VidStd)
+    {
+    case DTAPI_VIDSTD_1080P50B:
+        return DTAPI_VIDSTD_1080I50;
+    case DTAPI_VIDSTD_1080P59_94B:
+        return DTAPI_VIDSTD_1080I59_94;
+    default:
+        return DTAPI_VIDSTD_1080I60;
+    }
+}
+
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Geometry +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd)
@@ -33,7 +55,7 @@ DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd)
 
     const DtVidStdEntry* Info = DtVidStd_Find(VidStd);
     DtFrameProps Props;
-    if (Info == NULL || Info->IsLevelB || !DtFrameProps_Init(&Props, VidStd) ||
+    if (Info == NULL || !DtFrameProps_Init(&Props, VidStd) ||
         !DtSdiFrame_LayoutInit(&Geo->Layout, VidStd, DT_SDIGEOMETRY_ALIGNMENT_BITS))
     {
         return DTAPI_E_INVALID_VIDSTD;
@@ -41,6 +63,9 @@ DtapiResult DtSdiGeometry_Init(DtSdiGeometry* Geo, int VidStd)
 
     Geo->VidStd = VidStd;
     Geo->Is4k = Geo->Layout.Is4k;
+    Geo->IsLevelB = Info->IsLevelB;
+    if (Geo->IsLevelB)
+        Geo->InterfaceVidStd = InterfaceOf(VidStd);
     Geo->SwitchingIndex = Props.Fields[0].SwitchingLine - 1;
     Geo->Props = Props;
 
@@ -109,6 +134,27 @@ bool DtSdiGeometry_IsVanc(const DtSdiGeometry* Geo, int LineIndex)
         }
     }
     return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBInterfaceLine -.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// SMPTE ST 372, Figure 2: in field 1, interface line t carries picture lines 2t and
+// 2t + 1; in field 2, interface line 563 + t carries picture lines 2t + 1 and 2t + 2.
+//
+int DtSdiGeometry_LevelBInterfaceLine(int Field, int LineIndex)
+{
+    const int Line = LineIndex + 1;
+    if (Field == 1)
+        return Line / 2;
+    return (Line - 1) / 2 + DT_SDIGEOMETRY_LEVELB_FIELD1_END + 1;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBLink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+int DtSdiGeometry_LevelBLink(int Field, int LineIndex)
+{
+    const bool Odd = (LineIndex + 1) % 2 != 0;
+    return Odd == (Field == 2) ? 1 : 2;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_RawLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

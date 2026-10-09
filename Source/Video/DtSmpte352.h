@@ -30,16 +30,20 @@
 #define DT_S352_ID_S2081_2160 0xC0    // 2160 lines on 6G, SMPTE ST 2081-10
 #define DT_S352_ID_S2082_2160 0xCE    // 2160 lines on 12G, SMPTE ST 2082-10
 
+// Marks the VPID of link B of 3G level B: bit 6 of byte 4 (SMPTE ST 372).
+#define DT_S352_LEVELB_LINK_B 0x40000000u
+
 // Returns the VPID that a transmitter puts on video standard VidStd, with byte 1 in the
 // least significant bits. The four bytes are:
-// 1. The payload identifier. It is that of SMPTE ST 259 in SD, ST 292 in HD and ST 425-1
-//    level A in 3G. For 2160p on one 6G or 12G link, it is that of ST 2081-10 or
-//    ST 2082-10.
+// 1. The payload identifier. It is that of SMPTE ST 259 in SD, ST 292 in HD, and ST 425-1
+//    level A or level B in 3G. For 2160p on one 6G or 12G link, it is that of
+//    ST 2081-10 or ST 2082-10.
 // 2. The picture rate. Bit 7 is set for a progressive transport, and bit 6 for a
 //    progressive picture.
 // 3. Zero.
-// 4. The bit depth, which is 10 bits.
-// Returns 0 for an unknown standard and for a 3G level B standard.
+// 4. The bit depth, which is 10 bits. On 3G level B this is the VPID of link A; that of
+//    link B also has DT_S352_LEVELB_LINK_B.
+// Returns 0 for an unknown standard and for 2160p on 3G level B links.
 uint32_t DtSmpte352_Make(int VidStd);
 
 // Returns the payload identifier, which is byte 1 of the VPID.

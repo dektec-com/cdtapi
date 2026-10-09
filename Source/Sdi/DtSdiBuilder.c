@@ -22,6 +22,11 @@
 // line CRCs and the packets' checksums are left to the transmitter unless the program
 // asks for them.
 //
+// A 3G level-B frame is one picture in the layout of level A, which the card converts
+// to level B on the line. Its lines go to link A and link B in turn, as SMPTE ST 372
+// maps them for the picture's field. The builder writes a payload ID on each link, on
+// interface lines 10 and 572, and the audio on link A, as DtSdiEmbed plans it.
+//
 // This is the portable version.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -62,6 +67,10 @@
 // The words of the payload ID packet: the flag, the IDs, the count, four bytes and the
 // checksum.
 #define DT_SDIBUILDER_PAYLOAD_ID_WORDS 11
+
+// The interface lines of 3G level B that carry the payload ID, in field 1 and field 2.
+#define DT_SDIBUILDER_LEVELB_PAYLOAD_ID_1 10
+#define DT_SDIBUILDER_LEVELB_PAYLOAD_ID_2 572
 
 // The blanking values of a C word and of a Y word.
 #define DT_SDIBUILDER_BLANK_C 0x200
@@ -125,7 +134,8 @@ typedef struct BuildJob
     DtSdiView* Frame;        // The frame being written
     const DtSdiImage* Image; // The image, or NULL for a black image
     const DtSdiAncData* Anc; // The program's packets, or NULL
-    uint32_t Vpid;           // The four bytes of the payload ID
+    uint32_t Vpid;           // The four bytes of the payload ID; of link A in 3G level B
+    int Field;               // 3G level B: the picture's field, 1 or 2; else 0
     bool PayloadId; // The builder writes its own payload ID; false if the program has one
     int Unit;       // Bands start on a multiple of this many lines. It is 2 if every
                     // other line starts part-way through a byte, else 1.
@@ -140,12 +150,15 @@ typedef struct BuildJob
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StreamOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Returns the index of the stream a packet goes in. In SD this is the one stream. In HD
-// and 3G it is C or Y. In 2160p it is C or Y of the packet's link.
+// and 3G it is C or Y. In 2160p it is C or Y of the packet's link. In 3G level B the line
+// decides the link.
 //
 static int StreamOf(const DtSdiGeometry* Geo, const DtSdiAncPacket* Packet)
 {
     if (Geo->NumStreams == 1)
         return 0;
+    if (Geo->IsLevelB)
+        return Packet->OnChroma ? 0 : 1;
     const int Link = Packet->VirtualInterface == 0 ? 1 : Packet->VirtualInterface;
     return 2 * (Link - 1) + (Packet->OnChroma ? 0 : 1);
 }
@@ -167,10 +180,20 @@ static int Section(int LineIndex, bool InHanc, int Stream)
 // stream, and above SD in every Y stream, including the Y stream of each link in 2160p.
 // A DekTec card shows the payload ID of 1080p50 in the Y stream alone.
 //
-static bool HasPayloadId(const DtSdiGeometry* Geo, int LineIndex, int Stream)
+// In 3G level B it goes in the Y stream of both links, on the interface lines that SMPTE
+// ST 352 gives a 1125-line interlaced interface: 10 and 572. Field is the picture's.
+//
+static bool HasPayloadId(const DtSdiGeometry* Geo, int Field, int LineIndex, int Stream)
 {
     const DtFrameProps* Props = &Geo->Props;
     const int Line = LineIndex + 1;
+    if (Geo->IsLevelB)
+    {
+        const int Interface = DtSdiGeometry_LevelBInterfaceLine(Field, LineIndex);
+        return !Geo->StreamIsChroma[Stream] &&
+               (Interface == DT_SDIBUILDER_LEVELB_PAYLOAD_ID_1 ||
+                Interface == DT_SDIBUILDER_LEVELB_PAYLOAD_ID_2);
+    }
     const bool OnLine =
         Line == Props->Fields[0].SwitchingLine + 3 ||
         (Props->NumFields == 2 && Line == Props->Fields[1].SwitchingLine + 3);
@@ -201,8 +224,12 @@ static bool IsSdControl(const DtSdiGeometry* Geo, const DtSdiAncPacket* P)
 // Sets *PayloadId to whether the builder should write its own payload ID, which it does
 // unless the program's packets contain one.
 //
+// In 3G level B a packet's virtual interface is its link, which must be that of its
+// line in a picture of field Field.
+//
 static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
-                                const DtSdiAncData* Anc, bool HasAudio, bool* PayloadId)
+                                int Field, const DtSdiAncData* Anc, bool HasAudio,
+                                bool* PayloadId)
 {
     if (Anc->NumPackets < 0 || (Anc->NumPackets > 0 && Anc->Packets == NULL))
         return DTAPI_E_INVALID_ARG;
@@ -219,7 +246,7 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
 
     const int NumLines = Geo->Layout.NumLines;
     memset(Builder->Used, 0, (size_t)NumLines * 2 * 8 * sizeof(Builder->Used[0]));
-    const int MaxLink = Geo->Is4k ? 4 : 1;
+    const int MaxLink = Geo->Is4k ? 4 : (Geo->IsLevelB ? 2 : 1);
     const int HancRoom = Geo->StreamHancWords - Geo->StreamEavWords - Geo->StreamSavWords;
 
     for (int p = 0; p < Anc->NumPackets; p++)
@@ -235,7 +262,9 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         if (HasAudio && DtSdiAnc_IsAudio((uint8_t)P->Did) && !IsSdControl(Geo, P))
             return DTAPI_E_INVALID_ARG;
         if (P->Line < 1 || P->Line > NumLines ||
-            (!P->InHanc && !DtSdiGeometry_IsVanc(Geo, P->Line - 1)))
+            (!P->InHanc && !DtSdiGeometry_IsVanc(Geo, P->Line - 1)) ||
+            (Geo->IsLevelB && (P->VirtualInterface == 0 ? 1 : P->VirtualInterface) !=
+                                  DtSdiGeometry_LevelBLink(Field, P->Line - 1)))
         {
             return DTAPI_E_INVALID_LINE;
         }
@@ -243,7 +272,7 @@ static DtapiResult CheckPackets(DtSdiBuilder* Builder, const DtSdiGeometry* Geo,
         const int Stream = StreamOf(Geo, P);
         int* Used = &Builder->Used[Section(P->Line - 1, P->InHanc, Stream)];
         int Room = P->InHanc ? HancRoom : Geo->StreamActiveWords;
-        if (P->InHanc && *PayloadId && HasPayloadId(Geo, P->Line - 1, Stream))
+        if (P->InHanc && *PayloadId && HasPayloadId(Geo, Field, P->Line - 1, Stream))
             Room -= DT_SDIBUILDER_PAYLOAD_ID_WORDS;
         if (P->InHanc)
             Room -= DtSdiEmbed_HancWords(&Builder->Embed, Geo, P->Line - 1, Stream);
@@ -412,12 +441,15 @@ static void MakeLine(const BuildJob* Job, DtSdiBuilderBand* Band, int LineIndex)
         // 3. the builder's audio;
         // 4. the rest of the program's packets.
         int Pos = Geo->StreamEavWords;
-        if (Job->PayloadId && HasPayloadId(Geo, LineIndex, s))
+        if (Job->PayloadId && HasPayloadId(Geo, Job->Field, LineIndex, s))
         {
-            const uint16_t Bytes[4] = {DtSdiAnc_WithParity8(Vpid & 0xFF),
-                                       DtSdiAnc_WithParity8(Vpid >> 8 & 0xFF),
-                                       DtSdiAnc_WithParity8(Vpid >> 16 & 0xFF),
-                                       DtSdiAnc_WithParity8(Vpid >> 24 & 0xFF)};
+            uint32_t Id = Vpid;
+            if (Geo->IsLevelB && DtSdiGeometry_LevelBLink(Job->Field, LineIndex) == 2)
+                Id |= DT_S352_LEVELB_LINK_B;
+            const uint16_t Bytes[4] = {DtSdiAnc_WithParity8(Id & 0xFF),
+                                       DtSdiAnc_WithParity8(Id >> 8 & 0xFF),
+                                       DtSdiAnc_WithParity8(Id >> 16 & 0xFF),
+                                       DtSdiAnc_WithParity8(Id >> 24 & 0xFF)};
             Pos = DtSdiAnc_Put(W, Pos, DT_SDIANC_DID_PAYLOAD_ID,
                                DT_SDIANC_SDID_PAYLOAD_ID, Bytes, 4, Builder->Checksums);
         }
@@ -720,10 +752,13 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
 {
     if (Builder == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
-    // An input channel's frame is read-only; room an output channel lent is not.
-    if (!Frame->HasFrame || (Frame->Holder != NULL && !Frame->IsTx))
+    // An input channel's frame is read-only; room an output channel lent is not. A 3G
+    // level-B picture needs its field.
+    if (!Frame->HasFrame || (Frame->Holder != NULL && !Frame->IsTx) ||
+        (Frame->Geo.IsLevelB && Frame->LevelBField == 0))
         return DTAPI_E_STATE;
     const DtSdiGeometry* Geo = &Frame->Geo;
+    const int Field = Frame->LevelBField;
 
     DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
@@ -731,11 +766,11 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     if (Result == DTAPI_OK)
     {
         DtSdiEmbed_Init(&Builder->Embed, Geo);
-        Result = DtSdiEmbed_Begin(&Builder->Embed, Audio);
+        Result = DtSdiEmbed_Begin(&Builder->Embed, Audio, Field);
     }
     bool PayloadId = true;
     if (Result == DTAPI_OK && Anc != NULL)
-        Result = CheckPackets(Builder, Geo, Anc, Audio != NULL, &PayloadId);
+        Result = CheckPackets(Builder, Geo, Field, Anc, Audio != NULL, &PayloadId);
     if (Result == DTAPI_OK && !ConfigureBands(Builder, Geo))
         Result = DTAPI_E_OUT_OF_MEM;
     if (Result != DTAPI_OK)
@@ -758,8 +793,8 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         Unit++;
     const uint32_t Vpid = DtSmpte352_Make(Geo->VidStd);
     const bool MakeRaw = !(Frame->IsTx && Geo->Is4k) || Builder->Checksums;
-    BuildJob Job = {Builder,   Frame, Image,       Anc,    Vpid,
-                    PayloadId, Unit,  Frame->IsTx, MakeRaw};
+    BuildJob Job = {Builder, Frame,     Image, Anc,         Vpid,
+                    Field,   PayloadId, Unit,  Frame->IsTx, MakeRaw};
     DtJobRunner_Run(&Builder->Runner, BuildBand, &Job);
     DtSdiEmbed_End(&Builder->Embed);
     if (Frame->IsTx)

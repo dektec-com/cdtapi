@@ -43,6 +43,10 @@
 #define DT_SDIAUDIO_HD_DATA_WORDS 18
 #define DT_SDIAUDIO_HD_BCH_WORDS 6
 
+// The most samples per channel by which a 3G level-B picture can go beyond half of its
+// interface frame's samples.
+#define DT_SDIAUDIO_LEVELB_SPREAD 8
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutSample -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Stores the AES3 subframe Aes3 as the next sample of channel Channel, counting from 0.
@@ -121,9 +125,13 @@ DtapiResult DtSdiAudio_MaxSamples(int VidStd, int* NumSamples)
         return Result;
     int Num = 0;
     int Den = 0;
-    DtVidStd_FrameRate(VidStd, &Num, &Den);
+    DtVidStd_FrameRate(Geo.IsLevelB ? Geo.InterfaceVidStd : VidStd, &Num, &Den);
     const long long Product = (long long)DT_SDIAUDIO_SAMPLE_RATE * Den;
     *NumSamples = (int)((Product + Num - 1) / Num);
+    // A 3G level-B picture carries the samples of half of an interface frame. The halves
+    // differ by a few samples, as the field ends where the clock puts them.
+    if (Geo.IsLevelB)
+        *NumSamples = (*NumSamples + 1) / 2 + DT_SDIAUDIO_LEVELB_SPREAD;
     return DTAPI_OK;
 }
 

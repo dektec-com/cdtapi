@@ -200,11 +200,12 @@ static bool ConfigureBands(DtSdiParser* Parser, const DtSdiGeometry* Geo)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ListPacket -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Adds the packet Found to the list in Anc. Stream and Where tell where the packet was
-// found. When Anc has no room for the packet or its words, the packet is counted as lost.
+// Adds the packet Found to the list in Anc. Stream, Link and Where tell where the packet
+// was found. When Anc has no room for the packet or its words, the packet is counted as
+// lost.
 //
 static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Stream,
-                       const DtSdiAncFound* Found, DtSdiAncData* Anc)
+                       int Link, const DtSdiAncFound* Found, DtSdiAncData* Anc)
 {
     const bool WordsFit =
         Anc->Words == NULL || Anc->NumWords + Found->NumWords <= Anc->MaxWords;
@@ -219,7 +220,7 @@ static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Strea
     Packet->Line = Where->LineIndex + 1;
     Packet->InHanc = Where->InHanc;
     Packet->OnChroma = Geo->StreamIsChroma[Stream];
-    Packet->VirtualInterface = Geo->StreamLink[Stream];
+    Packet->VirtualInterface = Link;
     Packet->Did = Found->Did;
     Packet->SdidOrDbn = Found->SdidOrDbn;
     Packet->NumWords = Found->NumWords;
@@ -238,7 +239,8 @@ static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Strea
 // Reads a section of a line, splits it into its streams, and searches each stream for
 // packets. An audio packet goes into Audio when it is in the horizontal blanking of link
 // 1. A packet that the parser's filters want goes into Anc. Audio and Anc may each be
-// NULL, and then that kind of packet is skipped.
+// NULL, and then that kind of packet is skipped. In 3G level B the line's link, A (1) or
+// B (2), is that of the picture's field.
 //
 static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Section* Where,
                         DtSdiAudio* Audio, DtSdiAncData* Anc)
@@ -269,9 +271,13 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
                           Parser->RawActive, Parser->Conv);
     }
 
+    const int LineLink =
+        Geo->IsLevelB ? DtSdiGeometry_LevelBLink(Frame->LevelBField, Where->LineIndex)
+                      : 0;
     for (int s = 0; s < Streams; s++)
     {
-        if (!AllLinks && Geo->StreamLink[s] != 1)
+        const int Link = LineLink != 0 ? LineLink : Geo->StreamLink[s];
+        if (!AllLinks && Link != 1)
             continue;
         if (PerLink && (s & 1) == 0)
         {
@@ -297,7 +303,7 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
         DtSdiAncFound Found;
         while (DtSdiAnc_Find(Parser->StreamWords, End - First, &Pos, &Found))
         {
-            if (Audio != NULL && Where->InHanc && Geo->StreamLink[s] == 1 &&
+            if (Audio != NULL && Where->InHanc && Link == 1 &&
                 DtSdiAnc_IsAudio(Found.Did))
             {
                 if (Streams == 1)
@@ -309,7 +315,7 @@ static void ScanSection(DtSdiParser* Parser, const DtSdiView* Frame, const Secti
                 DtSdiAnc_IsListed(Parser->AncFilters, Parser->NumAncFilters, Found.Did,
                                   Found.SdidOrDbn, Where->InHanc, Where->LineIndex + 1))
             {
-                ListPacket(Geo, Where, s, &Found, Anc);
+                ListPacket(Geo, Where, s, Link, &Found, Anc);
             }
         }
     }
@@ -391,7 +397,8 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
 {
     if (Parser == NULL || Frame == NULL)
         return DTAPI_E_INVALID_ARG;
-    if (!Frame->HasFrame || Frame->IsTx)
+    if (!Frame->HasFrame || Frame->IsTx ||
+        (Frame->Geo.IsLevelB && Frame->LevelBField == 0))
         return DTAPI_E_STATE;
     DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
@@ -437,6 +444,19 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
     // - In SD only the lowest bits of the audio frame number give the place (as many as
     //   the cadence length needs); the higher bits may hold a frame counter (SMPTE ST
     //   272, 14.4). A place beyond the cadence length means none, so 0.
+    // - In 3G level B the cadence counts pictures, two for each frame of the interface:
+    //   the control packet gives the interface frame, and the field the picture's place
+    //   in it.
+    if (Audio != NULL && Frame->Geo.IsLevelB)
+    {
+        const int Frames = DtSdiAudio_CadenceLength(Frame->Geo.InterfaceVidStd);
+        int Of = Audio->FrameNumber;
+        if (Frames == 1)
+            Of = 1;
+        Audio->FrameNumber =
+            Of >= 1 && Of <= Frames ? 2 * (Of - 1) + Frame->LevelBField : 0;
+        return Anc != NULL && Anc->NumLost > 0 ? DTAPI_E_BUF_TOO_SMALL : DTAPI_OK;
+    }
     const int Length = DtSdiAudio_CadenceLength(Frame->Geo.VidStd);
     if (Audio != NULL && Length == 1)
         Audio->FrameNumber = 0;

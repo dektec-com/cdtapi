@@ -72,6 +72,7 @@ void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch)
 void DtSdiView_Forget(DtSdiView* View)
 {
     View->HasFrame = false;
+    View->LevelBField = 0;
     View->Holder = NULL;
     View->RingBase = NULL;
     View->WrapLineIndex = -1;
@@ -292,16 +293,29 @@ DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol, size_t* Size)
     DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
     if (Result != DTAPI_OK)
         return Result;
+    if (Geo.IsLevelB)
+        return DTAPI_E_INVALID_VIDSTD;
     if (BitsPerSymbol != 10 && BitsPerSymbol != 16)
         return DTAPI_E_INVALID_ARG;
     *Size = DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol);
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRawFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int VidStd,
-                                  int BitsPerSymbol)
+void DtSdiView_SetLevelBField(DtSdiView* View, int Field)
+{
+    View->LevelBField = View->Geo.IsLevelB ? Field : 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Points View at a raw frame of the layout of level A in the program's memory, as
+// DtSdiView_SetRawFrame() describes. LevelB says whether a 3G level-B standard is taken;
+// the picture's field is then Field.
+//
+static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
+                          int BitsPerSymbol, bool LevelB, int Field)
 {
     if (View == NULL)
         return DTAPI_E_INVALID_ARG;
@@ -313,12 +327,16 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
     DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
     if (Result != DTAPI_OK)
         return Result;
-    if (Frame == NULL || (BitsPerSymbol != 10 && BitsPerSymbol != 16))
+    if (Geo.IsLevelB != LevelB)
+        return DTAPI_E_INVALID_VIDSTD;
+    if (Frame == NULL || (BitsPerSymbol != 10 && BitsPerSymbol != 16) ||
+        (LevelB && Field != 1 && Field != 2))
         return DTAPI_E_INVALID_ARG;
     if (Size != DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol))
         return DTAPI_E_INVALID_SIZE;
 
     View->Geo = Geo;
+    View->LevelBField = LevelB ? Field : 0;
     View->BitsPerSymbol = BitsPerSymbol;
     View->RingBase = NULL;
     View->IsTx = false;
@@ -329,6 +347,22 @@ DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int
     View->LineNumBits = DtSdiFrame_RawLineNumBits(&Geo.Layout, BitsPerSymbol);
     View->HasFrame = true;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRawFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int VidStd,
+                                  int BitsPerSymbol)
+{
+    return SetRaw(View, Frame, Size, VidStd, BitsPerSymbol, false, 0);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRawPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiView_SetRawPicture(DtSdiView* View, void* Frame, size_t Size, int VidStd,
+                                    int BitsPerSymbol, int Field)
+{
+    return SetRaw(View, Frame, Size, VidStd, BitsPerSymbol, true, Field);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRingFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
