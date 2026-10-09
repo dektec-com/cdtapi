@@ -219,7 +219,7 @@ cdtapi_example_test(TransmitFramesNothingToSend DtTransmitFrames
 cdtapi_example_test(TransmitFramesMissingFile DtTransmitFrames
     "^Cannot read no-such-frame0.raw" --in no-such-frame)
 cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
-    "^No test pattern for video standard 1080P50B" --vidstd 1080P50B)
+    "^No test pattern for video standard 2160P50B" --vidstd 2160P50B)
 
 # The raw frames' round trip: DtTransmitFrames into a file through the emulator's SDI
 # sink, and DtReceiveFrames from that file through its SDI source, which reads the frame

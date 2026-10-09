@@ -26,6 +26,10 @@
 // timing references. The largest number is 4125 - 1280 - 12, in 720p23.98 and 720p24.
 #define DT_SDIVIEW_MAX_HANC_WORDS 4096
 
+// The largest raw picture of 3G level B: 1080p50 in 16 bits a symbol, 1125 lines of
+// 5280 symbols.
+#define DT_SDIVIEW_MAX_PICTURE_BYTES (1125 * 5280 * 2)
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CodedLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -73,6 +77,7 @@ void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch)
 void DtSdiView_Forget(DtSdiView* View)
 {
     View->HasFrame = false;
+    View->IsInterfaceFrame = false;
     View->LevelBField = 0;
     View->Holder = NULL;
     View->RingBase = NULL;
@@ -166,6 +171,9 @@ void DtSdiView_Free(DtSdiView* View)
     if (View == NULL)
         return;
     DtAlloc_Free(View->WrapLine);
+    DtSdiView_Free(View->Picture);
+    DtAlloc_Free(View->PictureCopy);
+    DtAlloc_Free(View->LevelB);
     DtAlloc_Free(View);
 }
 
@@ -191,7 +199,7 @@ DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
         return DTAPI_E_STATE;
     if (Line < 0 || Line >= View->Geo.Height)
         return DTAPI_E_INVALID_LINE;
-    if (View->Geo.Is4k)
+    if (View->Geo.Is4k || View->IsInterfaceFrame)
         return DTAPI_E_NOT_SUPPORTED;
 
     *Symbols = DtSdiView_LineSymbols(View, DtSdiGeometry_RawLine(&View->Geo, Line),
@@ -254,7 +262,7 @@ static bool FindPayloadId(const DtSdiView* View, int LineIndex, DtSdiLineScratch
     return false;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_FindLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_FindLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Searches the lines before the picture for the payload ID of link A: byte 1 8A and bit
 // 6 of byte 4 clear. In field 1 the even lines are link A's, in field 2 the odd ones
@@ -293,6 +301,12 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
     *PayloadId = 0;
     if (!View->HasFrame || View->IsTx)
         return DTAPI_E_STATE;
+    if (View->IsInterfaceFrame)
+    {
+        const DtSdiView* Picture = DtSdiView_PictureOf(View, true);
+        return Picture == NULL ? DTAPI_E_OUT_OF_MEM
+                               : DtSdiView_GetPayloadId(Picture, PayloadId);
+    }
 
     DtSdiLineScratch Scratch;
     if (!DtSdiLineScratch_Alloc(&Scratch, View))
@@ -307,6 +321,46 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
     return Found ? DTAPI_OK : DTAPI_E_NOT_FOUND;
 }
 
+static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
+                          int BitsPerSymbol, bool Picture, int Field);
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_PictureOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// The copy, its view and the converter are made when first needed, and kept. The view
+// is not changed in what it describes, only in these buffers it owns.
+//
+DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take)
+{
+    DtSdiView* Own = (DtSdiView*)View;
+    if (!View->IsInterfaceFrame)
+        return Own;
+    if (Own->LevelB == NULL)
+    {
+        Own->LevelB = (DtSdiLevelB*)DtAlloc_Malloc(sizeof(DtSdiLevelB));
+        if (Own->LevelB != NULL)
+            memset(Own->LevelB, 0, sizeof(*Own->LevelB));
+    }
+    if (Own->Picture == NULL)
+        Own->Picture = DtSdiView_Alloc();
+    if (Own->PictureCopy == NULL)
+        Own->PictureCopy = (uint8_t*)DtAlloc_Malloc(DT_SDIVIEW_MAX_PICTURE_BYTES);
+    if (Own->LevelB == NULL || Own->Picture == NULL || Own->PictureCopy == NULL)
+        return NULL;
+    if (Own->LevelB->Geo.VidStd != View->Geo.VidStd &&
+        DtSdiLevelB_Init(Own->LevelB, View->Geo.VidStd) != DTAPI_OK)
+        return NULL;
+
+    const int Bits = View->BitsPerSymbol;
+    if (SetRaw(Own->Picture, Own->PictureCopy,
+               DtSdiFrame_RawSize(&View->Geo.Layout, Bits), View->Geo.VidStd, Bits, true,
+               View->LevelBField) != DTAPI_OK)
+        return NULL;
+    if (Take)
+        DtSdiLevelB_TakeField(Own->LevelB, View->LevelBField, View->Frame, Bits,
+                              Own->PictureCopy, Bits);
+    return Own->Picture;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_RawFrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol, size_t* Size)
@@ -319,50 +373,61 @@ DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol, size_t* Size)
     DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
     if (Result != DTAPI_OK)
         return Result;
-    if (Geo.IsLevelB)
-        return DTAPI_E_INVALID_VIDSTD;
     if (BitsPerSymbol != 10 && BitsPerSymbol != 16)
         return DTAPI_E_INVALID_ARG;
-    *Size = DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol);
+    *Size = Geo.IsLevelB ? DtSdiLevelB_FrameSize(&Geo, BitsPerSymbol)
+                         : DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol);
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void DtSdiView_SetLevelBField(DtSdiView* View, int Field)
+DtapiResult DtSdiView_SetLevelBField(DtSdiView* View, int Field)
 {
-    View->LevelBField = View->Geo.IsLevelB ? Field : 0;
+    if (View == NULL || (Field != 1 && Field != 2))
+        return DTAPI_E_INVALID_ARG;
+    if (!View->HasFrame)
+        return DTAPI_E_STATE;
+    if (!View->Geo.IsLevelB)
+        return DTAPI_E_INVALID_VIDSTD;
+    View->LevelBField = Field;
+    return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Points View at a raw frame of the layout of level A in the program's memory, as
-// DtSdiView_SetRawFrame() describes. LevelB says whether a 3G level-B standard is taken;
-// the picture's field is then Field.
+// Points View at a raw frame in the program's memory, as DtSdiView_SetRawFrame()
+// describes. Picture says that a 3G level-B standard's frame is one picture in the
+// layout of level A, whose field is Field; otherwise its frame is one of the interface,
+// whose pictures go through a copy, and Field 1 is taken first.
 //
 static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
-                          int BitsPerSymbol, bool LevelB, int Field)
+                          int BitsPerSymbol, bool Picture, int Field)
 {
     if (View == NULL)
         return DTAPI_E_INVALID_ARG;
     if (View->Holder != NULL)
         return DTAPI_E_IN_USE;
     View->HasFrame = false;
+    View->IsInterfaceFrame = false;
 
     DtSdiGeometry Geo;
     DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
     if (Result != DTAPI_OK)
         return Result;
-    if (Geo.IsLevelB != LevelB)
+    if (Picture && !Geo.IsLevelB)
         return DTAPI_E_INVALID_VIDSTD;
     if (Frame == NULL || (BitsPerSymbol != 10 && BitsPerSymbol != 16) ||
-        (LevelB && Field != 1 && Field != 2))
+        (Picture && Field != 1 && Field != 2))
         return DTAPI_E_INVALID_ARG;
-    if (Size != DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol))
+    const bool Interface = Geo.IsLevelB && !Picture;
+    if (Size != (Interface ? DtSdiLevelB_FrameSize(&Geo, BitsPerSymbol)
+                           : DtSdiFrame_RawSize(&Geo.Layout, BitsPerSymbol)))
         return DTAPI_E_INVALID_SIZE;
 
     View->Geo = Geo;
-    View->LevelBField = LevelB ? Field : 0;
+    View->LevelBField = Interface ? 1 : Picture ? Field : 0;
+    View->IsInterfaceFrame = Interface;
     View->BitsPerSymbol = BitsPerSymbol;
     View->RingBase = NULL;
     View->IsTx = false;
@@ -380,7 +445,7 @@ static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
 DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size, int VidStd,
                                   int BitsPerSymbol)
 {
-    return SetRaw(View, Frame, Size, VidStd, BitsPerSymbol, false, 0);
+    return SetRaw(View, Frame, Size, VidStd, BitsPerSymbol, false, 1);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetRawPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

@@ -161,16 +161,36 @@ static int PictureLine(int Line, int Link)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Level B +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_FrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_BlackPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-size_t DtSdiLevelB_FrameSize(const DtSdiLevelB* Converter, int BitsPerSymbol)
+void DtSdiLevelB_BlackPicture(DtSdiLevelB* Converter, uint8_t* Picture, int BitsPerSymbol)
 {
-    const size_t Symbols =
-        (size_t)Converter->Geo.Layout.NumLines * 2 * (size_t)LinkWords(Converter);
+    const int Words = LinkWords(Converter);
+    const int NumLines = Converter->Geo.Layout.NumLines;
+    uint16_t* L = Converter->Link[0];
+    for (int Line = 1; Line <= NumLines; Line++)
+    {
+        MakeBlank(Converter, L);
+        SetTiming(Converter, L, &Converter->Geo.Props, Line);
+        for (int s = 0; s < 4; s++)
+            L[12 + s] = DT_SDILEVELB_CRC_FOR_TRANSMITTER;
+        WriteLine(Converter, Picture, BitsPerSymbol, Line - 1, (size_t)Words, L);
+    }
+    const size_t End = (size_t)NumLines * (size_t)Words * (size_t)BitsPerSymbol / 8;
+    memset(Picture + End, 0,
+           DtSdiFrame_RawSize(&Converter->Geo.Layout, BitsPerSymbol) - End);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_FrameSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+size_t DtSdiLevelB_FrameSize(const DtSdiGeometry* Geo, int BitsPerSymbol)
+{
+    const size_t Symbols = (size_t)Geo->Layout.NumLines * 2 * 2 *
+                           (size_t)(Geo->StreamHancWords + Geo->StreamActiveWords);
     return (Symbols * (size_t)BitsPerSymbol + 63) / 64 * 8;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_Init -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtSdiLevelB_Init(DtSdiLevelB* Converter, int VidStd)
 {
@@ -190,7 +210,7 @@ DtapiResult DtSdiLevelB_Init(DtSdiLevelB* Converter, int VidStd)
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_PutField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_PutField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Line by line of the interface: the two picture lines it carries, or blanking past the
 // picture's end, get the interface's timing and their CRCs, and are interleaved, link B's
@@ -251,10 +271,10 @@ void DtSdiLevelB_PutField(DtSdiLevelB* Converter, int Field, const uint8_t* Pict
     Converter->CrcLine = Last;
 
     const size_t End = (size_t)NumLines * 2 * (size_t)Words * (size_t)FrameBits / 8;
-    memset(Frame + End, 0, DtSdiLevelB_FrameSize(Converter, FrameBits) - End);
+    memset(Frame + End, 0, DtSdiLevelB_FrameSize(&Converter->Geo, FrameBits) - End);
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_TakeField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiLevelB_TakeField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Line by line of the interface: the two links are taken apart, and each line of the
 // picture gets the picture's timing and CRC words for the transmitter. Line 1 of field 1

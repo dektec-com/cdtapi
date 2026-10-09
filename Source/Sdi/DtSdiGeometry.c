@@ -136,7 +136,7 @@ bool DtSdiGeometry_IsVanc(const DtSdiGeometry* Geo, int LineIndex)
     return true;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBInterfaceLine -.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBInterfaceLine -.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // SMPTE ST 372, Figure 2: in field 1, interface line t carries picture lines 2t and
 // 2t + 1; in field 2, interface line 563 + t carries picture lines 2t + 1 and 2t + 2.
@@ -149,7 +149,7 @@ int DtSdiGeometry_LevelBInterfaceLine(int Field, int LineIndex)
     return (Line - 1) / 2 + DT_SDIGEOMETRY_LEVELB_FIELD1_END + 1;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBLink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiGeometry_LevelBLink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 int DtSdiGeometry_LevelBLink(int Field, int LineIndex)
 {

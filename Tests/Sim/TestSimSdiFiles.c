@@ -1761,6 +1761,173 @@ DT_TEST(LevelBThroughTheChannels)
     remove(SOURCE_FILE);
 }
 
+// Parses the picture of field Field of the raw frame of 3G level B that View describes,
+// with a parser that lists every packet. Sets *Samples to the samples of channel 1 and
+// returns the number of payload IDs.
+static int ParseField(DtSdiParser* Parser, DtSdiView* View, int Field, int32_t* Pcm,
+                      int* Samples, int* FrameNumber)
+{
+    static DtSdiAncPacket Packets[4096];
+    static uint16_t Words[4096 * 32];
+    DtSdiAudio Audio;
+    memset(&Audio, 0, sizeof(Audio));
+    Audio.Formats[0] = DT_SDI_AUDIO_PCM;
+    Audio.Channels[0].Samples = Pcm;
+    Audio.Channels[0].MaxSamples = 2048;
+    DtSdiAncData Anc;
+    memset(&Anc, 0, sizeof(Anc));
+    Anc.Packets = Packets;
+    Anc.MaxPackets = 4096;
+    Anc.Words = Words;
+    Anc.MaxWords = 4096 * 32;
+    *Samples = -1;
+    if (DtSdiView_SetLevelBField(View, Field) != DTAPI_OK ||
+        DtSdiParser_Parse(Parser, View, NULL, &Audio, &Anc) != DTAPI_OK)
+        return -1;
+    *Samples = Audio.Channels[0].NumSamples;
+    *FrameNumber = Audio.FrameNumber;
+    int Ids = 0;
+    for (int i = 0; i < Anc.NumPackets; i++)
+        Ids += Packets[i].Did == 0x41 ? 1 : 0;
+    return Ids;
+}
+
+// Checks raw frames of 3G level B, frames of the interface, through the channels, in
+// 1080p50 level B:
+// - WriteFrame sends each frame's two pictures, field 1 and field 2, after one black
+//   picture that puts field 1 on an odd frame ID, as the card's first frame is field 2;
+//   the sink holds the pictures with their fields, payload IDs and audio;
+// - played back on an input, ReadFrame gives frames of the interface again, each with
+//   both pictures' payload IDs and audio.
+DT_TEST(LevelBFramesWrittenAndRead)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    const int NumFrames = 3;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    SimDtPcie_SetTxRealTime(false);
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
+    uint8_t* Frames[3];
+    int Samples[3][2];
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    int32_t* Pcm = (int32_t*)calloc(2 * 2048, sizeof(int32_t));
+    DT_ASSERT(View != NULL && Builder != NULL && Parser != NULL && Pcm != NULL);
+    DtSdiAncFilter All;
+    memset(&All, 0, sizeof(All));
+    All.AnyDid = true;
+    All.Space = DT_SDI_ANC_SPACE_BOTH;
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
+    for (int k = 0; k < NumFrames; k++)
+    {
+        Frames[k] = (uint8_t*)calloc(Size, 1);
+        DT_ASSERT(Frames[k] != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frames[k], Size, VidStd, 10));
+        for (int f = 0; f < 2; f++)
+        {
+            DtSdiAudio Audio;
+            TwoChannels(&Audio, Pcm);
+            DT_ASSERT_OK(DtSdiView_SetLevelBField(View, f + 1));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL));
+            Samples[k][f] = Audio.NumSamplesUsed;
+        }
+    }
+
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(Fix.Out != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    for (int k = 0; k < NumFrames; k++)
+    {
+        DT_ASSERT_EQ(DtOutpChannel_WriteFrame(Fix.Out, Frames[k], (int)Size - 8, 10000),
+                     DTAPI_E_INVALID_SIZE);
+        DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Out, Frames[k], (int)Size, 10000));
+        if (k == 0)
+            DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    }
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
+    SimDtPcie_Reset(); // Closes the file
+
+    // The sink: a black picture, then field 1 and field 2 of each frame.
+    DtSdiFrameLayout Layout;
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, VidStd, 32));
+    const size_t PictureSize = DtSdiFrame_RawSize(&Layout, 10);
+    const size_t Padded = (PictureSize + 7) / 8 * 8;
+    DtSdiView* Picture = DtSdiView_Alloc();
+    DT_ASSERT(Picture != NULL);
+    FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
+    DT_ASSERT(Source != NULL);
+    for (int i = 0; i <= 2 * NumFrames; i++)
+    {
+        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)i, Padded, PictureSize);
+        DT_ASSERT(Sent != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(Picture, Sent, PictureSize, VidStd, 10, 1));
+        const int Field = DtSdiView_FindLevelBField(Picture);
+        DT_ASSERT_EQ(Field, i == 0 ? 0 : (i % 2 == 1 ? 1 : 2));
+        if (i > 0)
+        {
+            DT_ASSERT_EQ(fwrite(Sent, 1, PictureSize, Source), PictureSize);
+            for (size_t p = PictureSize; p < Padded; p++)
+                fputc(0, Source);
+        }
+        free(Sent);
+    }
+    DT_ASSERT_EQ(fclose(Source), 0);
+
+    // Played back: frames of the interface again.
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
+    Fix.Device = DtDevice_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(Fix.Device != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    uint8_t* Read = (uint8_t*)malloc(Size);
+    DT_ASSERT(Read != NULL);
+    for (int k = 0; k < 2 * NumFrames; k++)
+    {
+        int ReadSize = (int)Size;
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Read, &ReadSize, 30000));
+        DT_ASSERT_EQ((size_t)ReadSize, Size);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Read, Size, VidStd, 10));
+        int Got[2];
+        int Places[2];
+        for (int f = 0; f < 2; f++)
+            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, Pcm, &Got[f], &Places[f]), 2);
+        // Which of the frames it is, from its samples.
+        bool Known = false;
+        for (int j = 0; j < NumFrames; j++)
+            Known = Known || (Got[0] == Samples[j][0] && Got[1] == Samples[j][1]);
+        DT_ASSERT(Known);
+        DT_ASSERT_EQ(Places[0] % 2, 1);
+        DT_ASSERT_EQ(Places[1] % 2, 0);
+    }
+    DtInpChannel_Freep(&Fix.In);
+
+    free(Read);
+    for (int k = 0; k < NumFrames; k++)
+        free(Frames[k]);
+    free(Pcm);
+    DtSdiView_Free(Picture);
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SINK_FILE);
+    remove(SOURCE_FILE);
+}
+
 // Lends a frame on Fix->Out, builds it black and commits it. Sets *Phase to the time
 // DtOutpChannel_GetNextFrameTime gave for it less Index frame periods of Period
 // nanoseconds, or to 0 while it gave none.
@@ -1954,4 +2121,5 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
              DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
              DT_RUN(LendingRefusesAndDrops), DT_RUN(LevelBThroughTheChannels),
-             DT_RUN(FrameTimeKeepsItsGrid), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(FrameTimeKeepsItsGrid), DT_RUN(LevelBFramesWrittenAndRead),
+             DT_RUN(LeavesAFileForTheExamples))

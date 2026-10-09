@@ -20,6 +20,7 @@
 #include "DtPcieAbi.h"          // DT_FUNC_OPMODE_ and SDI rate values.
 #include "DtSdiRx.h"            // Interface being implemented.
 #include "OAL/OsThread.h"       // The process.
+#include "Sdi/DtSdiLevelB.h"    // Frames of 3G level B.
 #include "Sdi/DtSdiView.h"      // Views of the frames lent.
 #include "Video/DtFrameProps.h" // The frame rate and geometry.
 #include "Video/DtSdiFrame.h"   // The ring's format and the raw frame.
@@ -88,6 +89,15 @@ typedef struct DtSdiRx
     DtSdiFrameRxHeader LentHeader; // Its header
     size_t LentAvailable;          // The ring's load when it was lent
     int LentLevelBField;           // 3G level B: the field of the frame lent last
+
+    // 3G level B: a read takes a picture of field 1 and the picture of field 2 after it
+    // from the ring and puts them into one frame of the interface.
+    DtSdiLevelB* LevelB;     // The converter; NULL for any other standard
+    uint8_t* Pictures[2];    // A raw picture of each field, room for 16 bits a symbol
+    DtSdiView* FieldView;    // Finds a raw picture's field
+    bool HeldField1;         // Pictures[0] holds a field 1 that waits for its field 2
+    DtTimeOfDay HeldArrival; // Its arrival time
+    int ReadLevelBField;     // The field of the picture read last
 } DtSdiRx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -153,6 +163,48 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
     return Sdi->Ring.MaxLoad / DtSdiFrame_RxCodedSize(&Sdi->FrameLayout);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Frees what a read of 3G level B uses.
+//
+static void FreeLevelB(DtSdiRx* Sdi)
+{
+    DtAlloc_Free(Sdi->LevelB);
+    DtAlloc_Free(Sdi->Pictures[0]);
+    DtAlloc_Free(Sdi->Pictures[1]);
+    DtSdiView_Free(Sdi->FieldView);
+    Sdi->LevelB = NULL;
+    Sdi->Pictures[0] = Sdi->Pictures[1] = NULL;
+    Sdi->FieldView = NULL;
+    Sdi->HeldField1 = false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Sets up what a read of 3G level B uses, when the configured standard is level B.
+//
+static DtapiResult AllocLevelB(DtSdiRx* Sdi)
+{
+    const DtVidStdEntry* Info = DtVidStd_Find(Sdi->FrameLayout.VidStd);
+    if (Info == NULL || !Info->IsLevelB || Sdi->FrameLayout.Is4k)
+        return DTAPI_OK;
+    const size_t Size = DtSdiFrame_RawSize(&Sdi->FrameLayout, 16);
+    Sdi->LevelB = (DtSdiLevelB*)DtAlloc_Malloc(sizeof(DtSdiLevelB));
+    Sdi->Pictures[0] = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->Pictures[1] = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->FieldView = DtSdiView_Alloc();
+    if (Sdi->LevelB == NULL || Sdi->Pictures[0] == NULL || Sdi->Pictures[1] == NULL ||
+        Sdi->FieldView == NULL)
+    {
+        FreeLevelB(Sdi);
+        return DTAPI_E_OUT_OF_MEM;
+    }
+    const DtapiResult Result = DtSdiLevelB_Init(Sdi->LevelB, Sdi->FrameLayout.VidStd);
+    if (Result != DTAPI_OK)
+        FreeLevelB(Sdi);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReleaseChannel -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Unmaps the ring, frees the band buffers, forgets the layout, and sets the receive
@@ -169,6 +221,7 @@ static void ReleaseChannel(DtSdiRx* Sdi)
     Sdi->WrapLineBuffer = NULL;
     DtAlloc_Free(Sdi->BandSymbols);
     Sdi->BandSymbols = NULL;
+    FreeLevelB(Sdi);
     memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
     Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
 
@@ -349,6 +402,8 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     }
     if (Result == DTAPI_OK && FramesInRing(Sdi) < DT_SDIRX_RING_MIN_FRAMES)
         Result = DTAPI_E_DEV_DRIVER;
+    if (Result == DTAPI_OK)
+        Result = AllocLevelB(Sdi);
     if (Result != DTAPI_OK)
     {
         ReleaseChannel(Sdi);
@@ -356,6 +411,7 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
     }
 
     Sdi->InSync = false;
+    Sdi->HeldField1 = false;
     return DTAPI_OK;
 }
 
@@ -382,6 +438,7 @@ static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
     size_t Aligned = (size_t)WriteOffset / Alignment * Alignment;
 
     Sdi->InSync = false;
+    Sdi->HeldField1 = false;
     if (DtRing_Restart(&Sdi->Ring, Aligned) != 0 ||
         DtRing_SetWriteOffset(&Sdi->Ring, WriteOffset) != 0)
     {
@@ -488,6 +545,7 @@ static DtapiResult ApplyRxControl(DtSdiRx* Sdi, int RxControl)
     {
         DtRing_Restart(&Sdi->Ring, 0);
         Sdi->InSync = false;
+        Sdi->HeldField1 = false;
         Result = DtPcieCmd_ChSdiRxSetReadOffset(Drv, Sdi->ChSdiRx, 0);
         if (Result == DTAPI_OK)
             Result = DtPcieCmd_ChSdiRxSetOpMode(Drv, Sdi->ChSdiRx, DT_FUNC_OPMODE_RUN);
@@ -558,6 +616,7 @@ static DtapiResult ClearFifo(DtRx* Rx)
         return Result;
     Sdi->FifoOvfLatched = false;
     Sdi->InSync = false;
+    Sdi->HeldField1 = false;
     return DTAPI_OK;
 }
 
@@ -666,7 +725,9 @@ static DtapiResult CheckFrameBuffer(DtRx* Rx, int FrameSize, size_t* RawSize)
 {
     const DtSdiRx* Sdi = (const DtSdiRx*)Rx;
 
-    *RawSize = DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol);
+    *RawSize = Sdi->LevelB != NULL
+                   ? DtSdiLevelB_FrameSize(&Sdi->LevelB->Geo, Sdi->BitsPerSymbol)
+                   : DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol);
     if ((size_t)FrameSize < *RawSize)
         return DTAPI_E_BUF_TOO_SMALL;
     if (*RawSize > DT_SDIRX_FIFO_SIZE)
@@ -835,6 +896,7 @@ static DtapiResult FindFrame(DtSdiRx* Sdi, DtSdiFrameRxHeader* Header, size_t* A
             *Available = DtRing_Load(&Sdi->Ring);
         }
         Sdi->InSync = false;
+        Sdi->HeldField1 = false;
     }
 }
 
@@ -865,24 +927,22 @@ static DtapiResult FinishFrame(DtSdiRx* Sdi, const DtSdiFrameRxHeader* Header,
     return DTAPI_OK;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadOne -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Copies the next frame into Buffer if the ring holds all of it, and sets *ArrivalTime to
-// its arrival time. Returns DTAPI_OK with *Delivered true if a frame was copied, DTAPI_OK
-// with *Delivered false if none has arrived yet, or the driver's error.
+// Copies the frame at the head of the ring into Buffer as a raw frame, if the ring holds
+// all of it, and sets *ArrivalTime to its arrival time. Returns DTAPI_OK with *Delivered
+// true if a frame was copied, DTAPI_OK with *Delivered false if none has arrived yet, or
+// the driver's error.
 //
-static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
-                                bool* Delivered)
+static DtapiResult ReadOne(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                           bool* Delivered)
 {
-    DtSdiRx* Sdi = (DtSdiRx*)Rx;
     const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
     DtSdiFrameRxHeader Header;
     size_t Available = 0;
     bool Found = false;
 
     *Delivered = false;
-    if (Sdi->LentView != NULL)
-        return DTAPI_E_IN_USE;
     DtapiResult Result = FindFrame(Sdi, &Header, &Available, &Found);
     if (Result != DTAPI_OK || !Found)
         return Result;
@@ -904,6 +964,82 @@ static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalT
     Result = FinishFrame(Sdi, &Header, Available, ArrivalTime);
     *Delivered = Result == DTAPI_OK;
     return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Reads pictures of 3G level B from the ring until a picture of field 1 and the picture
+// of field 2 after it are there, and puts them into Buffer as one frame of the interface,
+// with the arrival time of field 1. A picture's field comes from the line of its payload
+// ID of link A, or else is the field after the last picture's. A field 2 without a field
+// 1 before it is left out; a field 1 followed by another field 1 gives way to it.
+//
+static DtapiResult DeliverLevelB(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                                 bool* Delivered)
+{
+    const int Bits = Sdi->BitsPerSymbol;
+    const size_t PictureSize = DtSdiFrame_RawSize(&Sdi->FrameLayout, Bits);
+
+    *Delivered = false;
+    for (;;)
+    {
+        uint8_t* Picture = Sdi->Pictures[Sdi->HeldField1 ? 1 : 0];
+        DtTimeOfDay Arrival;
+        bool Read = false;
+        DtapiResult Result = ReadOne(Sdi, Picture, &Arrival, &Read);
+        if (Result != DTAPI_OK || !Read)
+            return Result;
+
+        int Field = 0;
+        if (DtSdiView_SetRawPicture(Sdi->FieldView, Picture, PictureSize,
+                                    Sdi->FrameLayout.VidStd, Bits, 1) == DTAPI_OK)
+            Field = DtSdiView_FindLevelBField(Sdi->FieldView);
+        DtSdiView_Forget(Sdi->FieldView);
+        if (Field == 0)
+            Field = Sdi->ReadLevelBField == 1 ? 2 : 1;
+        Sdi->ReadLevelBField = Field;
+
+        if (Field == 1)
+        {
+            if (Sdi->HeldField1)
+            {
+                Sdi->Pictures[1] = Sdi->Pictures[0];
+                Sdi->Pictures[0] = Picture;
+            }
+            Sdi->HeldField1 = true;
+            Sdi->HeldArrival = Arrival;
+        }
+        else if (Sdi->HeldField1)
+        {
+            DtSdiLevelB_PutField(Sdi->LevelB, 1, Sdi->Pictures[0], Bits, Buffer, Bits);
+            DtSdiLevelB_PutField(Sdi->LevelB, 2, Picture, Bits, Buffer, Bits);
+            Sdi->HeldField1 = false;
+            if (ArrivalTime != NULL)
+                *ArrivalTime = Sdi->HeldArrival;
+            *Delivered = true;
+            return DTAPI_OK;
+        }
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Copies the next frame into Buffer if the ring holds all of it, and sets *ArrivalTime to
+// its arrival time. Returns DTAPI_OK with *Delivered true if a frame was copied, DTAPI_OK
+// with *Delivered false if none has arrived yet, or the driver's error. In 3G level B the
+// frame is one of the interface, made of two pictures; see DeliverLevelB.
+//
+static DtapiResult DeliverFrame(DtRx* Rx, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
+                                bool* Delivered)
+{
+    DtSdiRx* Sdi = (DtSdiRx*)Rx;
+
+    *Delivered = false;
+    if (Sdi->LentView != NULL)
+        return DTAPI_E_IN_USE;
+    if (Sdi->LevelB != NULL)
+        return DeliverLevelB(Sdi, Buffer, ArrivalTime, Delivered);
+    return ReadOne(Sdi, Buffer, ArrivalTime, Delivered);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LendFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

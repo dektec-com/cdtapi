@@ -826,7 +826,7 @@ DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel, DtSdiView* Fra
     return Result;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetNextFrameTime -.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetNextFrameTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The argument checks, then the channel's, then the side's.
 //

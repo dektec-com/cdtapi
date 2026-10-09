@@ -186,11 +186,12 @@ DT_TEST(Refusals)
     DtSdiParser* Parser = DtSdiParser_Alloc();
     DT_ASSERT(P != NULL && Builder != NULL && Parser != NULL);
     size_t Size = 0;
-    DT_ASSERT_EQ(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080P50B, 10, &Size),
-                 DTAPI_E_INVALID_VIDSTD);
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080P50B, 10, &Size));
+    DT_ASSERT_EQ(Size, 2 * P->Size);
     DT_ASSERT_EQ(
         DtSdiView_SetRawFrame(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10),
-        DTAPI_E_INVALID_VIDSTD);
+        DTAPI_E_INVALID_SIZE);
+    DT_ASSERT_EQ(DtSdiView_SetLevelBField(P->View, 1), DTAPI_E_STATE);
     DT_ASSERT_EQ(
         DtSdiView_SetRawPicture(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10, 3),
         DTAPI_E_INVALID_ARG);
@@ -199,9 +200,19 @@ DT_TEST(Refusals)
         DTAPI_E_INVALID_VIDSTD);
     DT_ASSERT_OK(DtSdiView_SetRawPicture(P->View, P->Frame, P->Size,
                                          DTAPI_VIDSTD_1080P50B, 10, 1));
-    DtSdiView_SetLevelBField(P->View, 0);
+    DT_ASSERT_EQ(DtSdiView_SetLevelBField(P->View, 3), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiView_SetLevelBField(NULL, 1), DTAPI_E_INVALID_ARG);
+    P->View->LevelBField = 0;
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
     DT_ASSERT_EQ(DtSdiParser_Parse(Parser, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
+    DtSdiView* Other = DtSdiView_Alloc();
+    DT_ASSERT(Other != NULL);
+    uint8_t* Hd = (uint8_t*)malloc(P->Size);
+    DT_ASSERT(Hd != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(Other, Hd, P->Size, DTAPI_VIDSTD_1080P50, 10));
+    DT_ASSERT_EQ(DtSdiView_SetLevelBField(Other, 1), DTAPI_E_INVALID_VIDSTD);
+    free(Hd);
+    DtSdiView_Free(Other);
     DtSdiParser_Free(Parser);
     DtSdiBuilder_Free(Builder);
     Picture_Free(P);
@@ -431,7 +442,7 @@ DT_TEST(PutAndTakeFields)
     DT_ASSERT(P[0] != NULL && P[1] != NULL && Back != NULL && Builder != NULL &&
               Converter != NULL);
     DT_ASSERT_OK(DtSdiLevelB_Init(Converter, VidStd));
-    const size_t FrameSize = DtSdiLevelB_FrameSize(Converter, 10);
+    const size_t FrameSize = DtSdiLevelB_FrameSize(&Converter->Geo, 10);
     DT_ASSERT_EQ(FrameSize, 2 * P[0]->Size);
     uint8_t* Frame = (uint8_t*)malloc(FrameSize);
     DT_ASSERT(Frame != NULL);
@@ -514,5 +525,88 @@ DT_TEST(PutAndTakeFields)
     Picture_Free(P[0]);
 }
 
+// Builds and parses a raw frame of 1080p50 level B, a frame of the interface, through a
+// view, as a program with an .sdi file does:
+// - DtSdiView_RawFrameSize gives twice a frame of level A, and GetActiveLine refuses it;
+// - field 1, then field 2 after DtSdiView_SetLevelBField, built with audio, give the
+//   same frame as the two pictures built alone and put in by the converter;
+// - parsed back, each field gives its payload IDs, its place in the cadence and its
+//   samples.
+DT_TEST(InterfaceFrameThroughAView)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
+    Picture* P[2] = {Picture_Alloc(VidStd), Picture_Alloc(VidStd)};
+    uint8_t* Frame = (uint8_t*)malloc(Size);
+    uint8_t* Expected = (uint8_t*)malloc(Size);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiBuilder* Alone = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = ParserOfEverything();
+    DtSdiLevelB* Converter = (DtSdiLevelB*)malloc(sizeof(DtSdiLevelB));
+    DT_ASSERT(P[0] != NULL && P[1] != NULL && Frame != NULL && Expected != NULL &&
+              View != NULL && Builder != NULL && Alone != NULL && Parser != NULL &&
+              Converter != NULL);
+    DT_ASSERT_EQ(Size, 2 * P[0]->Size);
+    DT_ASSERT_OK(DtSdiLevelB_Init(Converter, VidStd));
+    memset(Frame, 0, Size);
+    memset(Expected, 0, Size);
+
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, VidStd, 10));
+    DtSdiSymbolPtr Line;
+    DT_ASSERT_EQ(DtSdiView_GetActiveLine(View, 0, &Line), DTAPI_E_NOT_SUPPORTED);
+    int Used[2];
+    for (int f = 0; f < 2; f++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetLevelBField(View, f + 1));
+        Picture_SetAudio(P[f], 0);
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &P[f]->AudioIn, NULL));
+        Used[f] = P[f]->AudioIn.NumSamplesUsed;
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(P[f]->View, P[f]->Frame, P[f]->Size, VidStd,
+                                             10, f + 1));
+        DT_ASSERT_OK(DtSdiBuilder_Build(Alone, P[f]->View, NULL, &P[f]->AudioIn, NULL));
+        DtSdiLevelB_PutField(Converter, f + 1, P[f]->Frame, 10, Expected, 10);
+    }
+    DT_ASSERT_MEM(Frame, Expected, Size);
+
+    for (int f = 0; f < 2; f++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetLevelBField(View, f + 1));
+        Picture* Q = P[f];
+        memset(&Q->AudioOut, 0, sizeof(Q->AudioOut));
+        Q->AudioOut.Formats[0] = DT_SDI_AUDIO_PCM;
+        for (int c = 0; c < 2; c++)
+        {
+            Q->AudioOut.Channels[c].Samples = Q->Out[c];
+            Q->AudioOut.Channels[c].MaxSamples = LEVELB_MAX_SAMPLES;
+        }
+        memset(&Q->Anc, 0, sizeof(Q->Anc));
+        Q->Anc.Packets = Q->Packets;
+        Q->Anc.MaxPackets = LEVELB_MAX_PACKETS;
+        Q->Anc.Words = Q->Words;
+        Q->Anc.MaxWords = LEVELB_MAX_WORDS;
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Q->AudioOut, &Q->Anc));
+        DT_ASSERT_EQ(CountPackets(Q, 0x41, 0), 2);
+        DT_ASSERT_EQ(Q->AudioOut.Channels[0].NumSamples, Used[f]);
+        DT_ASSERT_EQ(Q->AudioOut.FrameNumber % 2 == 1 ? 1 : 2, f + 1);
+        DT_ASSERT_EQ(Q->Out[1][Used[f] - 1], Q->In[1][Used[f] - 1]);
+        uint32_t PayloadId = 0;
+        DT_ASSERT_OK(DtSdiView_GetPayloadId(View, &PayloadId));
+        DT_ASSERT_EQ(PayloadId, 0x8A490001u);
+    }
+
+    free(Converter);
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Alone);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(Expected);
+    free(Frame);
+    Picture_Free(P[1]);
+    Picture_Free(P[0]);
+}
+
 DT_TEST_MAIN("SdiLevelB", DT_RUN(LinesAndPayloadId), DT_RUN(Refusals), DT_RUN(Layout),
-             DT_RUN(Cadence), DT_RUN(PutAndTakeFields))
+             DT_RUN(Cadence), DT_RUN(PutAndTakeFields),
+             DT_RUN(InterfaceFrameThroughAView))

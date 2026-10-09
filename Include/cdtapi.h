@@ -890,6 +890,13 @@ CDTAPI_API DtapiResult DtInpChannel_Read(DtInpChannel* InpChannel, void* Buffer,
 // FrameBuffer in bytes; on return it is the size of the frame. Waits up to TimeOut
 // milliseconds for the frame, or without a limit for -1.
 //
+// On a port set to 3G level B the frame is a frame of the interface, as
+// DtSdiView_SetRawFrame() describes it: the channel takes a picture of field 1 and the
+// picture of field 2 after it, as the card holds them, and puts them together, with the
+// arrival time of field 1. A picture's field comes from the line of its payload ID of
+// link A, or else is the field after the last picture's. A field 2 without a field 1
+// before it, as at the start, is left out.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_BUF_TOO_SMALL    *FrameSize is 0, or FrameBuffer is smaller than the frame
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
@@ -1318,8 +1325,12 @@ CDTAPI_API DtapiResult DtOutpChannel_SetWorkerPool(DtOutpChannel* OutpChannel,
 // skips bytes, four at a time, until they start line 1. Bytes too few to tell are kept
 // for the next Write.
 //
+// On a port set to 3G level B, write whole frames with DtOutpChannel_WriteFrame(), which
+// takes their pictures apart.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_INVALID_SIZE  NumBytesToWrite is negative
+//   DTAPI_E_NOT_SUPPORTED the port is set to 3G level B
 //   DTAPI_E_INVALID_BUF   NumBytesToWrite or Buffer's address is not a multiple of 4, or
 //                         Buffer is NULL while there are bytes to write
 //   DTAPI_E_IDLE          the channel is idle, or was set idle meanwhile
@@ -1333,7 +1344,16 @@ CDTAPI_API DtapiResult DtOutpChannel_Write(DtOutpChannel* OutpChannel, const voi
 // card's buffer whole or not at all. Waits up to TimeOut milliseconds for room, or
 // without a limit for -1.
 //
+// On a port set to 3G level B the frame is a frame of the interface, as
+// DtSdiView_SetRawFrame() describes it, in 10 or 16 bits a symbol. The channel takes its
+// two pictures apart, and they go into the buffer one after the other, each whole or not
+// at all. The card puts the first frame of a run in field 2; so that each picture goes
+// out in its own field, the channel puts one black picture before field 1 when the next
+// frame would be field 2: at the start of a run, and after a black frame of the channel.
+//
 // Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_MODE     the port is set to 3G level B, and the transmit mode has
+//                            8 bits a symbol
 //   DTAPI_E_INVALID_TIMEOUT  TimeOut is 0 or below -1
 //   DTAPI_E_INVALID_SIZE     FrameSize is not positive, not a multiple of 4, or not the
 //                            size of a frame

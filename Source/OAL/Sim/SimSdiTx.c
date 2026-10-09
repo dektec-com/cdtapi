@@ -969,7 +969,7 @@ static double PartPeriodMs(const SimTxPort* Port, int VidStd)
     return 1000.0 * Props.FpsDen / Props.FpsNum / NumParts;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StampOnGrid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StampOnGrid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Puts a stamp that Event carries on a grid of frame periods of VidStd, as a card's
 // frames start on one: the first frame since RUN keeps the wall clock's time, and each
@@ -1502,7 +1502,7 @@ void SimDtPcie_StarveTx(int PortIndex, int Events)
     SimDtPcie_Unlock();
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_ShiftTxStamps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_ShiftTxStamps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 void SimDtPcie_ShiftTxStamps(int PortIndex, int64_t Ns, int Count)
 {

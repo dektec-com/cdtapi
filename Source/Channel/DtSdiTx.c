@@ -19,6 +19,7 @@
 #include "DtSdiTx.h"            // Interface being implemented.
 #include "OAL/OsDmaBuffer.h"    // The DMA buffer.
 #include "OAL/OsThread.h"       // The thread, its event, sleeping.
+#include "Sdi/DtSdiLevelB.h"    // Frames of 3G level B.
 #include "Sdi/DtSdiView.h"      // The view of a lent frame.
 #include "Video/DtFrameProps.h" // The frame rate.
 #include "Video/DtSdiFrame.h"   // The buffer's format and the raw frame.
@@ -159,6 +160,13 @@ typedef struct DtSdiTx
     bool BlackAllowed;   // Black frames may follow the first frame: see
                          // DT_SDITX_FIRST_BLACK_EVENT_SEQ
     int SendingFrameId;  // The frame ID of the last format event
+
+    // 3G level B: a frame written is one of the interface, whose two pictures go to the
+    // card one after the other.
+    DtSdiLevelB* LevelB;   // The converter; NULL for any other standard
+    uint8_t* Pictures[2];  // The pictures of a frame, room for 16 bits a symbol
+    uint8_t* BlackPicture; // A black picture, BlackPictureBits bits a symbol
+    int BlackPictureBits;  // 0 while BlackPicture holds none
 
     // The grid on which the frames start on the cable, from the driver's stamps; see
     // NoteStamp.
@@ -828,6 +836,48 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Frees what a write of 3G level B uses.
+//
+static void FreeLevelB(DtSdiTx* Sdi)
+{
+    DtAlloc_Free(Sdi->LevelB);
+    DtAlloc_Free(Sdi->Pictures[0]);
+    DtAlloc_Free(Sdi->Pictures[1]);
+    DtAlloc_Free(Sdi->BlackPicture);
+    Sdi->LevelB = NULL;
+    Sdi->Pictures[0] = Sdi->Pictures[1] = Sdi->BlackPicture = NULL;
+    Sdi->BlackPictureBits = 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AllocLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Sets up what a write of 3G level B uses, when the configured standard is level B.
+//
+static DtapiResult AllocLevelB(DtSdiTx* Sdi)
+{
+    FreeLevelB(Sdi);
+    const DtVidStdEntry* Info = DtVidStd_Find(Sdi->FrameLayout.VidStd);
+    if (Info == NULL || !Info->IsLevelB || Sdi->FrameLayout.Is4k)
+        return DTAPI_OK;
+    const size_t Size = DtSdiFrame_RawSize(&Sdi->FrameLayout, 16);
+    Sdi->LevelB = (DtSdiLevelB*)DtAlloc_Malloc(sizeof(DtSdiLevelB));
+    Sdi->Pictures[0] = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->Pictures[1] = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->BlackPicture = (uint8_t*)DtAlloc_Malloc(Size);
+    if (Sdi->LevelB == NULL || Sdi->Pictures[0] == NULL || Sdi->Pictures[1] == NULL ||
+        Sdi->BlackPicture == NULL)
+    {
+        FreeLevelB(Sdi);
+        return DTAPI_E_OUT_OF_MEM;
+    }
+    const DtapiResult Result = DtSdiLevelB_Init(Sdi->LevelB, Sdi->FrameLayout.VidStd);
+    if (Result != DTAPI_OK)
+        FreeLevelB(Sdi);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeStandardBuffers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The DMA controller lets go of the buffer, which is then freed, and the standard's
@@ -849,6 +899,7 @@ static void FreeStandardBuffers(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->BandSymbols);
     Sdi->BlackLines = Sdi->WrapLineBuffer = Sdi->PartialLine = NULL;
     Sdi->BandSymbols = NULL;
+    FreeLevelB(Sdi);
     memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
     Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     Sdi->CodedFrameSize = Sdi->RawFrameSize = 0;
@@ -944,7 +995,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     ConfigureJobRunner(Sdi);
     if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
         Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->BandSymbols == NULL) ||
-        !DtSdiFrame_WriteBlackLines(&Layout, Sdi->BlackLines))
+        !DtSdiFrame_WriteBlackLines(&Layout, Sdi->BlackLines) ||
+        AllocLevelB(Sdi) != DTAPI_OK)
     {
         FreeStandardBuffers(Sdi);
         return DTAPI_E_OUT_OF_MEM;
@@ -1419,9 +1471,12 @@ static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t BytesLeft)
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
     DtapiResult Result = DTAPI_OK;
 
-    // A program that lends frames does not also write them.
+    // A program that lends frames does not also write them. A frame of 3G level B goes
+    // through WriteFrame, which takes its pictures apart.
     if (Sdi->Lending)
         return DTAPI_E_IN_USE;
+    if (Sdi->LevelB != NULL)
+        return DTAPI_E_NOT_SUPPORTED;
 
     while (Result == DTAPI_OK)
     {
@@ -1527,6 +1582,45 @@ static DtapiResult WriteOneFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSi
             Sdi->FifoUfl = false;
     }
     ForgetPartialFrame(Sdi);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Writes a frame of the interface of 3G level B: takes its two pictures out, and writes
+// them one after the other, each as WriteOneFrame writes a frame. The frame IDs count the
+// frames the card sends from the start of the run, and the first is field 2: field 1
+// must have an odd ID and field 2 an even one. When the next ID is not the picture's,
+// at the start of a run or after a black frame of the thread, a black picture goes
+// first.
+//
+static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
+                               uint64_t Deadline)
+{
+    const int Bits = Sdi->BitsPerSymbol;
+    if (Bits != 10 && Bits != 16)
+        return DTAPI_E_INVALID_MODE;
+    if ((size_t)FrameSize != DtSdiLevelB_FrameSize(&Sdi->LevelB->Geo, Bits))
+        return DTAPI_E_INVALID_SIZE;
+    if (Sdi->BlackPictureBits != Bits)
+    {
+        DtSdiLevelB_BlackPicture(Sdi->LevelB, Sdi->BlackPicture, Bits);
+        Sdi->BlackPictureBits = Bits;
+    }
+
+    const int PictureSize = (int)Sdi->RawFrameSize;
+    for (int Field = 1; Field <= 2; Field++)
+        DtSdiLevelB_TakeField(Sdi->LevelB, Field, Frame, Bits, Sdi->Pictures[Field - 1],
+                              Bits);
+    DtapiResult Result = DTAPI_OK;
+    for (int Field = 1; Field <= 2 && Result == DTAPI_OK; Field++)
+    {
+        const bool Odd = Sdi->NextFrameId % 2 != 0;
+        if (Odd != (Field == 1))
+            Result = WriteOneFrame(Sdi, Sdi->BlackPicture, PictureSize, Deadline);
+        if (Result == DTAPI_OK)
+            Result = WriteOneFrame(Sdi, Sdi->Pictures[Field - 1], PictureSize, Deadline);
+    }
     return Result;
 }
 
@@ -1902,6 +1996,8 @@ static DtapiResult WriteFrame(DtTx* Tx, const uint8_t* Frame, int FrameSize,
         return DTAPI_E_IN_USE;
     if (Sdi->WriteStage != DT_SDITX_STAGE_SEARCH || Sdi->PartialLineBytes > 0)
         return DTAPI_E_INCOMP_FRAME;
+    if (Sdi->LevelB != NULL)
+        return WriteLevelB(Sdi, Frame, FrameSize, Deadline);
     return WriteOneFrame(Sdi, Frame, FrameSize, Deadline);
 }
 

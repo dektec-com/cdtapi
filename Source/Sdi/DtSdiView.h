@@ -15,6 +15,7 @@
 
 // CDTAPI includes
 #include "DtSdiGeometry.h" // Where the image lies.
+#include "DtSdiLevelB.h"   // Frames of the interface of 3G level B.
 #include "cdtapi_sdi.h"    // The view.
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -56,8 +57,14 @@ struct DtSdiView
     // For room for a frame in a transmit ring only.
     bool IsTx;    // The view describes room in an output channel's transmit ring
     bool IsBuilt; // The builder has written the whole frame since it was lent
-};
 
+    // For a raw frame of the interface of 3G level B, as the line carries it, only. The
+    // parser and the builder work on the picture of LevelBField through a copy.
+    bool IsInterfaceFrame;     // Frame is a frame of the interface
+    struct DtSdiView* Picture; // A view of the copy; NULL until first needed
+    uint8_t* PictureCopy;      // A raw picture, room for 16 bits a symbol
+    DtSdiLevelB* LevelB;       // The converter
+};
 // Buffers for decoding one 2160p line of a frame in a ring before it is read. Each thread
 // that reads lines needs its own.
 typedef struct DtSdiLineScratch
@@ -111,10 +118,11 @@ DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layo
 // when the view describes no picture of level B.
 int DtSdiView_FindLevelBField(const DtSdiView* View);
 
-// Sets which field of the interface frame, 1 or 2, the 3G level-B picture that View
-// describes is. A channel calls it when it lends a picture. For any other standard the
-// view keeps 0.
-void DtSdiView_SetLevelBField(DtSdiView* View, int Field);
+// Returns the view the parser and the builder work on for View: View itself, or for a
+// frame of the interface of 3G level B, the view of the copy of the picture of its
+// field. Take says to take that picture out of the frame into the copy first, as the
+// parser needs. Returns NULL when there is no memory for the copy.
+DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take);
 
 // Points View at one 3G level-B picture in the layout of level A, in the program's
 // memory, as the card holds it; Field (1 or 2) is its field of the interface frame. It

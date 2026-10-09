@@ -757,6 +757,21 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     if (!Frame->HasFrame || (Frame->Holder != NULL && !Frame->IsTx) ||
         (Frame->Geo.IsLevelB && Frame->LevelBField == 0))
         return DTAPI_E_STATE;
+    // A frame of the interface of 3G level B: the picture is built in a copy, and then
+    // put into its field's half of the frame.
+    if (Frame->IsInterfaceFrame)
+    {
+        DtSdiView* Picture = DtSdiView_PictureOf(Frame, false);
+        if (Picture == NULL)
+            return DTAPI_E_OUT_OF_MEM;
+        const DtapiResult Result =
+            DtSdiBuilder_Build(Builder, Picture, Image, Audio, Anc);
+        if (Result == DTAPI_OK)
+            DtSdiLevelB_PutField(Frame->LevelB, Frame->LevelBField, Frame->PictureCopy,
+                                 Frame->BitsPerSymbol, Frame->Frame,
+                                 Frame->BitsPerSymbol);
+        return Result;
+    }
     const DtSdiGeometry* Geo = &Frame->Geo;
     const int Field = Frame->LevelBField;
 

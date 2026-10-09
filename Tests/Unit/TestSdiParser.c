@@ -414,8 +414,9 @@ static const char* ParseAndCheck(const SdiFormat* Format, int Bits,
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Tests +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
-// Checks the size of every standard's raw frame and image, and that a view refuses the
-// standards a channel does not carry.
+// Checks the size of every standard's raw frame and image; of 3G level B the raw frame
+// is a frame of the interface. A view refuses 2160p on level-B links, which a channel
+// does not carry.
 DT_TEST(SizesEveryStandard)
 {
     for (int i = 0; i < SDI_FORMAT_COUNT; i++)
@@ -425,10 +426,19 @@ DT_TEST(SizesEveryStandard)
         int Width = 0;
         int Height = 0;
         int Strides[3];
-        if (!IsCarried(F))
+        if (!IsCarried(F) && F->Payload == 0x98)
         {
             SDI_ASSERT_EQ(F, DtSdiView_RawFrameSize(F->VidStd, 10, &Size),
                           DTAPI_E_INVALID_VIDSTD);
+            continue;
+        }
+        if (!IsCarried(F))
+        {
+            // A raw frame of 3G level B is a frame of the interface: the lines of two
+            // pictures, padded once.
+            SDI_ASSERT_EQ(F, DtSdiView_RawFrameSize(F->VidStd, 10, &Size), DTAPI_OK);
+            SDI_ASSERT_EQ(F, Size,
+                          ((size_t)F->Lines * LineSymbols(F) * 2 * 10 + 63) / 64 * 8);
             continue;
         }
         SDI_ASSERT_EQ(F, DtSdiView_RawFrameSize(F->VidStd, 10, &Size), DTAPI_OK);
@@ -614,7 +624,7 @@ DT_TEST(Refusals)
     DT_ASSERT_EQ(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 8),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_1080P50B, 10),
-                 DTAPI_E_INVALID_VIDSTD);
+                 DTAPI_E_INVALID_SIZE);
     DT_ASSERT_EQ(DtSdiView_SetRawFrame(View, NULL, Size, F->VidStd, 10),
                  DTAPI_E_INVALID_ARG);
     DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));

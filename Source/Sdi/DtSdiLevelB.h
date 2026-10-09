@@ -59,9 +59,16 @@ typedef struct DtSdiLevelB
     uint16_t Line[2 * DT_SDILEVELB_MAX_LINK_WORDS]; // One interface line
 } DtSdiLevelB;
 
-// Returns the size in bytes of a frame of the interface with BitsPerSymbol (10 or 16)
-// bits per symbol, padding included, as DtSdiFrame_RawSize() gives that of a raw frame.
-size_t DtSdiLevelB_FrameSize(const DtSdiLevelB* Converter, int BitsPerSymbol);
+// Writes a black picture into Picture, a raw frame of level A of the standard with
+// BitsPerSymbol bits per symbol: blanking with the timing of level A, and CRC words for
+// the transmitter.
+void DtSdiLevelB_BlackPicture(DtSdiLevelB* Converter, uint8_t* Picture,
+                              int BitsPerSymbol);
+
+// Returns the size in bytes of a frame of the interface of Geo's 3G level-B standard,
+// with BitsPerSymbol (10 or 16) bits per symbol, padding included, as
+// DtSdiFrame_RawSize() gives that of a raw frame.
+size_t DtSdiLevelB_FrameSize(const DtSdiGeometry* Geo, int BitsPerSymbol);
 
 // Sets up Converter for 3G level-B standard VidStd.
 //

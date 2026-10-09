@@ -653,6 +653,8 @@ DT_TEST(SdiCalls)
     uint32_t PayloadId = 0;
     DT_ASSERT(IsOneOf(DtSdiView_GetPayloadId(View, &PayloadId), DTAPI_E_NOT_FOUND,
                       DTAPI_E_NOT_SUPPORTED));
+    // 1080i50 is not 3G level B, so it has no field to choose.
+    DT_ASSERT_EQ(DtSdiView_SetLevelBField(View, 1), DTAPI_E_INVALID_VIDSTD);
 
     int Width = 0;
     int Height = 0;

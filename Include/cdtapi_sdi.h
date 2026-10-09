@@ -7,8 +7,8 @@
 // An SDI frame carries more than its image. It also carries timing references, line
 // numbers, CRCs, embedded audio and other ancillary data. A parser takes a frame apart
 // into the image, the audio and the ancillary packets. A builder puts a frame together
-// from these parts and adds everything else the frame needs. Both handle SD, HD,
-// 3G level A, and 2160p over one 6G or 12G link.
+// from these parts and adds everything else the frame needs. Both handle SD, HD, 3G
+// level A and level B, and 2160p over one 6G or 12G link.
 //
 // Neither the parser nor the builder needs a card. Both work on a view of a frame. A
 // view records where the lines of the frame are, and creating it copies nothing. A view
@@ -147,7 +147,8 @@ CDTAPI_API void DtSdiView_Freep(DtSdiView** View);
 //   DTAPI_E_STATE           the view does not describe a frame, or describes a frame
 //                           that an output channel lent, which is still being built
 //   DTAPI_E_INVALID_LINE    Line is not a line of the image
-//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links
+//   DTAPI_E_NOT_SUPPORTED   the frame is 2160p, whose lines are spread over its links,
+//                           or a raw frame of 3G level B, whose lines hold two links
 CDTAPI_API DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
                                                DtSdiSymbolPtr* Symbols);
 
@@ -175,12 +176,25 @@ CDTAPI_API DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* P
 
 // Computes the size in bytes of a raw frame, as DtInpChannel_ReadFrame() delivers it.
 // The frame has video standard VidStd and BitsPerSymbol bits per symbol. The size
-// includes the padding at the end of the frame and is returned in *Size.
+// includes the padding at the end of the frame and is returned in *Size. For 3G level B
+// the raw frame is a frame of the interface, holding two pictures; see
+// DtSdiView_SetRawFrame().
 //
 // Returns DTAPI_OK, DTAPI_E_INVALID_VIDSTD or DTAPI_E_INVALID_ARG. These occur in the
 // same cases as for DtSdiView_SetRawFrame().
 CDTAPI_API DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol,
                                               size_t* Size);
+
+// Chooses which of the two pictures of a raw frame of 3G level B the parser reads and the
+// builder builds: Field 1, the earlier picture, or Field 2. DtSdiView_SetRawFrame()
+// starts with field 1. For a frame that a channel lent, the channel has set the field
+// already.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG     View is NULL, or Field is not 1 or 2
+//   DTAPI_E_STATE           the view does not describe a frame
+//   DTAPI_E_INVALID_VIDSTD  the frame is not of 3G level B
+CDTAPI_API DtapiResult DtSdiView_SetLevelBField(DtSdiView* View, int Field);
 
 // Points View at a raw frame in the program's memory. Frame holds the frame, of video
 // standard VidStd. BitsPerSymbol says how its symbols are stored:
@@ -193,9 +207,18 @@ CDTAPI_API DtapiResult DtSdiView_RawFrameSize(int VidStd, int BitsPerSymbol,
 // writes all of it. If the view describes a frame of an input channel, release that
 // frame first with DtInpChannel_ReleaseFrame().
 //
+// A raw frame of 3G level B is a frame of the interface as the line carries it: an
+// interlaced frame of half the picture rate, which holds two pictures as field 1 and
+// field 2 (SMPTE ST 372), its lines the words of link B and link A interleaved (ST 424).
+// It is twice the size of a frame of level A. DtSdiView_SetLevelBField() chooses the
+// picture; the parser reads it, or the builder builds it, through a copy that the view
+// keeps, and the builder writes only that picture's half of the frame.
+// DtSdiView_GetActiveLine() does not take such a frame. Line 1 of a field-1 picture
+// belongs in the frame before, and is blanking in the copy (ST 372).
+//
 // Returns DTAPI_OK, or:
-//   DTAPI_E_INVALID_VIDSTD  VidStd is not a standard of SD, HD, 3G level A, or 2160p
-//                           over one link
+//   DTAPI_E_INVALID_VIDSTD  VidStd is not a standard of SD, HD, 3G, or 2160p over one
+//                           link
 //   DTAPI_E_INVALID_ARG     Frame is NULL, or BitsPerSymbol is not 10 or 16
 //   DTAPI_E_INVALID_SIZE    Size is not the size of such a frame
 //   DTAPI_E_IN_USE          View describes a frame that an input channel holds

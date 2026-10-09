@@ -400,6 +400,13 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
     if (!Frame->HasFrame || Frame->IsTx ||
         (Frame->Geo.IsLevelB && Frame->LevelBField == 0))
         return DTAPI_E_STATE;
+    // A frame of the interface of 3G level B: its picture is taken out into a copy.
+    if (Frame->IsInterfaceFrame)
+    {
+        Frame = DtSdiView_PictureOf(Frame, true);
+        if (Frame == NULL)
+            return DTAPI_E_OUT_OF_MEM;
+    }
     DtapiResult Result = DTAPI_OK;
     if (Image != NULL)
         Result = DtSdiImage_Check(Image, &Frame->Geo);
