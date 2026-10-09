@@ -316,6 +316,36 @@ DTAPI. `DtInpChannel_GetTsRateBps` and `DtInpChannel_GetStatus` report what arri
 the flags say when the receive FIFO overflowed or the input lost sync, and when the
 transmit FIFO ran dry. `DtReceiveTs` and `DtTransmitTs` in the examples do all of this.
 
+## Raw RTP
+
+The AV FIFOs packetize ST 2110 video and audio themselves. For any other RTP stream, or
+a program that does its own RTP, a FIFO passes packets as they are, one frame per
+packet, over a software pipe. `MaxRate`, in bytes a second, sizes the pipe's buffer.
+
+    const St2110_TxConfigRaw Tx = {true, 20000000}; // The program writes the RTP header
+    AvFifo_TxFifo_ConfigureRaw(TxFifo, &Tx);
+    ...
+    AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(TxFifo, Size);
+    memcpy(Frame->Data, Packet, Size); // Header and payload, at most 1460 bytes
+    Frame->NumValidBytes = Size;
+    Frame->ToD = When;                 // The card sends the packet at this time
+    AvFifo_TxFifo_Write(TxFifo, Frame);
+
+Without `CustomRtpHeader`, a frame is a payload and the FIFO writes the header: version
+2, the payload type of the IP parameters, a sequence number that counts up, the FIFO's
+SSRC, and the frame's `RtpTime` and `Marker`.
+
+On the other side, every packet that passes the IP filter becomes a frame, with its RTP
+timestamp in `RtpTime`, its marker bit in `Marker` and the card's time of its arrival in
+`ToD`:
+
+    const St2110_RxConfigRaw Rx = {true, 20000000}; // Whole packets, header included
+    AvFifo_RxFifo_ConfigureRaw(RxFifo, &Rx);
+
+Without `IncludeRtpHeader`, a frame holds the payload alone: the FIFO leaves out the
+header, its CSRCs, its extension and its padding. A jump in the sequence numbers counts
+in the statistics' `Gaps`.
+
 ## NMOS
 
 The NMOS bridge, in `cdtapi_nmos.h`, connects the AV FIFOs of an IP port to NMOS. With
