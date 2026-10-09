@@ -55,11 +55,11 @@ uint64_t DtSdiAudio_HdBch(const uint16_t* Words);
 // packet it takes the four samples. From a control packet it takes the frame number,
 // unless an earlier packet already gave one other than 0. When Check is true, it checks
 // a data packet's BCH code and checksum. The packet's first ADF word must be
-// Found->Words - 6.
+// Found->Words - 6. A packet with another DID than those of HD audio is ignored.
 void DtSdiAudio_TakeHd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check);
 
 // Takes the content of an audio packet of SMPTE ST 272 (SD). From a data packet it
 // takes the subframes. From a control packet it takes the frame number, unless an
 // earlier packet already gave one other than 0. When Check is true, it checks the
-// checksum.
+// checksum. A packet with another DID than those of SD audio is ignored.
 void DtSdiAudio_TakeSd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check);

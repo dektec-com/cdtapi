@@ -1401,6 +1401,81 @@ DT_TEST(AudioSd)
         DT_FAIL("%s", Failure);
 }
 
+// Checks that the parser leaves alone a packet with the DID of the other kind of audio:
+// SD audio's in an HD frame, and HD audio's in an SD frame. Such a packet carries no
+// audio of the frame's kind, so no channel may be present and no packet counted wrong.
+DT_TEST(AudioOfTheOtherKind)
+{
+    static const TestPacket InHd[] = {
+        {20, true, 1, true, 0xFF, 0x00, 24, false},
+        {20, true, 1, true, 0xF8, 0x00, 24, false},
+        {20, true, 1, true, 0xEF, 0x00, 24, false},
+        {20, true, 1, true, 0xEC, 0x00, 24, false},
+    };
+    static const TestPacket InSd[] = {
+        {40, true, 1, false, 0xE7, 0x00, 24, false},
+        {40, true, 1, false, 0xE4, 0x00, 24, false},
+        {40, true, 1, false, 0xE3, 0x00, 24, false},
+        {40, true, 1, false, 0xE0, 0x00, 24, false},
+    };
+    static const struct
+    {
+        const char* Name;
+        const TestPacket* Packets;
+        int PayloadLine;
+    } Cases[] = {{"1080I50", InHd, 10}, {"625I50", InSd, 9}};
+
+    char Message[160];
+    TestAudio* T = (TestAudio*)malloc(sizeof(TestAudio));
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiView* View = DtSdiView_Alloc();
+    DT_ASSERT(T != NULL && Parser != NULL && View != NULL);
+    DtSdiParser_SetAudioChecks(Parser, true);
+
+    const char* Failure = NULL;
+    for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]) && Failure == NULL; c++)
+    {
+        const SdiFormat* F = FindFormat(Cases[c].Name);
+        size_t Size = 0;
+        uint8_t* Frame = BuildFrame(F, 10, &Size);
+        if (Frame == NULL)
+        {
+            Failure = "no frame";
+            break;
+        }
+        PutPackets(Frame, 10, F, Cases[c].Packets, 4, Cases[c].PayloadLine);
+        TestAudio_Init(T, DT_SDI_AUDIO_PCM, 8);
+        const char* What = NULL;
+        if (DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10) != DTAPI_OK ||
+            DtSdiParser_Parse(Parser, View, NULL, &T->Audio, NULL) != DTAPI_OK)
+        {
+            What = "Parse failed";
+        }
+        for (int ch = 0; ch < DT_SDI_AUDIO_MAX_CHANNELS && What == NULL; ch++)
+        {
+            if (T->Audio.Channels[ch].Present || T->Audio.Channels[ch].NumSamples != 0)
+                What = "a channel is present";
+        }
+        for (int g = 0; g < 4 && What == NULL; g++)
+        {
+            if (T->Audio.NumPacketErrors[g] != 0)
+                What = "a packet is counted wrong";
+        }
+        if (What != NULL)
+        {
+            snprintf(Message, sizeof(Message), "%s: %s", Cases[c].Name, What);
+            Failure = Message;
+        }
+        free(Frame);
+    }
+
+    DtSdiView_Free(View);
+    DtSdiParser_Free(Parser);
+    free(T);
+    if (Failure != NULL)
+        DT_FAIL("%s", Failure);
+}
+
 // Checks which audio buffers the parser refuses before it writes anything, in 1080i59.94.
 // The test checks that:
 // - a channel with room for 1601 samples gives DTAPI_E_BUF_TOO_SMALL, since a frame
@@ -1716,5 +1791,6 @@ DT_TEST_MAIN("SdiParser", DT_RUN(SizesEveryStandard), DT_RUN(LeastStrides),
              DT_RUN(ActiveLinesWhereTheyLie), DT_RUN(Refusals),
              DT_RUN(FramesOfTheSdiMuxer), DT_RUN(AncPacketsHd),
              DT_RUN(ImageWhenPacketsAreLost), DT_RUN(AncPacketsSdAnd4k),
-             DT_RUN(NoPayloadId), DT_RUN(AudioHd), DT_RUN(AudioSd), DT_RUN(AudioRefusals),
+             DT_RUN(NoPayloadId), DT_RUN(AudioHd), DT_RUN(AudioSd),
+             DT_RUN(AudioOfTheOtherKind), DT_RUN(AudioRefusals),
              DT_RUN(MaxSamplesPerRate), DT_RUN(ImageOverWorkerPool))

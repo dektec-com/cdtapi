@@ -199,10 +199,15 @@ DtapiResult DtSdiAudio_Check(const DtSdiAudio* Audio, int VidStd)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_TakeHd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// A packet with a DID of SD audio is not HD audio, and is left alone: its group would
+// lie outside the four.
+//
 void DtSdiAudio_TakeHd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check)
 {
     const uint8_t Did = Found->Did;
-    if (Did >= 0xE0 && Did <= 0xE3)
+    if (Did < 0xE0 || Did > 0xE7)
+        return;
+    if (Did <= 0xE3)
     {
         // A control packet: E3 for group 1 down to E0 for group 4.
         if (Found->NumWords > 0 && Audio->FrameNumber == 0)
@@ -232,10 +237,15 @@ void DtSdiAudio_TakeHd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiAudio_TakeSd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
+// A packet with a DID of HD audio is not SD audio, and is left alone: its group would
+// lie outside the four.
+//
 void DtSdiAudio_TakeSd(DtSdiAudio* Audio, const DtSdiAncFound* Found, bool Check)
 {
     const uint8_t Did = Found->Did;
-    if (Did >= 0xEC && Did <= 0xEF)
+    if ((Did < 0xEC || Did > 0xEF) && Did < 0xF8)
+        return;
+    if (Did <= 0xEF)
     {
         // A control packet: EF for group 1 down to EC for group 4.
         if (Found->NumWords > 0 && Audio->FrameNumber == 0)
