@@ -976,6 +976,11 @@ static DtapiResult ReadOne(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* ArrivalTi
 // ID of link A, or else is the field after the last picture's. A field 2 without a field
 // 1 before it is left out; a field 1 followed by another field 1 gives way to it.
 //
+// It reads at most three pictures, a field 2 left out and a pair, and then returns
+// without a frame, so that the read's timeout counts: a reader that has fallen behind
+// the card finds the ring full on every call, and may lose a field each time it is
+// lapped.
+//
 static DtapiResult DeliverLevelB(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* ArrivalTime,
                                  bool* Delivered)
 {
@@ -983,7 +988,7 @@ static DtapiResult DeliverLevelB(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* Arr
     const size_t PictureSize = DtSdiFrame_RawSize(&Sdi->FrameLayout, Bits);
 
     *Delivered = false;
-    for (;;)
+    for (int Count = 0; Count < 3; Count++)
     {
         uint8_t* Picture = Sdi->Pictures[Sdi->HeldField1 ? 1 : 0];
         DtTimeOfDay Arrival;
@@ -1024,6 +1029,7 @@ static DtapiResult DeliverLevelB(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* Arr
             return DTAPI_OK;
         }
     }
+    return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DeliverFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
