@@ -151,6 +151,12 @@ typedef struct DtSdiTx
     bool BlackAllowed;   // Black frames may follow the first frame: see
                          // DT_SDITX_FIRST_BLACK_EVENT_SEQ
     int SendingFrameId;  // The frame ID of the last format event
+
+    // The start of the last frame the card sent, from the first format event of that
+    // frame: its frame ID and the time of day it started on the cable.
+    bool StartValid;       // A start was seen since the channel held
+    int StartFrameId;      // Its frame ID, 16 bits
+    DtTimeOfDay StartTime; // Its start, on the card's clock
 } DtSdiTx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -350,6 +356,24 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Thread +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Takes the frame a format event names as the one going out. The first event of a frame
+// with a valid stamp gives that frame's start on the cable.
+//
+static void NoteEvent(DtSdiTx* Sdi, const DtSdiTxFEvent* Event)
+{
+    Sdi->FirstEventSeen = true;
+    Sdi->SendingFrameId = Event->FrameId;
+    if (Event->SeqNumber == 0 && Event->SofTimeValid)
+    {
+        Sdi->StartValid = true;
+        Sdi->StartFrameId = Event->FrameId;
+        Sdi->StartTime.Seconds = Event->SofSeconds;
+        Sdi->StartTime.Nanoseconds = Event->SofNanoseconds;
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalKeeperThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // While sending: waits for the formatter's format events, the only waiter for them,
@@ -388,8 +412,7 @@ static void SignalKeeperThread(void* Context)
         }
         if (Result == DTAPI_OK)
         {
-            Sdi->FirstEventSeen = true;
-            Sdi->SendingFrameId = Event.FrameId;
+            NoteEvent(Sdi, &Event);
             if (Event.FrameId != 0 || Event.SeqNumber >= DT_SDITX_FIRST_BLACK_EVENT_SEQ)
                 Sdi->BlackAllowed = true;
             if (Event.Underflow)
@@ -535,6 +558,7 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
     Sdi->FirstEventSeen = false;
     Sdi->BlackAllowed = false;
     Sdi->SendingFrameId = 0;
+    Sdi->StartValid = false;
     ForgetPartialFrame(Sdi);
     Sdi->Tx.TxControl = DTAPI_TXCTRL_HOLD;
     return DTAPI_OK;
@@ -1542,7 +1566,35 @@ static DtapiResult LendFrame(DtTx* Tx, DtSdiView* View, void* Holder, uint64_t D
             DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Coded + Layout->TxStride);
         }
     }
+    // The IDs count the frames the card sends from 0 at the start of the run, and the
+    // first frame of a run is field 2 of 3G level B.
+    DtSdiView_SetLevelBField(View, Sdi->NextFrameId % 2 == 0 ? 2 : 1);
     Sdi->LentView = View;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetNextFrameTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The next frame has ID NextFrameId: a lent frame, or the frame being written, keeps it
+// until it is committed. Adds the frames from the last start the card stamped to that
+// frame, times the frame period, to that start. The period is worked out from the exact
+// rate.
+//
+static DtapiResult GetNextFrameTime(DtTx* Tx, DtTimeOfDay* StartTime)
+{
+    DtSdiTx* Sdi = (DtSdiTx*)Tx;
+
+    if (!Sdi->StartValid)
+        return DTAPI_E_NOT_STARTED;
+
+    int Num = 0;
+    int Den = 0;
+    DtVidStd_FrameRate(Sdi->FrameLayout.VidStd, &Num, &Den);
+    const int64_t Frames = (Sdi->NextFrameId - Sdi->StartFrameId) & 0xFFFF;
+    const int64_t Ns = (Frames * Den * 1000000000LL + Num / 2) / Num;
+    const int64_t Total = (int64_t)Sdi->StartTime.Nanoseconds + Ns;
+    StartTime->Seconds = Sdi->StartTime.Seconds + (uint32_t)(Total / 1000000000LL);
+    StartTime->Nanoseconds = (uint32_t)(Total % 1000000000LL);
     return DTAPI_OK;
 }
 
@@ -1810,8 +1862,7 @@ static void WaitUntilSent(DtTx* Tx)
 
         if (Result == DTAPI_OK)
         {
-            Sdi->FirstEventSeen = true;
-            Sdi->SendingFrameId = Event.FrameId;
+            NoteEvent(Sdi, &Event);
             Since = OsTime_MonotonicMs();
         }
         else if (Result != DTAPI_E_TIMEOUT)
@@ -1859,6 +1910,7 @@ static const DtTxBackend g_SdiTxBackend = {
     .WriteFrame = WriteFrame,
     .LendFrame = LendFrame,
     .CommitLentFrame = CommitLentFrame,
+    .GetNextFrameTime = GetNextFrameTime,
     .WakeWaitingWrite = WakeWaitingWrite,
     .WaitUntilSent = WaitUntilSent,
 };

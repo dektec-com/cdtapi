@@ -106,9 +106,14 @@ DtapiResult DtSdiView_SetRingFrame(DtSdiView* View, const DtSdiFrameLayout* Layo
                                    uint8_t* RingBase, size_t RingSize, size_t LinesStart,
                                    void* Holder);
 
-// Sets the field of the interface frame that the 3G level-B picture View describes is: 1
-// or 2. A channel calls it when it lends a picture. For any other standard the view keeps
-// 0.
+// Returns which field of the interface frame, 1 or 2, the 3G level-B picture that View
+// describes is, as the line of its payload ID of link A gives it; 0 when it has none, or
+// when the view describes no picture of level B.
+int DtSdiView_FindLevelBField(const DtSdiView* View);
+
+// Sets which field of the interface frame, 1 or 2, the 3G level-B picture that View
+// describes is. A channel calls it when it lends a picture. For any other standard the
+// view keeps 0.
 void DtSdiView_SetLevelBField(DtSdiView* View, int Field);
 
 // Points View at one 3G level-B picture in the layout of level A, in the program's

@@ -129,6 +129,13 @@ struct DtTxBackend
     DtapiResult (*LendFrame)(DtTx* Tx, DtSdiView* View, void* Holder, uint64_t Deadline);
     DtapiResult (*CommitLentFrame)(DtTx* Tx, DtSdiView* View);
 
+    // GetNextFrameTime: the time of day at which the next frame the program hands over,
+    // a lent frame or the next one written, starts on the cable, predicted from the
+    // start of the last frame the card stamped. Returns DTAPI_E_NOT_STARTED when the
+    // card has stamped no frame of this run. Called while the channel is not idle. NULL
+    // gives DTAPI_E_NOT_SDI_MODE.
+    DtapiResult (*GetNextFrameTime)(DtTx* Tx, DtTimeOfDay* StartTime);
+
     // Wakes a write that waits for room, so that a detach can go ahead.
     void (*WakeWaitingWrite)(DtTx* Tx);
 

@@ -1616,6 +1616,150 @@ DT_TEST(BuilderFillsLentFrames)
     }
 }
 
+// Returns the time of day T in nanoseconds.
+static int64_t NsOf(const DtTimeOfDay* T)
+{
+    return (int64_t)T->Seconds * 1000000000 + T->Nanoseconds;
+}
+
+// Checks 3G level B through the channels, in 1080p50 level B:
+// - an output channel lends frames as field 2, field 1, field 2 and so on from the start
+//   of the run, and the builder lays them out for that field;
+// - DtOutpChannel_GetNextFrameTime has no time before the card sends, and then gives
+//   times that go on by at least a frame period from frame to frame;
+// - the frames the sink holds give the same fields from the line of their payload ID;
+// - played back on an input, the channel lends them with those fields, and the parser
+//   gives each picture's audio and place in the cadence.
+DT_TEST(LevelBThroughTheChannels)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    const int NumFrames = 8;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    SimDtPcie_SetTxRealTime(false);
+    DT_ASSERT(SimDtPcie_SetSdiSink("2:" SINK_FILE));
+
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    int32_t* Pcm = (int32_t*)calloc(2 * 2048, sizeof(int32_t));
+    int32_t* PcmOut = (int32_t*)calloc(2 * 2048, sizeof(int32_t));
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(View != NULL && Builder != NULL && Parser != NULL && Pcm != NULL &&
+              PcmOut != NULL && Fix.Out != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, VidStd));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+    DtTimeOfDay Next;
+    DT_ASSERT_EQ(DtOutpChannel_GetNextFrameTime(Fix.Out, &Next), DTAPI_E_NOT_STARTED);
+
+    int Samples[16];
+    int64_t LastNs = 0;
+    for (int k = 0; k < NumFrames; k++)
+    {
+        DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 10000));
+        DT_ASSERT_EQ(View->LevelBField, k % 2 == 0 ? 2 : 1);
+        if (k >= 2)
+        {
+            // The card started with the second frame; wait for its first stamp.
+            DtapiResult Result = DTAPI_E_NOT_STARTED;
+            const uint64_t Since = OsTime_MonotonicMs();
+            while ((Result = DtOutpChannel_GetNextFrameTime(Fix.Out, &Next)) ==
+                       DTAPI_E_NOT_STARTED &&
+                   OsTime_MonotonicMs() - Since < 2000)
+                OsTime_SleepMs(1);
+            DT_ASSERT_OK(Result);
+            DT_ASSERT(NsOf(&Next) > 0);
+            if (LastNs > 0)
+                DT_ASSERT(NsOf(&Next) - LastNs >= 20000000 - 1000);
+            LastNs = NsOf(&Next);
+        }
+        DtSdiAudio Audio;
+        TwoChannels(&Audio, Pcm);
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL));
+        Samples[k] = Audio.NumSamplesUsed;
+        DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix.Out, View));
+        if (k == 1)
+            DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    }
+    DT_ASSERT_EQ(Samples[0] + Samples[1], 1920);
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtDevice_Freep(&Fix.Device);
+    SimDtPcie_Reset(); // Closes the file
+
+    // The frames in the sink: their fields from their payload IDs, and their audio. They
+    // go into a file of their own, without the black frame that may follow them.
+    FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
+    DT_ASSERT(Source != NULL);
+    DtSdiFrameLayout Layout;
+    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, VidStd, 32));
+    const size_t Size = DtSdiFrame_RawSize(&Layout, 10);
+    const size_t Padded = (Size + 7) / 8 * 8;
+    DtSdiAudio Out;
+    memset(&Out, 0, sizeof(Out));
+    Out.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        Out.Channels[c].Samples = PcmOut + 2048 * c;
+        Out.Channels[c].MaxSamples = 2048;
+    }
+    for (int k = 0; k < NumFrames; k++)
+    {
+        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)k, Padded, Size);
+        DT_ASSERT(Sent != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(View, Sent, Size, VidStd, 10, 1));
+        const int Field = DtSdiView_FindLevelBField(View);
+        DT_ASSERT_EQ(Field, k % 2 == 0 ? 2 : 1);
+        DtSdiView_SetLevelBField(View, Field);
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Out, NULL));
+        DT_ASSERT_EQ(Out.Channels[0].NumSamples, Samples[k]);
+        DT_ASSERT_EQ(Out.FrameNumber, Field);
+        DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
+        for (size_t p = Size; p < Padded; p++)
+            fputc(0, Source);
+        free(Sent);
+    }
+    DT_ASSERT_EQ(fclose(Source), 0);
+
+    // The same frames played on an input: lent with their fields.
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
+    Fix.Device = DtDevice_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(Fix.Device != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    int Last = 0;
+    for (int k = 0; k < 6; k++)
+    {
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
+        const int Field = View->LevelBField;
+        DT_ASSERT(Field == 1 || Field == 2);
+        DT_ASSERT(Field != Last);
+        DT_ASSERT_EQ(DtSdiView_FindLevelBField(View), Field);
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Out, NULL));
+        DT_ASSERT_EQ(Out.FrameNumber, Field);
+        DT_ASSERT_EQ(Out.Channels[0].NumSamples, Samples[Field == 2 ? 0 : 1]);
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+        Last = Field;
+    }
+    DtInpChannel_Freep(&Fix.In);
+
+    free(Pcm);
+    free(PcmOut);
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SINK_FILE);
+    remove(SOURCE_FILE);
+}
+
 // Checks what an output channel refuses while it lends room for a frame, and that it
 // drops a lent frame when it goes idle, clears its FIFO or detaches:
 // - AcquireFrame refuses an idle channel;
@@ -1726,4 +1870,5 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(PoolStaysThroughAsiAndBack), DT_RUN(AcquireLendsTheFrames),
              DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
              DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
-             DT_RUN(LendingRefusesAndDrops), DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(LendingRefusesAndDrops), DT_RUN(LevelBThroughTheChannels),
+             DT_RUN(LeavesAFileForTheExamples))

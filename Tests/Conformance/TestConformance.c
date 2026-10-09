@@ -438,6 +438,9 @@ DT_TEST(OutputChannelCalls)
     DT_ASSERT_EQ(DtOutpChannel_AcquireFrame(Channel, View, 20), DTAPI_E_IDLE);
     DT_ASSERT_EQ(DtOutpChannel_CommitFrame(Channel, View), DTAPI_E_IDLE);
     DtSdiView_Free(View);
+    DtTimeOfDay Start = {1, 1};
+    DT_ASSERT_EQ(DtOutpChannel_GetNextFrameTime(Channel, &Start), DTAPI_E_IDLE);
+    DT_ASSERT(Start.Seconds == 0 && Start.Nanoseconds == 0);
 
     DT_ASSERT_OK(DtOutpChannel_Detach(Channel, 1));
     DtOutpChannel_Freep(&Channel);

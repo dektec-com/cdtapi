@@ -87,6 +87,7 @@ typedef struct DtSdiRx
     DtSdiView* LentView;           // The view it was lent to; NULL if none is lent
     DtSdiFrameRxHeader LentHeader; // Its header
     size_t LentAvailable;          // The ring's load when it was lent
+    int LentLevelBField;           // 3G level B: the field of the frame lent last
 } DtSdiRx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -938,6 +939,16 @@ static DtapiResult LendFrame(DtRx* Rx, DtSdiView* View, void* Holder,
     {
         ArrivalTime->Seconds = Sdi->LentHeader.PtpSeconds;
         ArrivalTime->Nanoseconds = Sdi->LentHeader.PtpNanoseconds;
+    }
+    // A 3G level-B frame's field comes from the line of its payload ID; without one it
+    // is the field after the last frame's.
+    if (View->Geo.IsLevelB)
+    {
+        int Field = DtSdiView_FindLevelBField(View);
+        if (Field == 0)
+            Field = Sdi->LentLevelBField == 2 ? 1 : 2;
+        DtSdiView_SetLevelBField(View, Field);
+        Sdi->LentLevelBField = Field;
     }
     Sdi->LentView = View;
     *Lent = true;

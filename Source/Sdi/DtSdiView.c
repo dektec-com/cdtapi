@@ -15,9 +15,10 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "Core/DtAlloc.h" // Allocation seam.
-#include "DtSdiAnc.h"     // Finding the payload ID packet.
-#include "DtSdiView.h"    // Interface being implemented.
+#include "Core/DtAlloc.h"     // Allocation seam.
+#include "DtSdiAnc.h"         // Finding the payload ID packet.
+#include "DtSdiView.h"        // Interface being implemented.
+#include "Video/DtSmpte352.h" // The payload ID of 3G level B.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -251,6 +252,31 @@ static bool FindPayloadId(const DtSdiView* View, int LineIndex, DtSdiLineScratch
         }
     }
     return false;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_FindLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Searches the lines before the picture for the payload ID of link A: byte 1 8A and bit
+// 6 of byte 4 clear. In field 1 the even lines are link A's, in field 2 the odd ones
+// (SMPTE ST 372), so its line gives the field, wherever the source put it.
+//
+int DtSdiView_FindLevelBField(const DtSdiView* View)
+{
+    DtSdiLineScratch Scratch;
+    if (!View->HasFrame || !View->Geo.IsLevelB || !DtSdiLineScratch_Alloc(&Scratch, View))
+        return 0;
+    int Field = 0;
+    for (int Line = 0; Line < View->Geo.FieldFirstIndex[0] && Field == 0; Line++)
+    {
+        uint32_t PayloadId = 0;
+        if (FindPayloadId(View, Line, &Scratch, &PayloadId) &&
+            PayloadId >> 24 == DT_S352_ID_S425_1080_B && (PayloadId & 0x40) == 0)
+        {
+            Field = (Line + 1) % 2 != 0 ? 2 : 1;
+        }
+    }
+    DtSdiLineScratch_Free(&Scratch);
+    return Field;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

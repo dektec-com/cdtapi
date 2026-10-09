@@ -731,6 +731,12 @@ typedef struct DtSdiView DtSdiView;
 // not both. Waits up to TimeOut milliseconds, or without a limit for -1. ArrivalTime,
 // which may be NULL, is set as by DtInpChannel_ReadFrame2().
 //
+// On a port set to 3G level B the card holds each picture as a frame of level A, and
+// that is what Frame describes: one picture, at the picture rate. Two pictures make one
+// frame of the interface, as field 1 and field 2 (SMPTE ST 372). The channel tells the
+// view which field the picture is from the line of its payload ID of link A. A picture
+// without one takes the field after the last picture's.
+//
 // Returns DTAPI_OK, or:
 //   DTAPI_E_IN_USE           a lent frame has not been released yet, Frame already holds
 //                            a lent frame, or a read on another thread is still busy
@@ -1044,6 +1050,13 @@ typedef struct DtOutpChannel DtOutpChannel;
 // transmit mode. The transmit mode only applies to DtOutpChannel_Write() and
 // DtOutpChannel_WriteFrame().
 //
+// On a port set to 3G level B the card takes each picture as a frame of level A, and
+// that is what the lent frame is: one picture, which the card puts on the line as field
+// 1 or field 2 of a frame of the interface (SMPTE ST 372). The first frame the card
+// sends after SEND is field 2, and the fields alternate from there, black frames of the
+// channel included. The channel tells the view which field the lent frame will be, and
+// the builder lays out its payload IDs and audio for it.
+//
 // A program that lends frames is responsible for sending on time. From the first
 // AcquireFrame until the channel goes idle or its FIFO is cleared, the channel inserts
 // no black frames. If the program commits too late, the card runs out of data, and the
@@ -1178,6 +1191,33 @@ CDTAPI_API DtapiResult DtOutpChannel_GetIoConfig(DtOutpChannel* OutpChannel, int
 // channel does not send on. On ASI it is 8 MB.
 CDTAPI_API DtapiResult DtOutpChannel_GetMaxFifoSize(DtOutpChannel* OutpChannel,
                                                     int* MaxFifoSize);
+
+// Sets *StartTime to the time of day at which the next SDI frame the program hands over
+// will start on the cable: the frame lent by DtOutpChannel_AcquireFrame() and not yet
+// committed, or else the frame that the next DtOutpChannel_WriteFrame() writes, or that
+// DtOutpChannel_Write() is writing. The time is on the card's clock, the one that gives a
+// received frame its ArrivalTime. A program asks it before it hands the frame over, for
+// example to place audio by the time its video goes out.
+//
+// The card stamps the start of each frame it sends. The time is that of the last frame
+// stamped, plus the frames between it and the next one, at the standard's exact rate. It
+// holds while the card sends without a gap:
+//   - After an underflow (DTAPI_TX_FIFO_UFL) the card starts again on a grid of its own,
+//     and the next stamp gives the new times.
+//   - Outside a lending run the channel puts a black frame in when the card is about to
+//     run out of frames. If that happens between this call and the write, the frame goes
+//     out one period later. A program that lends its frames has no such frames between.
+//
+// After a failure *StartTime is zero.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG  StartTime is NULL
+//   DTAPI_E_IDLE         the channel is idle
+//   DTAPI_E_NOT_STARTED  the card has not started sending yet, which it does only after
+//                        SetTxControl(DTAPI_TXCTRL_SEND)
+//   DTAPI_E_NOT_SDI_MODE the port sends ASI
+CDTAPI_API DtapiResult DtOutpChannel_GetNextFrameTime(DtOutpChannel* OutpChannel,
+                                                      DtTimeOfDay* StartTime);
 
 // Sets *TsRate to the rate at which the ASI transport stream is sent, in bits per second
 // of 188-byte packets, whatever the packet size. It is 10 Mbit/s after attaching. On SDI

@@ -826,6 +826,32 @@ DtapiResult DtOutpChannel_CommitFrame(DtOutpChannel* OutpChannel, DtSdiView* Fra
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetNextFrameTime -.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The argument checks, then the channel's, then the side's.
+//
+DtapiResult DtOutpChannel_GetNextFrameTime(DtOutpChannel* OutpChannel,
+                                           DtTimeOfDay* StartTime)
+{
+    if (OutpChannel == NULL || StartTime == NULL)
+        return DTAPI_E_INVALID_ARG;
+    StartTime->Seconds = 0;
+    StartTime->Nanoseconds = 0;
+    if (LockAttached(OutpChannel) != DTAPI_OK)
+        return DTAPI_E_NOT_ATTACHED;
+
+    DtTx* Tx = OutpChannel->Tx;
+    DtapiResult Result;
+    if (Tx->TxControl == DTAPI_TXCTRL_IDLE)
+        Result = DTAPI_E_IDLE;
+    else if (Tx->Backend->GetNextFrameTime == NULL)
+        Result = DTAPI_E_NOT_SDI_MODE;
+    else
+        Result = Tx->Backend->GetNextFrameTime(Tx, StartTime);
+    OsMutex_Unlock(OutpChannel->Lock);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtOutpChannel_GetTsRateBps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult DtOutpChannel_GetTsRateBps(DtOutpChannel* OutpChannel, int* TsRate)
