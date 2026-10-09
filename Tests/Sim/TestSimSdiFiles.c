@@ -529,10 +529,15 @@ DT_TEST(SinkWritesWhatIsSent)
     DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_WAIT_UNTIL_SENT));
     DtOutpChannel_Freep(&Fix.Out);
     DtDevice_Freep(&Fix.Device);
-    SimDtPcie_Reset(); // Closes the file
 
+    // Another program can read the sink while the emulator still has it open.
     size_t FileSize = 0;
     uint8_t* File = ReadAll(SINK_FILE, &FileSize);
+    DT_ASSERT(File != NULL && FileSize > 0);
+    free(File);
+    SimDtPcie_Reset(); // Closes the file
+
+    File = ReadAll(SINK_FILE, &FileSize);
     DT_ASSERT(File != NULL && FileSize > 0 && FileSize % Padded == 0);
     int Next = 0;
     for (size_t At = 0; File != NULL && At + Padded <= FileSize; At += Padded)

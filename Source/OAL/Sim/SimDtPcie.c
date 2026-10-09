@@ -12,6 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _MSC_VER
+    #include <share.h> // _SH_DENYNO.
+#endif
 
 // CDTAPI includes
 #include "Core/DtAlloc.h"           // Allocation seam.
@@ -1087,8 +1090,9 @@ static uint32_t LastError(const void* State)
 FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode)
 {
 #ifdef _MSC_VER
-    FILE* File = NULL;
-    return fopen_s(&File, Path, Mode) == 0 ? File : NULL;
+    // fopen_s() shares the file with no one until it is closed, so another program
+    // could not read a sink while the frames go into it.
+    return _fsopen(Path, Mode, _SH_DENYNO);
 #else
     return fopen(Path, Mode);
 #endif

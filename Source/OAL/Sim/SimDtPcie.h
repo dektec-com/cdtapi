@@ -209,8 +209,9 @@ size_t SimDtPcie_LastInput(int* FunctionCode, void* Buf, size_t Size);
 // Helpers for the emulated functions, not for tests.
 //
 
-// Opens the file at Path as fopen() does, but with fopen_s() where MSVC deprecates
-// fopen(). Returns NULL when it cannot open the file.
+// Opens the file at Path as fopen() does, shared with other programs for reading and
+// writing as on Linux, also on Windows, where MSVC deprecates fopen(). Returns NULL
+// when it cannot open the file.
 FILE* SimDtPcie_OpenFile(const char* Path, const char* Mode);
 
 // Checks whether Handle has exclusive access to the DTA-2178 object whose UUID has index
