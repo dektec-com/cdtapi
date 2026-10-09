@@ -68,6 +68,7 @@ set(CDTAPI_SOURCES
     Source/AvFifo/DtAvTime.c
     Source/AvFifo/DtAvTxFifo.c
     Source/AvFifo/DtSt2110Audio.c
+    Source/AvFifo/DtSt2110Raw.c
     Source/AvFifo/DtSt2110Video.c
     Source/Channel/DtAsiRx.c
     Source/Channel/DtAsiTx.c

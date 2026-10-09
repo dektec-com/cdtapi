@@ -22,6 +22,7 @@
 #include "DtAvTxFifo.h"    // The description of a FIFO.
 #include "DtPcieAbi.h"     // Pipe modes.
 #include "DtSt2110Audio.h" // Audio packets.
+#include "DtSt2110Raw.h"   // Raw packets.
 #include "DtSt2110Video.h" // Video packets.
 #include "Net/DtNet.h"     // Own address and the destination's MAC address.
 #include "OAL/OsThread.h"  // Lock, thread, event, sleeping.
@@ -31,7 +32,7 @@
 
 // The FIFO size for audio when the application sets none: 400 frames, which hold at
 // least 50 ms even when each frame is a single packet of 125 us, the shortest there is.
-// DT_AV_FIFO_DEFAULT_MAX_SIZE frames would then hold 500 us.
+// DT_AV_FIFO_DEFAULT_MAX_SIZE frames would then hold 500 us. Raw packets get as many.
 #define TX_AUDIO_FIFO_FRAMES 400
 
 // How long the thread waits for a frame before it looks at its stop flag again.
@@ -49,8 +50,10 @@ struct AvFifo_TxFifoC
 
     DtAvKind Kind;
     St2110_TxConfigAudio AudioConfig;
+    St2110_TxConfigRaw RawConfig;
     St2110_TxConfigVideo VideoConfig;
     DtSt2110AudioTx AudioTx;
+    DtSt2110RawTx RawTx;
     DtSt2110VideoTx VideoTx;
     bool HasIpPars;
     AvFifo_IpPars IpPars;
@@ -74,14 +77,30 @@ struct AvFifo_TxFifoC
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PipeBytesForFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// The room a frame's packets need: those of a video frame at most, those of an audio
-// frame exactly, or -1 for an audio frame that cannot be sent.
+// The room a frame's packets need: those of a video frame at most, those of an audio or
+// raw frame exactly, or -1 for an audio or raw frame that cannot be sent.
 //
 static int PipeBytesForFrame(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
 {
     if (Fifo->Kind == DT_AV_KIND_VIDEO)
         return DtSt2110VideoTx_FrameBytes(&Fifo->VideoTx, &Fifo->Stream);
+    if (Fifo->Kind == DT_AV_KIND_RAW)
+        return DtSt2110RawTx_PacketBytes(&Fifo->RawTx, &Fifo->Stream, Frame);
     return DtSt2110AudioTx_PacketBytes(&Fifo->AudioTx, &Fifo->Stream, Frame);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Packetize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Writes the packets of Frame into the pipe, by the packetizer of the FIFO's kind.
+//
+static DtapiResult Packetize(AvFifo_TxFifo* Fifo, const AvFifo_Frame* Frame)
+{
+    const DtAvTxSink* Sink = &Fifo->Writer.Sink;
+    if (Fifo->Kind == DT_AV_KIND_VIDEO)
+        return DtSt2110VideoTx_Packetize(&Fifo->VideoTx, &Fifo->Stream, Frame, Sink);
+    if (Fifo->Kind == DT_AV_KIND_RAW)
+        return DtSt2110RawTx_Packetize(&Fifo->RawTx, &Fifo->Stream, Frame, Sink);
+    return DtSt2110AudioTx_Packetize(&Fifo->AudioTx, &Fifo->Stream, Frame, Sink);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvTxThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -123,12 +142,7 @@ static void AvTxThread(void* Context)
 
         if (FitsInBuffer && DtAtomic_Load(&Fifo->StopRequested) == 0)
         {
-            DtapiResult Result =
-                Fifo->Kind == DT_AV_KIND_VIDEO
-                    ? DtSt2110VideoTx_Packetize(&Fifo->VideoTx, &Fifo->Stream,
-                                                &Frame->Frame, &Fifo->Writer.Sink)
-                    : DtSt2110AudioTx_Packetize(&Fifo->AudioTx, &Fifo->Stream,
-                                                &Frame->Frame, &Fifo->Writer.Sink);
+            DtapiResult Result = Packetize(Fifo, &Frame->Frame);
             if (DtAvWriter_Flush(&Fifo->Writer) == DTAPI_OK && Result == DTAPI_OK)
                 DtAtomic_Increment(&Fifo->FramesOk);
         }
@@ -152,8 +166,8 @@ static size_t RoundUpToPagesPlusOne(uint64_t Size)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SharedBufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The shared buffer size: 80 ms of video, at least two frames of it and the room a
-// frame's packets need; or 80 ms of audio samples, at least two of the largest packets.
-// Never less than TX_MIN_SHARED_BUFFER_BYTES.
+// frame's packets need; or 80 ms of audio samples, or of a raw stream's rate, at least
+// two of the largest packets. Never less than TX_MIN_SHARED_BUFFER_BYTES.
 //
 static size_t SharedBufferSize(AvFifo_TxFifo* Fifo)
 {
@@ -171,8 +185,11 @@ static size_t SharedBufferSize(AvFifo_TxFifo* Fifo)
     }
     else
     {
-        Size = (uint64_t)Fifo->AudioTx.BytesPerSamplePeriod *
-               (uint64_t)Fifo->AudioConfig.SampleRate * 8 / 100;
+        if (Fifo->Kind == DT_AV_KIND_RAW)
+            Size = (uint64_t)Fifo->RawConfig.MaxRate * 8 / 100;
+        else
+            Size = (uint64_t)Fifo->AudioTx.BytesPerSamplePeriod *
+                   (uint64_t)Fifo->AudioConfig.SampleRate * 8 / 100;
         Needed = 2 * (uint64_t)DT_AV_PIPE_MAX_PACKET;
     }
     if (Size < Needed)
@@ -321,6 +338,8 @@ static bool FrameSizeMatches(const AvFifo_TxFifo* Fifo, const AvFifo_Frame* Fram
     if (Fifo->Kind == DT_AV_KIND_VIDEO)
         return Frame->NumValidBytes ==
                DtSt2110VideoTx_FrameSize(&Fifo->VideoTx, Frame->Field);
+    if (Fifo->Kind == DT_AV_KIND_RAW)
+        return DtSt2110RawTx_FrameFits(&Fifo->RawTx, &Fifo->Stream, Frame);
     if (Fifo->AudioTx.BytesPerSamplePeriod == 0)
         return Frame->NumValidBytes <= DT_ST2110_AUDIO_MAX_PAYLOAD;
     return Frame->NumValidBytes % Fifo->AudioTx.BytesPerSamplePeriod == 0;
@@ -465,6 +484,31 @@ DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
         Fifo->AudioConfig = *Config;
         Fifo->AudioTx = Audio;
         Fifo->Kind = DT_AV_KIND_AUDIO;
+        if (!Fifo->HasExplicitMaxSize)
+            DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, TX_AUDIO_FIFO_FRAMES);
+    }
+    OsMutex_Unlock(Fifo->Lock);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_TxFifo_ConfigureRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult AvFifo_TxFifo_ConfigureRaw(AvFifo_TxFifo* Fifo,
+                                       const St2110_TxConfigRaw* Config)
+{
+    static const char* const Where = "AvFifo_TxFifo_ConfigureRaw";
+    if (Fifo == NULL || Config == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or configuration");
+    OsMutex_Lock(Fifo->Lock);
+    DtapiResult Result = CheckStopped(Fifo, Where);
+    DtSt2110RawTx Raw = {0};
+    if (Result == DTAPI_OK && DtSt2110RawTx_Configure(&Raw, Config) != DTAPI_OK)
+        Result = DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "MaxRate is not positive");
+    if (Result == DTAPI_OK)
+    {
+        Fifo->RawConfig = *Config;
+        Fifo->RawTx = Raw;
+        Fifo->Kind = DT_AV_KIND_RAW;
         if (!Fifo->HasExplicitMaxSize)
             DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, TX_AUDIO_FIFO_FRAMES);
     }

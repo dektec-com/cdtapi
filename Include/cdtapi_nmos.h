@@ -239,7 +239,8 @@ CDTAPI_API DtapiResult DtNmosAvFifo_TxChangeFromActivation(
 //   DTAPI_E_NOT_ATTACHED   Fifo is not attached
 //   DTAPI_E_CONFIG         Fifo is not configured
 //   DTAPI_E_NO_IPPARS      Fifo has no IP parameters
-//   DTAPI_E_NOT_SUPPORTED  Fifo sends raw audio, whose encoding it does not know
+//   DTAPI_E_NOT_SUPPORTED  Fifo sends raw audio, whose encoding it does not know, or raw
+//                          RTP packets, whose content it does not know
 // and the errors of checking the port's network.
 CDTAPI_API DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow);
 

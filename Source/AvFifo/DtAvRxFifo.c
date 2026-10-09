@@ -22,6 +22,7 @@
 #include "DtAvRxFifo.h"    // The description of its port.
 #include "DtPcieAbi.h"     // Pipe modes and filter flags.
 #include "DtSt2110Audio.h" // Audio packets.
+#include "DtSt2110Raw.h"   // Raw packets.
 #include "DtSt2110Video.h" // Video packets.
 #include "Net/DtNet.h"     // Own address and multicast groups.
 #include "OAL/OsThread.h"  // Lock, thread, sleeping.
@@ -33,9 +34,14 @@
 #define RX_SHARED_BUFFER_VIDEO_BYTES (64 * 1024 * 1024)
 #define RX_SHARED_BUFFER_AUDIO_BYTES (4 * 1024 * 1024)
 
+// The shared buffer of a raw stream holds this many milliseconds of its rate, and never
+// fewer bytes than RX_SHARED_BUFFER_MIN_BYTES.
+#define RX_SHARED_BUFFER_RAW_MS 80
+#define RX_SHARED_BUFFER_MIN_BYTES (64 * 1024)
+
 // The FIFO size for audio when the application sets none: 400 frames, one packet each,
 // 50 ms of 125 us packets, the shortest there are. DT_AV_FIFO_DEFAULT_MAX_SIZE frames
-// would hold 500 us.
+// would hold 500 us. Raw packets get as many.
 #define RX_AUDIO_FIFO_FRAMES 400
 
 struct AvFifo_RxFifoC
@@ -47,6 +53,7 @@ struct AvFifo_RxFifoC
 
     DtAvKind Kind;
     St2110_RxConfigAudio AudioConfig;
+    St2110_RxConfigRaw RawConfig;
     St2110_RxConfigVideo VideoConfig;
     bool HasIpPars;
     AvFifo_IpPars IpPars;
@@ -65,6 +72,7 @@ struct AvFifo_RxFifoC
     DtAtomicInt StopRequested;
     OsMutex* ParserLock; // Guards the parsers, which the thread runs
     DtSt2110AudioRx AudioRx;
+    DtSt2110RawRx RawRx;
     DtSt2110VideoRx VideoRx;
 };
 
@@ -85,8 +93,29 @@ static void ParseByKind(void* Context, const uint8_t* Packet, int Size)
     AvFifo_RxFifo* Fifo = (AvFifo_RxFifo*)Context;
     if (Fifo->Kind == DT_AV_KIND_AUDIO)
         DtSt2110AudioRx_Parse(&Fifo->AudioRx, Packet, Size);
+    else if (Fifo->Kind == DT_AV_KIND_RAW)
+        DtSt2110RawRx_Parse(&Fifo->RawRx, Packet, Size);
     else
         DtSt2110VideoRx_Parse(&Fifo->VideoRx, Packet, Size);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StatsOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns the statistics of the parser of the FIFO's kind, or NULL when it has none.
+//
+static RxStatistics* StatsOf(AvFifo_RxFifo* Fifo)
+{
+    switch (Fifo->Kind)
+    {
+    case DT_AV_KIND_AUDIO:
+        return &Fifo->AudioRx.Stats;
+    case DT_AV_KIND_RAW:
+        return &Fifo->RawRx.Stats;
+    case DT_AV_KIND_VIDEO:
+        return &Fifo->VideoRx.Stats;
+    default:
+        return NULL;
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- AvRxThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -108,10 +137,8 @@ static void AvRxThread(void* Context)
         OsMutex_Lock(Fifo->ParserLock);
         DtapiResult Result =
             DtAvReader_Pass(&Fifo->Reader, ParseByKind, Fifo, &Packets, &LostSync);
-        if (LostSync && Fifo->Kind == DT_AV_KIND_AUDIO)
-            Fifo->AudioRx.Stats.SyncErrors++;
-        else if (LostSync)
-            Fifo->VideoRx.Stats.SyncErrors++;
+        if (LostSync)
+            StatsOf(Fifo)->SyncErrors++;
         OsMutex_Unlock(Fifo->ParserLock);
         if (Result != DTAPI_OK || Packets == 0)
             OsTime_SleepMs(DT_AV_RX_IDLE_SLEEP_MS);
@@ -186,6 +213,25 @@ static void StopReceiving(AvFifo_RxFifo* Fifo)
     Fifo->Started = false;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SharedBufferSize -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// The shared buffer size: a fixed size for video and for audio, and for a raw stream
+// RX_SHARED_BUFFER_RAW_MS of its rate in whole pages, but no less than
+// RX_SHARED_BUFFER_MIN_BYTES.
+//
+static size_t SharedBufferSize(const AvFifo_RxFifo* Fifo)
+{
+    if (Fifo->Kind == DT_AV_KIND_VIDEO)
+        return RX_SHARED_BUFFER_VIDEO_BYTES;
+    if (Fifo->Kind != DT_AV_KIND_RAW)
+        return RX_SHARED_BUFFER_AUDIO_BYTES;
+    uint64_t Size = (uint64_t)Fifo->RawConfig.MaxRate * RX_SHARED_BUFFER_RAW_MS / 1000;
+    if (Size < RX_SHARED_BUFFER_MIN_BYTES)
+        Size = RX_SHARED_BUFFER_MIN_BYTES;
+    return (size_t)((Size + DT_AV_PIPE_PAGE_BYTES - 1) / DT_AV_PIPE_PAGE_BYTES *
+                    DT_AV_PIPE_PAGE_BYTES);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartReceiving -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Starting, in its order: the network, the pipe and its buffer, the own address and a
@@ -205,8 +251,7 @@ static DtapiResult StartReceiving(AvFifo_RxFifo* Fifo)
     Result = DtAvPort_OpenPipe(&Fifo->Port, &Fifo->Pipe, true, IsVideo, Where);
     if (Result != DTAPI_OK)
         return Result;
-    Result = DtAvPipe_SetBuffer(&Fifo->Pipe, IsVideo ? RX_SHARED_BUFFER_VIDEO_BYTES
-                                                     : RX_SHARED_BUFFER_AUDIO_BYTES);
+    Result = DtAvPipe_SetBuffer(&Fifo->Pipe, SharedBufferSize(Fifo));
     if (Result != DTAPI_OK)
         return DtAvError_Set(Result, Where, "Allocating the shared buffer failed");
 
@@ -227,6 +272,8 @@ static DtapiResult StartReceiving(AvFifo_RxFifo* Fifo)
     if (IsVideo)
         DtSt2110VideoRx_Init(&Fifo->VideoRx, Fifo->VideoConfig.Format, DtAvPixConv_Best(),
                              &Target);
+    else if (Fifo->Kind == DT_AV_KIND_RAW)
+        DtSt2110RawRx_Init(&Fifo->RawRx, &Fifo->RawConfig, &Target);
     else
         DtSt2110AudioRx_Init(&Fifo->AudioRx, &Fifo->AudioConfig, &Target);
 
@@ -424,6 +471,29 @@ DtapiResult AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo,
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_RxFifo_ConfigureRaw -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult AvFifo_RxFifo_ConfigureRaw(AvFifo_RxFifo* Fifo,
+                                       const St2110_RxConfigRaw* Config)
+{
+    static const char* const Where = "AvFifo_RxFifo_ConfigureRaw";
+    if (Fifo == NULL || Config == NULL)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "No FIFO or configuration");
+    if (Config->MaxRate <= 0)
+        return DtAvError_Set(DTAPI_E_INVALID_ARG, Where, "MaxRate is not positive");
+    OsMutex_Lock(Fifo->Lock);
+    DtapiResult Result = CheckStopped(Fifo, Where);
+    if (Result == DTAPI_OK)
+    {
+        Fifo->RawConfig = *Config;
+        Fifo->Kind = DT_AV_KIND_RAW;
+        if (!Fifo->HasExplicitMaxSize)
+            DtAvFrameFifo_SetMaxSize(&Fifo->Fifo, RX_AUDIO_FIFO_FRAMES);
+    }
+    OsMutex_Unlock(Fifo->Lock);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- AvFifo_RxFifo_ConfigureVideo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 DtapiResult AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo,
@@ -590,10 +660,9 @@ RxStatistics AvFifo_RxFifo_GetStatistics(const AvFifo_RxFifo* Fifo)
         return Stats;
     OsMutex_Lock(Fifo->Lock);
     OsMutex_Lock(Fifo->ParserLock);
-    if (Fifo->Kind == DT_AV_KIND_AUDIO)
-        Stats = Fifo->AudioRx.Stats;
-    else if (Fifo->Kind == DT_AV_KIND_VIDEO)
-        Stats = Fifo->VideoRx.Stats;
+    const RxStatistics* Parser = StatsOf((AvFifo_RxFifo*)Fifo);
+    if (Parser != NULL)
+        Stats = *Parser;
     OsMutex_Unlock(Fifo->ParserLock);
     OsMutex_Unlock(Fifo->Lock);
     return Stats;

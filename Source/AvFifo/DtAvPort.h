@@ -95,5 +95,6 @@ typedef enum DtAvKind
 {
     DT_AV_KIND_NONE,  // Not known yet
     DT_AV_KIND_AUDIO, // Audio
+    DT_AV_KIND_RAW,   // RTP packets as they are
     DT_AV_KIND_VIDEO  // Video
 } DtAvKind;

@@ -73,6 +73,16 @@ typedef struct St2110_RxConfigAudio
     int SampleRate; // Samples per second, e.g. 48000
 } St2110_RxConfigAudio;
 
+// How a receive FIFO receives the packets of any RTP stream as they are, one frame per
+// packet, with the packet's RTP timestamp, marker bit and time of arrival.
+typedef struct St2110_RxConfigRaw
+{
+    bool IncludeRtpHeader; // True: each frame is the whole packet, its RTP header
+                           // included. False: the payload alone, without the header,
+                           // its CSRCs, its extension and its padding.
+    int MaxRate;           // The most bytes a second the stream carries; more than 0
+} St2110_RxConfigRaw;
+
 // How a receive FIFO receives video.
 typedef struct St2110_RxConfigVideo
 {
@@ -145,6 +155,18 @@ typedef struct St2110_VideoTiming
     St2110_Scheduling Scheduling;
     St2110_VideoScanning VideoScanning;
 } St2110_VideoTiming;
+
+// How a transmit FIFO sends frames as RTP packets as they are, one packet per frame, at
+// the frame's ToD.
+typedef struct St2110_TxConfigRaw
+{
+    bool CustomRtpHeader; // True: each frame is a whole RTP packet, its header written by
+                          // the program, and goes out as it is. False: each frame is a
+                          // payload, which gets a header of version 2 with the payload
+                          // type of the IP parameters, the frame's RtpTime and Marker,
+                          // a sequence number that counts up and the FIFO's SSRC.
+    int MaxRate;          // The most bytes a second the program sends; more than 0
+} St2110_TxConfigRaw;
 
 // The full description of the video a transmit FIFO sends, which the library works out
 // from St2110_TxConfigVideo. A program does not need it.
@@ -242,6 +264,10 @@ typedef struct AvFifo_Frame
     // Set for received ST 2110-20 video only.
     bool Is420;  // The video is 4:2:0
     int NumRows; // Lines in the frame
+
+    // Raw RTP: the marker bit of the packet received, or of the packet to send when the
+    // FIFO writes the RTP header.
+    bool Marker;
 } AvFifo_Frame;
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Statistics +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
@@ -394,10 +420,16 @@ CDTAPI_API DtapiResult AvFifo_RxFifo_Attach2(AvFifo_RxFifo* Fifo, const DtDevice
 // Discards the frames waiting in the FIFO. Fifo must be stopped.
 CDTAPI_API DtapiResult AvFifo_RxFifo_Clear(AvFifo_RxFifo* Fifo);
 
-// Sets what Fifo receives: video or audio, in which format. Fifo must be stopped. For
-// audio, the FIFO holds 400 frames unless SetMaxSize set another size.
+// Sets what Fifo receives: video, audio, or the packets of any RTP stream as they are,
+// and in which format. Fifo must be stopped. For audio and raw packets, the FIFO holds
+// 400 frames unless SetMaxSize set another size; a raw configuration with a MaxRate of
+// 0 or less is DTAPI_E_INVALID_ARG. A raw stream goes over a software pipe, whose
+// buffer holds 80 ms of MaxRate; each packet counts as a frame in the statistics, and a
+// jump in the sequence numbers as a gap.
 CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureAudio(AvFifo_RxFifo* Fifo,
                                                     const St2110_RxConfigAudio* Config);
+CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureRaw(AvFifo_RxFifo* Fifo,
+                                                  const St2110_RxConfigRaw* Config);
 CDTAPI_API DtapiResult AvFifo_RxFifo_ConfigureVideo(AvFifo_RxFifo* Fifo,
                                                     const St2110_RxConfigVideo* Config);
 
@@ -471,10 +503,16 @@ CDTAPI_API DtapiResult AvFifo_TxFifo_Attach2(AvFifo_TxFifo* Fifo, const DtDevice
 // Discards the frames waiting in Fifo to be sent. Fifo must be stopped.
 CDTAPI_API DtapiResult AvFifo_TxFifo_Clear(AvFifo_TxFifo* Fifo);
 
-// Sets what Fifo sends: video or audio, in which format. Fifo must be stopped. The
-// configuration is checked at once; DTAPI_E_INVALID_ARG when it is not valid.
+// Sets what Fifo sends: video, audio, or RTP packets as they are, and in which format.
+// Fifo must be stopped. The configuration is checked at once; DTAPI_E_INVALID_ARG when
+// it is not valid. A raw stream goes over a software pipe, whose buffer holds 80 ms of
+// MaxRate, and the FIFO holds 400 frames unless SetMaxSize set another size. Each frame
+// is one packet, of at most 1460 bytes from the RTP header on, or 8960 on a pipe for
+// jumbo frames; a frame with the program's header has at least the 12 bytes of one.
 CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureAudio(AvFifo_TxFifo* Fifo,
                                                     const St2110_TxConfigAudio* Config);
+CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureRaw(AvFifo_TxFifo* Fifo,
+                                                  const St2110_TxConfigRaw* Config);
 CDTAPI_API DtapiResult AvFifo_TxFifo_ConfigureVideo(AvFifo_TxFifo* Fifo,
                                                     const St2110_TxConfigVideo* Config);
 

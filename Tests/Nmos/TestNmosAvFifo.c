@@ -675,6 +675,9 @@ DT_TEST(TxRoundTripAudio)
     const St2110_TxConfigAudio Raw = {St2110_AudioFormat_Raw, 2, 48, 48000};
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fix.Tx, &Raw));
     DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow), DTAPI_E_NOT_SUPPORTED);
+    const St2110_TxConfigRaw Packets = {true, 1000000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureRaw(Fix.Tx, &Packets));
+    DT_ASSERT_EQ(DtNmosAvFifo_FlowFromTxFifo(Fix.Tx, &Flow), DTAPI_E_NOT_SUPPORTED);
     FreeFixture(&Fix);
     DtTest_SetCleanup(NULL, NULL);
 }

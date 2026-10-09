@@ -27,7 +27,7 @@
 // What is needed to describe the stream of a transmit FIFO.
 typedef struct DtAvTxFifoDescription
 {
-    DtAvKind Kind;              // Whether the FIFO carries audio or video
+    DtAvKind Kind;              // Whether the FIFO carries audio, video or raw packets
     St2110_TxConfigAudio Audio; // The configuration, for an audio FIFO
     St2110_TxConfigVideo Video; // The configuration, for a video FIFO
     AvFifo_IpPars IpPars;       // Where the stream is sent

@@ -492,6 +492,8 @@ DT_TEST(ReceiveFifoCalls)
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fifo, &Video));
     const St2110_RxConfigAudio Audio = {St2110_AudioFormat_L24BE, 48000};
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureAudio(Fifo, &Audio));
+    const St2110_RxConfigRaw Raw = {true, 1000000};
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureRaw(Fifo, &Raw));
     DT_ASSERT_OK(AvFifo_RxFifo_ConfigureVideo(Fifo, &Video));
 
     AvFifo_RxFifo_SetMaxSize(Fifo, 6);
@@ -543,6 +545,8 @@ DT_TEST(TransmitFifoCalls)
 
     const St2110_TxConfigAudio Audio = {St2110_AudioFormat_L24BE, 2, 48, 48000};
     DT_ASSERT_OK(AvFifo_TxFifo_ConfigureAudio(Fifo, &Audio));
+    const St2110_TxConfigRaw Raw = {true, 1000000};
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureRaw(Fifo, &Raw));
 
     St2110_TxConfigVideo Video;
     memset(&Video, 0, sizeof(Video));

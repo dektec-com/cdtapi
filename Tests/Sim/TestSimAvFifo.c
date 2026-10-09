@@ -759,6 +759,132 @@ DT_TEST(LoopbackAudioL16)
     CheckAudio(St2110_AudioFormat_L16BE, 2, DtFailures);
 }
 
+// Raw RTP both ways over software pipes: frames sent with a header the FIFO writes
+// arrive as whole packets, and packets of the program's own, with CSRCs, an extension
+// and padding, arrive as their payloads alone; each with its timestamp and marker bit.
+static void CheckRaw(bool CustomRtpHeader, int* DtFailures)
+{
+    Fixture Fix;
+    if (!Open(&Fix, DtFailures))
+        return;
+    Fix.Rx = AvFifo_RxFifo_Alloc();
+    Fix.Tx = AvFifo_TxFifo_Alloc();
+    DT_ASSERT(Fix.Rx != NULL && Fix.Tx != NULL);
+    const AvFifo_IpPars P = Pars(5008, false);
+    const St2110_RxConfigRaw RxRaw = {!CustomRtpHeader, 10000000};
+    const St2110_TxConfigRaw TxRaw = {CustomRtpHeader, 10000000};
+    const St2110_RxConfigRaw NoRate = {true, 0};
+    DT_ASSERT_OK(AvFifo_RxFifo_Attach(Fix.Rx, Fix.Device, 1));
+    DT_ASSERT_EQ(AvFifo_RxFifo_ConfigureRaw(Fix.Rx, &NoRate), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(AvFifo_RxFifo_ConfigureRaw(Fix.Rx, &RxRaw));
+    DT_ASSERT_EQ(AvFifo_RxFifo_GetMaxSize(Fix.Rx), 400);
+    DT_ASSERT_OK(AvFifo_RxFifo_SetIpPars(Fix.Rx, &P));
+    DT_ASSERT_OK(AvFifo_RxFifo_Start(Fix.Rx));
+    DT_ASSERT_OK(AvFifo_TxFifo_Attach(Fix.Tx, Fix.Device, 1));
+    DT_ASSERT_OK(AvFifo_TxFifo_ConfigureRaw(Fix.Tx, &TxRaw));
+    DT_ASSERT_EQ(AvFifo_TxFifo_GetMaxSize(Fix.Tx), 400);
+    DT_ASSERT_OK(AvFifo_TxFifo_SetIpPars(Fix.Tx, &P));
+    DT_ASSERT_OK(AvFifo_TxFifo_Start(Fix.Tx));
+    bool UsesHw = true;
+    DT_ASSERT_OK(AvFifo_RxFifo_UsesHwPipe(Fix.Rx, &UsesHw));
+    DT_ASSERT(!UsesHw);
+    UsesHw = true;
+    DT_ASSERT_OK(AvFifo_TxFifo_UsesHwPipe(Fix.Tx, &UsesHw));
+    DT_ASSERT(!UsesHw);
+
+    // Packets of the program's own: 2 CSRCs, an extension of one word and 4 bytes of
+    // padding around a payload of 100 + f bytes, 28 bytes into the packet.
+    enum
+    {
+        NUM_FRAMES = 6,
+        OWN_HEADER = 12 + 8 + 8
+    };
+    uint8_t Payloads[NUM_FRAMES][128];
+    for (int f = 0; f < NUM_FRAMES; f++)
+    {
+        const int PayloadBytes = 100 + f;
+        const int Size = CustomRtpHeader ? OWN_HEADER + PayloadBytes + 4 : PayloadBytes;
+        AvFifo_Frame* Frame = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, Size);
+        DT_ASSERT(Frame != NULL);
+        for (int i = 0; i < PayloadBytes; i++)
+            Payloads[f][i] = (uint8_t)(f * 31 + i);
+        uint8_t* Payload = Frame->Data;
+        if (CustomRtpHeader)
+        {
+            const uint8_t Header[OWN_HEADER] = {
+                0xB2, (uint8_t)((f == NUM_FRAMES - 1 ? 0x80 : 0) | 33),
+                0x12, (uint8_t)(0x30 + f),
+                0,    0,
+                0x10, (uint8_t)f,
+                0xA0, 0xA1,
+                0xA2, 0xA3,
+                0xC0, 0xC1,
+                0xC2, 0xC3,
+                0xC4, 0xC5,
+                0xC6, 0xC7,
+                0xBE, 0xDE,
+                0,    1,
+                0xE0, 0xE1,
+                0xE2, 0xE3};
+            memcpy(Frame->Data, Header, OWN_HEADER);
+            Payload += OWN_HEADER;
+            static const uint8_t Padding[4] = {0, 0, 0, 4};
+            memcpy(Payload + PayloadBytes, Padding, 4);
+        }
+        memcpy(Payload, Payloads[f], (size_t)PayloadBytes);
+        Frame->NumValidBytes = Size;
+        Frame->RtpTime = 0x1000u + (uint32_t)f;
+        Frame->Marker = f == NUM_FRAMES - 1;
+        Frame->ToD = DtAvTime_FromNs(T0 + 100 * MS + (uint64_t)f * MS);
+        DT_ASSERT_OK(AvFifo_TxFifo_Write(Fix.Tx, Frame));
+    }
+    LoadWanted Wanted = {Fix.Rx, NUM_FRAMES};
+    DT_ASSERT(RunUntil(HasLoad, &Wanted));
+    for (int f = 0; f < NUM_FRAMES; f++)
+    {
+        AvFifo_Frame* Frame = AvFifo_RxFifo_Read(Fix.Rx);
+        DT_ASSERT(Frame != NULL);
+        DT_ASSERT_EQ(Frame->RtpTime, 0x1000u + (uint32_t)f);
+        DT_ASSERT_EQ(Frame->Marker, f == NUM_FRAMES - 1);
+        const uint8_t* Payload = Frame->Data;
+        if (!CustomRtpHeader)
+        {
+            // The whole packet, with the header the FIFO wrote.
+            DT_ASSERT_EQ(Frame->NumValidBytes, 12 + 100 + f);
+            DT_ASSERT_EQ(Payload[0], 0x80);
+            DT_ASSERT_EQ(Payload[1], (f == NUM_FRAMES - 1 ? 0x80 : 0) | 98);
+            Payload += 12;
+        }
+        else
+            DT_ASSERT_EQ(Frame->NumValidBytes, 100 + f);
+        DT_ASSERT_MEM(Payload, Payloads[f], (size_t)(100 + f));
+        DT_ASSERT_OK(AvFifo_RxFifo_ReturnToMemPool(Fix.Rx, Frame));
+    }
+    DT_ASSERT(AvFifo_RxFifo_Read(Fix.Rx) == NULL);
+    const RxStatistics Stats = AvFifo_RxFifo_GetStatistics(Fix.Rx);
+    DT_ASSERT_EQ(Stats.FramesOk, NUM_FRAMES);
+    DT_ASSERT_EQ(Stats.Gaps, 0);
+    DT_ASSERT_EQ(Stats.IpPacketErrors, 0);
+
+    // A frame too large for a packet is refused when it is written.
+    AvFifo_Frame* Large = AvFifo_TxFifo_GetFromMemPool(Fix.Tx, 9000);
+    DT_ASSERT(Large != NULL);
+    Large->NumValidBytes = 9000;
+    DT_ASSERT_EQ(AvFifo_TxFifo_Write(Fix.Tx, Large), DTAPI_E_INVALID_FORMAT);
+
+    FINISH(Fix);
+}
+
+DT_TEST(LoopbackRawWithHeader)
+{
+    CheckRaw(false, DtFailures);
+}
+
+DT_TEST(LoopbackRawOwnHeader)
+{
+    CheckRaw(true, DtFailures);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Faults +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // A receive FIFO of 5 frames that nobody reads drops the rest; a transmit FIFO whose
@@ -931,5 +1057,6 @@ DT_TEST_MAIN("SimAvFifo", DT_RUN(PortCapabilities), DT_RUN(ResultsOfTheLifecycle
              DT_RUN(Loopback10BitRawHardware), DT_RUN(Loopback10BitSoftware),
              DT_RUN(Loopback10BitTo8Bit), DT_RUN(Loopback8Bit),
              DT_RUN(Loopback8BitPlanar), DT_RUN(LoopbackAudioL24),
-             DT_RUN(LoopbackAudioL16), DT_RUN(FullFifos), DT_RUN(InjectedFaultIsCounted),
-             DT_RUN(FailureTextPerThread))
+             DT_RUN(LoopbackAudioL16), DT_RUN(LoopbackRawWithHeader),
+             DT_RUN(LoopbackRawOwnHeader), DT_RUN(FullFifos),
+             DT_RUN(InjectedFaultIsCounted), DT_RUN(FailureTextPerThread))

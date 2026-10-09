@@ -825,6 +825,10 @@ DtapiResult DtNmosAvFifo_FlowFromTxFifo(AvFifo_TxFifo* Fifo, DtNmosFlow* Flow)
         return DtAvError_Set(
             DTAPI_E_NOT_SUPPORTED, Where,
             "The FIFO sends audio of Raw, whose encoding it does not know");
+    if (Description.Kind == DT_AV_KIND_RAW)
+        return DtAvError_Set(DTAPI_E_NOT_SUPPORTED, Where,
+                             "The FIFO sends raw RTP packets, whose content it does not "
+                             "know");
 
     DtNmosFlow Made;
     memset(&Made, 0, sizeof(Made));
