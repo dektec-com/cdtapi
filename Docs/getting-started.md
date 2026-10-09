@@ -404,7 +404,9 @@ bytes: what FFmpeg's `sdi` format holds without its header, and what a 10-bit
 `ReadFrame` gives, except for the padding. The source plays the file's frames over and
 over at the standard's frame rate, as a card receives them, so that a program that
 looks at the FIFO load before it reads sees them arrive; a value the emulator cannot
-use is reported on stderr and ignored.
+use is reported on stderr and ignored. With `CDTAPI_SIM_REALTIME=0` the source plays
+them at the pace of the reads instead, each frame when a read waits for one, so that a
+program too slow for the frame rate, such as one built with ASan, misses none.
 
 ## Where to go next
 

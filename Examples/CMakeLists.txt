@@ -223,13 +223,15 @@ cdtapi_example_test(TransmitFramesNoPattern DtTransmitFrames
 
 # The raw frames' round trip: DtTransmitFrames into a file through the emulator's SDI
 # sink, and DtReceiveFrames from that file through its SDI source, which reads the frame
-# numbers of the test pattern back.
+# numbers of the test pattern back. The source is off the clock in the round trips, so
+# that a slow build, such as one with ASan, receives every frame in turn.
 set(FramesRoundTrip "${CMAKE_CURRENT_BINARY_DIR}/TransmitFrames_1080i50.sdi")
 set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${FramesRoundTrip}")
 cdtapi_example_test(TransmitFramesToFile DtTransmitFrames
     "9217800001:2  frame 2  7425000 bytes  hash [0-9A-F]+\n"
     --port 2 --vidstd 1080I50 --count 3)
-set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${FramesRoundTrip}")
+set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${FramesRoundTrip}"
+    "CDTAPI_SIM_REALTIME=set:0")
 cdtapi_example_test(ReceiveFramesFromFile DtReceiveFrames
     "^9217800001:1  frame 0  7425000 bytes  hash [0-9A-F]+  number 0\n9217800001:1  frame 1  7425000 bytes  hash [0-9A-F]+  number 1\n"
     --port 1 --count 2 --timeout 2000)
@@ -247,7 +249,8 @@ set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${LevelBRoundTrip}")
 cdtapi_example_test(TransmitFramesLevelBToFile DtTransmitFrames
     "9217800001:2  frame 2  14850000 bytes  hash [0-9A-F]+\n"
     --port 2 --vidstd 1080P50B --count 3)
-set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080P50B:${LevelBRoundTrip}")
+set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080P50B:${LevelBRoundTrip}"
+    "CDTAPI_SIM_REALTIME=set:0")
 cdtapi_example_test(ReceiveFramesLevelBFromFile DtReceiveFrames
     "^9217800001:1  frame 0  14850000 bytes  hash [0-9A-F]+  number 0, number 1\n9217800001:1  frame 1  14850000 bytes  hash [0-9A-F]+  number 2, number 3\n"
     --port 1 --vidstd 1080P50B --count 2 --timeout 2000)
@@ -274,7 +277,8 @@ set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${SdiRoundTrip}")
 cdtapi_example_test(TransmitSdiToFile DtTransmitSdi
     "^9217800001:2  frame 0 .*9217800001:2  frame 2  1920x1080  audio 1920 samples\n"
     --port 2 --vidstd 1080I50 --count 3 --checksums)
-set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${SdiRoundTrip}")
+set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080I50:${SdiRoundTrip}"
+    "CDTAPI_SIM_REALTIME=set:0")
 cdtapi_example_test(ReceiveSdiFromFile DtReceiveSdi
     "^9217800001:1  frame 0  1920x1080  audio 1920 samples  channels 1-4  packets 0  number 0\n9217800001:1  frame 1  [^\n]*  number 1\n"
     --port 1 --vidstd 1080I50 --count 2 --timeout 2000 --out "${SdiOut}")

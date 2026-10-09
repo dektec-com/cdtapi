@@ -162,7 +162,9 @@ void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads);
 // signal of the video standard, and its channel receives the frames of the file, as
 // SimChSdiRx_SetFileSource() describes; after the last frame, the first comes again. The
 // video standard is a DTAPI_VIDSTD_ name without its prefix, such as 1080I50, in any
-// case.
+// case. The reset puts such a source on the clock, as SimDtPcie_SetRxRealTime() does,
+// unless CDTAPI_SIM_REALTIME is 0: its frames then come when a read waits for them, so
+// that a slow build, such as one with ASan, misses none.
 //
 // Sink is "<port>:<file>". Every frame the SDI port sends is also written to the file, as
 // SimSdiTx_SetFileSink() describes.

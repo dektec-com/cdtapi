@@ -1267,10 +1267,11 @@ void SimDtPcie_Reset(void)
 
     // A source and a sink through files, as SimDtPcie.h describes.
     const char* Source = getenv("CDTAPI_SIM_SDI_SOURCE");
+    const char* RealTime = getenv("CDTAPI_SIM_REALTIME");
     if (Source != NULL && Source[0] != '\0')
     {
         if (ApplySdiSource(Source))
-            SimDtPcie_SetRxRealTime(true);
+            SimDtPcie_SetRxRealTime(RealTime == NULL || strcmp(RealTime, "0") != 0);
         else
             fprintf(stderr, "CDTAPI_SIM_SDI_SOURCE: cannot use \"%s\"\n", Source);
     }
