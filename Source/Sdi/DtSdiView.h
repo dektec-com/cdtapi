@@ -121,8 +121,10 @@ int DtSdiView_FindLevelBField(const DtSdiView* View);
 // Returns the view the parser and the builder work on for View: View itself, or for a
 // frame of the interface of 3G level B, the view of the copy of the picture of its
 // field. Take says to take that picture out of the frame into the copy first, as the
-// parser needs. Returns NULL when there is no memory for the copy.
-DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take);
+// parser needs, with the lines divided over Runner's pool (NULL: one thread). Returns
+// NULL when there is no memory for the copy.
+DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take,
+                               const DtJobRunner* Runner);
 
 // Points View at one 3G level-B picture in the layout of level A, in the program's
 // memory, as the card holds it; Field (1 or 2) is its field of the interface frame. It

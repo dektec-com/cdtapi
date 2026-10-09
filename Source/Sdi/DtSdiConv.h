@@ -110,6 +110,19 @@ typedef struct DtSdiConv
     // is even.
     void (*Join4k)(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
                    uint16_t* Raw);
+
+    // Joins a line of link B and a line of link A of 3G level B, Count words each, C and
+    // Y in turn, into a line of the interface of 2 * Count words: word 0 of link B, word
+    // 0 of link A, word 1 of link B, and so on (SMPTE ST 424 puts data stream two, link
+    // B, first). Count is a multiple of 4.
+    void (*JoinLevelB)(const uint16_t* LinkB, const uint16_t* LinkA, size_t Count,
+                       uint16_t* Line);
+
+    // Splits a line of the interface of 3G level B, 2 * Count words, into its line of
+    // link B and its line of link A, in the layout JoinLevelB writes. Count is a
+    // multiple of 4.
+    void (*SplitLevelB)(const uint16_t* Line, size_t Count, uint16_t* LinkB,
+                        uint16_t* LinkA);
 } DtSdiConv;
 
 // Returns the portable conversions.

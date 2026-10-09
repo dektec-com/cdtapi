@@ -249,6 +249,30 @@ static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static void JoinLevelB(const uint16_t* LinkB, const uint16_t* LinkA, size_t Count,
+                       uint16_t* Line)
+{
+    for (size_t k = 0; k < Count; k++)
+    {
+        Line[2 * k] = LinkB[k];
+        Line[2 * k + 1] = LinkA[k];
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SplitLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+static void SplitLevelB(const uint16_t* Line, size_t Count, uint16_t* LinkB,
+                        uint16_t* LinkA)
+{
+    for (size_t k = 0; k < Count; k++)
+    {
+        LinkB[k] = Line[2 * k];
+        LinkA[k] = Line[2 * k + 1];
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Versions +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Avx2 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -277,10 +301,10 @@ const DtSdiConv* DtSdiConv_Best(void)
 //
 const DtSdiConv* DtSdiConv_C(void)
 {
-    static const DtSdiConv Portable = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                       FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                       FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                       FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Portable = {
+        Unpack10,    Pack10,  Limit,     ToPlanar10, FromPlanar10, ToPlanar8,
+        FromPlanar8, ToUyvy8, FromUyvy8, ToY210,     FromY210,     ToV210,
+        FromV210,    Split4k, Join4k,    JoinLevelB, SplitLevelB};
     return &Portable;
 }
 

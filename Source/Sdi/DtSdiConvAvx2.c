@@ -167,15 +167,64 @@ static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
     DtSdiConv_Ssse3Unchecked()->Join4k(Upper, Lower, Pixels, Raw);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Sixteen words of each link in each step. The 256-bit unpacks work within each 128-bit
+// lane, so the lanes are swapped into place first; the rest goes to the SSSE3 version.
+//
+static void JoinLevelB(const uint16_t* LinkB, const uint16_t* LinkA, size_t Count,
+                       uint16_t* Line)
+{
+    size_t k = 0;
+    for (; k + 16 <= Count; k += 16)
+    {
+        const __m256i A = _mm256_permute4x64_epi64(
+            _mm256_loadu_si256((const __m256i*)(LinkB + k)), 0xD8);
+        const __m256i B = _mm256_permute4x64_epi64(
+            _mm256_loadu_si256((const __m256i*)(LinkA + k)), 0xD8);
+        _mm256_storeu_si256((__m256i*)(Line + 2 * k), _mm256_unpacklo_epi16(A, B));
+        _mm256_storeu_si256((__m256i*)(Line + 2 * k + 16), _mm256_unpackhi_epi16(A, B));
+    }
+    DtSdiConv_Ssse3Unchecked()->JoinLevelB(LinkB + k, LinkA + k, Count - k, Line + 2 * k);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SplitLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Thirty-two words in each step: within each lane a shuffle puts the even words low and
+// the odd words high, the 64-bit unpacks gather them, and a lane swap orders the result;
+// the rest goes to the SSSE3 version.
+//
+static void SplitLevelB(const uint16_t* Line, size_t Count, uint16_t* LinkB,
+                        uint16_t* LinkA)
+{
+    const __m256i Split =
+        _mm256_set_epi8(15, 14, 11, 10, 7, 6, 3, 2, 13, 12, 9, 8, 5, 4, 1, 0, 15, 14, 11,
+                        10, 7, 6, 3, 2, 13, 12, 9, 8, 5, 4, 1, 0);
+    size_t k = 0;
+    for (; k + 16 <= Count; k += 16)
+    {
+        const __m256i L = _mm256_shuffle_epi8(
+            _mm256_loadu_si256((const __m256i*)(Line + 2 * k)), Split);
+        const __m256i H = _mm256_shuffle_epi8(
+            _mm256_loadu_si256((const __m256i*)(Line + 2 * k + 16)), Split);
+        _mm256_storeu_si256((__m256i*)(LinkB + k),
+                            _mm256_permute4x64_epi64(_mm256_unpacklo_epi64(L, H), 0xD8));
+        _mm256_storeu_si256((__m256i*)(LinkA + k),
+                            _mm256_permute4x64_epi64(_mm256_unpackhi_epi64(L, H), 0xD8));
+    }
+    DtSdiConv_Ssse3Unchecked()->SplitLevelB(Line + 2 * k, Count - k, LinkB + k,
+                                            LinkA + k);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Avx2Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 const DtSdiConv* DtSdiConv_Avx2Unchecked(void)
 {
-    static const DtSdiConv Avx2 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                   FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                   FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                   FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Avx2 = {
+        Unpack10,    Pack10,  Limit,     ToPlanar10, FromPlanar10, ToPlanar8,
+        FromPlanar8, ToUyvy8, FromUyvy8, ToY210,     FromY210,     ToV210,
+        FromV210,    Split4k, Join4k,    JoinLevelB, SplitLevelB};
     return &Avx2;
 }

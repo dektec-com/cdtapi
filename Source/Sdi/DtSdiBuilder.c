@@ -761,15 +761,15 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     // put into its field's half of the frame.
     if (Frame->IsInterfaceFrame)
     {
-        DtSdiView* Picture = DtSdiView_PictureOf(Frame, false);
+        DtSdiView* Picture = DtSdiView_PictureOf(Frame, false, NULL);
         if (Picture == NULL)
             return DTAPI_E_OUT_OF_MEM;
         const DtapiResult Result =
             DtSdiBuilder_Build(Builder, Picture, Image, Audio, Anc);
         if (Result == DTAPI_OK)
             DtSdiLevelB_PutField(Frame->LevelB, Frame->LevelBField, Frame->PictureCopy,
-                                 Frame->BitsPerSymbol, Frame->Frame,
-                                 Frame->BitsPerSymbol);
+                                 Frame->BitsPerSymbol, Frame->Frame, Frame->BitsPerSymbol,
+                                 &Builder->Runner);
         return Result;
     }
     const DtSdiGeometry* Geo = &Frame->Geo;

@@ -403,7 +403,7 @@ DtapiResult DtSdiParser_Parse(DtSdiParser* Parser, const DtSdiView* Frame,
     // A frame of the interface of 3G level B: its picture is taken out into a copy.
     if (Frame->IsInterfaceFrame)
     {
-        Frame = DtSdiView_PictureOf(Frame, true);
+        Frame = DtSdiView_PictureOf(Frame, true, &Parser->Runner);
         if (Frame == NULL)
             return DTAPI_E_OUT_OF_MEM;
     }

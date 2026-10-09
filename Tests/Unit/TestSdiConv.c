@@ -229,6 +229,31 @@ static const char* Compare(const DtSdiConv* Conv, Bufs* B, size_t Count, char* M
             return Message;
         }
     }
+
+    // JoinLevelB and SplitLevelB, as 3G level B puts its links together: two runs of
+    // Half words each, which the run holds one after the other.
+    const size_t Half = Count / 2 / 4 * 4;
+    if (Half > 0)
+    {
+        ClearOut(B);
+        for (int v = 0; v < 2; v++)
+            V[v]->JoinLevelB(B->Symbols, B->Symbols + Half, Half, B->OutSymbols[v]);
+        Failure = SameSymbols(B, 2 * Half, Detail, sizeof(Detail));
+        if (Failure == NULL)
+        {
+            ClearOut(B);
+            for (int v = 0; v < 2; v++)
+                V[v]->SplitLevelB(B->Symbols, Half, B->OutSymbols[v],
+                                  B->OutSymbols[v] + Half);
+            Failure = SameSymbols(B, 2 * Half, Detail, sizeof(Detail));
+        }
+        if (Failure != NULL)
+        {
+            snprintf(Message, MessageSize, "JoinLevelB or SplitLevelB of %zu: %s", Half,
+                     Failure);
+            return Message;
+        }
+    }
 #undef TO
 #undef FROM
     return NULL;

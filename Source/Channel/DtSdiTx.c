@@ -842,6 +842,8 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
 //
 static void FreeLevelB(DtSdiTx* Sdi)
 {
+    if (Sdi->LevelB != NULL)
+        DtSdiLevelB_Free(Sdi->LevelB);
     DtAlloc_Free(Sdi->LevelB);
     DtAlloc_Free(Sdi->Pictures[0]);
     DtAlloc_Free(Sdi->Pictures[1]);
@@ -1611,7 +1613,7 @@ static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize
     const int PictureSize = (int)Sdi->RawFrameSize;
     for (int Field = 1; Field <= 2; Field++)
         DtSdiLevelB_TakeField(Sdi->LevelB, Field, Frame, Bits, Sdi->Pictures[Field - 1],
-                              Bits);
+                              Bits, &Sdi->JobRunner);
     DtapiResult Result = DTAPI_OK;
     for (int Field = 1; Field <= 2 && Result == DTAPI_OK; Field++)
     {

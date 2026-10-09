@@ -433,15 +433,65 @@ static void Join4k(const uint16_t* Upper, const uint16_t* Lower, size_t Pixels,
     }
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- JoinLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Eight words of each link in each step: the low and the high halves interleaved word by
+// word. The rest, fewer than eight words, goes word by word.
+//
+static void JoinLevelB(const uint16_t* LinkB, const uint16_t* LinkA, size_t Count,
+                       uint16_t* Line)
+{
+    size_t k = 0;
+    for (; k + 8 <= Count; k += 8)
+    {
+        const __m128i A = _mm_loadu_si128((const __m128i*)(LinkB + k));
+        const __m128i B = _mm_loadu_si128((const __m128i*)(LinkA + k));
+        _mm_storeu_si128((__m128i*)(Line + 2 * k), _mm_unpacklo_epi16(A, B));
+        _mm_storeu_si128((__m128i*)(Line + 2 * k + 8), _mm_unpackhi_epi16(A, B));
+    }
+    for (; k < Count; k++)
+    {
+        Line[2 * k] = LinkB[k];
+        Line[2 * k + 1] = LinkA[k];
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SplitLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Sixteen words in each step: a shuffle puts each register's even words in its low half
+// and its odd words in its high half, and the halves of the two registers are joined.
+//
+static void SplitLevelB(const uint16_t* Line, size_t Count, uint16_t* LinkB,
+                        uint16_t* LinkA)
+{
+    const __m128i Split =
+        _mm_set_epi8(15, 14, 11, 10, 7, 6, 3, 2, 13, 12, 9, 8, 5, 4, 1, 0);
+    size_t k = 0;
+    for (; k + 8 <= Count; k += 8)
+    {
+        const __m128i L =
+            _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)(Line + 2 * k)), Split);
+        const __m128i H =
+            _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)(Line + 2 * k + 8)), Split);
+        _mm_storeu_si128((__m128i*)(LinkB + k), _mm_unpacklo_epi64(L, H));
+        _mm_storeu_si128((__m128i*)(LinkA + k), _mm_unpackhi_epi64(L, H));
+    }
+    for (; k < Count; k++)
+    {
+        LinkB[k] = Line[2 * k];
+        LinkA[k] = Line[2 * k + 1];
+    }
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Version +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiConv_Ssse3Unchecked -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 const DtSdiConv* DtSdiConv_Ssse3Unchecked(void)
 {
-    static const DtSdiConv Ssse3 = {Unpack10,     Pack10,    Limit,       ToPlanar10,
-                                    FromPlanar10, ToPlanar8, FromPlanar8, ToUyvy8,
-                                    FromUyvy8,    ToY210,    FromY210,    ToV210,
-                                    FromV210,     Split4k,   Join4k};
+    static const DtSdiConv Ssse3 = {
+        Unpack10,    Pack10,  Limit,     ToPlanar10, FromPlanar10, ToPlanar8,
+        FromPlanar8, ToUyvy8, FromUyvy8, ToY210,     FromY210,     ToV210,
+        FromV210,    Split4k, Join4k,    JoinLevelB, SplitLevelB};
     return &Ssse3;
 }

@@ -173,6 +173,8 @@ void DtSdiView_Free(DtSdiView* View)
     DtAlloc_Free(View->WrapLine);
     DtSdiView_Free(View->Picture);
     DtAlloc_Free(View->PictureCopy);
+    if (View->LevelB != NULL)
+        DtSdiLevelB_Free(View->LevelB);
     DtAlloc_Free(View->LevelB);
     DtAlloc_Free(View);
 }
@@ -303,7 +305,7 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
         return DTAPI_E_STATE;
     if (View->IsInterfaceFrame)
     {
-        const DtSdiView* Picture = DtSdiView_PictureOf(View, true);
+        const DtSdiView* Picture = DtSdiView_PictureOf(View, true, NULL);
         return Picture == NULL ? DTAPI_E_OUT_OF_MEM
                                : DtSdiView_GetPayloadId(Picture, PayloadId);
     }
@@ -329,7 +331,8 @@ static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
 // The copy, its view and the converter are made when first needed, and kept. The view
 // is not changed in what it describes, only in these buffers it owns.
 //
-DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take)
+DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take,
+                               const DtJobRunner* Runner)
 {
     DtSdiView* Own = (DtSdiView*)View;
     if (!View->IsInterfaceFrame)
@@ -346,9 +349,12 @@ DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take)
         Own->PictureCopy = (uint8_t*)DtAlloc_Malloc(DT_SDIVIEW_MAX_PICTURE_BYTES);
     if (Own->LevelB == NULL || Own->Picture == NULL || Own->PictureCopy == NULL)
         return NULL;
-    if (Own->LevelB->Geo.VidStd != View->Geo.VidStd &&
-        DtSdiLevelB_Init(Own->LevelB, View->Geo.VidStd) != DTAPI_OK)
-        return NULL;
+    if (Own->LevelB->Geo.VidStd != View->Geo.VidStd)
+    {
+        DtSdiLevelB_Free(Own->LevelB);
+        if (DtSdiLevelB_Init(Own->LevelB, View->Geo.VidStd) != DTAPI_OK)
+            return NULL;
+    }
 
     const int Bits = View->BitsPerSymbol;
     if (SetRaw(Own->Picture, Own->PictureCopy,
@@ -357,7 +363,7 @@ DtSdiView* DtSdiView_PictureOf(const DtSdiView* View, bool Take)
         return NULL;
     if (Take)
         DtSdiLevelB_TakeField(Own->LevelB, View->LevelBField, View->Frame, Bits,
-                              Own->PictureCopy, Bits);
+                              Own->PictureCopy, Bits, Runner);
     return Own->Picture;
 }
 

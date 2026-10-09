@@ -13,9 +13,10 @@
 #include <stdint.h>
 
 // CDTAPI includes
-#include "DtSdiConv.h"     // Packing and unpacking.
-#include "DtSdiCrc.h"      // The line CRCs.
-#include "DtSdiGeometry.h" // The picture's lines and streams.
+#include "Core/DtWorkerPool.h" // The bands of lines.
+#include "DtSdiConv.h"         // Packing, unpacking and the two links.
+#include "DtSdiCrc.h"          // The line CRCs.
+#include "DtSdiGeometry.h"     // The picture's lines and streams.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Level B +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
@@ -41,22 +42,34 @@
 // words of 200 (hex), for the transmitter to fill in. Lines put into a frame get their
 // CRCs.
 //
+// A job runner can divide the lines into bands over the threads of a pool. The result is
+// the same: each band of lines put into a frame works out the CRCs of the line before
+// its first from the picture.
+//
 
 // The most words in one link's line: 1080p50 has 2 x 2640.
 #define DT_SDILEVELB_MAX_LINK_WORDS 5280
+
+// The buffers of one band of lines.
+typedef struct DtSdiLevelBBand
+{
+    uint16_t Link[2][DT_SDILEVELB_MAX_LINK_WORDS];  // One line of link A and of link B
+    uint16_t Line[2 * DT_SDILEVELB_MAX_LINK_WORDS]; // One interface line
+} DtSdiLevelBBand;
 
 // The state of a converter.
 typedef struct DtSdiLevelB
 {
     DtSdiGeometry Geo;       // The picture's standard, of 3G level B
     DtFrameProps Interface;  // The interlaced interface
-    const DtSdiConv* Conv;   // Packing and unpacking
+    const DtSdiConv* Conv;   // Packing, unpacking and the two links
     DtSdiCrcFunc Crc;        // The CRC of a line's active part
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
     int CrcLine; // The interface line whose active part LastCrc covers; 0 if none
     uint32_t LastCrc[2][2]; // Per link (A, B) and stream (C, Y): that CRC
-    uint16_t Link[2][DT_SDILEVELB_MAX_LINK_WORDS];  // One line of link A and of link B
-    uint16_t Line[2 * DT_SDILEVELB_MAX_LINK_WORDS]; // One interface line
+    DtSdiLevelBBand Own;    // The band of the first piece
+    DtSdiLevelBBand* Extra; // The bands of the other pieces, or NULL
+    int NumExtra;           // The number of bands in Extra
 } DtSdiLevelB;
 
 // Writes a black picture into Picture, a raw frame of level A of the standard with
@@ -70,7 +83,11 @@ void DtSdiLevelB_BlackPicture(DtSdiLevelB* Converter, uint8_t* Picture,
 // DtSdiFrame_RawSize() gives that of a raw frame.
 size_t DtSdiLevelB_FrameSize(const DtSdiGeometry* Geo, int BitsPerSymbol);
 
-// Sets up Converter for 3G level-B standard VidStd.
+// Frees the bands that Converter allocated. The converter itself is the caller's.
+void DtSdiLevelB_Free(DtSdiLevelB* Converter);
+
+// Sets up Converter for 3G level-B standard VidStd, from scratch: a converter that was
+// set up before needs DtSdiLevelB_Free() first.
 //
 // Returns DTAPI_OK, or DTAPI_E_INVALID_VIDSTD when VidStd is not 3G level B.
 DtapiResult DtSdiLevelB_Init(DtSdiLevelB* Converter, int VidStd);
@@ -79,12 +96,16 @@ DtapiResult DtSdiLevelB_Init(DtSdiLevelB* Converter, int VidStd);
 // symbol, into the lines of field Field (1 or 2) of the interface frame Frame, with
 // FrameBits bits per symbol. The other field's lines stay as they are. The CRC of each
 // line covers the line before: for the first line of field 2 that is line 562 of Frame,
-// and for line 1 the last line put into a frame, when that was line 1125.
+// and for line 1 the last line put into a frame, when that was line 1125. Runner divides
+// the lines over its pool; NULL, or no memory for the bands, does them all on the
+// calling thread.
 void DtSdiLevelB_PutField(DtSdiLevelB* Converter, int Field, const uint8_t* Picture,
-                          int PictureBits, uint8_t* Frame, int FrameBits);
+                          int PictureBits, uint8_t* Frame, int FrameBits,
+                          const DtJobRunner* Runner);
 
 // Takes the picture of field Field (1 or 2) out of the interface frame Frame, with
 // FrameBits bits per symbol, into Picture, a raw frame of level A with PictureBits bits
-// per symbol.
+// per symbol. Runner is as for DtSdiLevelB_PutField().
 void DtSdiLevelB_TakeField(DtSdiLevelB* Converter, int Field, const uint8_t* Frame,
-                           int FrameBits, uint8_t* Picture, int PictureBits);
+                           int FrameBits, uint8_t* Picture, int PictureBits,
+                           const DtJobRunner* Runner);

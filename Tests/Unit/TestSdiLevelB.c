@@ -454,8 +454,8 @@ DT_TEST(PutAndTakeFields)
         Picture_SetAudio(P[f], 0);
         DT_ASSERT_OK(DtSdiBuilder_Build(Builder, P[f]->View, NULL, &P[f]->AudioIn, NULL));
     }
-    DtSdiLevelB_PutField(Converter, 1, P[0]->Frame, 10, Frame, 10);
-    DtSdiLevelB_PutField(Converter, 2, P[1]->Frame, 10, Frame, 10);
+    DtSdiLevelB_PutField(Converter, 1, P[0]->Frame, 10, Frame, 10, NULL);
+    DtSdiLevelB_PutField(Converter, 2, P[1]->Frame, 10, Frame, 10, NULL);
 
     // The payload IDs: the packet starts right after EAV, the line number and the CRC,
     // at word 8 of the Y stream; its user data words are words 14 to 17.
@@ -498,9 +498,9 @@ DT_TEST(PutAndTakeFields)
                                            LinkWord(Frame, Words, Line - 1, Link, s, k));
                 for (int k = 0; k < 6; k++)
                     Crc = DtSdiFrame_Crc18(Crc, LinkWord(Frame, Words, Line, Link, s, k));
-                const uint32_t Got = (LinkWord(Frame, Words, Line, Link, s, 6) & 0x1FF) |
-                                     (LinkWord(Frame, Words, Line, Link, s, 7) & 0x1FF)
-                                         << 9;
+                const uint32_t Got =
+                    ((uint32_t)LinkWord(Frame, Words, Line, Link, s, 6) & 0x1FFu) |
+                    ((uint32_t)LinkWord(Frame, Words, Line, Link, s, 7) & 0x1FFu) << 9;
                 if (Got != Crc)
                     DT_FAIL("CRC of line %d, link %c, stream %d: %05X, expected %05X",
                             Line, Link, s, (unsigned)Got, (unsigned)Crc);
@@ -512,17 +512,87 @@ DT_TEST(PutAndTakeFields)
     const size_t LineBytes = (size_t)Words / 2 * 10 / 8;
     for (int f = 0; f < 2; f++)
     {
-        DtSdiLevelB_TakeField(Converter, f + 1, Frame, 10, Back->Frame, 10);
+        DtSdiLevelB_TakeField(Converter, f + 1, Frame, 10, Back->Frame, 10, NULL);
         const size_t From = f == 0 ? LineBytes : 0;
         DT_ASSERT_MEM(Back->Frame + From, P[f]->Frame + From, P[f]->Size - From);
     }
 
     free(Frame);
+    DtSdiLevelB_Free(Converter);
     free(Converter);
     DtSdiBuilder_Free(Builder);
     Picture_Free(Back);
     Picture_Free(P[1]);
     Picture_Free(P[0]);
+}
+
+// Puts two pictures of 1080p59.94 level B into a frame and takes them out again, on one
+// thread and over a pool of four pieces, in 10 and in 16 bits a symbol. The frames and
+// the pictures must be the same byte for byte: each band works out the CRCs of the line
+// before it from the picture, as the line before it would have left them.
+DT_TEST(PoolGivesTheSame)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P59_94B;
+    DtWorkerPool* Pool = DtWorkerPool_Alloc();
+    DtJobRunner Runner;
+    DtJobRunner_Init(&Runner);
+    DT_ASSERT(Pool != NULL);
+    DT_ASSERT_OK(DtWorkerPool_StartThreads(Pool, 4));
+    DT_ASSERT_OK(DtJobRunner_SetPool(&Runner, Pool, 4));
+    DT_ASSERT_EQ(DtJobRunner_NumPieces(&Runner), 4);
+
+    for (int Bits = 10; Bits <= 16; Bits += 6)
+    {
+        DtSdiLevelB* Converter[2] = {(DtSdiLevelB*)calloc(1, sizeof(DtSdiLevelB)),
+                                     (DtSdiLevelB*)calloc(1, sizeof(DtSdiLevelB))};
+        DT_ASSERT(Converter[0] != NULL && Converter[1] != NULL);
+        for (int c = 0; c < 2; c++)
+            DT_ASSERT_OK(DtSdiLevelB_Init(Converter[c], VidStd));
+        DtSdiGeometry Geo;
+        DT_ASSERT_OK(DtSdiGeometry_Init(&Geo, VidStd));
+        const size_t PictureSize = DtSdiFrame_RawSize(&Geo.Layout, Bits);
+        const size_t FrameSize = DtSdiLevelB_FrameSize(&Geo, Bits);
+        uint8_t* Pictures[2] = {(uint8_t*)malloc(PictureSize),
+                                (uint8_t*)malloc(PictureSize)};
+        uint8_t* Frames[2] = {(uint8_t*)calloc(FrameSize, 1),
+                              (uint8_t*)calloc(FrameSize, 1)};
+        uint8_t* Back[2] = {(uint8_t*)malloc(PictureSize), (uint8_t*)malloc(PictureSize)};
+        DT_ASSERT(Pictures[0] != NULL && Pictures[1] != NULL && Frames[0] != NULL &&
+                  Frames[1] != NULL && Back[0] != NULL && Back[1] != NULL);
+
+        // Pictures of symbols that every line differs in, with the timing of level A.
+        for (int p = 0; p < 2; p++)
+        {
+            DtSdiLevelB_BlackPicture(Converter[0], Pictures[p], Bits);
+            for (size_t i = PictureSize / 4; i < PictureSize * 3 / 4; i++)
+                Pictures[p][i] = (uint8_t)(i * 7 + (size_t)p * 13);
+        }
+        // Twice, so that the second frame's line 1 follows the first frame's line 1125.
+        for (int Round = 0; Round < 2; Round++)
+            for (int c = 0; c < 2; c++)
+                for (int f = 1; f <= 2; f++)
+                    DtSdiLevelB_PutField(Converter[c], f, Pictures[f - 1], Bits,
+                                         Frames[c], Bits, c == 0 ? NULL : &Runner);
+        DT_ASSERT_MEM(Frames[1], Frames[0], FrameSize);
+        for (int f = 1; f <= 2; f++)
+        {
+            for (int c = 0; c < 2; c++)
+                DtSdiLevelB_TakeField(Converter[c], f, Frames[0], Bits, Back[c], Bits,
+                                      c == 0 ? NULL : &Runner);
+            DT_ASSERT_MEM(Back[1], Back[0], PictureSize);
+        }
+
+        for (int i = 0; i < 2; i++)
+        {
+            free(Pictures[i]);
+            free(Frames[i]);
+            free(Back[i]);
+            DtSdiLevelB_Free(Converter[i]);
+            free(Converter[i]);
+        }
+    }
+    DtJobRunner_Free(&Runner);
+    DtWorkerPool_Free(Pool);
 }
 
 // Builds and parses a raw frame of 1080p50 level B, a frame of the interface, through a
@@ -566,7 +636,7 @@ DT_TEST(InterfaceFrameThroughAView)
         DT_ASSERT_OK(DtSdiView_SetRawPicture(P[f]->View, P[f]->Frame, P[f]->Size, VidStd,
                                              10, f + 1));
         DT_ASSERT_OK(DtSdiBuilder_Build(Alone, P[f]->View, NULL, &P[f]->AudioIn, NULL));
-        DtSdiLevelB_PutField(Converter, f + 1, P[f]->Frame, 10, Expected, 10);
+        DtSdiLevelB_PutField(Converter, f + 1, P[f]->Frame, 10, Expected, 10, NULL);
     }
     DT_ASSERT_MEM(Frame, Expected, Size);
 
@@ -596,6 +666,7 @@ DT_TEST(InterfaceFrameThroughAView)
         DT_ASSERT_EQ(PayloadId, 0x8A490001u);
     }
 
+    DtSdiLevelB_Free(Converter);
     free(Converter);
     DtSdiParser_Free(Parser);
     DtSdiBuilder_Free(Alone);
@@ -608,5 +679,5 @@ DT_TEST(InterfaceFrameThroughAView)
 }
 
 DT_TEST_MAIN("SdiLevelB", DT_RUN(LinesAndPayloadId), DT_RUN(Refusals), DT_RUN(Layout),
-             DT_RUN(Cadence), DT_RUN(PutAndTakeFields),
+             DT_RUN(Cadence), DT_RUN(PutAndTakeFields), DT_RUN(PoolGivesTheSame),
              DT_RUN(InterfaceFrameThroughAView))

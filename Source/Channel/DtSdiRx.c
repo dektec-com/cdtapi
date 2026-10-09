@@ -169,6 +169,8 @@ static size_t FramesInRing(const DtSdiRx* Sdi)
 //
 static void FreeLevelB(DtSdiRx* Sdi)
 {
+    if (Sdi->LevelB != NULL)
+        DtSdiLevelB_Free(Sdi->LevelB);
     DtAlloc_Free(Sdi->LevelB);
     DtAlloc_Free(Sdi->Pictures[0]);
     DtAlloc_Free(Sdi->Pictures[1]);
@@ -1011,8 +1013,10 @@ static DtapiResult DeliverLevelB(DtSdiRx* Sdi, uint8_t* Buffer, DtTimeOfDay* Arr
         }
         else if (Sdi->HeldField1)
         {
-            DtSdiLevelB_PutField(Sdi->LevelB, 1, Sdi->Pictures[0], Bits, Buffer, Bits);
-            DtSdiLevelB_PutField(Sdi->LevelB, 2, Picture, Bits, Buffer, Bits);
+            DtSdiLevelB_PutField(Sdi->LevelB, 1, Sdi->Pictures[0], Bits, Buffer, Bits,
+                                 &Sdi->JobRunner);
+            DtSdiLevelB_PutField(Sdi->LevelB, 2, Picture, Bits, Buffer, Bits,
+                                 &Sdi->JobRunner);
             Sdi->HeldField1 = false;
             if (ArrivalTime != NULL)
                 *ArrivalTime = Sdi->HeldArrival;
