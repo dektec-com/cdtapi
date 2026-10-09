@@ -27,6 +27,7 @@
 // CDTAPI includes
 #include "DtTest.h"            // Test framework.
 #include "Sdi/DtSdiGeometry.h" // The lines of the links.
+#include "Sdi/DtSdiLevelB.h"   // Pictures into frames of the interface.
 #include "Sdi/DtSdiView.h"     // Pictures of level B in the program's memory.
 #include "Video/DtSmpte352.h"  // The payload ID.
 #include "cdtapi_sdi.h"        // Public API under test.
@@ -388,5 +389,130 @@ DT_TEST(Cadence)
     Picture_Free(P);
 }
 
+// Returns symbol Index of interface line Line (from 1) of a 10-bit frame of level B whose
+// lines have Words symbols.
+static uint16_t FrameWord(const uint8_t* Frame, int Words, int Line, int Index)
+{
+    DtSdiSymbolPtr Ptr;
+    const size_t Bit = ((size_t)(Line - 1) * (size_t)Words + (size_t)Index) * 10;
+    Ptr.Byte = Frame + Bit / 8;
+    Ptr.Bit = (int)(Bit % 8);
+    Ptr.BitsPerSymbol = 10;
+    return DtSdiSymbolPtr_Get(&Ptr, 0);
+}
+
+// Returns the word of stream Stream (0 for C, 1 for Y) of link Link ('A' or 'B') at word
+// Index of that stream, on interface line Line. The interface interleaves link B and link
+// A, B first (SMPTE ST 424), and each link C and Y, C first: B-C, A-C, B-Y, A-Y.
+static uint16_t LinkWord(const uint8_t* Frame, int Words, int Line, char Link, int Stream,
+                         int Index)
+{
+    return FrameWord(Frame, Words, Line, 4 * Index + 2 * Stream + (Link == 'A' ? 1 : 0));
+}
+
+// Puts two pictures of 1080p50 level B into one frame of the interface and checks the
+// frame against the standards, not against the converter:
+// - the payload ID with byte 4 01 is in link A's Y stream and the one with 41 in link
+//   B's, on interface line 10 for field 1 and 572 for field 2 (SMPTE ST 424 order);
+// - each link's line numbers are the interface's, and its EAV has the F and V bits of
+//   1080i (SMPTE ST 274): F from line 564 on, V on lines 1 to 20, 561 to 583 and 1124
+//   and 1125. The second picture starts on line 563, the last line of the interface's
+//   first field, as ST 372 Figure 2 maps it;
+// - each link's CRCs, worked out bit by bit, cover its line before;
+// Then takes the pictures out again: they must equal the pictures put in, except line 1
+// of field 1, which the frame does not carry and which comes out as blanking.
+DT_TEST(PutAndTakeFields)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    Picture* P[2] = {Picture_Alloc(VidStd), Picture_Alloc(VidStd)};
+    Picture* Back = Picture_Alloc(VidStd);
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiLevelB* Converter = (DtSdiLevelB*)malloc(sizeof(DtSdiLevelB));
+    DT_ASSERT(P[0] != NULL && P[1] != NULL && Back != NULL && Builder != NULL &&
+              Converter != NULL);
+    DT_ASSERT_OK(DtSdiLevelB_Init(Converter, VidStd));
+    const size_t FrameSize = DtSdiLevelB_FrameSize(Converter, 10);
+    DT_ASSERT_EQ(FrameSize, 2 * P[0]->Size);
+    uint8_t* Frame = (uint8_t*)malloc(FrameSize);
+    DT_ASSERT(Frame != NULL);
+
+    for (int f = 0; f < 2; f++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetRawPicture(P[f]->View, P[f]->Frame, P[f]->Size, VidStd,
+                                             10, f + 1));
+        Picture_SetAudio(P[f], 0);
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, P[f]->View, NULL, &P[f]->AudioIn, NULL));
+    }
+    DtSdiLevelB_PutField(Converter, 1, P[0]->Frame, 10, Frame, 10);
+    DtSdiLevelB_PutField(Converter, 2, P[1]->Frame, 10, Frame, 10);
+
+    // The payload IDs: the packet starts right after EAV, the line number and the CRC,
+    // at word 8 of the Y stream; its user data words are words 14 to 17.
+    const int Words = 2 * 2 * 2640;
+    for (int f = 0; f < 2; f++)
+    {
+        const int Line = f == 0 ? 10 : 572;
+        for (int l = 0; l < 2; l++)
+        {
+            const char Link = l == 0 ? 'A' : 'B';
+            DT_ASSERT_EQ(LinkWord(Frame, Words, Line, Link, 1, 11) & 0xFF, 0x41);
+            DT_ASSERT_EQ(LinkWord(Frame, Words, Line, Link, 1, 14) & 0xFF, 0x8A);
+            DT_ASSERT_EQ(LinkWord(Frame, Words, Line, Link, 1, 17) & 0xFF,
+                         Link == 'A' ? 0x01 : 0x41);
+        }
+    }
+
+    // Line numbers, F and V, and the CRCs, per link and stream.
+    for (int Line = 1; Line <= 1125; Line++)
+    {
+        const bool Field2 = Line >= 564;
+        const bool Vanc = Line <= 20 || (Line >= 561 && Line <= 583) || Line >= 1124;
+        for (int l = 0; l < 2; l++)
+        {
+            const char Link = l == 0 ? 'A' : 'B';
+            for (int s = 0; s < 2; s++)
+            {
+                const uint16_t Xyz = LinkWord(Frame, Words, Line, Link, s, 3);
+                DT_ASSERT_EQ((Xyz >> 8) & 1, Field2 ? 1 : 0);
+                DT_ASSERT_EQ((Xyz >> 7) & 1, Vanc ? 1 : 0);
+                const int Number =
+                    (LinkWord(Frame, Words, Line, Link, s, 4) >> 2 & 0x7F) |
+                    (LinkWord(Frame, Words, Line, Link, s, 5) >> 2 & 0xF) << 7;
+                DT_ASSERT_EQ(Number, Line);
+                if (Line == 1)
+                    continue;
+                uint32_t Crc = 0;
+                for (int k = 720; k < 2640; k++)
+                    Crc = DtSdiFrame_Crc18(Crc,
+                                           LinkWord(Frame, Words, Line - 1, Link, s, k));
+                for (int k = 0; k < 6; k++)
+                    Crc = DtSdiFrame_Crc18(Crc, LinkWord(Frame, Words, Line, Link, s, k));
+                const uint32_t Got = (LinkWord(Frame, Words, Line, Link, s, 6) & 0x1FF) |
+                                     (LinkWord(Frame, Words, Line, Link, s, 7) & 0x1FF)
+                                         << 9;
+                if (Got != Crc)
+                    DT_FAIL("CRC of line %d, link %c, stream %d: %05X, expected %05X",
+                            Line, Link, s, (unsigned)Got, (unsigned)Crc);
+            }
+        }
+    }
+
+    // And back.
+    const size_t LineBytes = (size_t)Words / 2 * 10 / 8;
+    for (int f = 0; f < 2; f++)
+    {
+        DtSdiLevelB_TakeField(Converter, f + 1, Frame, 10, Back->Frame, 10);
+        const size_t From = f == 0 ? LineBytes : 0;
+        DT_ASSERT_MEM(Back->Frame + From, P[f]->Frame + From, P[f]->Size - From);
+    }
+
+    free(Frame);
+    free(Converter);
+    DtSdiBuilder_Free(Builder);
+    Picture_Free(Back);
+    Picture_Free(P[1]);
+    Picture_Free(P[0]);
+}
+
 DT_TEST_MAIN("SdiLevelB", DT_RUN(LinesAndPayloadId), DT_RUN(Refusals), DT_RUN(Layout),
-             DT_RUN(Cadence))
+             DT_RUN(Cadence), DT_RUN(PutAndTakeFields))
