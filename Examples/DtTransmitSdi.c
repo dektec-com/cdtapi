@@ -24,7 +24,10 @@
 // A program that builds frames in lent room must keep up with the card itself: the
 // channel then sends no black frames of its own. The program puts three frames in the
 // buffer before the card starts sending. When a frame comes too late after that, the card
-// runs out of data, and the channel latches DTAPI_TX_FIFO_UFL; --flags shows it.
+// runs out of data, and the channel latches DTAPI_TX_FIFO_UFL. The program then starts
+// again as it started, as every program should: it clears the FIFO, holds, puts three
+// frames in and sends, with a line that says so (ExampleSender in Common). --flags shows
+// the flags latched since, and how often it started again.
 //
 // --checksums makes the builder fill in the line CRCs and the packet checksums, which
 // the card otherwise fills in itself. --threads gives the builder a pool of that many
@@ -379,31 +382,35 @@ static int Transmit(DtOutpChannel* Channel, DtSdiBuilder* Builder, Source* Src,
     }
 
     int Exit = EXAMPLE_OK;
+    ExampleSender Sender;
+    memset(&Sender, 0, sizeof(Sender));
     if (!Allocated)
         Exit = Example_Failed("Allocating", DTAPI_E_OUT_OF_MEM);
     else
     {
-        Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD);
+        Result = ExampleSender_Start(&Sender, Channel, Port->DeviceName,
+                                     FRAMES_BEFORE_SENDING, true);
         if (Result != DTAPI_OK)
         {
             printf("%s  ", Port->DeviceName);
             Exit = Example_Failed("DtOutpChannel_SetTxControl", Result);
         }
     }
-    const int64_t BeforeSending =
-        Count < FRAMES_BEFORE_SENDING ? Count : FRAMES_BEFORE_SENDING;
     for (int64_t i = 0; i < Count && Exit == EXAMPLE_OK; i++)
     {
         Exit = BuildFrame(Channel, Builder, View, Src, Samples, Port, i);
-        if (Exit == EXAMPLE_OK && i == BeforeSending - 1)
+        Result = Exit == EXAMPLE_OK ? ExampleSender_Wrote(&Sender) : DTAPI_OK;
+        if (Result != DTAPI_OK)
         {
-            Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
-            if (Result != DTAPI_OK)
-            {
-                printf("%s  ", Port->DeviceName);
-                Exit = Example_Failed("DtOutpChannel_SetTxControl", Result);
-            }
+            printf("%s  ", Port->DeviceName);
+            Exit = Example_Failed("Sending", Result);
         }
+    }
+    Result = Exit == EXAMPLE_OK ? ExampleSender_Finish(&Sender) : DTAPI_OK;
+    if (Result != DTAPI_OK)
+    {
+        printf("%s  ", Port->DeviceName);
+        Exit = Example_Failed("DtOutpChannel_SetTxControl", Result);
     }
 
     if (Exit == EXAMPLE_OK && Flags)
@@ -419,6 +426,9 @@ static int Transmit(DtOutpChannel* Channel, DtSdiBuilder* Builder, Source* Src,
                 "latched%s%s%s\n", (Latched & DTAPI_TX_FIFO_UFL) != 0 ? " FIFO_UFL" : "",
                 (Latched & DTAPI_TX_DMA_UFL) != 0 ? " DMA_UFL" : "",
                 (Latched & (DTAPI_TX_FIFO_UFL | DTAPI_TX_DMA_UFL)) == 0 ? " none" : "");
+        if (Sender.Restarts > 0)
+            printf("%s  started again %d times after an underflow\n", Port->DeviceName,
+                   Sender.Restarts);
     }
 
     for (int c = 0; c < NUM_CHANNELS; c++)

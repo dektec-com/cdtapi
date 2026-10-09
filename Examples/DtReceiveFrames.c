@@ -52,6 +52,8 @@
 static const ExampleOption g_Options[] = {
     {"--serial", true, "The device's serial number; the first device with an SDI input"},
     {"--port", true, "The port number; the first SDI input"},
+    {"--vidstd", true,
+     "Set the input to this video standard, such as 1080P50B; the port's own without it"},
     {"--count", true, "The number of frames to receive; 1 without it"},
     {"--rxmode", true, "8B, 10B or 16B symbols; 10B without it"},
     {"--timeout", true, "Milliseconds to wait for each frame; 1000 without it"},
@@ -118,10 +120,32 @@ typedef struct NumberReader
     int Height;          // The image height in lines
     DtSdiView* View;     // Points at the frame just received; NULL to read no numbers
     uint16_t* Luma;      // The luma of the code's line
-    DtSdiParser* Parser; // 2160p only: parses the whole image
-    DtSdiImage Image;    // 2160p only: the image, planar 10-bit
+    DtSdiParser* Parser; // 2160p and 3G level B only: parses the whole image
+    DtSdiImage Image;    // 2160p and 3G level B only: the image, planar 10-bit
+    bool LevelB;         // The frames are of 3G level B: two pictures each
     ExampleNumberCheck Check;
 } NumberReader;
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- IsLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Returns whether VidStd is a standard of 3G level B: only a raw frame of level B has a
+// field to choose.
+//
+static bool IsLevelB(int VidStd, int BitsPerSymbol)
+{
+    size_t Size = 0;
+    if (DtSdiView_RawFrameSize(VidStd, BitsPerSymbol, &Size) != DTAPI_OK)
+        return false;
+    uint8_t* Frame = (uint8_t*)calloc(Size, 1);
+    DtSdiView* View = DtSdiView_Alloc();
+    const bool LevelB =
+        Frame != NULL && View != NULL &&
+        DtSdiView_SetRawFrame(View, Frame, Size, VidStd, BitsPerSymbol) == DTAPI_OK &&
+        DtSdiView_SetLevelBField(View, 1) == DTAPI_OK;
+    DtSdiView_Free(View);
+    free(Frame);
+    return LevelB;
+}
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NumberReaderInit -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
@@ -151,10 +175,12 @@ static bool NumberReaderInit(NumberReader* Reader, DtInpChannel* Channel, int Rx
     Reader->Luma = (uint16_t*)malloc((size_t)Reader->Width * sizeof(uint16_t));
     if (Reader->View == NULL || Reader->Luma == NULL)
         return false;
-    if (Reader->Height < 2160)
+    Reader->LevelB = IsLevelB(Reader->VidStd, Reader->BitsPerSymbol);
+    if (Reader->Height < 2160 && !Reader->LevelB)
         return true;
 
-    // A 2160p line is spread over the four links, so the whole image is parsed.
+    // A 2160p line is spread over the four links, and a line of 3G level B over two, so
+    // the whole image is parsed.
     Reader->Parser = DtSdiParser_Alloc();
     if (Reader->Parser == NULL)
         return false;
@@ -185,15 +211,13 @@ static void NumberReaderFree(NumberReader* Reader)
     memset(Reader, 0, sizeof(*Reader));
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadPictureNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Reads the frame number from the raw frame Frame, of Size bytes, and writes what the
-// frame's line says about it to Text, of TextSize bytes; see
-// ExampleNumberCheck_Describe(). Each luma sample is every second symbol of the line,
-// after the Cb or Cr before it.
+// Reads the number of one picture of the raw frame Frame, of Size bytes, as ReadNumber
+// describes: for a frame of 3G level B that of field Field, else Field is 0.
 //
-static void ReadNumber(NumberReader* Reader, char* Frame, int Size, char* Text,
-                       size_t TextSize)
+static void ReadPictureNumber(NumberReader* Reader, char* Frame, int Size, int Field,
+                              char* Text, size_t TextSize)
 {
     const int Line = ExamplePattern_CodeLine(Reader->Height);
     uint32_t Number = 0;
@@ -201,7 +225,8 @@ static void ReadNumber(NumberReader* Reader, char* Frame, int Size, char* Text,
 
     if (Reader->View != NULL &&
         DtSdiView_SetRawFrame(Reader->View, Frame, (size_t)Size, Reader->VidStd,
-                              Reader->BitsPerSymbol) == DTAPI_OK)
+                              Reader->BitsPerSymbol) == DTAPI_OK &&
+        (Field == 0 || DtSdiView_SetLevelBField(Reader->View, Field) == DTAPI_OK))
     {
         DtSdiSymbolPtr Symbols;
         if (Reader->Parser != NULL)
@@ -223,6 +248,40 @@ static void ReadNumber(NumberReader* Reader, char* Frame, int Size, char* Text,
         }
     }
     ExampleNumberCheck_Describe(&Reader->Check, Found, Number, Text, TextSize);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReadNumber -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Reads the frame number from the raw frame Frame, of Size bytes, and writes what the
+// frame's line says about it to Text, of TextSize bytes; see
+// ExampleNumberCheck_Describe(). Each luma sample is every second symbol of the line,
+// after the Cb or Cr before it. A frame of 3G level B holds two pictures, each with its
+// number: field 1's is written first, then field 2's.
+//
+static void ReadNumber(NumberReader* Reader, char* Frame, int Size, char* Text,
+                       size_t TextSize)
+{
+    if (Reader->LevelB && TextSize > 0)
+    {
+        Text[0] = '\0';
+        for (int Field = 1; Field <= 2; Field++)
+        {
+            char Part[64];
+            ReadPictureNumber(Reader, Frame, Size, Field, Part, sizeof(Part));
+            // Each part starts with the two spaces that set it off from the hash, and
+            // may end in spaces; the second follows the first after a comma.
+            size_t Length = strlen(Part);
+            while (Length > 0 && Part[Length - 1] == ' ')
+                Part[--Length] = '\0';
+            const char* From = Part;
+            while (Field == 2 && *From == ' ')
+                From++;
+            const size_t Used = strlen(Text);
+            snprintf(Text + Used, TextSize - Used, "%s%s", Field == 1 ? "" : ", ", From);
+        }
+        return;
+    }
+    ReadPictureNumber(Reader, Frame, Size, 0, Text, TextSize);
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Receive +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -317,6 +376,27 @@ static int AttachAndReceive(DtDevice* Device, DtInpChannel* Channel, char* Frame
         printf("%s  ", Port->DeviceName);
         return Example_Failed("DtInpChannel_AttachToPort", Result);
     }
+    const char* VidStdName = Example_Value(Argc, Argv, "--vidstd");
+    int VidStd = DTAPI_VIDSTD_UNKNOWN;
+    if (VidStdName != NULL && Example_VidStdFromName(VidStdName, &VidStd))
+    {
+        int Value = -1;
+        int SubValue = -1;
+        const char* What = "DtapiVidStd2IoStd";
+        Result = DtapiVidStd2IoStd(VidStd, -1, &Value, &SubValue);
+        if (Result == DTAPI_OK)
+        {
+            What = "DtInpChannel_SetIoConfig";
+            Result = DtInpChannel_SetIoConfig(Channel, DTAPI_IOCONFIG_IOSTD, Value,
+                                              SubValue, -1, -1);
+        }
+        if (Result != DTAPI_OK)
+        {
+            printf("%s  ", Port->DeviceName);
+            DtInpChannel_Detach(Channel, DTAPI_INSTANT_DETACH);
+            return Example_Failed(What, Result);
+        }
+    }
     // The reader of the frame numbers needs the port's standard, and gets the pool for
     // its parser.
     NumberReader Reader;
@@ -378,6 +458,13 @@ int main(int Argc, char** Argv)
         !Example_Int64(Argc, Argv, "--timeout", &TimeoutMs) ||
         !Example_Int64(Argc, Argv, "--threads", &Threads))
     {
+        return EXAMPLE_FAILED;
+    }
+    int VidStd = DTAPI_VIDSTD_UNKNOWN;
+    const char* VidStdName = Example_Value(Argc, Argv, "--vidstd");
+    if (VidStdName != NULL && !Example_VidStdFromName(VidStdName, &VidStd))
+    {
+        printf("Unknown video standard: %s\n", VidStdName);
         return EXAMPLE_FAILED;
     }
     int RxMode = 0;

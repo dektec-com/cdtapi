@@ -306,6 +306,61 @@ const char* Example_PtpStateName(int State)
     return State >= 0 && State < Count ? Names[State] : "?";
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sending +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleSender_Finish -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+unsigned int ExampleSender_Finish(ExampleSender* Sender)
+{
+    if (Sender->Sending || Sender->Held == 0)
+        return DTAPI_OK;
+    Sender->Sending = true;
+    return DtOutpChannel_SetTxControl(Sender->Channel, DTAPI_TXCTRL_SEND);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleSender_Start -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+unsigned int ExampleSender_Start(ExampleSender* Sender, DtOutpChannel* Channel,
+                                 const char* Name, int FramesBeforeSending, bool Lends)
+{
+    memset(Sender, 0, sizeof(*Sender));
+    Sender->Channel = Channel;
+    Sender->Name = Name;
+    Sender->FramesBeforeSending = FramesBeforeSending;
+    Sender->Underflows = DTAPI_TX_DMA_UFL | (Lends ? DTAPI_TX_FIFO_UFL : 0);
+    return DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ExampleSender_Wrote -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// ClearFifo() sets the channel idle and clears the latched flags; HOLD then starts a run
+// afresh.
+//
+unsigned int ExampleSender_Wrote(ExampleSender* Sender)
+{
+    if (!Sender->Sending)
+    {
+        if (++Sender->Held < Sender->FramesBeforeSending)
+            return DTAPI_OK;
+        Sender->Sending = true;
+        return DtOutpChannel_SetTxControl(Sender->Channel, DTAPI_TXCTRL_SEND);
+    }
+
+    int Status = 0;
+    int Latched = 0;
+    unsigned int Result = DtOutpChannel_GetFlags(Sender->Channel, &Status, &Latched);
+    if (Result != DTAPI_OK || (Latched & Sender->Underflows) == 0)
+        return Result;
+    printf("%s  underflow: holding and starting again\n", Sender->Name);
+    Sender->Restarts++;
+    Sender->Sending = false;
+    Sender->Held = 0;
+    Result = DtOutpChannel_ClearFifo(Sender->Channel);
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_SetTxControl(Sender->Channel, DTAPI_TXCTRL_HOLD);
+    return Result;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Example_SleepMs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

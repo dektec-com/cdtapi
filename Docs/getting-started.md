@@ -275,6 +275,14 @@ give it to the channel, the parser and the builder with their `SetWorkerPool` ca
 They can share one pool. `DtReceiveSdi` and `DtTransmitSdi` in the examples show all
 of this.
 
+3G level B carries two pictures in one frame of an interlaced interface of half the
+picture rate, as field 1 and field 2 (SMPTE ST 372). A frame that a channel lends is one
+picture, as the card holds it, and the view knows its field; the builder writes a
+payload ID on each link and the audio on link A, as the standards put them. A raw frame
+of `ReadFrame` and `WriteFrame`, and of an `.sdi` file, is the frame of the interface,
+with both pictures: `DtSdiView_SetLevelBField` chooses the picture that the parser
+reads or the builder builds.
+
 ## DVB-ASI
 
 A port that carries ASI has `IsAsi` set in its `DtHwFuncDesc`. The same channels carry

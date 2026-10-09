@@ -93,6 +93,50 @@ const char* Example_PtpLockName(int Lock);
 // prefix, e.g. "SLAVE", or "?" for another value.
 const char* Example_PtpStateName(int State);
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Sending +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+//
+// How a program starts sending SDI, and starts again after an underflow, in every
+// standard. It holds, puts a few frames into the buffer, and then sends. When the card
+// runs out of data anyway, the program clears the FIFO, holds, and starts again in the
+// same way. The card goes on on a grid of its own after an underflow, and in 3G level B
+// it might not put the next picture in the field it was built for; after a new start the
+// first frame is field 2 again.
+//
+// Which flags mean that the card ran out depends on how the program writes. A program
+// that writes its frames gets a black frame from the channel when it is late, and
+// DTAPI_TX_FIFO_UFL with it, but the card goes on; only DTAPI_TX_DMA_UFL is an underflow
+// then. A program that lends its frames gets no black frames, so DTAPI_TX_FIFO_UFL means
+// the card ran out as well.
+//
+
+// The state of a program that sends.
+typedef struct ExampleSender
+{
+    DtOutpChannel* Channel;
+    const char* Name;        // The port's name, for the lines printed
+    int FramesBeforeSending; // The frames put in before the card starts
+    int Held;                // The frames put in since the channel held
+    bool Sending;            // The card has been told to send
+    int Restarts;            // The new starts after an underflow
+    int Underflows;          // The latched flags that mean the card ran out
+} ExampleSender;
+
+// Holds Channel, whose port is called Name, to put FramesBeforeSending frames into the
+// buffer before it sends. Lends says that the program lends its frames, which makes
+// DTAPI_TX_FIFO_UFL an underflow as well as DTAPI_TX_DMA_UFL. Returns what
+// DtOutpChannel_SetTxControl() returns.
+unsigned int ExampleSender_Start(ExampleSender* Sender, DtOutpChannel* Channel,
+                                 const char* Name, int FramesBeforeSending, bool Lends);
+
+// Counts a frame written or committed. Starts sending once enough frames are in; while
+// sending, starts again after an underflow, with a line that says so. Returns
+// DTAPI_OK or the error of the call that failed.
+unsigned int ExampleSender_Wrote(ExampleSender* Sender);
+
+// Starts sending what the buffer holds, when the program wrote fewer frames since it last
+// held than ExampleSender_Start() asked for. Returns DTAPI_OK or the error of the call.
+unsigned int ExampleSender_Finish(ExampleSender* Sender);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Time +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // Sleeps for about Ms milliseconds.

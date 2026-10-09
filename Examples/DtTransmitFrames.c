@@ -16,6 +16,12 @@
 //
 //     9217800001:5  frame 0  7425000 bytes  hash 3C0F2E6D89A1B437
 //
+// The program puts three frames in the buffer before the card starts sending. When it
+// is late after that, the channel sends a black frame, and the card goes on; when the
+// card runs out of data anyway (DTAPI_TX_DMA_UFL), the program starts again as it
+// started, as every program should: it clears the FIFO, holds, puts three frames in and
+// sends, with a line that says so (ExampleSender in Common).
+//
 // --threads builds and converts the frames on a pool of that many threads, which 2160p
 // needs. --flags prints the channel's latched flags at the end. The program
 // waits until the card has sent every frame before it detaches. The port must be an
@@ -182,6 +188,10 @@ static void FreeFrames(Frames* Set)
 // symbols and keeps the top 8 bits of each, and leaves the line CRCs to the card: a CRC
 // over the 10-bit values does not hold for the 8-bit values the card sends.
 //
+// A raw frame of 3G level B is a frame of the interface, which holds two pictures, field
+// 1 and field 2. Frame n then carries pictures 2n and 2n + 1 of the pattern, each with
+// its own number. The 8-bit transmit mode does not carry level B.
+//
 
 // The test pattern, and what builds its raw frames.
 typedef struct Generator
@@ -191,6 +201,7 @@ typedef struct Generator
     DtSdiBuilder* Builder;  // Builds the raw frames
     DtSdiView* View;        // Points the builder at Built
     int VidStd;             // The frames' video standard
+    bool LevelB;            // The standard is 3G level B: two pictures a frame
     int BitsPerSymbol;      // Of the frames sent: 8, 10 or 16
     uint8_t* Built;         // The frame the builder writes, of 10-bit or 16-bit symbols
     size_t BuiltSize;       // Bytes of Built
@@ -222,9 +233,19 @@ static bool GeneratorInit(Generator* Gen, int VidStd, int BitsPerSymbol)
         return false;
     }
 
-    Gen->Builder = DtSdiBuilder_Alloc();
+    // Only a raw frame of 3G level B has a field to choose.
     Gen->View = DtSdiView_Alloc();
     Gen->Built = (uint8_t*)malloc(Gen->BuiltSize);
+    Gen->LevelB = Gen->View != NULL && Gen->Built != NULL &&
+                  DtSdiView_SetRawFrame(Gen->View, Gen->Built, Gen->BuiltSize, VidStd,
+                                        BuiltBits) == DTAPI_OK &&
+                  DtSdiView_SetLevelBField(Gen->View, 1) == DTAPI_OK;
+    if (Gen->LevelB && BitsPerSymbol == 8)
+    {
+        printf("The 8-bit transmit mode does not carry 3G level B\n");
+        return false;
+    }
+    Gen->Builder = DtSdiBuilder_Alloc();
     if (BitsPerSymbol == 8)
     {
         Gen->FrameSize = (int)((Gen->BuiltSize / 2 + 7) / 8 * 8);
@@ -273,18 +294,24 @@ static void GeneratorFree(Generator* Gen)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Makes frame Number of the pattern in Gen->Frame: draws the image, builds the raw frame,
-// and for 8-bit symbols keeps the top 8 bits of each 16-bit symbol. Returns what the
-// builder returns.
+// and for 8-bit symbols keeps the top 8 bits of each 16-bit symbol. In 3G level B it
+// draws and builds pictures 2 Number and 2 Number + 1, as field 1 and field 2. Returns
+// what the builder returns.
 //
 static unsigned int MakeFrame(Generator* Gen, int64_t Number)
 {
     const int BuiltBits = Gen->BitsPerSymbol == 10 ? 10 : 16;
 
-    ExamplePattern_Draw(&Gen->Pattern, Number);
     unsigned int Result = DtSdiView_SetRawFrame(Gen->View, Gen->Built, Gen->BuiltSize,
                                                 Gen->VidStd, BuiltBits);
-    if (Result == DTAPI_OK)
-        Result = DtSdiBuilder_Build(Gen->Builder, Gen->View, &Gen->Image, NULL, NULL);
+    for (int Field = 1; Field <= (Gen->LevelB ? 2 : 1) && Result == DTAPI_OK; Field++)
+    {
+        ExamplePattern_Draw(&Gen->Pattern, Gen->LevelB ? 2 * Number + Field - 1 : Number);
+        if (Gen->LevelB)
+            Result = DtSdiView_SetLevelBField(Gen->View, Field);
+        if (Result == DTAPI_OK)
+            Result = DtSdiBuilder_Build(Gen->Builder, Gen->View, &Gen->Image, NULL, NULL);
+    }
     if (Result != DTAPI_OK || Gen->BitsPerSymbol != 8)
         return Result;
 
@@ -332,10 +359,10 @@ static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* S
             return Example_Failed("DtSdiBuilder_Build", Built);
     }
 
-    unsigned int Result = DtOutpChannel_Write(Channel, Frame, Size);
+    unsigned int Result = DtOutpChannel_WriteFrame(Channel, Frame, Size, -1);
     printf("%s  ", Port->DeviceName);
     if (Result != DTAPI_OK)
-        return Example_Failed("DtOutpChannel_Write", Result);
+        return Example_Failed("DtOutpChannel_WriteFrame", Result);
     printf("frame %lld  %d bytes  hash %016llX\n", (long long)Number, Size,
            (unsigned long long)Example_Hash(Frame, (size_t)Size));
     return EXAMPLE_OK;
@@ -349,29 +376,32 @@ static int WriteNext(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* S
 static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Src,
                     int64_t Count, bool Flags)
 {
-    unsigned int Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_HOLD);
+    ExampleSender Sender;
+    unsigned int Result = ExampleSender_Start(&Sender, Channel, Port->DeviceName,
+                                              FRAMES_BEFORE_SENDING, false);
     if (Result != DTAPI_OK)
     {
         printf("%s  ", Port->DeviceName);
         return Example_Failed("DtOutpChannel_SetTxControl", Result);
     }
 
-    const int64_t BeforeSending =
-        Count < FRAMES_BEFORE_SENDING ? Count : FRAMES_BEFORE_SENDING;
     for (int64_t i = 0; i < Count; i++)
     {
         int Exit = WriteNext(Channel, Port, Src, i);
         if (Exit != EXAMPLE_OK)
             return Exit;
-        if (i == BeforeSending - 1)
+        Result = ExampleSender_Wrote(&Sender);
+        if (Result != DTAPI_OK)
         {
-            Result = DtOutpChannel_SetTxControl(Channel, DTAPI_TXCTRL_SEND);
-            if (Result != DTAPI_OK)
-            {
-                printf("%s  ", Port->DeviceName);
-                return Example_Failed("DtOutpChannel_SetTxControl", Result);
-            }
+            printf("%s  ", Port->DeviceName);
+            return Example_Failed("Sending", Result);
         }
+    }
+    Result = ExampleSender_Finish(&Sender);
+    if (Result != DTAPI_OK)
+    {
+        printf("%s  ", Port->DeviceName);
+        return Example_Failed("DtOutpChannel_SetTxControl", Result);
     }
 
     if (Flags)
@@ -386,6 +416,9 @@ static int Transmit(DtOutpChannel* Channel, const DtHwFuncDesc* Port, Source* Sr
         printf("latched%s%s%s\n", (Latched & DTAPI_TX_FIFO_UFL) != 0 ? " FIFO_UFL" : "",
                (Latched & DTAPI_TX_DMA_UFL) != 0 ? " DMA_UFL" : "",
                (Latched & (DTAPI_TX_FIFO_UFL | DTAPI_TX_DMA_UFL)) == 0 ? " none" : "");
+        if (Sender.Restarts > 0)
+            printf("%s  started again %d times after an underflow\n", Port->DeviceName,
+                   Sender.Restarts);
     }
     return EXAMPLE_OK;
 }

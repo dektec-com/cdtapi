@@ -85,6 +85,25 @@ The frames are the same whatever the number of threads. A pool can also run the 
 on a program's own threads, which join it, or on a pool the program already has; the
 `Parallel work` section of `cdtapi.h` describes both.
 
+### 3G level B
+
+On a port set to 3G level B, a raw frame is a frame of the interface as the line
+carries it, as an `.sdi` file holds it: an interlaced frame of half the picture rate
+with two pictures, field 1 and field 2, the words of link B and link A interleaved
+(SMPTE ST 372 and ST 425-1). `DtTransmitFrames` builds pictures 2n and 2n + 1 of the
+pattern into frame n, and `DtReceiveFrames` prints both pictures' numbers:
+
+    DtConfigPort --port 1 --input --vidstd 1080P50B
+    DtReceiveFrames --port 1 --count 10
+    DtConfigPort --port 5 --output
+    DtTransmitFrames --port 5 --vidstd 1080P50B --count 250
+
+The card itself holds each picture as a frame of level A. The channels put the
+pictures together into frames of the interface and take them apart; at the start of a
+run the output sends one black picture first, so that each picture goes out in its own
+field. `DtTransmitSdi` and `DtReceiveSdi` lend the card's frames, one picture each, with
+its field; the builder and the parser lay out the payload IDs and the audio for it.
+
 ### DVB-ASI
 
 The two ASI programs set the port's I/O standard to ASI themselves; the direction is

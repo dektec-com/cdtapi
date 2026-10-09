@@ -11,6 +11,11 @@
 // that is. Where the system reports its clock, the blanking table also prints the
 // millions of cycles a frame takes. That number carries over to another machine.
 //
+// 1080p50B is 3G level B through a raw frame of the interface, as an .sdi file holds
+// it: a case parses or builds one picture of it, field 1, and so includes taking the
+// picture out of the frame or putting it in. Through a frame a channel lends, a picture
+// of level B costs what one of 1080p50 does.
+//
 // The content of the frames and images does not affect the speed, so it is noise. The
 // benchmark prints five tables:
 // - the parser's image, with a column for each version of the conversions (portable,
@@ -52,6 +57,7 @@ static const Standard g_Standards[] = {
     {"720p50", DTAPI_VIDSTD_720P50, 50.0},
     {"1080i50", DTAPI_VIDSTD_1080I50, 25.0},
     {"1080p50", DTAPI_VIDSTD_1080P50, 50.0},
+    {"1080p50B", DTAPI_VIDSTD_1080P50B, 50.0},
     {"2160p50", DTAPI_VIDSTD_2160P50, 50.0},
     {"2160p60", DTAPI_VIDSTD_2160P60, 60.0},
 };

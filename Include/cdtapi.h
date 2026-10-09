@@ -1186,6 +1186,16 @@ CDTAPI_API DtapiResult DtOutpChannel_GetFifoSize(DtOutpChannel* OutpChannel,
 //   DTAPI_TX_SYNC_ERR   ASI: a packet was written without its sync byte
 // ClearFlags() and ClearFifo() clear the latched flags. On ASI, HOLD also clears
 // DTAPI_TX_SYNC_ERR, and SEND forgets the card's earlier underflows.
+//
+// After an underflow on SDI the card goes on when data comes again, on a frame grid of
+// its own: DTAPI_TX_DMA_UFL, and DTAPI_TX_FIFO_UFL while the program lends its frames,
+// when the channel puts in no black frames. A program that cares when and how its frames
+// go out starts again as it started, in every standard: ClearFifo(), SetTxControl() to
+// DTAPI_TXCTRL_HOLD, a few frames into the buffer, and SetTxControl() to
+// DTAPI_TXCTRL_SEND. In 3G level B that also puts each picture in its own field again:
+// the card's first frame after SEND is field 2, and an underflow can leave the next frame
+// in either. A black frame of the channel is not an underflow of the card; the fields
+// carry on through it. The examples DtTransmitFrames and DtTransmitSdi do this.
 CDTAPI_API DtapiResult DtOutpChannel_GetFlags(DtOutpChannel* OutpChannel, int* Status,
                                               int* Latched);
 
