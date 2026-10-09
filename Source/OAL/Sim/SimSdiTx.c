@@ -80,6 +80,11 @@ typedef struct SimTxPort
     int NumLinesPerEvent;
     int NumSofsBetweenTod;
     int SofCount;
+    bool SofGridStarted;  // The first frame since RUN has been stamped
+    int64_t SofGridNs;    // Its stamp: the wall clock then, in nanoseconds
+    int64_t SofStamps;    // The frames stamped since
+    int64_t StampShiftNs; // Added to the next StampShiftsLeft stamps; see
+    int StampShiftsLeft;  // SimDtPcie_ShiftTxStamps
     bool UflEnabled;
     bool UflLatched;
 
@@ -964,6 +969,40 @@ static double PartPeriodMs(const SimTxPort* Port, int VidStd)
     return 1000.0 * Props.FpsDen / Props.FpsNum / NumParts;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StampOnGrid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Puts a stamp that Event carries on a grid of frame periods of VidStd, as a card's
+// frames start on one: the first frame since RUN keeps the wall clock's time, and each
+// frame stamped after it comes a period later.
+//
+static void StampOnGrid(SimTxPort* Port, int VidStd,
+                        DtIoctlSdiTxFCmdWaitForFmtEventOutput* Event)
+{
+    DtFrameProps Props;
+
+    if (!Event->m_SofTimeValid || !DtFrameProps_Init(&Props, VidStd) || Props.FpsNum <= 0)
+        return;
+    if (!Port->SofGridStarted)
+    {
+        Port->SofGridStarted = true;
+        Port->SofGridNs = (int64_t)Event->m_SofTime.m_Seconds * 1000000000LL +
+                          Event->m_SofTime.m_Nanoseconds;
+        Port->SofStamps = 0;
+    }
+    int64_t Ns =
+        Port->SofGridNs +
+        (Port->SofStamps * Props.FpsDen * 1000000000LL + Props.FpsNum / 2) / Props.FpsNum;
+    Port->SofStamps++;
+    if (Port->StampShiftsLeft != 0)
+    {
+        Ns += Port->StampShiftNs;
+        if (Port->StampShiftsLeft > 0)
+            Port->StampShiftsLeft--;
+    }
+    Event->m_SofTime.m_Seconds = (UInt32)(Ns / 1000000000LL);
+    Event->m_SofTime.m_Nanoseconds = (UInt32)(Ns % 1000000000LL);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SdiTxFCmd -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A wait with a time-out outside -1 to 1000 ms is refused, as the driver refuses it, and
@@ -1006,6 +1045,7 @@ static uint32_t SdiTxFCmd(SimTxPort* Port, int Cmd, int VidStd, const void* In, 
             Port->UflEnabled = false;
             Port->UflLatched = false;
             Port->SofCount = 0;
+            Port->SofGridStarted = false;
         }
         ClearFrame(Port);
         Port->TxfMode = OpMode;
@@ -1048,6 +1088,7 @@ static uint32_t SdiTxFCmd(SimTxPort* Port, int Cmd, int VidStd, const void* In, 
                 *SleepMs = Delay;
             return DT_STATUS_TIMEOUT;
         }
+        StampOnGrid(Port, VidStd, Event);
         *SleepMs = Delay;
         *OutSize = sizeof(*Event);
         return DT_STATUS_OK;
@@ -1458,6 +1499,20 @@ void SimDtPcie_StarveTx(int PortIndex, int Events)
     EnsureTx();
     if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
         g_Tx.Ports[PortIndex].StarveEvents = Events;
+    SimDtPcie_Unlock();
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_ShiftTxStamps -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimDtPcie_ShiftTxStamps(int PortIndex, int64_t Ns, int Count)
+{
+    SimDtPcie_Lock();
+    EnsureTx();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT)
+    {
+        g_Tx.Ports[PortIndex].StampShiftNs = Ns;
+        g_Tx.Ports[PortIndex].StampShiftsLeft = Count;
+    }
     SimDtPcie_Unlock();
 }
 

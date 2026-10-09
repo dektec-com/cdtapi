@@ -158,6 +158,11 @@ int SimDtPcie_RunTxEvents(int PortIndex, int Events);
 // holds.
 void SimDtPcie_StarveTx(int PortIndex, int Events);
 
+// Adds Ns nanoseconds to the stamps of the starts of the next Count frames of the port
+// at PortIndex, or of all frames from now on for a Count of -1: a stamp of an interrupt
+// handled late, or a grid the card took anew. Count 0, as after a reset, adds nothing.
+void SimDtPcie_ShiftTxStamps(int PortIndex, int64_t Ns, int Count);
+
 // Makes the output follow the clock when RealTime is true, as after a reset. When false,
 // the output goes out as fast as the waits come.
 void SimDtPcie_SetTxRealTime(bool RealTime);

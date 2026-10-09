@@ -8,6 +8,7 @@
 
 // Standard includes
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 // CDTAPI includes
@@ -50,6 +51,13 @@
 
 // The PHY's underflow flag is read every so many format events.
 #define DT_SDITX_PHY_POLL_EVENTS 50
+
+// How far a frame's stamp may be from the one before, or from the grid of the frames'
+// starts, and still count; the stamps over which the grid takes the earliest; and the
+// stamps off the grid in a row after which the grid starts afresh.
+#define DT_SDITX_STAMP_TOLERANCE_NS 1000000
+#define DT_SDITX_STAMP_WINDOW 50
+#define DT_SDITX_STAMP_RESYNC 3
 
 // The largest header with its padding: DT_SDIFRAME_TX_HEADER_BYTES padded to 512 bits.
 #define DT_SDITX_MAX_HEADER_BYTES 64
@@ -152,11 +160,17 @@ typedef struct DtSdiTx
                          // DT_SDITX_FIRST_BLACK_EVENT_SEQ
     int SendingFrameId;  // The frame ID of the last format event
 
-    // The start of the last frame the card sent, from the first format event of that
-    // frame: its frame ID and the time of day it started on the cable.
-    bool StartValid;       // A start was seen since the channel held
-    int StartFrameId;      // Its frame ID, 16 bits
-    DtTimeOfDay StartTime; // Its start, on the card's clock
+    // The grid on which the frames start on the cable, from the driver's stamps; see
+    // NoteStamp.
+    bool LastStampValid; // A stamp was seen since the channel held
+    int LastStampId;     // Its frame ID, 16 bits
+    int64_t LastStampNs; // Its time of day in nanoseconds
+    bool GridValid;      // The grid is known
+    int GridId;          // A frame ID of the grid, 16 bits
+    int64_t GridNs;      // The start of that frame on the cable, in nanoseconds
+    int WindowStamps;    // The stamps that agreed with the grid in this window
+    int64_t WindowMinNs; // Their smallest distance after the grid, in nanoseconds
+    int OffGridStamps;   // The stamps off the grid in a row that agree with each other
 } DtSdiTx;
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DrvOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -356,22 +370,102 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Thread +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FramesToNs -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Returns the duration of Frames frames of the channel's standard in nanoseconds, from
+// its exact rate.
+//
+static int64_t FramesToNs(const DtSdiTx* Sdi, int64_t Frames)
+{
+    int Num = 0;
+    int Den = 0;
+    DtVidStd_FrameRate(Sdi->FrameLayout.VidStd, &Num, &Den);
+    if (Num <= 0)
+        return 0;
+    return (Frames * Den * 1000000000LL + Num / 2) / Num;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteStamp -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Takes the stamp Ns of frame Id into the grid on which the frames start on the cable.
+//
+// The driver stamps a frame when the formatter reads its header, just before the frame
+// goes out. The delay of the interrupt only makes a stamp later, so the grid follows the
+// earliest stamps:
+// - A stamp before the grid moves the grid to it at once.
+// - After DT_SDITX_STAMP_WINDOW stamps on the grid, the grid moves to the earliest of
+//   them, also when that is later, so that it follows the card's clock.
+//
+// A stamp counts as on the grid within DT_SDITX_STAMP_TOLERANCE_NS:
+// - At the start of a run the first frame waits for the genlock reference, up to a
+//   period of it, so its stamp is early. The grid starts only at a stamp that agrees
+//   with the one before.
+// - A stamp off the grid, such as one of an interrupt handled late, is left out.
+// - DT_SDITX_STAMP_RESYNC stamps off the grid in a row that agree with each other mean
+//   that the card took a grid of its own, as after an underflow: the grid starts afresh
+//   at the last of them.
+//
+// It takes a few operations on integers per frame.
+//
+static void NoteStamp(DtSdiTx* Sdi, int Id, int64_t Ns)
+{
+    const bool Agrees =
+        Sdi->LastStampValid && llabs(Ns - Sdi->LastStampNs -
+                                     FramesToNs(Sdi, (Id - Sdi->LastStampId) & 0xFFFF)) <=
+                                   DT_SDITX_STAMP_TOLERANCE_NS;
+    Sdi->LastStampValid = true;
+    Sdi->LastStampId = Id;
+    Sdi->LastStampNs = Ns;
+
+    const int64_t After =
+        Sdi->GridValid ? Ns - Sdi->GridNs - FramesToNs(Sdi, (Id - Sdi->GridId) & 0xFFFF)
+                       : 0;
+    if (!Sdi->GridValid || llabs(After) > DT_SDITX_STAMP_TOLERANCE_NS)
+    {
+        Sdi->OffGridStamps =
+            Agrees && Sdi->OffGridStamps > 0 ? Sdi->OffGridStamps + 1 : 1;
+        const bool Start =
+            !Sdi->GridValid ? Agrees : Sdi->OffGridStamps >= DT_SDITX_STAMP_RESYNC;
+        if (Start)
+        {
+            Sdi->GridValid = true;
+            Sdi->GridId = Id;
+            Sdi->GridNs = Ns;
+            Sdi->WindowStamps = 0;
+            Sdi->WindowMinNs = 0;
+            Sdi->OffGridStamps = 0;
+        }
+        return;
+    }
+    Sdi->OffGridStamps = 0;
+    if (After < 0)
+    {
+        Sdi->GridId = Id;
+        Sdi->GridNs = Ns;
+        Sdi->WindowMinNs = 0;
+    }
+    else if (Sdi->WindowStamps == 0 || After < Sdi->WindowMinNs)
+        Sdi->WindowMinNs = After;
+    if (++Sdi->WindowStamps >= DT_SDITX_STAMP_WINDOW)
+    {
+        Sdi->GridNs += Sdi->WindowMinNs;
+        Sdi->WindowStamps = 0;
+        Sdi->WindowMinNs = 0;
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteEvent -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Takes the frame a format event names as the one going out. The first event of a frame
-// with a valid stamp gives that frame's start on the cable.
+// with a valid stamp gives that frame's start; see NoteStamp.
 //
 static void NoteEvent(DtSdiTx* Sdi, const DtSdiTxFEvent* Event)
 {
     Sdi->FirstEventSeen = true;
     Sdi->SendingFrameId = Event->FrameId;
     if (Event->SeqNumber == 0 && Event->SofTimeValid)
-    {
-        Sdi->StartValid = true;
-        Sdi->StartFrameId = Event->FrameId;
-        Sdi->StartTime.Seconds = Event->SofSeconds;
-        Sdi->StartTime.Nanoseconds = Event->SofNanoseconds;
-    }
+        NoteStamp(Sdi, Event->FrameId,
+                  (int64_t)Event->SofSeconds * 1000000000LL + Event->SofNanoseconds);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SignalKeeperThread -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -558,7 +652,8 @@ static DtapiResult IdleToHold(DtSdiTx* Sdi)
     Sdi->FirstEventSeen = false;
     Sdi->BlackAllowed = false;
     Sdi->SendingFrameId = 0;
-    Sdi->StartValid = false;
+    Sdi->LastStampValid = false;
+    Sdi->GridValid = false;
     ForgetPartialFrame(Sdi);
     Sdi->Tx.TxControl = DTAPI_TXCTRL_HOLD;
     return DTAPI_OK;
@@ -1576,25 +1671,19 @@ static DtapiResult LendFrame(DtTx* Tx, DtSdiView* View, void* Holder, uint64_t D
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetNextFrameTime -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // The next frame has ID NextFrameId: a lent frame, or the frame being written, keeps it
-// until it is committed. Adds the frames from the last start the card stamped to that
-// frame, times the frame period, to that start. The period is worked out from the exact
-// rate.
+// until it is committed. Adds the frames from the grid's frame to that frame, times the
+// frame period, to the grid's start; see NoteStamp.
 //
 static DtapiResult GetNextFrameTime(DtTx* Tx, DtTimeOfDay* StartTime)
 {
     DtSdiTx* Sdi = (DtSdiTx*)Tx;
 
-    if (!Sdi->StartValid)
+    if (!Sdi->GridValid)
         return DTAPI_E_NOT_STARTED;
-
-    int Num = 0;
-    int Den = 0;
-    DtVidStd_FrameRate(Sdi->FrameLayout.VidStd, &Num, &Den);
-    const int64_t Frames = (Sdi->NextFrameId - Sdi->StartFrameId) & 0xFFFF;
-    const int64_t Ns = (Frames * Den * 1000000000LL + Num / 2) / Num;
-    const int64_t Total = (int64_t)Sdi->StartTime.Nanoseconds + Ns;
-    StartTime->Seconds = Sdi->StartTime.Seconds + (uint32_t)(Total / 1000000000LL);
-    StartTime->Nanoseconds = (uint32_t)(Total % 1000000000LL);
+    const int64_t Ns =
+        Sdi->GridNs + FramesToNs(Sdi, (Sdi->NextFrameId - Sdi->GridId) & 0xFFFF);
+    StartTime->Seconds = (uint32_t)(Ns / 1000000000LL);
+    StartTime->Nanoseconds = (uint32_t)(Ns % 1000000000LL);
     return DTAPI_OK;
 }
 

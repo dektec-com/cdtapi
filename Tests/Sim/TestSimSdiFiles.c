@@ -1625,8 +1625,9 @@ static int64_t NsOf(const DtTimeOfDay* T)
 // Checks 3G level B through the channels, in 1080p50 level B:
 // - an output channel lends frames as field 2, field 1, field 2 and so on from the start
 //   of the run, and the builder lays them out for that field;
-// - DtOutpChannel_GetNextFrameTime has no time before the card sends, and then gives
-//   times that go on by at least a frame period from frame to frame;
+// - DtOutpChannel_GetNextFrameTime has no time before the card sends, and then, once
+//   three stamps agree, gives times exactly a frame period apart, as the emulated
+//   card stamps its frames on a grid;
 // - the frames the sink holds give the same fields from the line of their payload ID;
 // - played back on an input, the channel lends them with those fields, and the parser
 //   gives each picture's audio and place in the cadence.
@@ -1660,9 +1661,9 @@ DT_TEST(LevelBThroughTheChannels)
     {
         DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix.Out, View, 10000));
         DT_ASSERT_EQ(View->LevelBField, k % 2 == 0 ? 2 : 1);
-        if (k >= 2)
+        if (k >= 4)
         {
-            // The card started with the second frame; wait for its first stamp.
+            // The grid needs three stamps that agree, of the frames committed so far.
             DtapiResult Result = DTAPI_E_NOT_STARTED;
             const uint64_t Since = OsTime_MonotonicMs();
             while ((Result = DtOutpChannel_GetNextFrameTime(Fix.Out, &Next)) ==
@@ -1672,7 +1673,7 @@ DT_TEST(LevelBThroughTheChannels)
             DT_ASSERT_OK(Result);
             DT_ASSERT(NsOf(&Next) > 0);
             if (LastNs > 0)
-                DT_ASSERT(NsOf(&Next) - LastNs >= 20000000 - 1000);
+                DT_ASSERT_EQ(NsOf(&Next) - LastNs, 20000000);
             LastNs = NsOf(&Next);
         }
         DtSdiAudio Audio;
@@ -1758,6 +1759,88 @@ DT_TEST(LevelBThroughTheChannels)
     FINISH(Fix);
     remove(SINK_FILE);
     remove(SOURCE_FILE);
+}
+
+// Lends a frame on Fix->Out, builds it black and commits it. Sets *Phase to the time
+// DtOutpChannel_GetNextFrameTime gave for it less Index frame periods of Period
+// nanoseconds, or to 0 while it gave none.
+static DtapiResult SendBlack(Fixture* Fix, DtSdiView* View, DtSdiBuilder* Builder,
+                             int Index, int64_t Period, int64_t* Phase)
+{
+    DtTimeOfDay Next;
+    DtapiResult Result = DtOutpChannel_AcquireFrame(Fix->Out, View, 10000);
+    if (Result != DTAPI_OK)
+        return Result;
+    *Phase = DtOutpChannel_GetNextFrameTime(Fix->Out, &Next) == DTAPI_OK
+                 ? NsOf(&Next) - Index * Period
+                 : 0;
+    Result = DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL);
+    if (Result == DTAPI_OK)
+        Result = DtOutpChannel_CommitFrame(Fix->Out, View);
+    return Result;
+}
+
+// Checks that DtOutpChannel_GetNextFrameTime keeps to the grid of the frames' starts
+// when a stamp is off it, in 720p50:
+// - once the grid is known, each frame's time is the grid's;
+// - one stamp 5 ms late, as of an interrupt handled late, changes nothing;
+// - stamps 7 ms later from then on, as when the card takes a grid of its own, move the
+//   times 7 ms on, after a few frames, and they stay there.
+DT_TEST(FrameTimeKeepsItsGrid)
+{
+    const int64_t Period = 20000000;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    SimDtPcie_SetTxRealTime(false);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    Fix.Out = DtOutpChannel_Alloc();
+    DT_ASSERT(View != NULL && Builder != NULL && Fix.Out != NULL);
+    DT_ASSERT_OK(SetStandard(&Fix, PORT_OUTPUT, DTAPI_VIDSTD_720P50));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix.Out, Fix.Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_HOLD));
+
+    int64_t Phase = 0;
+    int64_t Grid = 0;
+    int Frame = 0;
+    for (; Frame < 2; Frame++)
+        DT_ASSERT_OK(SendBlack(&Fix, View, Builder, Frame, Period, &Phase));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix.Out, DTAPI_TXCTRL_SEND));
+    for (; Frame < 30; Frame++)
+    {
+        DT_ASSERT_OK(SendBlack(&Fix, View, Builder, Frame, Period, &Phase));
+        if (Grid == 0)
+            Grid = Phase;
+        else
+            DT_ASSERT_EQ(Phase, Grid);
+    }
+    DT_ASSERT(Grid != 0);
+
+    SimDtPcie_ShiftTxStamps(PORT_OUTPUT - 1, 5000000, 1);
+    for (; Frame < 60; Frame++)
+    {
+        DT_ASSERT_OK(SendBlack(&Fix, View, Builder, Frame, Period, &Phase));
+        DT_ASSERT_EQ(Phase, Grid);
+    }
+
+    SimDtPcie_ShiftTxStamps(PORT_OUTPUT - 1, 7000000, -1);
+    bool Moved = false;
+    for (; Frame < 100; Frame++)
+    {
+        DT_ASSERT_OK(SendBlack(&Fix, View, Builder, Frame, Period, &Phase));
+        if (Phase != Grid)
+            Moved = true;
+        if (Moved)
+            DT_ASSERT_EQ(Phase, Grid + 7000000);
+    }
+    DT_ASSERT(Moved);
+
+    DT_ASSERT_OK(DtOutpChannel_Detach(Fix.Out, DTAPI_INSTANT_DETACH));
+    DtOutpChannel_Freep(&Fix.Out);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    FINISH(Fix);
 }
 
 // Checks what an output channel refuses while it lends room for a frame, and that it
@@ -1871,4 +1954,4 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(AcquireNeedsTenBits), DT_RUN(LostFramesLatchTheOverflow),
              DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
              DT_RUN(LendingRefusesAndDrops), DT_RUN(LevelBThroughTheChannels),
-             DT_RUN(LeavesAFileForTheExamples))
+             DT_RUN(FrameTimeKeepsItsGrid), DT_RUN(LeavesAFileForTheExamples))
