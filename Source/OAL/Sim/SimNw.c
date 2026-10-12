@@ -1203,9 +1203,12 @@ static uint32_t PipeCmd(int Uuid, int Cmd, const void* In, void* Out, size_t* Ou
         DtIoctlPipeCmdGetPropertiesOutput* Props =
             (DtIoctlPipeCmdGetPropertiesOutput*)Out;
 
-        Props->m_Capabilities = (Pipe->IsRx ? DT_PIPE_CAP_RX : DT_PIPE_CAP_TX) |
-                                (Pipe->IsHw ? DT_PIPE_CAP_HWP : DT_PIPE_CAP_SWP) |
-                                DT_PIPE_CAP_RT | DT_PIPE_CAP_JFRAME;
+        // The flags are int constants; GCC 7 counts a choice between two of them as an
+        // int that may be negative.
+        Props->m_Capabilities =
+            (UInt32)((Pipe->IsRx ? DT_PIPE_CAP_RX : DT_PIPE_CAP_TX) |
+                     (Pipe->IsHw ? DT_PIPE_CAP_HWP : DT_PIPE_CAP_SWP) | DT_PIPE_CAP_RT |
+                     DT_PIPE_CAP_JFRAME);
         Props->m_PrefetchSize = Pipe->IsHw ? SIM_NW_HWP_PREFETCH_PAGES : 1;
         Props->m_PipeDataWidth = SIM_DTA2110_PACKET_ALIGNMENT * 8;
         Props->m_PipeType = Pipe->Type;

@@ -206,7 +206,9 @@ const DtAvPixConvTable* DtAvPixConv_Ssse3(void)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xgetbv0 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The operating system's extended state: bits 1 and 2 are set when it saves the SSE and
-// AVX registers on a thread switch. Only to be called when CPUID reports OSXSAVE.
+// AVX registers on a thread switch. Only to be called when CPUID reports OSXSAVE. GCC 7
+// has no intrinsic _xgetbv, so GCC and Clang read the register with the instruction
+// itself, which every version of both assembles.
 //
 #if defined(CDTAPI_HAVE_AVX2)
     #if defined(_MSC_VER)
@@ -215,9 +217,12 @@ static uint64_t Xgetbv0(void)
     return (uint64_t)_xgetbv(0);
 }
     #else
-__attribute__((target("xsave"))) static uint64_t Xgetbv0(void)
+static uint64_t Xgetbv0(void)
 {
-    return (uint64_t)_xgetbv(0);
+    uint32_t Eax = 0;
+    uint32_t Edx = 0;
+    __asm__ volatile("xgetbv" : "=a"(Eax), "=d"(Edx) : "c"(0));
+    return ((uint64_t)Edx << 32) | Eax;
 }
     #endif
 
