@@ -17,7 +17,7 @@ set -u
 ClangFormatVersion="18.1.8"
 CMakeMinimum="3.22"
 PythonMinimum="3.8"
-GccMinimum=11
+GccMinimum=7
 
 Failures=0
 Report()

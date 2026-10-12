@@ -42,8 +42,8 @@ jobs:
       # windows-latest has the newest Visual Studio, and CDTAPI promises 2022 or newer, so
       # windows-2022 builds with the oldest it promises: the two do not warn alike, and
       # the presets turn a warning into a failed build. On Linux, ubuntu-22.04 builds with
-      # GCC 11 and CMake 3.22, the oldest CDTAPI promises; the image has a newer CMake,
-      # so that job installs 3.22 itself.
+      # CMake 3.22, the oldest CDTAPI promises; the image has a newer CMake, so that job
+      # installs 3.22 itself. The oldest GCC it promises, 7.5, is the job oldest-linux.
       matrix:
         include:
           - os: ubuntu-latest
@@ -88,3 +88,40 @@ jobs:
 
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+
+  # The oldest Linux the SDK serves, Ubuntu 18.04 with GCC 7.5 and glibc 2.27, in the
+  # container the release builds the SDK's Linux files in: so that a change GCC 7.5 does
+  # not compile, or that needs a newer glibc, is seen when it is pushed. It packs those
+  # files as the release does, so that a release finds its packages already tried.
+  oldest-linux:
+    name: Ubuntu 18.04, GCC 7.5 and glibc 2.27, and the SDK's Linux package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build, test, check the glibc and pack in the container
+        run: bash Scripts/build_ubuntu_18.04.sh --package
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-linux
+          path: Build/ubuntu-18.04/cdtapi-*
+          if-no-files-found: error
+
+  # The SDK's Windows package, as the release makes it: Visual Studio 2022's toolset on
+  # windows-2022.
+  package-windows:
+    name: The SDK's Windows package
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and pack with Visual Studio 2022's toolset
+        shell: pwsh
+        run: Scripts/package_windows.ps1 -Toolset v143
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-windows
+          path: Build/sdk-windows/cdtapi-*
+          if-no-files-found: error

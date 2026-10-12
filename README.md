@@ -56,10 +56,11 @@ Visual Studio 2026 opens the directory directly: **File > Open > Folder**. It re
 ### Platform status
 
 The build and every test suite are verified on Windows, with Visual Studio 2026 and the
-`windows-*` presets, and on Linux (Ubuntu, gcc 15) with the `linux-*` presets. The
-Linux driver backend has also talked to a DTA-2178: it reads the card's identity,
-properties, I/O configuration and SDI receiver status, and receives and transmits SD, HD
-and 3G frames, which arrive through a loopback cable bit for bit, as DTAPI's do.
+`windows-*` presets, and on Linux (Ubuntu, gcc 15, and Ubuntu 18.04 with gcc 7.5 and
+glibc 2.27, the oldest the SDK serves) with the `linux-*` presets. The Linux driver
+backend has also talked to a DTA-2178: it reads the card's identity, properties, I/O
+configuration and SDI receiver status, and receives and transmits SD, HD and 3G frames,
+which arrive through a loopback cable bit for bit, as DTAPI's do.
 
 Everything can be built and tested **without DekTec hardware**. The `*-sim` presets
 leave out the driver backends entirely; the emulated device is always compiled in and

@@ -69,7 +69,7 @@ what is missing:
 | CMake | 3.22 or newer | The tests, which set their environment with `ENVIRONMENT_MODIFICATION`, new in 3.22. The presets are schema 3 |
 | Python | 3.8 or newer | `Scripts/fix_banners.py` and the generated test cases |
 | Visual Studio | 2022 or newer | The Windows presets; CMake builds with the newest that is installed |
-| GCC | 11 or newer | The Linux presets |
+| GCC | 7.5 or newer | The Linux presets. 7.5 is Ubuntu 18.04's, the oldest Linux the SDK serves; `Scripts/build_ubuntu_18.04.sh` builds and tests there, in a container, as the CI does on every push, which also packs what the SDK ships |
 | Ninja | any | What the Linux presets build with |
 | Git | any | |
 
