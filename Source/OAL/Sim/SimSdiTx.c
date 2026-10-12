@@ -18,6 +18,7 @@
 #include "Sim4k.h"              // How 2160p over one link lies in the ring.
 #include "SimAsi.h"             // What an ASI port receives and sends.
 #include "SimDtPcie.h"          // Port counts and the lock.
+#include "SimLevelB.h"          // How 3G level B goes on the cable.
 #include "SimSdiTx.h"           // Interface being implemented.
 #include "Video/DtFrameProps.h" // Frame periods.
 #include "Video/DtSdiFrame.h"   // Coded lines of a frame.
@@ -118,6 +119,13 @@ typedef struct SimTxPort
     SimTxKeptFrame Kept[SIM_TX_KEPT_FRAMES];
     int NumKept;
     FILE* Sink; // Where the frames sent go as well; NULL for nowhere
+
+    // The sink of 3G level B, which writes frames of the interface
+    int VidStd;             // The port's I/O standard, from its last command
+    bool HasLevelB;         // LevelB is set up for VidStd
+    SimLevelB LevelB;       // Merges the pictures sent into frames of the interface
+    uint16_t* LevelBField1; // The picture of field 1 waiting for its field 2, or NULL
+    int LevelBLastField;    // The field of the picture sent last; 0 for none
 } SimTxPort;
 
 static struct
@@ -380,6 +388,114 @@ static void WriteFrameToSink(FILE* Sink, const SimTxKeptFrame* Frame)
     DtAlloc_Free(Out);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteLevelBToSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Merges the pictures of field 1 and field 2 into a frame of the interface, and appends
+// it to the port's sink. A picture that is NULL is black.
+//
+static void WriteLevelBToSink(SimTxPort* Port, const uint16_t* Field1,
+                              const uint16_t* Field2)
+{
+    const SimLevelB* LevelB = &Port->LevelB;
+    const size_t PictureSyms = (size_t)LevelB->NumLines * (size_t)LevelB->LineSyms;
+    uint16_t* Frame = (uint16_t*)DtAlloc_Malloc(2 * PictureSyms * sizeof(uint16_t));
+    uint16_t* Black = NULL;
+
+    if (Frame == NULL)
+        return;
+    if (Field1 == NULL || Field2 == NULL)
+    {
+        Black = (uint16_t*)DtAlloc_Malloc(PictureSyms * sizeof(uint16_t));
+        if (Black == NULL)
+        {
+            DtAlloc_Free(Frame);
+            return;
+        }
+        SimLevelB_BlackPicture(LevelB, Black);
+    }
+    SimLevelB_Merge(&Port->LevelB, Field1 != NULL ? Field1 : Black,
+                    Field2 != NULL ? Field2 : Black, Frame);
+
+    const SimTxKeptFrame Merged = {0, LevelB->NumLines, 2 * LevelB->HancSyms,
+                                   2 * (LevelB->LineSyms - LevelB->HancSyms), Frame};
+    WriteFrameToSink(Port->Sink, &Merged);
+    DtAlloc_Free(Black);
+    DtAlloc_Free(Frame);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FlushLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Writes the picture of field 1 that waits for its field 2, if any, with a black picture
+// as its field 2.
+//
+static void FlushLevelB(SimTxPort* Port)
+{
+    if (Port->LevelBField1 == NULL)
+        return;
+    if (Port->Sink != NULL)
+        WriteLevelBToSink(Port, Port->LevelBField1, NULL);
+    DtAlloc_Free(Port->LevelBField1);
+    Port->LevelBField1 = NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CloseSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Closes the port's sink, after the picture of field 1 that waits for its field 2.
+//
+static void CloseSink(SimTxPort* Port)
+{
+    FlushLevelB(Port);
+    if (Port->Sink != NULL)
+        fclose(Port->Sink);
+    Port->Sink = NULL;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SinkLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Puts Frame, a picture of 3G level B, into the sink: a picture of field 1 waits for the
+// picture of field 2 after it, and the two go into the file as a frame of the interface.
+// A picture of field 2 with no field 1 before it, and a field 1 followed by another, are
+// completed with a black picture. The field comes from the picture's payload ID; without
+// one it is the field after the one before, and field 2 for the first, as after SEND.
+// Returns false, and puts nothing in, when the port's standard is not 3G level B or Frame
+// is not a picture of it.
+//
+static bool SinkLevelB(SimTxPort* Port, const SimTxKeptFrame* Frame)
+{
+    if (!Port->HasLevelB || Port->LevelB.Picture.VidStd != Port->VidStd)
+    {
+        FlushLevelB(Port);
+        Port->HasLevelB = SimLevelB_Init(&Port->LevelB, Port->VidStd);
+        Port->LevelBLastField = 0;
+    }
+    const SimLevelB* LevelB = &Port->LevelB;
+    if (!Port->HasLevelB || Frame->NumLines != LevelB->NumLines ||
+        Frame->SymsHanc + Frame->SymsVideo != LevelB->LineSyms)
+    {
+        return false;
+    }
+
+    int Field = SimLevelB_Field(LevelB, Frame->Symbols);
+    if (Field == 0)
+        Field = Port->LevelBLastField == 2 ? 1 : 2;
+    Port->LevelBLastField = Field;
+    if (Field == 2)
+    {
+        WriteLevelBToSink(Port, Port->LevelBField1, Frame->Symbols);
+        DtAlloc_Free(Port->LevelBField1);
+        Port->LevelBField1 = NULL;
+        return true;
+    }
+
+    FlushLevelB(Port);
+    const size_t Bytes =
+        (size_t)LevelB->NumLines * (size_t)LevelB->LineSyms * sizeof(uint16_t);
+    Port->LevelBField1 = (uint16_t*)DtAlloc_Malloc(Bytes);
+    if (Port->LevelBField1 != NULL)
+        memcpy(Port->LevelBField1, Frame->Symbols, Bytes);
+    return true;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MergeRawFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Turns the coded lines of the 4K frame just received into the raw frame the card sends,
@@ -430,7 +546,7 @@ static void KeepFrame(SimTxPort* Port)
         Frame.Symbols = Raw;
     }
     Port->Symbols = NULL;
-    if (Port->Sink != NULL)
+    if (Port->Sink != NULL && !SinkLevelB(Port, &Frame))
         WriteFrameToSink(Port->Sink, &Frame);
     if (Port->NumKept == SIM_TX_KEPT_FRAMES)
     {
@@ -807,6 +923,7 @@ static uint32_t CdmacCmd(SimTxPort* Port, void* Handle, int Cmd, const void* In,
         if (OpMode == DT_BLOCK_OPMODE_IDLE)
         {
             StopPipeline(Port);
+            FlushLevelB(Port);
             return DT_STATUS_OK;
         }
         if (!Port->Registered)
@@ -1343,6 +1460,7 @@ uint32_t SimSdiTx_Cmd(void* Handle, int PortIndex, int FunctionCode, int Type,
         return DT_STATUS_NOT_SUPPORTED;
     }
     SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    Port->VidStd = VidStd;
 
     const SimTxCmdProps* Props = FindCmd(FunctionCode, Cmd);
     if (Props == NULL)
@@ -1403,6 +1521,7 @@ void SimSdiTx_CloseHandle(void* Handle)
         if (Handle != NULL && Port->Registered && Port->BufferOwner == Handle)
         {
             StopPipeline(Port);
+            FlushLevelB(Port);
             Port->Registered = false;
             Port->Buffer = NULL;
             Port->BufferSize = 0;
@@ -1425,8 +1544,7 @@ void SimSdiTx_Reset(void)
             DtAlloc_Free(Port->Symbols);
             for (int k = 0; k < Port->NumKept; k++)
                 DtAlloc_Free(Port->Kept[k].Symbols);
-            if (Port->Sink != NULL)
-                fclose(Port->Sink);
+            CloseSink(Port);
         }
         memset(Port, 0, sizeof(*Port));
         Port->CdmacMode = DT_BLOCK_OPMODE_IDLE;
@@ -1538,8 +1656,7 @@ bool SimSdiTx_SetFileSink(int PortIndex, const char* Path)
     if (File == NULL)
         return false;
     SimTxPort* Port = &g_Tx.Ports[PortIndex];
-    if (Port->Sink != NULL)
-        fclose(Port->Sink);
+    CloseSink(Port);
     Port->Sink = File;
     return true;
 }

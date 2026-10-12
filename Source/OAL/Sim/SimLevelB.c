@@ -155,6 +155,22 @@ static size_t PictureLineStart(const SimLevelB* LevelB, int Line)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Level B on the cable +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimLevelB_BlackPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimLevelB_BlackPicture(const SimLevelB* LevelB, uint16_t* Picture)
+{
+    uint32_t Crc[2] = {0, 0};
+
+    for (int Line = 1; Line <= LevelB->NumLines; Line++)
+    {
+        uint16_t* To = Picture + PictureLineStart(LevelB, Line);
+
+        MakeBlank(LevelB, To, 1);
+        SetTiming(LevelB, To, 1, &LevelB->Picture, Line);
+        SetCrcs(LevelB, To, 1, Crc);
+    }
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimLevelB_Field -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 int SimLevelB_Field(const SimLevelB* LevelB, const uint16_t* Picture)

@@ -97,7 +97,14 @@ void SimSdiTx_Reset(void);
 //
 // Each frame's lines are written from the EAV on, as 10-bit symbols packed least
 // significant bit first, and the frame is padded with zeros to a multiple of 8 bytes.
-// This is how FFmpeg's sdi format holds a frame, without its header.
+// This is how FFmpeg's sdi format holds a frame, without its header. A 4K frame is
+// written as the raw frame of its four links. On a port of 3G level B, a picture of
+// field 1 waits for the picture of field 2 after it, and the two are written as a frame
+// of the interface; see SimLevelB.h. Each picture's field comes from the line of its
+// payload ID, or without one is the field after the one before, field 2 for the first.
+// A picture of field 2 with no field 1 before it, as the first after SEND is, and a
+// field 1 without its field 2, when another field 1 comes, the DMA stops or the file is
+// closed, are completed with a black picture.
 bool SimSdiTx_SetFileSink(int PortIndex, const char* Path);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= For the ASI blocks +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+

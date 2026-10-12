@@ -1627,15 +1627,75 @@ static int64_t NsOf(const DtTimeOfDay* T)
     return (int64_t)T->Seconds * 1000000000 + T->Nanoseconds;
 }
 
+// Parses the picture of field Field of the raw frame of 3G level B that View describes,
+// with a parser that lists every packet. Sets *Samples to the samples of channel 1 and
+// returns the number of payload IDs.
+static int ParseField(DtSdiParser* Parser, DtSdiView* View, int Field, int32_t* Pcm,
+                      int* Samples, int* FrameNumber)
+{
+    static DtSdiAncPacket Packets[4096];
+    static uint16_t Words[4096 * 32];
+    DtSdiAudio Audio;
+    memset(&Audio, 0, sizeof(Audio));
+    Audio.Formats[0] = DT_SDI_AUDIO_PCM;
+    Audio.Channels[0].Samples = Pcm;
+    Audio.Channels[0].MaxSamples = 2048;
+    DtSdiAncData Anc;
+    memset(&Anc, 0, sizeof(Anc));
+    Anc.Packets = Packets;
+    Anc.MaxPackets = 4096;
+    Anc.Words = Words;
+    Anc.MaxWords = 4096 * 32;
+    *Samples = -1;
+    if (DtSdiView_SetLevelBField(View, Field) != DTAPI_OK ||
+        DtSdiParser_Parse(Parser, View, NULL, &Audio, &Anc) != DTAPI_OK)
+        return -1;
+    *Samples = Audio.Channels[0].NumSamples;
+    *FrameNumber = Audio.FrameNumber;
+    int Ids = 0;
+    for (int i = 0; i < Anc.NumPackets; i++)
+        Ids += Packets[i].Did == 0x41 ? 1 : 0;
+    return Ids;
+}
+
+// Returns symbol Index of a raw frame of 10-bit symbols, packed least significant bit
+// first.
+static uint16_t Symbol10(const uint8_t* Frame, size_t Index)
+{
+    const size_t Bit = Index * 10;
+    const uint32_t Pair = (uint32_t)Frame[Bit / 8] | (uint32_t)Frame[Bit / 8 + 1] << 8;
+    return (uint16_t)(Pair >> (Bit % 8) & 0x3FF);
+}
+
+// Returns whether two raw frames of the interface of 3G level B standard VidStd, of 10
+// bits a symbol, hold the same symbols but for the CRC words of each link.
+static bool SameButCrcs(const uint8_t* A, const uint8_t* B, int VidStd)
+{
+    DtSdiFrameLayout Layout;
+    if (!DtSdiFrame_LayoutInit(&Layout, VidStd, 32))
+        return false;
+    const size_t LineSyms =
+        2 * (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
+    for (size_t i = 0; i < (size_t)Layout.NumLines * LineSyms; i++)
+    {
+        const size_t InLine = i % LineSyms;
+        if ((InLine < 24 || InLine >= 32) && Symbol10(A, i) != Symbol10(B, i))
+            return false;
+    }
+    return true;
+}
+
 // Checks 3G level B through the channels, in 1080p50 level B:
 // - an output channel lends frames as field 2, field 1, field 2 and so on from the start
 //   of the run, and the builder lays them out for that field;
 // - DtOutpChannel_GetNextFrameTime has no time before the card sends, and then, once
 //   three stamps agree, gives times exactly a frame period apart, as the emulated
 //   card stamps its frames on a grid;
-// - the frames the sink holds give the same fields from the line of their payload ID;
-// - played back on an input, the channel lends them with those fields, and the parser
-//   gives each picture's audio and place in the cadence.
+// - the sink holds frames of the interface: the first picture, of field 2, with a black
+//   picture of field 1, then each picture of field 1 with the picture of field 2 after
+//   it, each with its payload IDs, audio and place in the cadence;
+// - played back on an input, the channel lends the pictures with those fields, and the
+//   parser gives each picture's audio and place in the cadence.
 DT_TEST(LevelBThroughTheChannels)
 {
     const int VidStd = DTAPI_VIDSTD_1080P50B;
@@ -1695,14 +1755,46 @@ DT_TEST(LevelBThroughTheChannels)
     DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
-    // The frames in the sink: their fields from their payload IDs, and their audio. They
-    // go into a file of their own, without the black frame that may follow them.
+    // The frames of the interface in the sink. Frames 1 to 3 go into a file of their own,
+    // without the black picture of the first and what may follow the last.
     FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
     DT_ASSERT(Source != NULL);
-    DtSdiFrameLayout Layout;
-    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, VidStd, 32));
-    const size_t Size = DtSdiFrame_RawSize(&Layout, 10);
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
     const size_t Padded = (Size + 7) / 8 * 8;
+    DtSdiAncFilter All;
+    memset(&All, 0, sizeof(All));
+    All.AnyDid = true;
+    All.Space = DT_SDI_ANC_SPACE_BOTH;
+    DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
+    for (int j = 0; j < 4; j++)
+    {
+        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)j, Padded, Size);
+        DT_ASSERT(Sent != NULL);
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Sent, Size, VidStd, 10));
+        for (int f = 0; f < 2; f++)
+        {
+            // The picture sent in this field, or -1 for the black one.
+            const int k = 2 * j - 1 + f;
+            int Got = 0;
+            int Place = 0;
+            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, PcmOut, &Got, &Place),
+                         k < 0 ? 0 : 2);
+            if (k >= 0)
+            {
+                DT_ASSERT_EQ(Got, Samples[k]);
+                DT_ASSERT_EQ(Place, f + 1);
+            }
+        }
+        if (j > 0)
+        {
+            DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
+            for (size_t p = Size; p < Padded; p++)
+                fputc(0, Source);
+        }
+        free(Sent);
+    }
+    DT_ASSERT_EQ(fclose(Source), 0);
     DtSdiAudio Out;
     memset(&Out, 0, sizeof(Out));
     Out.Formats[0] = DT_SDI_AUDIO_PCM;
@@ -1711,23 +1803,6 @@ DT_TEST(LevelBThroughTheChannels)
         Out.Channels[c].Samples = PcmOut + 2048 * c;
         Out.Channels[c].MaxSamples = 2048;
     }
-    for (int k = 0; k < NumFrames; k++)
-    {
-        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)k, Padded, Size);
-        DT_ASSERT(Sent != NULL);
-        DT_ASSERT_OK(DtSdiView_SetRawPicture(View, Sent, Size, VidStd, 10, 1));
-        const int Field = DtSdiView_FindLevelBField(View);
-        DT_ASSERT_EQ(Field, k % 2 == 0 ? 2 : 1);
-        DtSdiView_SetLevelBField(View, Field);
-        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Out, NULL));
-        DT_ASSERT_EQ(Out.Channels[0].NumSamples, Samples[k]);
-        DT_ASSERT_EQ(Out.FrameNumber, Field);
-        DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
-        for (size_t p = Size; p < Padded; p++)
-            fputc(0, Source);
-        free(Sent);
-    }
-    DT_ASSERT_EQ(fclose(Source), 0);
 
     // The same frames played on an input: lent with their fields.
     DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
@@ -1766,42 +1841,12 @@ DT_TEST(LevelBThroughTheChannels)
     remove(SOURCE_FILE);
 }
 
-// Parses the picture of field Field of the raw frame of 3G level B that View describes,
-// with a parser that lists every packet. Sets *Samples to the samples of channel 1 and
-// returns the number of payload IDs.
-static int ParseField(DtSdiParser* Parser, DtSdiView* View, int Field, int32_t* Pcm,
-                      int* Samples, int* FrameNumber)
-{
-    static DtSdiAncPacket Packets[4096];
-    static uint16_t Words[4096 * 32];
-    DtSdiAudio Audio;
-    memset(&Audio, 0, sizeof(Audio));
-    Audio.Formats[0] = DT_SDI_AUDIO_PCM;
-    Audio.Channels[0].Samples = Pcm;
-    Audio.Channels[0].MaxSamples = 2048;
-    DtSdiAncData Anc;
-    memset(&Anc, 0, sizeof(Anc));
-    Anc.Packets = Packets;
-    Anc.MaxPackets = 4096;
-    Anc.Words = Words;
-    Anc.MaxWords = 4096 * 32;
-    *Samples = -1;
-    if (DtSdiView_SetLevelBField(View, Field) != DTAPI_OK ||
-        DtSdiParser_Parse(Parser, View, NULL, &Audio, &Anc) != DTAPI_OK)
-        return -1;
-    *Samples = Audio.Channels[0].NumSamples;
-    *FrameNumber = Audio.FrameNumber;
-    int Ids = 0;
-    for (int i = 0; i < Anc.NumPackets; i++)
-        Ids += Packets[i].Did == 0x41 ? 1 : 0;
-    return Ids;
-}
-
 // Checks raw frames of 3G level B, frames of the interface, through the channels, in
 // 1080p50 level B:
 // - WriteFrame sends each frame's two pictures, field 1 and field 2, after one black
 //   picture that puts field 1 on an odd frame ID, as the card's first frame is field 2;
-//   the sink holds the pictures with their fields, payload IDs and audio;
+//   the sink holds that black picture as field 2 of a black frame, and then the frames
+//   written, the same but for their CRCs;
 // - played back on an input, ReadFrame gives frames of the interface again, each with
 //   both pictures' payload IDs and audio.
 DT_TEST(LevelBFramesWrittenAndRead)
@@ -1861,26 +1906,29 @@ DT_TEST(LevelBFramesWrittenAndRead)
     DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
-    // The sink: a black picture, then field 1 and field 2 of each frame.
-    DtSdiFrameLayout Layout;
-    DT_ASSERT(DtSdiFrame_LayoutInit(&Layout, VidStd, 32));
-    const size_t PictureSize = DtSdiFrame_RawSize(&Layout, 10);
-    const size_t Padded = (PictureSize + 7) / 8 * 8;
-    DtSdiView* Picture = DtSdiView_Alloc();
-    DT_ASSERT(Picture != NULL);
+    // The sink: a black frame, then the frames written.
+    const size_t Padded = (Size + 7) / 8 * 8;
     FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
     DT_ASSERT(Source != NULL);
-    for (int i = 0; i <= 2 * NumFrames; i++)
+    for (int j = 0; j <= NumFrames; j++)
     {
-        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)i, Padded, PictureSize);
+        uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)j, Padded, Size);
         DT_ASSERT(Sent != NULL);
-        DT_ASSERT_OK(DtSdiView_SetRawPicture(Picture, Sent, PictureSize, VidStd, 10, 1));
-        const int Field = DtSdiView_FindLevelBField(Picture);
-        DT_ASSERT_EQ(Field, i == 0 ? 0 : (i % 2 == 1 ? 1 : 2));
-        if (i > 0)
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Sent, Size, VidStd, 10));
+        for (int f = 0; f < 2; f++)
         {
-            DT_ASSERT_EQ(fwrite(Sent, 1, PictureSize, Source), PictureSize);
-            for (size_t p = PictureSize; p < Padded; p++)
+            int Got = 0;
+            int Place = 0;
+            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, Pcm, &Got, &Place),
+                         j == 0 ? 0 : 2);
+            if (j > 0)
+                DT_ASSERT_EQ(Got, Samples[j - 1][f]);
+        }
+        if (j > 0)
+        {
+            DT_ASSERT(SameButCrcs(Sent, Frames[j - 1], VidStd));
+            DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
+            for (size_t p = Size; p < Padded; p++)
                 fputc(0, Source);
         }
         free(Sent);
@@ -1924,7 +1972,6 @@ DT_TEST(LevelBFramesWrittenAndRead)
     for (int k = 0; k < NumFrames; k++)
         free(Frames[k]);
     free(Pcm);
-    DtSdiView_Free(Picture);
     DtSdiParser_Free(Parser);
     DtSdiBuilder_Free(Builder);
     DtSdiView_Free(View);

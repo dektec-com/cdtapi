@@ -50,6 +50,10 @@ typedef struct SimLevelB
                             // picture line before
 } SimLevelB;
 
+// Fills Picture with a black picture: blanking, with the timing references, line numbers
+// and CRCs of level A.
+void SimLevelB_BlackPicture(const SimLevelB* LevelB, uint16_t* Picture);
+
 // Returns the field, 1 or 2, of a picture of level B, as the line of its payload ID of
 // link A gives it: in field 1 link A has the even lines, in field 2 the odd ones. Looks
 // in the horizontal blanking of the Y stream of the lines before the active picture, for

@@ -242,8 +242,9 @@ set_tests_properties(Example_ReceiveFramesFromFile PROPERTIES
     FIXTURES_REQUIRED FramesRoundTripFile)
 
 # The same in 1080p50 level B, whose raw frames are frames of the interface with two
-# pictures each. The sink holds the pictures as the card sends them, a black picture
-# first; read back, each frame carries the numbers of both pictures.
+# pictures each. The sink holds frames of the interface as well: first the black picture
+# the card sends first, as field 2 of a black frame, then the frames sent. Read back, the
+# black frame comes first, and then each frame carries the numbers of both pictures.
 set(LevelBRoundTrip "${CMAKE_CURRENT_BINARY_DIR}/TransmitFrames_1080p50b.sdi")
 set(ExampleExtraEnv "CDTAPI_SIM_SDI_SINK=set:2:${LevelBRoundTrip}")
 cdtapi_example_test(TransmitFramesLevelBToFile DtTransmitFrames
@@ -252,8 +253,8 @@ cdtapi_example_test(TransmitFramesLevelBToFile DtTransmitFrames
 set(ExampleExtraEnv "CDTAPI_SIM_SDI_SOURCE=set:1:1080P50B:${LevelBRoundTrip}"
     "CDTAPI_SIM_REALTIME=set:0")
 cdtapi_example_test(ReceiveFramesLevelBFromFile DtReceiveFrames
-    "^9217800001:1  frame 0  14850000 bytes  hash [0-9A-F]+  number 0, number 1\n9217800001:1  frame 1  14850000 bytes  hash [0-9A-F]+  number 2, number 3\n"
-    --port 1 --vidstd 1080P50B --count 2 --timeout 2000)
+    "^9217800001:1  frame 0  14850000 bytes  hash [0-9A-F]+, \n9217800001:1  frame 1  14850000 bytes  hash [0-9A-F]+  number 0, number 1\n9217800001:1  frame 2  14850000 bytes  hash [0-9A-F]+  number 2, number 3\n"
+    --port 1 --vidstd 1080P50B --count 3 --timeout 2000)
 set(ExampleExtraEnv "")
 set_tests_properties(Example_TransmitFramesLevelBToFile PROPERTIES
     FIXTURES_SETUP FramesLevelBFile)

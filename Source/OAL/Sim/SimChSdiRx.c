@@ -17,6 +17,7 @@
 #include "Sim4k.h"              // How 2160p over one link lies in the ring.
 #include "SimChSdiRx.h"         // Interface being implemented.
 #include "SimDtPcie.h"          // Port counts.
+#include "SimLevelB.h"          // How 3G level B comes in on the cable.
 #include "SimSdiWords.h"        // Timing references, line numbers and CRCs.
 #include "Video/DtFrameProps.h" // Frame geometry of the source.
 #include "Video/DtSdiFrame.h"   // The format the source writes.
@@ -309,6 +310,68 @@ static void PackSection(const uint16_t* Symbols, int Count, uint8_t* Out, int By
     }
     if (Have > 0)
         Out[Byte] = (uint8_t)Accu;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UnpackSymbols -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Unpacks Count 10-bit symbols, packed least significant bit first, from In.
+//
+static void UnpackSymbols(const uint8_t* In, size_t Count, uint16_t* Out)
+{
+    uint32_t Accu = 0;
+    int Have = 0;
+
+    for (size_t i = 0; i < Count; i++)
+    {
+        while (Have < 10)
+        {
+            Accu |= (uint32_t)*In++ << Have;
+            Have += 8;
+        }
+        Out[i] = (uint16_t)(Accu & 0x3FF);
+        Accu >>= 10;
+        Have -= 10;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PicturesOfLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Turns NumFrames frames of the interface of 3G level B, FrameBytes bytes each, into the
+// two pictures of each that the card's ring holds, field 1 first, PictureBytes bytes
+// each, packed as a file's frames are. The CRCs of the first picture's line 1 follow on
+// from the last picture's, since the source plays the file over and over. Returns NULL
+// when memory runs out.
+//
+static uint8_t* PicturesOfLevelB(SimLevelB* LevelB, const uint8_t* Frames,
+                                 size_t NumFrames, size_t FrameBytes, size_t PictureBytes)
+{
+    const size_t PictureSyms = (size_t)LevelB->NumLines * (size_t)LevelB->LineSyms;
+    uint8_t* Pictures = (uint8_t*)DtAlloc_Malloc(2 * NumFrames * PictureBytes);
+    uint16_t* Frame = (uint16_t*)DtAlloc_Malloc(2 * PictureSyms * sizeof(uint16_t));
+    uint16_t* Fields = (uint16_t*)DtAlloc_Malloc(2 * PictureSyms * sizeof(uint16_t));
+
+    if (Pictures != NULL && Frame != NULL && Fields != NULL)
+    {
+        // The last frame first, for the CRCs that the first picture follows on from.
+        for (size_t k = 0; k <= NumFrames; k++)
+        {
+            const size_t From = (k + NumFrames - 1) % NumFrames;
+
+            UnpackSymbols(Frames + From * FrameBytes, 2 * PictureSyms, Frame);
+            SimLevelB_Split(LevelB, Frame, Fields, Fields + PictureSyms);
+            for (size_t f = 0; k > 0 && f < 2; f++)
+                PackSection(Fields + f * PictureSyms, (int)PictureSyms,
+                            Pictures + (2 * From + f) * PictureBytes, (int)PictureBytes);
+        }
+    }
+    else
+    {
+        DtAlloc_Free(Pictures);
+        Pictures = NULL;
+    }
+    DtAlloc_Free(Fields);
+    DtAlloc_Free(Frame);
+    return Pictures;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingFreeBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1037,6 +1100,13 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     if (LineSyms > SIM_RX_MAX_LINE_SYMBOLS)
         return false;
 
+    // A file of 3G level B holds frames of the interface, each two pictures.
+    SimLevelB LevelB;
+    const bool IsLevelB = !DtVidStd_Is4k(VidStd) && SimLevelB_Init(&LevelB, VidStd) &&
+                          LevelB.NumLines == Layout.NumLines &&
+                          LevelB.LineSyms == LineSyms;
+    const size_t ReadBytes = IsLevelB ? ((2 * Bits + 7) / 8 + 7) / 8 * 8 : FrameNumBytes;
+
     FILE* File = SimDtPcie_OpenFile(Path, "rb");
     if (File == NULL)
         return false;
@@ -1045,24 +1115,34 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     bool Failed = false;
     for (;;)
     {
-        uint8_t* More = (uint8_t*)DtAlloc_Realloc(Data, Size + FrameNumBytes);
+        uint8_t* More = (uint8_t*)DtAlloc_Realloc(Data, Size + ReadBytes);
         if (More == NULL)
         {
             Failed = true;
             break;
         }
         Data = More;
-        size_t Got = fread(Data + Size, 1, FrameNumBytes, File);
+        size_t Got = fread(Data + Size, 1, ReadBytes, File);
         Size += Got;
-        if (Got < FrameNumBytes)
+        if (Got < ReadBytes)
             break;
     }
     Failed = Failed || ferror(File) != 0;
     fclose(File);
-    if (Failed || Size == 0 || Size % FrameNumBytes != 0)
+    if (Failed || Size == 0 || Size % ReadBytes != 0)
     {
         DtAlloc_Free(Data);
         return false;
+    }
+    if (IsLevelB)
+    {
+        uint8_t* Pictures =
+            PicturesOfLevelB(&LevelB, Data, Size / ReadBytes, ReadBytes, FrameNumBytes);
+        DtAlloc_Free(Data);
+        if (Pictures == NULL)
+            return false;
+        Data = Pictures;
+        Size = 2 * (Size / ReadBytes) * FrameNumBytes;
     }
 
     SimRxChannel* Channel = &g_Rx.Channels[PortIndex];

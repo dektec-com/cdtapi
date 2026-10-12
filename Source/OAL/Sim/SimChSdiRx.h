@@ -120,7 +120,9 @@ void SimDtPcie_SetRxRealTime(bool RealTime);
 // Each line runs from its EAV to the end of its active part, and each frame is padded
 // with zeros to a multiple of 8 bytes. This is what FFmpeg's sdi format holds without its
 // header, and what SimDtPcie_SetSdiSink() writes. For a 4K standard, the lines are the
-// raw lines of its four links.
+// raw lines of its four links. For 3G level B, each frame is a frame of the interface,
+// which the port receives as its two pictures, field 1 and then field 2, one picture
+// period each; see SimLevelB.h.
 bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path);
 
 // The faults a port's source can give the next frame it starts.
