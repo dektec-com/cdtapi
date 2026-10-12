@@ -108,9 +108,9 @@ echo "$CMakeSha256  /tmp/$CMakeName.tar.gz" | sha256sum -c --quiet
 tar xzf "/tmp/$CMakeName.tar.gz" -C /opt
 export PATH="/opt/$CMakeName/bin:$PATH"
 
-gcc --version | head -1
-ldd --version | head -1
-cmake --version | head -1
+gcc --version | sed -n 1p
+ldd --version | sed -n 1p
+cmake --version | sed -n 1p
 
 # The build directories stay in the container; only the package comes out.
 Work=/tmp/cdtapi
@@ -122,7 +122,7 @@ cmake --build "$Work/test"
 (cd "$Work/test" && ctest --output-on-failure)
 
 Step "Building the SDK's files"
-Version="$(sed -n 's/^ *VERSION \([0-9.]*\) *$/\1/p' CMakeLists.txt | head -1)"
+Version="$(sed -n 's/^ *VERSION \([0-9.]*\) *$/\1/p' CMakeLists.txt | sed -n 1p)"
 Name="cdtapi-$Version-sdk-linux-x64"
 Stage="$Work/stage/$Name"
 
@@ -139,7 +139,7 @@ cmake --install "$Work/static" --prefix "$Stage"
 cmake --install "$Work/shared" --prefix "$Stage"
 
 Step "Checking the glibc they need"
-Shared="$(ls "$Stage"/Lib/libcdtapi.so.*.*.* | head -1)"
+Shared="$(ls "$Stage"/Lib/libcdtapi.so.*.*.* | sed -n 1p)"
 Newest="$(objdump -T "$Shared" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' \
     | sort -uV | tail -1)"
 echo "$(basename "$Shared") needs glibc $Newest"
@@ -148,9 +148,12 @@ if [ "$Higher" != "$OldestGlibc" ]; then
     echo "  it needs a glibc newer than $OldestGlibc" >&2
     exit 1
 fi
-if nm -u "$Stage/Lib/libcdtapi.a" | grep -q '__isoc23_'; then
+# Not grep -q, which stops at the first match: nm then dies of SIGPIPE, which pipefail
+# turns into a pipeline that failed and so into no match at all.
+Newer="$(nm -u "$Stage/Lib/libcdtapi.a" | grep '__isoc23_' | sort -u || true)"
+if [ -n "$Newer" ]; then
     echo "  libcdtapi.a calls functions of a glibc newer than $OldestGlibc:" >&2
-    nm -u "$Stage/Lib/libcdtapi.a" | grep '__isoc23_' | sort -u >&2
+    echo "$Newer" >&2
     exit 1
 fi
 echo "libcdtapi.a calls no function newer glibc headers put in"
