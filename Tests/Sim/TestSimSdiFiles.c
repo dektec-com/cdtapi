@@ -1693,7 +1693,8 @@ static bool SameButCrcs(const uint8_t* A, const uint8_t* B, int VidStd)
 //   card stamps its frames on a grid;
 // - the sink holds frames of the interface: the first picture, of field 2, with a black
 //   picture of field 1, then each picture of field 1 with the picture of field 2 after
-//   it, each with its payload IDs, audio and place in the cadence;
+//   it, each with its payload IDs, audio and place in the cadence, and the last picture,
+//   of field 1, with a black picture of field 2;
 // - played back on an input, the channel lends the pictures with those fields, and the
 //   parser gives each picture's audio and place in the cadence.
 DT_TEST(LevelBThroughTheChannels)
@@ -1756,7 +1757,7 @@ DT_TEST(LevelBThroughTheChannels)
     SimDtPcie_Reset(); // Closes the file
 
     // The frames of the interface in the sink. Frames 1 to 3 go into a file of their own,
-    // without the black picture of the first and what may follow the last.
+    // without the black picture of the first and the last.
     FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
     DT_ASSERT(Source != NULL);
     size_t Size = 0;
@@ -1767,26 +1768,27 @@ DT_TEST(LevelBThroughTheChannels)
     All.AnyDid = true;
     All.Space = DT_SDI_ANC_SPACE_BOTH;
     DT_ASSERT_OK(DtSdiParser_SetAncFilter(Parser, &All, 1));
-    for (int j = 0; j < 4; j++)
+    for (int j = 0; j <= NumFrames / 2; j++)
     {
         uint8_t* Sent = ReadFrameAt(SINK_FILE, (size_t)j, Padded, Size);
         DT_ASSERT(Sent != NULL);
         DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Sent, Size, VidStd, 10));
         for (int f = 0; f < 2; f++)
         {
-            // The picture sent in this field, or -1 for the black one.
+            // The picture sent in this field; black before the first and after the last.
             const int k = 2 * j - 1 + f;
+            const bool Black = k < 0 || k >= NumFrames;
             int Got = 0;
             int Place = 0;
             DT_ASSERT_EQ(ParseField(Parser, View, f + 1, PcmOut, &Got, &Place),
-                         k < 0 ? 0 : 2);
-            if (k >= 0)
+                         Black ? 0 : 2);
+            if (!Black)
             {
                 DT_ASSERT_EQ(Got, Samples[k]);
                 DT_ASSERT_EQ(Place, f + 1);
             }
         }
-        if (j > 0)
+        if (j > 0 && j < NumFrames / 2)
         {
             DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
             for (size_t p = Size; p < Padded; p++)
@@ -2164,6 +2166,146 @@ DT_TEST(LendingRefusesAndDrops)
     FINISH(Fix);
 }
 
+// Checks a file of 3G level B made by a program, frames of the interface built with the
+// builder through DtSdiView_SetRawFrame, as an .sdi file holds them, in 1080p50 level B:
+// - ReadFrame gives the file's frames back byte for byte, in order; over again, the
+//   first frame differs only in the CRC words of line 1, which follow on from the last
+//   frame as on a cable, where the builder started them from 0;
+// - AcquireFrame lends their pictures in order, field 1 and field 2 alternating as
+//   DtSdiView_GetLevelBField gives them, each with its own audio.
+DT_TEST(LevelBFileOfAProgram)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    const int NumFrames = 3;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
+    const size_t Padded = (Size + 7) / 8 * 8;
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    int32_t* Pcm = (int32_t*)calloc(2 * 2048, sizeof(int32_t));
+    uint8_t* Frames = (uint8_t*)calloc((size_t)NumFrames, Padded);
+    uint8_t* Read = (uint8_t*)malloc(Size);
+    DT_ASSERT(View != NULL && Builder != NULL && Parser != NULL && Pcm != NULL &&
+              Frames != NULL && Read != NULL);
+    int Samples[3][2];
+    for (int k = 0; k < NumFrames; k++)
+    {
+        DT_ASSERT_OK(
+            DtSdiView_SetRawFrame(View, Frames + (size_t)k * Padded, Size, VidStd, 10));
+        for (int f = 0; f < 2; f++)
+        {
+            DtSdiAudio Audio;
+            TwoChannels(&Audio, Pcm);
+            DT_ASSERT_OK(DtSdiView_SetLevelBField(View, f + 1));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, NULL));
+            Samples[k][f] = Audio.NumSamplesUsed;
+        }
+    }
+    FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
+    DT_ASSERT(Source != NULL);
+    DT_ASSERT_EQ(fwrite(Frames, Padded, (size_t)NumFrames, Source), (size_t)NumFrames);
+    DT_ASSERT_EQ(fclose(Source), 0);
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
+    DtDevice_Freep(&Fix.Device);
+
+    // Read as frames of the interface: the file's, one after the other.
+    Fix.Device = DtDevice_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(Fix.Device != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    int First = -1;
+    for (int k = 0; k < 2 * NumFrames; k++)
+    {
+        int ReadSize = (int)Size;
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.In, Read, &ReadSize, 30000));
+        DT_ASSERT_EQ((size_t)ReadSize, Size);
+        for (int j = 0; j < NumFrames && First < 0; j++)
+            if (memcmp(Read, Frames + (size_t)j * Padded, Size) == 0)
+                First = j;
+        DT_ASSERT(First >= 0);
+        const int Index = (First + k) % NumFrames;
+        const uint8_t* Want = Frames + (size_t)Index * Padded;
+        if (k < NumFrames || Index != 0)
+            DT_ASSERT_MEM(Read, Want, Size);
+        else
+        {
+            // The first frame again follows on from the last: the CRCs of its line 1
+            // cover line 1125 of the frame before, where the file's start from 0.
+            size_t Diffs = 0;
+            bool Elsewhere = false;
+            for (size_t i = 0; i < Size * 8 / 10; i++)
+            {
+                if (Symbol10(Read, i) != Symbol10(Want, i))
+                {
+                    Diffs++;
+                    Elsewhere = Elsewhere || i < 24 || i >= 32;
+                }
+            }
+            DT_ASSERT(Diffs > 0);
+            DT_ASSERT(!Elsewhere);
+        }
+    }
+    DtInpChannel_Freep(&Fix.In);
+    DtDevice_Freep(&Fix.Device);
+
+    // Lent as pictures: field 1 and field 2 alternating, each with its audio.
+    SimDtPcie_Reset();
+    DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
+    Fix.Device = DtDevice_Alloc();
+    Fix.In = DtInpChannel_Alloc();
+    DT_ASSERT(Fix.Device != NULL && Fix.In != NULL);
+    DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+    DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+    DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+    DT_ASSERT_OK(
+        DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+    DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+    DtSdiAudio Out;
+    memset(&Out, 0, sizeof(Out));
+    Out.Formats[0] = DT_SDI_AUDIO_PCM;
+    for (int c = 0; c < 2; c++)
+    {
+        Out.Channels[c].Samples = Pcm + 2048 * c;
+        Out.Channels[c].MaxSamples = 2048;
+    }
+    int Last = 0;
+    for (int k = 0; k < 4 * NumFrames; k++)
+    {
+        DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
+        int Field = 0;
+        DT_ASSERT_OK(DtSdiView_GetLevelBField(View, &Field));
+        DT_ASSERT(Field == 1 || Field == 2);
+        DT_ASSERT(Field != Last);
+        DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Out, NULL));
+        DT_ASSERT_EQ(Out.FrameNumber, Field);
+        bool Known = false;
+        for (int j = 0; j < NumFrames; j++)
+            Known = Known || Out.Channels[0].NumSamples == Samples[j][Field - 1];
+        DT_ASSERT(Known);
+        DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+        Last = Field;
+    }
+    DtInpChannel_Freep(&Fix.In);
+
+    free(Read);
+    free(Frames);
+    free(Pcm);
+    DtSdiParser_Free(Parser);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Faults on demand +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
 // A value of a starve or a skip that cannot be used is refused.
@@ -2353,6 +2495,6 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
              DT_RUN(LendingRefusesAndDrops), DT_RUN(LevelBThroughTheChannels),
              DT_RUN(FrameTimeKeepsItsGrid), DT_RUN(LevelBFramesWrittenAndRead),
-             DT_RUN(StarveAndSkipRefuseWhatTheyCannotUse),
+             DT_RUN(LevelBFileOfAProgram), DT_RUN(StarveAndSkipRefuseWhatTheyCannotUse),
              DT_RUN(StarveUnderflowsAfterTheFrames), DT_RUN(SkipLosesAPicture),
              DT_RUN(LeavesAFileForTheExamples))
