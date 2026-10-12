@@ -173,6 +173,22 @@ void SimDtPcie_DelaySdiSignal(int PortIndex, int Reads);
 bool SimDtPcie_SetSdiSource(const char* Source);
 bool SimDtPcie_SetSdiSink(const char* Sink);
 
+// Set faults of the SDI ports that a program which calls no test controls can count on:
+// the reset reads them from the environment variables CDTAPI_SIM_SDI_STARVE and
+// CDTAPI_SIM_SDI_SKIP, and reports a value it cannot use on stderr. Each function returns
+// false, and changes nothing, for a value it cannot use.
+//
+// Starve is "<port>:<frames>:<waits>". After the SDI port, numbered from 1, has sent
+// <frames> more frames, its next <waits> waits underflow, at least one, as
+// SimSdiTx_StarveAfter() describes: a program that lends its frames sees the underflow
+// of a card that ran dry.
+//
+// Skip is "<port>:<frames>". After the SDI port has received <frames> more frames, one
+// frame number is skipped, as SimChSdiRx_SkipFrameAfter() describes: a frame lost, and
+// of 3G level B a picture, after which the fields come one place on.
+bool SimDtPcie_SetSdiSkip(const char* Skip);
+bool SimDtPcie_SetSdiStarve(const char* Starve);
+
 // Moves the DTA-2178 to another driver index. A scan then finds it only by looking past
 // the indices before it.
 void SimDtPcie_SetDta2178Index(int Index);

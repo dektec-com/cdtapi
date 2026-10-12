@@ -113,6 +113,10 @@ typedef struct SimTxPort
     int SeqNumber;
     uint16_t* Symbols; // The frame being received
     int StarveEvents;
+    bool
+        StarvePending; // StarveWaits waits are to underflow after StarveAfter more frames
+    int StarveAfter;
+    int StarveWaits;
     int FramesSent;
     int FrameLimit; // Stop after this many frames; 0 for no limit
     int HeaderErrors;
@@ -557,6 +561,11 @@ static void KeepFrame(SimTxPort* Port)
     }
     Port->Kept[Port->NumKept++] = Frame;
     Port->FramesSent++;
+    if (Port->StarvePending && --Port->StarveAfter == 0)
+    {
+        Port->StarvePending = false;
+        Port->StarveEvents = Port->StarveWaits;
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SendableBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1607,6 +1616,21 @@ int SimDtPcie_RunTxEvents(int PortIndex, int Events)
     }
     SimDtPcie_Unlock();
     return i;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_StarveAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+void SimSdiTx_StarveAfter(int PortIndex, int Frames, int Waits)
+{
+    EnsureTx();
+    if (PortIndex < 0 || PortIndex >= SIM_SDI_PORT_COUNT || Frames < 0 || Waits < 0)
+        return;
+    SimTxPort* Port = &g_Tx.Ports[PortIndex];
+    Port->StarvePending = Frames > 0;
+    Port->StarveAfter = Frames;
+    Port->StarveWaits = Waits;
+    if (Frames == 0)
+        Port->StarveEvents = Waits;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_StarveTx -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

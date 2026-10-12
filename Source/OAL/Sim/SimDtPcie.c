@@ -7,6 +7,7 @@
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Include files -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 // Standard includes
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1217,6 +1218,56 @@ static bool ApplySdiSink(const char* Sink)
     return PortIndex >= 0 && Rest[0] != '\0' && SimSdiTx_SetFileSink(PortIndex, Rest);
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ParseCount -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Reads a count of decimal digits at Value, up to End, a ':' or the end of the string.
+// Sets *Rest past End, and returns the count, or -1 when there are no digits, the count
+// is too large or End does not follow them.
+//
+static int ParseCount(const char* Value, char End, const char** Rest)
+{
+    int Count = 0;
+    const char* At = Value;
+
+    while (*At >= '0' && *At <= '9')
+    {
+        if (Count > (INT_MAX - 9) / 10)
+            return -1;
+        Count = Count * 10 + (*At++ - '0');
+    }
+    if (At == Value || *At != End)
+        return -1;
+    *Rest = End == '\0' ? At : At + 1;
+    return Count;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplySdiSkip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static bool ApplySdiSkip(const char* Skip)
+{
+    const char* Rest = NULL;
+    const int PortIndex = ParsePortIndex(Skip, &Rest);
+    const int Frames = PortIndex >= 0 ? ParseCount(Rest, '\0', &Rest) : -1;
+    if (Frames < 0)
+        return false;
+    SimChSdiRx_SkipFrameAfter(PortIndex, Frames);
+    return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ApplySdiStarve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+static bool ApplySdiStarve(const char* Starve)
+{
+    const char* Rest = NULL;
+    const int PortIndex = ParsePortIndex(Starve, &Rest);
+    const int Frames = PortIndex >= 0 ? ParseCount(Rest, ':', &Rest) : -1;
+    const int Waits = Frames >= 0 ? ParseCount(Rest, '\0', &Rest) : -1;
+    if (Waits <= 0)
+        return false;
+    SimSdiTx_StarveAfter(PortIndex, Frames, Waits);
+    return true;
+}
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Test controls +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_Reset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1278,6 +1329,12 @@ void SimDtPcie_Reset(void)
     const char* Sink = getenv("CDTAPI_SIM_SDI_SINK");
     if (Sink != NULL && Sink[0] != '\0' && !ApplySdiSink(Sink))
         fprintf(stderr, "CDTAPI_SIM_SDI_SINK: cannot use \"%s\"\n", Sink);
+    const char* Starve = getenv("CDTAPI_SIM_SDI_STARVE");
+    if (Starve != NULL && Starve[0] != '\0' && !ApplySdiStarve(Starve))
+        fprintf(stderr, "CDTAPI_SIM_SDI_STARVE: cannot use \"%s\"\n", Starve);
+    const char* Skip = getenv("CDTAPI_SIM_SDI_SKIP");
+    if (Skip != NULL && Skip[0] != '\0' && !ApplySdiSkip(Skip))
+        fprintf(stderr, "CDTAPI_SIM_SDI_SKIP: cannot use \"%s\"\n", Skip);
 
     // A test adds the DTA-2110 through SimDtPcie_SetDta2110Index. A program that calls
     // no test control, an example, asks for it through the environment, with the device
@@ -1424,6 +1481,28 @@ bool SimDtPcie_SetSdiSink(const char* Sink)
     EnsureSim();
     SimDtPcie_Lock();
     bool Done = Sink != NULL && ApplySdiSink(Sink);
+    SimDtPcie_Unlock();
+    return Done;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiSkip -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimDtPcie_SetSdiSkip(const char* Skip)
+{
+    EnsureSim();
+    SimDtPcie_Lock();
+    bool Done = Skip != NULL && ApplySdiSkip(Skip);
+    SimDtPcie_Unlock();
+    return Done;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_SetSdiStarve -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+bool SimDtPcie_SetSdiStarve(const char* Starve)
+{
+    EnsureSim();
+    SimDtPcie_Lock();
+    bool Done = Starve != NULL && ApplySdiStarve(Starve);
     SimDtPcie_Unlock();
     return Done;
 }

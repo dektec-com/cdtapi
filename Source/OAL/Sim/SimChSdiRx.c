@@ -70,6 +70,8 @@ typedef struct SimRxChannel
     size_t FileFrameBytes; // A frame in the file, with its padding
     int FileLineSyms;      // The symbols of a line, from its EAV on
     bool Faults[SIM_RX_FAULT_COUNT];
+    bool SkipPending; // A frame number is to be skipped after SkipAfter more frames
+    int SkipAfter;
 
     // The frame being written.
     bool InFrame;
@@ -431,6 +433,11 @@ static void StartFrame(SimRxChannel* Channel)
     DtSdiFrameLayout* Layout = &Channel->Layout;
 
     Channel->FrameNumber = Channel->NextFrame;
+    if (Channel->SkipPending && Channel->SkipAfter-- == 0)
+    {
+        Channel->SkipPending = false;
+        Channel->Faults[SIM_RX_FAULT_SKIP_FRAME] = true;
+    }
     if (Channel->Faults[SIM_RX_FAULT_SKIP_FRAME])
     {
         Channel->FrameNumber++;
@@ -1153,6 +1160,18 @@ bool SimChSdiRx_SetFileSource(int PortIndex, int VidStd, const char* Path)
     Channel->FileLineSyms = LineSyms;
     Channel->SourceVidStd = VidStd;
     return true;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimChSdiRx_SkipFrameAfter -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+void SimChSdiRx_SkipFrameAfter(int PortIndex, int Frames)
+{
+    EnsureRx();
+    if (PortIndex >= 0 && PortIndex < SIM_SDI_PORT_COUNT && Frames >= 0)
+    {
+        g_Rx.Channels[PortIndex].SkipPending = true;
+        g_Rx.Channels[PortIndex].SkipAfter = Frames;
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimDtPcie_RunRxEvents -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.

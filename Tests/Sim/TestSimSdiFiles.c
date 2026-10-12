@@ -2164,6 +2164,183 @@ DT_TEST(LendingRefusesAndDrops)
     FINISH(Fix);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Faults on demand +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// A value of a starve or a skip that cannot be used is refused.
+DT_TEST(StarveAndSkipRefuseWhatTheyCannotUse)
+{
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    static const char* const BadStarves[] = {
+        "0:1:1", "9:1:1", "x:1:1",  "2:1",   "2:1:0", "2:-1:1",
+        "2::1",  "2:1:",  "2:1:1:", "2:a:1", "",      "2:99999999999:1",
+    };
+    for (size_t i = 0; i < sizeof(BadStarves) / sizeof(BadStarves[0]); i++)
+    {
+        if (SimDtPcie_SetSdiStarve(BadStarves[i]))
+        {
+            printf("    FAIL: starve \"%s\" was taken\n", BadStarves[i]);
+            (*DtFailures)++;
+        }
+    }
+    static const char* const BadSkips[] = {"0:1", "9:1", "1:", "1", "1:x", "1:1:1", ""};
+    for (size_t i = 0; i < sizeof(BadSkips) / sizeof(BadSkips[0]); i++)
+    {
+        if (SimDtPcie_SetSdiSkip(BadSkips[i]))
+        {
+            printf("    FAIL: skip \"%s\" was taken\n", BadSkips[i]);
+            (*DtFailures)++;
+        }
+    }
+    DT_ASSERT(!SimDtPcie_SetSdiStarve(NULL));
+    DT_ASSERT(!SimDtPcie_SetSdiSkip(NULL));
+    DT_ASSERT(SimDtPcie_SetSdiStarve("2:3:2"));
+    DT_ASSERT(SimDtPcie_SetSdiStarve("2:0:1"));
+    DT_ASSERT(SimDtPcie_SetSdiSkip("1:0"));
+    DT_ASSERT(SimDtPcie_SetSdiSkip("1:4"));
+    FINISH(Fix);
+}
+
+// Lends Count black frames of VidStd on the output port, sending from the second on, and
+// sets *Latched to the flags the channel latched by then. *Sent is how many frames the
+// card had sent when the channel first latched an underflow, or -1 when it did not.
+static void SendLentFrames(Fixture* Fix, int VidStd, int Count, int* Latched, int* Sent,
+                           int* DtFailures)
+{
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    *Latched = 0;
+    *Sent = -1;
+    Fix->Out = DtOutpChannel_Alloc();
+    DT_ASSERT(View != NULL && Builder != NULL && Fix->Out != NULL);
+    DT_ASSERT_OK(SetStandard(Fix, PORT_OUTPUT, VidStd));
+    DT_ASSERT_OK(DtOutpChannel_AttachToPort(Fix->Out, Fix->Device, PORT_OUTPUT));
+    DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix->Out, DTAPI_TXCTRL_HOLD));
+    for (int k = 0; k < Count; k++)
+    {
+        DT_ASSERT_OK(DtOutpChannel_AcquireFrame(Fix->Out, View, 10000));
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL));
+        DT_ASSERT_OK(DtOutpChannel_CommitFrame(Fix->Out, View));
+        if (k == 1)
+            DT_ASSERT_OK(DtOutpChannel_SetTxControl(Fix->Out, DTAPI_TXCTRL_SEND));
+        int Status = 0;
+        DT_ASSERT_OK(DtOutpChannel_GetFlags(Fix->Out, &Status, Latched));
+        if (*Sent < 0 && (*Latched & DTAPI_TX_DMA_UFL) != 0)
+        {
+            SimTxState State;
+            SimDtPcie_GetTxState(PORT_OUTPUT - 1, &State);
+            *Sent = State.FramesSent;
+        }
+    }
+    DtOutpChannel_Freep(&Fix->Out);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+}
+
+// Checks an underflow from a starve, in 720p50, with the emulator's transmitter off the
+// clock, so that it sends only while the channel waits and never runs dry by itself. The
+// program lends 40 frames, more than the channel holds, so that it waits for the card:
+// - without a starve, a lending program sees no underflow;
+// - with "2:3:2", it sees both flags of an underflow once the card has sent three more
+//   frames, and its frames go on after it.
+DT_TEST(StarveUnderflowsAfterTheFrames)
+{
+    const int VidStd = DTAPI_VIDSTD_720P50;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    SimDtPcie_SetTxRealTime(false);
+    int Latched = 0;
+    int Sent = 0;
+    SendLentFrames(&Fix, VidStd, 40, &Latched, &Sent, DtFailures);
+    DT_ASSERT_EQ(Latched & (DTAPI_TX_DMA_UFL | DTAPI_TX_FIFO_UFL), 0);
+
+    SimTxState State;
+    SimDtPcie_GetTxState(PORT_OUTPUT - 1, &State);
+    const int Before = State.FramesSent;
+    DT_ASSERT(SimDtPcie_SetSdiStarve("2:3:2"));
+    SendLentFrames(&Fix, VidStd, 40, &Latched, &Sent, DtFailures);
+    DT_ASSERT((Latched & DTAPI_TX_DMA_UFL) != 0);
+    DT_ASSERT((Latched & DTAPI_TX_FIFO_UFL) != 0);
+    DT_ASSERT(Sent >= Before + 3);
+    SimDtPcie_GetTxState(PORT_OUTPUT - 1, &State);
+    DT_ASSERT(State.FramesSent > Sent);
+    FINISH(Fix);
+}
+
+// Checks a skip on an input of 3G level B, in 1080p50 level B: the source plays frames
+// of the interface whose pictures carry their payload IDs, so that each picture's field
+// comes from its own. Without a skip, field 1 and field 2 alternate; with "1:3", one
+// picture is lost after the third, and two pictures in a row have the same field, once.
+DT_TEST(SkipLosesAPicture)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    const int NumFrames = 3;
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+        return;
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
+    const size_t Padded = (Size + 7) / 8 * 8;
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    uint8_t* Frame = (uint8_t*)calloc(Padded, 1);
+    DT_ASSERT(View != NULL && Builder != NULL && Frame != NULL);
+    FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
+    DT_ASSERT(Source != NULL);
+    for (int k = 0; k < NumFrames; k++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, VidStd, 10));
+        for (int f = 0; f < 2; f++)
+        {
+            DT_ASSERT_OK(DtSdiView_SetLevelBField(View, f + 1));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL));
+        }
+        DT_ASSERT_EQ(fwrite(Frame, 1, Padded, Source), Padded);
+    }
+    DT_ASSERT_EQ(fclose(Source), 0);
+    free(Frame);
+
+    DtDevice_Freep(&Fix.Device);
+    for (int Run = 0; Run < 2; Run++)
+    {
+        SimDtPcie_Reset();
+        DT_ASSERT(SimDtPcie_SetSdiSource(SourceValue("1080P50B", SOURCE_FILE)));
+        if (Run == 1)
+            DT_ASSERT(SimDtPcie_SetSdiSkip("1:3"));
+        Fix.Device = DtDevice_Alloc();
+        Fix.In = DtInpChannel_Alloc();
+        DT_ASSERT(Fix.Device != NULL && Fix.In != NULL);
+        DT_ASSERT_OK(DtDevice_AttachToSerial(Fix.Device, SIM_SERIAL));
+        DT_ASSERT_OK(SetStandard(&Fix, PORT, VidStd));
+        DT_ASSERT_OK(DtInpChannel_AttachToPort(Fix.In, Fix.Device, PORT));
+        DT_ASSERT_OK(
+            DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
+        DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
+        int Last = 0;
+        int Repeats = 0;
+        for (int k = 0; k < 10; k++)
+        {
+            DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
+            const int Field = DtSdiView_FindLevelBField(View);
+            DT_ASSERT(Field == 1 || Field == 2);
+            DT_ASSERT_EQ(View->LevelBField, Field);
+            Repeats += Field == Last ? 1 : 0;
+            Last = Field;
+            DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
+        }
+        DT_ASSERT_EQ(Repeats, Run);
+        DtInpChannel_Freep(&Fix.In);
+        DtDevice_Freep(&Fix.Device);
+    }
+
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    FINISH(Fix);
+    remove(SOURCE_FILE);
+}
+
 DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(SourceRefusesWhatItCannotUse), DT_RUN(SourceFollowsTheClock),
              DT_RUN(SinkWritesWhatIsSent), DT_RUN(HdOverThreads),
@@ -2174,4 +2351,6 @@ DT_TEST_MAIN("SimSdiFiles", DT_RUN(SourcePlaysTheFile),
              DT_RUN(CommittedFramesGoOut), DT_RUN(BuilderFillsLentFrames),
              DT_RUN(LendingRefusesAndDrops), DT_RUN(LevelBThroughTheChannels),
              DT_RUN(FrameTimeKeepsItsGrid), DT_RUN(LevelBFramesWrittenAndRead),
+             DT_RUN(StarveAndSkipRefuseWhatTheyCannotUse),
+             DT_RUN(StarveUnderflowsAfterTheFrames), DT_RUN(SkipLosesAPicture),
              DT_RUN(LeavesAFileForTheExamples))

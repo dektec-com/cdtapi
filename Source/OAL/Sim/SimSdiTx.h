@@ -165,6 +165,11 @@ int SimDtPcie_RunTxEvents(int PortIndex, int Events);
 // holds.
 void SimDtPcie_StarveTx(int PortIndex, int Events);
 
+// Makes the next Waits waits of the port at PortIndex underflow once it has sent Frames
+// more frames, as SimDtPcie_StarveTx() does at once: a card that runs dry. A reset takes
+// it away; a negative Frames or Waits changes nothing.
+void SimSdiTx_StarveAfter(int PortIndex, int Frames, int Waits);
+
 // Adds Ns nanoseconds to the stamps of the starts of the next Count frames of the port
 // at PortIndex, or of all frames from now on for a Count of -1: a stamp of an interrupt
 // handled late, or a grid the card took anew. Count 0, as after a reset, adds nothing.

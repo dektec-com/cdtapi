@@ -137,6 +137,12 @@ typedef enum SimRxFault
 // Gives the next frame of the port at PortIndex the fault Fault, once.
 void SimDtPcie_InjectRxFault(int PortIndex, SimRxFault Fault);
 
+// Skips one frame number before the frame the port at PortIndex starts after Frames more
+// frames, as SIM_RX_FAULT_SKIP_FRAME does before the next: a frame lost, as when a card
+// drops one. Of 3G level B, one picture is lost, and the fields after it come one place
+// on. A reset takes it away; a negative Frames changes nothing.
+void SimChSdiRx_SkipFrameAfter(int PortIndex, int Frames);
+
 // Makes the running channel of the port at PortIndex produce Events format events without
 // anyone waiting for them, as a card goes on while an application does not read.
 void SimDtPcie_RunRxEvents(int PortIndex, int Events);
