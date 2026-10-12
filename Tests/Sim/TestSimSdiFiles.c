@@ -2271,8 +2271,9 @@ DT_TEST(StarveUnderflowsAfterTheFrames)
 
 // Checks a skip on an input of 3G level B, in 1080p50 level B: the source plays frames
 // of the interface whose pictures carry their payload IDs, so that each picture's field
-// comes from its own. Without a skip, field 1 and field 2 alternate; with "1:3", one
-// picture is lost after the third, and two pictures in a row have the same field, once.
+// comes from its own, which DtSdiView_GetLevelBField gives. Without a skip, field 1 and
+// field 2 alternate; with "1:3", one picture is lost after the third, and two pictures
+// in a row have the same field, once.
 DT_TEST(SkipLosesAPicture)
 {
     const int VidStd = DTAPI_VIDSTD_1080P50B;
@@ -2323,9 +2324,10 @@ DT_TEST(SkipLosesAPicture)
         for (int k = 0; k < 10; k++)
         {
             DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
-            const int Field = DtSdiView_FindLevelBField(View);
+            int Field = 0;
+            DT_ASSERT_OK(DtSdiView_GetLevelBField(View, &Field));
             DT_ASSERT(Field == 1 || Field == 2);
-            DT_ASSERT_EQ(View->LevelBField, Field);
+            DT_ASSERT_EQ(DtSdiView_FindLevelBField(View), Field);
             Repeats += Field == Last ? 1 : 0;
             Last = Field;
             DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));

@@ -224,6 +224,25 @@ DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd, int* BitsPer
     return DTAPI_OK;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetLevelBField -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtSdiView_GetLevelBField(const DtSdiView* View, int* Field)
+{
+    if (Field != NULL)
+        *Field = 0;
+    if (View == NULL || Field == NULL)
+        return DTAPI_E_INVALID_ARG;
+    if (!View->HasFrame)
+        return DTAPI_E_STATE;
+    // 2160p of level-B links is not 3G level B: it has no pictures to choose from.
+    if (!View->Geo.IsLevelB || View->Geo.Is4k)
+        return DTAPI_E_INVALID_VIDSTD;
+    if (View->LevelBField != 1 && View->LevelBField != 2)
+        return DTAPI_E_STATE;
+    *Field = View->LevelBField;
+    return DTAPI_OK;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Looks for the payload ID in raw line LineIndex and, when it is there, sets *PayloadId

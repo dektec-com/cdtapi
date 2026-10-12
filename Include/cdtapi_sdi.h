@@ -163,6 +163,19 @@ CDTAPI_API DtapiResult DtSdiView_GetActiveLine(const DtSdiView* View, int Line,
 CDTAPI_API DtapiResult DtSdiView_GetFormat(const DtSdiView* View, int* VidStd,
                                            int* BitsPerSymbol);
 
+// Sets *Field to the picture of 3G level B that View describes, 1 or 2: the picture the
+// parser reads and the builder builds. It is the field DtSdiView_SetLevelBField() chose,
+// or, for a frame that a channel lent, the field the channel set: that of the line of
+// the picture's payload ID, or without one the field after the picture before. A
+// program that receives pictures reads it to see that field 1 and field 2 alternate.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG     View or Field is NULL
+//   DTAPI_E_STATE           the view does not describe a frame
+//   DTAPI_E_INVALID_VIDSTD  the frame is not of 3G level B
+// After a failure *Field is 0, if Field is not NULL.
+CDTAPI_API DtapiResult DtSdiView_GetLevelBField(const DtSdiView* View, int* Field);
+
 // Reads the SMPTE ST 352 payload ID of the frame into *PayloadId. The four bytes of the
 // payload ID are packed with the first byte in the most significant position. In 2160p
 // it is the payload ID of the first link.

@@ -178,7 +178,8 @@ DT_TEST(LinesAndPayloadId)
 
 // Checks what a view and the builder and parser refuse: a raw frame of level B, which
 // is the layout of the line and not yet taken, a field other than 1 or 2, and a picture
-// whose field is not known.
+// whose field is not known; and the field DtSdiView_GetLevelBField gives, that of the
+// picture or the one chosen, and none for a view without a frame or of another standard.
 DT_TEST(Refusals)
 {
     Picture* P = Picture_Alloc(DTAPI_VIDSTD_1080P50B);
@@ -192,6 +193,9 @@ DT_TEST(Refusals)
         DtSdiView_SetRawFrame(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10),
         DTAPI_E_INVALID_SIZE);
     DT_ASSERT_EQ(DtSdiView_SetLevelBField(P->View, 1), DTAPI_E_STATE);
+    int Field = -1;
+    DT_ASSERT_EQ(DtSdiView_GetLevelBField(P->View, &Field), DTAPI_E_STATE);
+    DT_ASSERT_EQ(Field, 0);
     DT_ASSERT_EQ(
         DtSdiView_SetRawPicture(P->View, P->Frame, P->Size, DTAPI_VIDSTD_1080P50B, 10, 3),
         DTAPI_E_INVALID_ARG);
@@ -202,7 +206,16 @@ DT_TEST(Refusals)
                                          DTAPI_VIDSTD_1080P50B, 10, 1));
     DT_ASSERT_EQ(DtSdiView_SetLevelBField(P->View, 3), DTAPI_E_INVALID_ARG);
     DT_ASSERT_EQ(DtSdiView_SetLevelBField(NULL, 1), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiView_GetLevelBField(NULL, &Field), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(Field, 0);
+    DT_ASSERT_EQ(DtSdiView_GetLevelBField(P->View, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_OK(DtSdiView_GetLevelBField(P->View, &Field));
+    DT_ASSERT_EQ(Field, 1);
+    DT_ASSERT_OK(DtSdiView_SetLevelBField(P->View, 2));
+    DT_ASSERT_OK(DtSdiView_GetLevelBField(P->View, &Field));
+    DT_ASSERT_EQ(Field, 2);
     P->View->LevelBField = 0;
+    DT_ASSERT_EQ(DtSdiView_GetLevelBField(P->View, &Field), DTAPI_E_STATE);
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
     DT_ASSERT_EQ(DtSdiParser_Parse(Parser, P->View, NULL, NULL, NULL), DTAPI_E_STATE);
     DtSdiView* Other = DtSdiView_Alloc();
@@ -211,6 +224,9 @@ DT_TEST(Refusals)
     DT_ASSERT(Hd != NULL);
     DT_ASSERT_OK(DtSdiView_SetRawFrame(Other, Hd, P->Size, DTAPI_VIDSTD_1080P50, 10));
     DT_ASSERT_EQ(DtSdiView_SetLevelBField(Other, 1), DTAPI_E_INVALID_VIDSTD);
+    Field = -1;
+    DT_ASSERT_EQ(DtSdiView_GetLevelBField(Other, &Field), DTAPI_E_INVALID_VIDSTD);
+    DT_ASSERT_EQ(Field, 0);
     free(Hd);
     DtSdiView_Free(Other);
     DtSdiParser_Free(Parser);
