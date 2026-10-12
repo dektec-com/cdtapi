@@ -109,9 +109,11 @@ set(CDTAPI_SOURCES
     Source/OAL/Sim/SimDta2110.c
     Source/OAL/Sim/SimDta2178.c
     Source/OAL/Sim/SimDtPcie.c
+    Source/OAL/Sim/SimLevelB.c
     Source/OAL/Sim/SimNet.c
     Source/OAL/Sim/SimNw.c
     Source/OAL/Sim/SimSdiTx.c
+    Source/OAL/Sim/SimSdiWords.c
     Source/OAL/Sim/SimService.c
     Source/OAL/Sim/SimVpd.c
     Source/Sdi/DtSdiAnc.c

@@ -17,6 +17,7 @@
 #include "Sim4k.h"              // How 2160p over one link lies in the ring.
 #include "SimChSdiRx.h"         // Interface being implemented.
 #include "SimDtPcie.h"          // Port counts.
+#include "SimSdiWords.h"        // Timing references, line numbers and CRCs.
 #include "Video/DtFrameProps.h" // Frame geometry of the source.
 #include "Video/DtSdiFrame.h"   // The format the source writes.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
@@ -138,25 +139,6 @@ static void Unconfigure(SimRxChannel* Channel)
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Frame source +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Crc18 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// SMPTE 292's CRC-18, x^18 + x^5 + x^4 + 1, over one 10-bit word, least significant bit
-// first. The table holds the CRC's change for each value of five bits, so that a word
-// takes two steps rather than ten.
-//
-static const uint32_t Crc18Table[32] = {
-    0x00000, 0x02300, 0x04600, 0x06500, 0x08C00, 0x0AF00, 0x0CA00, 0x0E900,
-    0x11800, 0x13B00, 0x15E00, 0x17D00, 0x19400, 0x1B700, 0x1D200, 0x1F100,
-    0x23000, 0x21300, 0x27600, 0x25500, 0x2BC00, 0x29F00, 0x2FA00, 0x2D900,
-    0x32800, 0x30B00, 0x36E00, 0x34D00, 0x3A400, 0x38700, 0x3E200, 0x3C100,
-};
-
-static uint32_t Crc18(uint32_t Crc, uint32_t Word)
-{
-    Crc = (Crc >> 5) ^ Crc18Table[(Crc ^ Word) & 0x1F];
-    return (Crc >> 5) ^ Crc18Table[(Crc ^ (Word >> 5)) & 0x1F];
-}
-
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DataSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // A symbol that is not a timing reference, between 040 and 3BF.
@@ -170,32 +152,6 @@ static uint32_t DataSymbol(uint32_t FrameNumber, int Line, int Index)
     Hash *= 0x2C1B3C6Du;
     Hash ^= Hash >> 12;
     return 0x040 + Hash % 0x380;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Xyz -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// The fourth word of a timing reference: field, vertical blanking, EAV or SAV, and the
-// protection bits over those three.
-//
-static uint32_t Xyz(const DtFrameProps* Props, int Line, bool Eav)
-{
-    uint32_t F = Props->NumFields == 2 && Line >= Props->Fields[1].StartLine ? 1 : 0;
-    const DtFieldProps* Field = &Props->Fields[F];
-    uint32_t V = Line < Field->ActiveStartLine || Line > Field->ActiveEndLine ? 1 : 0;
-    uint32_t H = Eav ? 1 : 0;
-
-    return 0x200 | F << 8 | V << 7 | H << 6 | (V ^ H) << 5 | (F ^ H) << 4 | (F ^ V) << 3 |
-           (F ^ V ^ H) << 2;
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-//
-// Nine bits with bit 9 the inverse of bit 8, as line numbers and CRC words carry them.
-//
-static uint32_t WithParity(uint32_t Nine)
-{
-    Nine &= 0x1FF;
-    return Nine | ((Nine >> 8) ^ 1) << 9;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Line4k -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -248,8 +204,10 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
 
     if (Props.LineNumSymEav == 4)
     {
-        const uint32_t Eav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, true)};
-        const uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
+        const uint32_t Eav[4] = {0x3FF, 0x000, 0x000,
+                                 SimSdiWords_Xyz(&Props, Line, true)};
+        const uint32_t Sav[4] = {0x3FF, 0x000, 0x000,
+                                 SimSdiWords_Xyz(&Props, Line, false)};
 
         for (i = 0; i < 4; i++)
         {
@@ -266,9 +224,9 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
         uint32_t Words[8] = {0x3FF,
                              0x000,
                              0x000,
-                             Xyz(&Props, Line, true),
-                             WithParity((uint32_t)Line << 2),
-                             WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
+                             SimSdiWords_Xyz(&Props, Line, true),
+                             SimSdiWords_WithParity((uint32_t)Line << 2),
+                             SimSdiWords_WithParity((uint32_t)(Line >> 7) << 2 & 0x3C),
                              0,
                              0};
         int Channel;
@@ -279,17 +237,19 @@ int SimChSdiRx_Line(int VidStd, uint32_t FrameNumber, int Line, uint16_t* Symbol
             int j;
 
             for (j = Channel; j < Props.LineNumSymActive; j += 2)
-                Crc = Crc18(Crc, DataSymbol(PrevFrame, PrevLine, HancSyms + j));
+                Crc =
+                    SimSdiWords_Crc18(Crc, DataSymbol(PrevFrame, PrevLine, HancSyms + j));
             for (j = 0; j < 6; j++)
-                Crc = Crc18(Crc, Words[j]);
+                Crc = SimSdiWords_Crc18(Crc, Words[j]);
 
-            Words[6] = WithParity(Crc);
-            Words[7] = WithParity(Crc >> 9);
+            Words[6] = SimSdiWords_WithParity(Crc);
+            Words[7] = SimSdiWords_WithParity(Crc >> 9);
             for (j = 0; j < 8; j++)
                 Symbols[2 * j + Channel] = (uint16_t)Words[j];
             for (j = 0; j < 4; j++)
             {
-                uint32_t Sav[4] = {0x3FF, 0x000, 0x000, Xyz(&Props, Line, false)};
+                uint32_t Sav[4] = {0x3FF, 0x000, 0x000,
+                                   SimSdiWords_Xyz(&Props, Line, false)};
                 Symbols[HancSyms - 8 + 2 * j + Channel] = (uint16_t)Sav[j];
             }
         }
