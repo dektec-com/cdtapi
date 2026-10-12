@@ -7,10 +7,16 @@
 # A tag such as v6.13.3 checks that the sources at it call themselves 6.13.3, builds and
 # tests them on Linux and Windows once more, and makes a GitHub Release whose notes are
 # the tag's own message, with the SHA-512 of the source tarball for the vcpkg registry.
-# Nothing is attached: the library is built from source, by vcpkg and by the SDK, and
-# GitHub serves the tarball of the tag itself.
+# vcpkg builds the library from that tarball, which GitHub serves for the tag itself.
 #
-# Run by hand, it does the same for the tag given and leaves the release a draft.
+# The release also carries what DekTec's SDK ships, which the SDK takes from here rather
+# than building it: cdtapi-X.Y.Z-sdk-linux-x64.tar.gz, built on Ubuntu 18.04 so that it
+# runs on glibc 2.27 and later, and cdtapi-X.Y.Z-sdk-windows-x64.zip, built with Visual
+# Studio 2022's toolset so that Visual C++ 17 and 18 link its archives; each with its
+# SHA-256 beside it.
+#
+# Run by hand, it does the same for the tag given and leaves the release a draft. The tag
+# has to hold the two scripts that make the packages, which tags before 6.14.14 do not.
 
 name: Release
 
@@ -79,15 +85,69 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
 
+  # The SDK's Linux files, in the container of Scripts/build_ubuntu_18.04.sh, which also
+  # runs the suites there and fails when the library needs a glibc newer than 2.27.
+  package-linux:
+    name: The SDK's files for Linux
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Build, test, check and pack on Ubuntu 18.04
+        run: bash Scripts/build_ubuntu_18.04.sh --package
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-linux
+          path: Build/ubuntu-18.04/cdtapi-*
+          if-no-files-found: error
+
+  # The SDK's Windows files, with the v143 toolset that windows-2022 has, not whatever
+  # Visual Studio windows-latest holds.
+  package-windows:
+    name: The SDK's files for Windows
+    needs: version
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Build and pack with Visual Studio 2022's toolset
+        shell: pwsh
+        run: Scripts/package_windows.ps1 -Toolset v143
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-windows
+          path: Build/sdk-windows/cdtapi-*
+          if-no-files-found: error
+
   release:
     name: Release
-    needs: [version, build]
+    needs: [version, build, package-linux, package-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.tag }}
           fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sdk-*
+          path: packages
+          merge-multiple: true
+
+      # What the SDK downloads is what the hashes name, checked once more here.
+      - name: The packages
+        working-directory: packages
+        run: |
+          ls -l
+          sha256sum -c *.sha256
 
       # The tarball GitHub serves for the tag is what vcpkg_from_github downloads, so its
       # hash is what the registry's portfile has to hold.
@@ -133,4 +193,5 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             Draft="--draft"
           fi
-          gh release create "$Tag" --title "CDTAPI ${Tag#v}" --notes-file notes.md $Draft
+          gh release create "$Tag" --title "CDTAPI ${Tag#v}" --notes-file notes.md \
+            $Draft packages/*
