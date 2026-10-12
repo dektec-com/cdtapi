@@ -239,5 +239,45 @@ DT_TEST(FindsTheFieldAsTheLibrary)
     }
 }
 
+// Checks the black picture of each field, in each standard: the emulator's is the one
+// the builder makes without an image, which the transmit channel sends, word for word
+// but for the CRC words, and both carry the payload ID of their field, which
+// SimLevelB_Field and DtSdiView_FindLevelBField find.
+DT_TEST(BlackPicturesCarryTheirField)
+{
+    for (int s = 0; s < 3; s++)
+    {
+        const int VidStd = g_LevelBStds[s];
+        Buffers B;
+        DT_ASSERT(Buffers_Init(&B, VidStd));
+        DtTest_SetCleanup(Buffers_Free, &B);
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+        DT_ASSERT(View != NULL && Builder != NULL);
+        // The emulator writes the packet's checksum, as a card does for the builder.
+        DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, true));
+        for (int Field = 1; Field <= 2; Field++)
+        {
+            SimLevelB_BlackPicture(&B.Sim, Field, B.Pictures[0]);
+            memset(B.RawPicture, 0, B.PictureBytes);
+            DT_ASSERT_OK(DtSdiView_SetRawPicture(View, B.RawPicture, B.PictureBytes,
+                                                 VidStd, 16, Field));
+            DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL));
+            DT_ASSERT_EQ(FirstDifference(B.Pictures[0], B.RawPicture, B.PictureSyms,
+                                         B.Sim.LineSyms),
+                         -1);
+            DT_ASSERT_EQ(SimLevelB_Field(&B.Sim, B.Pictures[0]), Field);
+            DT_ASSERT_OK(DtSdiView_SetRawPicture(View, B.RawPicture, B.PictureBytes,
+                                                 VidStd, 16, Field == 1 ? 2 : 1));
+            DT_ASSERT_EQ(DtSdiView_FindLevelBField(View), Field);
+        }
+        DtSdiBuilder_Free(Builder);
+        DtSdiView_Free(View);
+        DtTest_SetCleanup(NULL, NULL);
+        Buffers_Free(&B);
+    }
+}
+
 DT_TEST_MAIN("SimLevelB", DT_RUN(InitTakesLevelBOnly),
-             DT_RUN(MergesAndSplitsAsTheLibrary), DT_RUN(FindsTheFieldAsTheLibrary))
+             DT_RUN(MergesAndSplitsAsTheLibrary), DT_RUN(FindsTheFieldAsTheLibrary),
+             DT_RUN(BlackPicturesCarryTheirField))

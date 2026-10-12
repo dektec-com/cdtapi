@@ -25,9 +25,11 @@
 #include "OAL/Sim/SimChSdiRx.h"     // The symbols of the frames written.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks.
-#include "Video/DtSdiFrame.h"       // Frame sizes and black frames.
+#include "Video/DtFrameProps.h"     // Which standards have line CRCs.
+#include "Video/DtSdiFrame.h"       // Frame sizes.
 #include "Video/DtVidStd.h"         // Which standards are 4K.
 #include "cdtapi.h"                 // Public API under test.
+#include "cdtapi_sdi.h"             // The builder, which makes the black frames.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Helpers +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -318,46 +320,38 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
     return Same;
 }
 
-// Whether the card sent a black frame of VidStd with FrameId: the coded lines of
-// DtSdiFrame_WriteBlackLines, symbol by symbol.
+// Whether the card sent a black frame of VidStd with FrameId: the frame the builder
+// makes without an image, with its payload ID, symbol by symbol but for the CRC words of
+// HD and up, which the card writes.
 static bool SentFrameIsBlack(int FrameId, int VidStd)
 {
     DtSdiFrameLayout Layout = {0};
     SimTxFrame Frame;
     uint16_t* Symbols = SentFrame(FrameId, VidStd, &Frame);
-    uint8_t* Black;
     bool Same = Symbols != NULL &&
                 DtSdiFrame_LayoutInit(&Layout, VidStd, SIM_TX_STREAM_ALIGNMENT);
-    int n;
+    const size_t Size = Same ? DtSdiFrame_RawSize(&Layout, 16) : 0;
+    uint8_t* Black = Same ? (uint8_t*)calloc(Size, 1) : NULL;
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
 
-    Black =
-        Same ? (uint8_t*)malloc((size_t)Layout.NumLines * (size_t)Layout.RxStride) : NULL;
-    Same = Same && Black != NULL;
-    if (Same)
-        DtSdiFrame_WriteBlackLines(&Layout, Black);
+    Same = Same && Black != NULL && View != NULL && Builder != NULL &&
+           DtSdiView_SetRawFrame(View, Black, Size, VidStd, 16) == DTAPI_OK &&
+           DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL) == DTAPI_OK;
 
-    for (n = 0; Same && n < Layout.NumLines; n++)
+    const size_t LineSyms = (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
+    // SD has a timing reference of four words and no CRC.
+    DtFrameProps Props;
+    const bool HasCrc = DtFrameProps_Init(&Props, VidStd) && Props.LineNumSymEav != 4;
+    for (size_t i = 0; Same && i < (size_t)Layout.NumLines * LineSyms; i++)
     {
-        const uint8_t* Coded = Black + (size_t)n * (size_t)Layout.RxStride;
-        size_t At =
-            (size_t)n * (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
-
-        for (int s = 0; Same && s < Layout.LineNumSymsHanc + Layout.LineNumSymsActive;
-             s++)
-        {
-            const uint8_t* Section =
-                s < Layout.LineNumSymsHanc ? Coded : Coded + Layout.SectionBytesHanc;
-            size_t Index =
-                (size_t)(s < Layout.LineNumSymsHanc ? s : s - Layout.LineNumSymsHanc);
-            size_t Bit = Index * 10;
-            uint32_t Value =
-                ((uint32_t)Section[Bit / 8] | (uint32_t)Section[Bit / 8 + 1] << 8) >>
-                    (Bit % 8) &
-                0x3FF;
-
-            Same = Symbols[At + (size_t)s] == Value;
-        }
+        const size_t InLine = i % LineSyms;
+        const uint16_t Value = (uint16_t)((Black[2 * i] | Black[2 * i + 1] << 8) & 0x3FF);
+        if (!(HasCrc && InLine >= 12 && InLine < 16))
+            Same = Symbols[i] == Value;
     }
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
     free(Black);
     free(Symbols);
     return Same;

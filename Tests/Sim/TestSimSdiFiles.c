@@ -1694,9 +1694,11 @@ static bool SameButCrcs(const uint8_t* A, const uint8_t* B, int VidStd)
 // - the sink holds frames of the interface: the first picture, of field 2, with a black
 //   picture of field 1, then each picture of field 1 with the picture of field 2 after
 //   it, each with its payload IDs, audio and place in the cadence, and the last picture,
-//   of field 1, with a black picture of field 2;
-// - played back on an input, the channel lends the pictures with those fields, and the
-//   parser gives each picture's audio and place in the cadence.
+//   of field 1, with a black picture of field 2; the black pictures carry the payload
+//   IDs of their fields;
+// - the whole sink played back on an input, the channel lends the pictures with those
+//   fields from the first, and the parser gives each picture's audio and place in the
+//   cadence.
 DT_TEST(LevelBThroughTheChannels)
 {
     const int VidStd = DTAPI_VIDSTD_1080P50B;
@@ -1756,8 +1758,8 @@ DT_TEST(LevelBThroughTheChannels)
     DtDevice_Freep(&Fix.Device);
     SimDtPcie_Reset(); // Closes the file
 
-    // The frames of the interface in the sink. Frames 1 to 3 go into a file of their own,
-    // without the black picture of the first and the last.
+    // The frames of the interface in the sink, which go into a file of their own, the
+    // black pictures with them: each carries the payload ID of its field.
     FILE* Source = SimDtPcie_OpenFile(SOURCE_FILE, "wb");
     DT_ASSERT(Source != NULL);
     size_t Size = 0;
@@ -1780,20 +1782,16 @@ DT_TEST(LevelBThroughTheChannels)
             const bool Black = k < 0 || k >= NumFrames;
             int Got = 0;
             int Place = 0;
-            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, PcmOut, &Got, &Place),
-                         Black ? 0 : 2);
+            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, PcmOut, &Got, &Place), 2);
             if (!Black)
             {
                 DT_ASSERT_EQ(Got, Samples[k]);
                 DT_ASSERT_EQ(Place, f + 1);
             }
         }
-        if (j > 0 && j < NumFrames / 2)
-        {
-            DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
-            for (size_t p = Size; p < Padded; p++)
-                fputc(0, Source);
-        }
+        DT_ASSERT_EQ(fwrite(Sent, 1, Size, Source), Size);
+        for (size_t p = Size; p < Padded; p++)
+            fputc(0, Source);
         free(Sent);
     }
     DT_ASSERT_EQ(fclose(Source), 0);
@@ -1818,16 +1816,21 @@ DT_TEST(LevelBThroughTheChannels)
         DtInpChannel_SetRxMode(Fix.In, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_10B));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.In, DTAPI_RXCTRL_RCV));
     int Last = 0;
-    for (int k = 0; k < 6; k++)
+    for (int k = 0; k < 2 * (NumFrames / 2 + 1); k++)
     {
         DT_ASSERT_OK(DtInpChannel_AcquireFrame(Fix.In, View, 30000, NULL));
-        const int Field = View->LevelBField;
+        int Field = 0;
+        DT_ASSERT_OK(DtSdiView_GetLevelBField(View, &Field));
         DT_ASSERT(Field == 1 || Field == 2);
         DT_ASSERT(Field != Last);
         DT_ASSERT_EQ(DtSdiView_FindLevelBField(View), Field);
         DT_ASSERT_OK(DtSdiParser_Parse(Parser, View, NULL, &Out, NULL));
-        DT_ASSERT_EQ(Out.FrameNumber, Field);
-        DT_ASSERT_EQ(Out.Channels[0].NumSamples, Samples[Field == 2 ? 0 : 1]);
+        // A black picture of the sink carries no audio; the others carry their own.
+        if (Out.Channels[0].NumSamples > 0)
+        {
+            DT_ASSERT_EQ(Out.FrameNumber, Field);
+            DT_ASSERT_EQ(Out.Channels[0].NumSamples, Samples[Field == 2 ? 0 : 1]);
+        }
         DT_ASSERT_OK(DtInpChannel_ReleaseFrame(Fix.In, View));
         Last = Field;
     }
@@ -1847,8 +1850,9 @@ DT_TEST(LevelBThroughTheChannels)
 // 1080p50 level B:
 // - WriteFrame sends each frame's two pictures, field 1 and field 2, after one black
 //   picture that puts field 1 on an odd frame ID, as the card's first frame is field 2;
-//   the sink holds that black picture as field 2 of a black frame, and then the frames
-//   written, the same but for their CRCs;
+//   the sink holds that black picture as field 2 of a black frame, both black pictures
+//   with the payload IDs of their fields, and then the frames written, the same but for
+//   their CRCs;
 // - played back on an input, ReadFrame gives frames of the interface again, each with
 //   both pictures' payload IDs and audio.
 DT_TEST(LevelBFramesWrittenAndRead)
@@ -1921,8 +1925,7 @@ DT_TEST(LevelBFramesWrittenAndRead)
         {
             int Got = 0;
             int Place = 0;
-            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, Pcm, &Got, &Place),
-                         j == 0 ? 0 : 2);
+            DT_ASSERT_EQ(ParseField(Parser, View, f + 1, Pcm, &Got, &Place), 2);
             if (j > 0)
                 DT_ASSERT_EQ(Got, Samples[j - 1][f]);
         }

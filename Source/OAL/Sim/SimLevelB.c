@@ -15,10 +15,11 @@
 #include <string.h>
 
 // CDTAPI includes
-#include "SimLevelB.h"      // Interface being implemented.
-#include "SimSdiWords.h"    // Timing references, line numbers and CRCs.
-#include "Video/DtVidStd.h" // Which standards are level B.
-#include "cdtapi.h"         // DTAPI_VIDSTD_ codes.
+#include "SimLevelB.h"        // Interface being implemented.
+#include "SimSdiWords.h"      // Timing references, line numbers and CRCs.
+#include "Video/DtSmpte352.h" // The payload ID's four bytes.
+#include "Video/DtVidStd.h"   // Which standards are level B.
+#include "cdtapi.h"           // DTAPI_VIDSTD_ codes.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -30,6 +31,13 @@
 #define SIM_LEVELB_DID_PAYLOAD_ID 0x41
 #define SIM_LEVELB_SDID_PAYLOAD_ID 0x01
 #define SIM_LEVELB_PAYLOAD_ID_1080_B 0x8A
+
+// The interface lines that carry the payload ID, in field 1 and field 2.
+#define SIM_LEVELB_PAYLOAD_LINE_1 10
+#define SIM_LEVELB_PAYLOAD_LINE_2 572
+
+// Bit 6 of the payload ID's byte 4, set on link B.
+#define SIM_LEVELB_LINK_B 0x40
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Internals +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -73,6 +81,54 @@ static void MakeBlank(const SimLevelB* LevelB, uint16_t* Words, size_t Stride)
             Words[(size_t)(Sav + 2 * k + s) * Stride] = 0x000;
         }
     }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WithParity8 -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Returns the eight bits of Value with their even parity in bit 8 and its inverse in bit
+// 9, as the IDs, the count and the data of an ancillary packet carry them.
+//
+static uint16_t WithParity8(uint32_t Value)
+{
+    uint32_t Parity = Value & 0xFF;
+
+    Parity ^= Parity >> 4;
+    Parity ^= Parity >> 2;
+    Parity ^= Parity >> 1;
+    Parity &= 1;
+    return (uint16_t)((Value & 0xFF) | Parity << 8 | (Parity ^ 1) << 9);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PutPayloadId -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Puts the payload ID of link Link (0 for A, 1 for B) into the horizontal blanking of the
+// Y stream of the picture line at Words, after its CRC words: the flag, the IDs, the
+// count, the four bytes and the checksum.
+//
+static void PutPayloadId(const SimLevelB* LevelB, int Link, uint16_t* Words)
+{
+    const uint32_t Id = DtSmpte352_Make(LevelB->Picture.VidStd);
+    uint16_t Packet[11] = {0x000,
+                           0x3FF,
+                           0x3FF,
+                           WithParity8(SIM_LEVELB_DID_PAYLOAD_ID),
+                           WithParity8(SIM_LEVELB_SDID_PAYLOAD_ID),
+                           WithParity8(4)};
+    uint32_t Sum = 0;
+
+    for (int i = 0; i < 4; i++)
+    {
+        uint32_t Byte = Id >> (8 * i) & 0xFF;
+        if (i == 3 && Link == 1)
+            Byte |= SIM_LEVELB_LINK_B;
+        Packet[6 + i] = WithParity8(Byte);
+    }
+    for (int i = 3; i < 10; i++)
+        Sum += Packet[i] & 0x1FF;
+    Sum &= 0x1FF;
+    Packet[10] = (uint16_t)(Sum | ((Sum >> 8 & 1) ^ 1) << 9);
+    for (int i = 0; i < 11; i++)
+        Words[2 * (8 + i) + 1] = Packet[i];
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- CopyLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -157,15 +213,22 @@ static size_t PictureLineStart(const SimLevelB* LevelB, int Line)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimLevelB_BlackPicture -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-void SimLevelB_BlackPicture(const SimLevelB* LevelB, uint16_t* Picture)
+void SimLevelB_BlackPicture(const SimLevelB* LevelB, int Field, uint16_t* Picture)
 {
     uint32_t Crc[2] = {0, 0};
 
     for (int Line = 1; Line <= LevelB->NumLines; Line++)
     {
         uint16_t* To = Picture + PictureLineStart(LevelB, Line);
+        // The interface line and the link that carry this line of the picture.
+        const int Interface =
+            Field == 1 ? Line / 2 : (Line - 1) / 2 + SIM_LEVELB_FIELD1_END + 1;
+        const int Link = Field == 1 ? Line % 2 : (Line - 1) % 2;
 
         MakeBlank(LevelB, To, 1);
+        if (Interface == SIM_LEVELB_PAYLOAD_LINE_1 ||
+            Interface == SIM_LEVELB_PAYLOAD_LINE_2)
+            PutPayloadId(LevelB, Link, To);
         SetTiming(LevelB, To, 1, &LevelB->Picture, Line);
         SetCrcs(LevelB, To, 1, Crc);
     }

@@ -125,11 +125,13 @@ typedef struct SimTxPort
     FILE* Sink; // Where the frames sent go as well; NULL for nowhere
 
     // The sink of 3G level B, which writes frames of the interface
-    int VidStd;             // The port's I/O standard, from its last command
-    bool HasLevelB;         // LevelB is set up for VidStd
-    SimLevelB LevelB;       // Merges the pictures sent into frames of the interface
-    uint16_t* LevelBField1; // The picture of field 1 waiting for its field 2, or NULL
-    int LevelBLastField;    // The field of the picture sent last; 0 for none
+    int VidStd;               // The port's I/O standard, from its last command
+    bool HasLevelB;           // LevelB is set up for VidStd
+    SimLevelB LevelB;         // Merges the pictures sent into frames of the interface
+    uint16_t* LevelBField1;   // The picture of field 1 waiting for its field 2, or NULL
+    uint16_t* LevelBBlack[2]; // A black picture of field 1 and of field 2, made once for
+                              // VidStd; NULL when there is no memory
+    int LevelBLastField;      // The field of the picture sent last; 0 for none
 } SimTxPort;
 
 static struct
@@ -395,36 +397,59 @@ static void WriteFrameToSink(FILE* Sink, const SimTxKeptFrame* Frame)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WriteLevelBToSink -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Merges the pictures of field 1 and field 2 into a frame of the interface, and appends
-// it to the port's sink. A picture that is NULL is black.
+// it to the port's sink. A picture that is NULL is black, with the payload ID of its
+// field.
 //
 static void WriteLevelBToSink(SimTxPort* Port, const uint16_t* Field1,
                               const uint16_t* Field2)
 {
     const SimLevelB* LevelB = &Port->LevelB;
     const size_t PictureSyms = (size_t)LevelB->NumLines * (size_t)LevelB->LineSyms;
+    const uint16_t* Pictures[2] = {Field1 != NULL ? Field1 : Port->LevelBBlack[0],
+                                   Field2 != NULL ? Field2 : Port->LevelBBlack[1]};
     uint16_t* Frame = (uint16_t*)DtAlloc_Malloc(2 * PictureSyms * sizeof(uint16_t));
-    uint16_t* Black = NULL;
 
-    if (Frame == NULL)
-        return;
-    if (Field1 == NULL || Field2 == NULL)
+    if (Frame == NULL || Pictures[0] == NULL || Pictures[1] == NULL)
     {
-        Black = (uint16_t*)DtAlloc_Malloc(PictureSyms * sizeof(uint16_t));
-        if (Black == NULL)
-        {
-            DtAlloc_Free(Frame);
-            return;
-        }
-        SimLevelB_BlackPicture(LevelB, Black);
+        DtAlloc_Free(Frame);
+        return;
     }
-    SimLevelB_Merge(&Port->LevelB, Field1 != NULL ? Field1 : Black,
-                    Field2 != NULL ? Field2 : Black, Frame);
+    SimLevelB_Merge(&Port->LevelB, Pictures[0], Pictures[1], Frame);
 
     const SimTxKeptFrame Merged = {0, LevelB->NumLines, 2 * LevelB->HancSyms,
                                    2 * (LevelB->LineSyms - LevelB->HancSyms), Frame};
     WriteFrameToSink(Port->Sink, &Merged);
-    DtAlloc_Free(Black);
     DtAlloc_Free(Frame);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeLevelBBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Frees the port's black pictures of level B.
+//
+static void FreeLevelBBlack(SimTxPort* Port)
+{
+    for (int f = 0; f < 2; f++)
+    {
+        DtAlloc_Free(Port->LevelBBlack[f]);
+        Port->LevelBBlack[f] = NULL;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- MakeLevelBBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Makes the port's black picture of each field, with its payload ID, for the standard
+// LevelB is set up for. A picture there is no memory for stays NULL.
+//
+static void MakeLevelBBlack(SimTxPort* Port)
+{
+    const size_t Bytes =
+        (size_t)Port->LevelB.NumLines * (size_t)Port->LevelB.LineSyms * sizeof(uint16_t);
+    for (int f = 0; f < 2; f++)
+    {
+        Port->LevelBBlack[f] = (uint16_t*)DtAlloc_Malloc(Bytes);
+        if (Port->LevelBBlack[f] != NULL)
+            SimLevelB_BlackPicture(&Port->LevelB, f + 1, Port->LevelBBlack[f]);
+    }
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FlushLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -469,8 +494,11 @@ static bool SinkLevelB(SimTxPort* Port, const SimTxKeptFrame* Frame)
     if (!Port->HasLevelB || Port->LevelB.Picture.VidStd != Port->VidStd)
     {
         FlushLevelB(Port);
+        FreeLevelBBlack(Port);
         Port->HasLevelB = SimLevelB_Init(&Port->LevelB, Port->VidStd);
         Port->LevelBLastField = 0;
+        if (Port->HasLevelB)
+            MakeLevelBBlack(Port);
     }
     const SimLevelB* LevelB = &Port->LevelB;
     if (!Port->HasLevelB || Frame->NumLines != LevelB->NumLines ||
@@ -1554,6 +1582,7 @@ void SimSdiTx_Reset(void)
             for (int k = 0; k < Port->NumKept; k++)
                 DtAlloc_Free(Port->Kept[k].Symbols);
             CloseSink(Port);
+            FreeLevelBBlack(Port);
         }
         memset(Port, 0, sizeof(*Port));
         Port->CdmacMode = DT_BLOCK_OPMODE_IDLE;

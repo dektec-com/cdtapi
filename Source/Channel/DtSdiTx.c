@@ -24,6 +24,7 @@
 #include "Video/DtFrameProps.h" // The frame rate.
 #include "Video/DtSdiFrame.h"   // The buffer's format and the raw frame.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
+#include "cdtapi_sdi.h"         // The builder, which makes the black frames.
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Constants +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
@@ -114,7 +115,9 @@ typedef struct DtSdiTx
     size_t PcieWordBytes;    // A PCIe data word, which the card reads the buffer in
     int BurstFifoSize;       // Bytes
     int QuarterFrameMs;      // A quarter frame period, at least 1 ms
-    uint8_t* BlackLines;     // The coded lines of a black frame, line headers included
+    uint8_t* BlackLines;     // The coded lines of a black frame, line headers included;
+                             // of 3G level B, of a black picture of field 1
+    uint8_t* BlackLines2;    // Of 3G level B, those of field 2; NULL otherwise
     uint8_t* WrapLineBuffer; // A raw line's coded lines when they run across the end
     uint8_t* PartialLine;    // The raw bytes of a line not yet complete
     uint16_t* BandSymbols;   // The working symbols of a 4K line, one set a band
@@ -163,10 +166,11 @@ typedef struct DtSdiTx
 
     // 3G level B: a frame written is one of the interface, whose two pictures go to the
     // card one after the other.
-    DtSdiLevelB* LevelB;   // The converter; NULL for any other standard
-    uint8_t* Pictures[2];  // The pictures of a frame, room for 16 bits a symbol
-    uint8_t* BlackPicture; // A black picture, BlackPictureBits bits a symbol
-    int BlackPictureBits;  // 0 while BlackPicture holds none
+    DtSdiLevelB* LevelB;       // The converter; NULL for any other standard
+    uint8_t* Pictures[2];      // The pictures of a frame, room for 16 bits a symbol
+    uint8_t* BlackPictures[2]; // A black picture of field 1 and of field 2,
+                               // BlackPictureBits bits a symbol
+    int BlackPictureBits;      // 0 while BlackPictures hold none
 
     // The grid on which the frames start on the cable, from the driver's stamps; see
     // NoteStamp.
@@ -365,10 +369,14 @@ static DtapiResult InsertBlack(DtSdiTx* Sdi, size_t Load)
         WriteFrameHeader(Sdi, WrapOffset(Sdi, Sdi->WriteOffset + Coded),
                          (Sdi->NextFrameId + 1) & 0xFFFF);
     }
+    // Of 3G level B, the black picture of the field of the frame ID: field 1 is odd.
+    const uint8_t* Black = Sdi->BlackLines;
+    if (Sdi->BlackLines2 != NULL && Sdi->NextFrameId % 2 == 0)
+        Black = Sdi->BlackLines2;
     WriteFrameHeader(Sdi, Sdi->WriteOffset, Sdi->NextFrameId);
-    CopyIntoBuffer(
-        Sdi, WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes),
-        Sdi->BlackLines, (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
+    CopyIntoBuffer(Sdi,
+                   WrapOffset(Sdi, Sdi->WriteOffset + (size_t)Layout->TxHeaderNumBytes),
+                   Black, (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
 
     DtapiResult Result = CommitFrame(Sdi);
     if (Result == DTAPI_OK)
@@ -836,6 +844,74 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- BuildBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Builds a black frame of the configured standard into Raw, a raw frame of Bits bits a
+// symbol in the layout of the configured standard, Size bytes: the builder's frame
+// without an image, audio or packets, so that it carries the payload ID as every frame
+// the builder makes does. Of 3G level B it is a picture of field Field.
+//
+static DtapiResult BuildBlack(const DtSdiTx* Sdi, int Field, int Bits, uint8_t* Raw,
+                              size_t Size)
+{
+    const int VidStd = Sdi->FrameLayout.VidStd;
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DtapiResult Result = View == NULL || Builder == NULL ? DTAPI_E_OUT_OF_MEM : DTAPI_OK;
+
+    if (Result == DTAPI_OK)
+        Result = Sdi->LevelB != NULL
+                     ? DtSdiView_SetRawPicture(View, Raw, Size, VidStd, Bits, Field)
+                     : DtSdiView_SetRawFrame(View, Raw, Size, VidStd, Bits);
+    if (Result == DTAPI_OK)
+        Result = DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL);
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Writes the coded lines of the black frame that BuildBlack makes at Lines, as
+// BlackLines holds them, line headers included. Of 3G level B it is a picture of field
+// Field.
+//
+static DtapiResult EncodeBlack(DtSdiTx* Sdi, int Field, uint8_t* Lines)
+{
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    const size_t Size = DtSdiFrame_RawSize(Layout, 16);
+    const size_t RawLine = DtSdiFrame_RawLineNumBits(Layout, 16) / 8;
+    uint8_t* Raw = (uint8_t*)DtAlloc_Malloc(Size);
+    DtapiResult Result = Raw == NULL ? DTAPI_E_OUT_OF_MEM : DTAPI_OK;
+
+    if (Result == DTAPI_OK)
+        Result = BuildBlack(Sdi, Field, 16, Raw, Size);
+    if (Result == DTAPI_OK)
+    {
+        memset(Lines, 0, (size_t)Layout->NumCodedLines * (size_t)Layout->TxStride);
+        const int RawLines =
+            Layout->Is4k ? Layout->NumCodedLines / 2 : Layout->NumCodedLines;
+        for (int Line = 0; Line < RawLines; Line++)
+        {
+            const uint8_t* Src = Raw + (size_t)Line * RawLine;
+            if (!Layout->Is4k)
+            {
+                DtSdiFrame_EncodeLine(Layout, 16, Src, 0,
+                                      Lines + (size_t)Line * (size_t)Layout->TxStride);
+                continue;
+            }
+            uint8_t* Dst = Lines + (size_t)(2 * Line) * (size_t)Layout->TxStride;
+            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
+            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
+            DtSdiFrame_EncodeLine4k(
+                Layout, 16, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
+                Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Sdi->BandSymbols);
+        }
+    }
+    DtAlloc_Free(Raw);
+    return Result;
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // Frees what a write of 3G level B uses.
@@ -847,9 +923,13 @@ static void FreeLevelB(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->LevelB);
     DtAlloc_Free(Sdi->Pictures[0]);
     DtAlloc_Free(Sdi->Pictures[1]);
-    DtAlloc_Free(Sdi->BlackPicture);
+    DtAlloc_Free(Sdi->BlackPictures[0]);
+    DtAlloc_Free(Sdi->BlackPictures[1]);
+    DtAlloc_Free(Sdi->BlackLines2);
+    Sdi->BlackLines2 = NULL;
     Sdi->LevelB = NULL;
-    Sdi->Pictures[0] = Sdi->Pictures[1] = Sdi->BlackPicture = NULL;
+    Sdi->Pictures[0] = Sdi->Pictures[1] = NULL;
+    Sdi->BlackPictures[0] = Sdi->BlackPictures[1] = NULL;
     Sdi->BlackPictureBits = 0;
 }
 
@@ -867,17 +947,32 @@ static DtapiResult AllocLevelB(DtSdiTx* Sdi)
     Sdi->LevelB = (DtSdiLevelB*)DtAlloc_Malloc(sizeof(DtSdiLevelB));
     Sdi->Pictures[0] = (uint8_t*)DtAlloc_Malloc(Size);
     Sdi->Pictures[1] = (uint8_t*)DtAlloc_Malloc(Size);
-    Sdi->BlackPicture = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->BlackPictures[0] = (uint8_t*)DtAlloc_Malloc(Size);
+    Sdi->BlackPictures[1] = (uint8_t*)DtAlloc_Malloc(Size);
     if (Sdi->LevelB == NULL || Sdi->Pictures[0] == NULL || Sdi->Pictures[1] == NULL ||
-        Sdi->BlackPicture == NULL)
+        Sdi->BlackPictures[0] == NULL || Sdi->BlackPictures[1] == NULL)
     {
         FreeLevelB(Sdi);
         return DTAPI_E_OUT_OF_MEM;
     }
     const DtapiResult Result = DtSdiLevelB_Init(Sdi->LevelB, Sdi->FrameLayout.VidStd);
     if (Result != DTAPI_OK)
+    {
         FreeLevelB(Sdi);
-    return Result;
+        return Result;
+    }
+
+    // The black picture of field 2 that InsertBlack commits for an even frame ID;
+    // BlackLines holds that of field 1.
+    const size_t Lines =
+        (size_t)Sdi->FrameLayout.NumCodedLines * (size_t)Sdi->FrameLayout.TxStride;
+    Sdi->BlackLines2 = (uint8_t*)DtAlloc_Malloc(Lines);
+    const DtapiResult Black = Sdi->BlackLines2 == NULL
+                                  ? DTAPI_E_OUT_OF_MEM
+                                  : EncodeBlack(Sdi, 2, Sdi->BlackLines2);
+    if (Black != DTAPI_OK)
+        FreeLevelB(Sdi);
+    return Black;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeStandardBuffers -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -997,8 +1092,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
     ConfigureJobRunner(Sdi);
     if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
         Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->BandSymbols == NULL) ||
-        !DtSdiFrame_WriteBlackLines(&Layout, Sdi->BlackLines) ||
-        AllocLevelB(Sdi) != DTAPI_OK)
+        AllocLevelB(Sdi) != DTAPI_OK || EncodeBlack(Sdi, 1, Sdi->BlackLines) != DTAPI_OK)
     {
         FreeStandardBuffers(Sdi);
         return DTAPI_E_OUT_OF_MEM;
@@ -1606,7 +1700,14 @@ static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize
         return DTAPI_E_INVALID_SIZE;
     if (Sdi->BlackPictureBits != Bits)
     {
-        DtSdiLevelB_BlackPicture(Sdi->LevelB, Sdi->BlackPicture, Bits);
+        for (int Field = 1; Field <= 2; Field++)
+        {
+            const DtapiResult Black =
+                BuildBlack(Sdi, Field, Bits, Sdi->BlackPictures[Field - 1],
+                           DtSdiFrame_RawSize(&Sdi->FrameLayout, Bits));
+            if (Black != DTAPI_OK)
+                return Black;
+        }
         Sdi->BlackPictureBits = Bits;
     }
 
@@ -1618,8 +1719,10 @@ static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize
     for (int Field = 1; Field <= 2 && Result == DTAPI_OK; Field++)
     {
         const bool Odd = Sdi->NextFrameId % 2 != 0;
+        // The black picture goes in the other field's place.
         if (Odd != (Field == 1))
-            Result = WriteOneFrame(Sdi, Sdi->BlackPicture, PictureSize, Deadline);
+            Result =
+                WriteOneFrame(Sdi, Sdi->BlackPictures[2 - Field], PictureSize, Deadline);
         if (Result == DTAPI_OK)
             Result = WriteOneFrame(Sdi, Sdi->Pictures[Field - 1], PictureSize, Deadline);
     }
