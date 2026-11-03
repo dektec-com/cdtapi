@@ -354,7 +354,9 @@ DT_TEST(RecoversFromFaults)
 }
 
 // The load never exceeds the FIFO's size: what does not fit is dropped with
-// DTAPI_RX_FIFO_OVF, and so is what the card could not write. Stopping clears the flag.
+// DTAPI_RX_FIFO_OVF, and so is what the card could not write. The card fills its buffer
+// to 16 bytes short of the read offset, past the maximum load the driver reports, and
+// reading goes on from there. Stopping clears the flag.
 DT_TEST(OverflowsAsDtapi)
 {
     Fixture Fix;
@@ -378,6 +380,8 @@ DT_TEST(OverflowsAsDtapi)
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_RCV));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT((Flags & DTAPI_RX_FIFO_OVF) != 0);
+    DT_ASSERT_OK(DtInpChannel_Read(Fix.Channel, Fix.Buffer, 1000 * 188, 1000));
+    DT_ASSERT(ArePackets(Fix.Buffer, 1000, 0, 188, 188, 0));
     DT_ASSERT_OK(DtInpChannel_SetRxControl(Fix.Channel, DTAPI_RXCTRL_IDLE));
     DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
     DT_ASSERT_EQ(Latched & DTAPI_RX_FIFO_OVF, 0);

@@ -293,22 +293,27 @@ DT_TEST(ReserveOfOneDataWord)
     DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
 }
 
-// A write offset that would fill the reserve cannot come from a consistent driver.
-DT_TEST(LoadBeyondTheReserveIsRefused)
+// The card keeps less free than the reserve, so a write offset into the reserve is a
+// load the ring holds: the ring is full, and every byte of it can be read.
+DT_TEST(LoadIntoTheReserveIsAccepted)
 {
     DtRing Ring;
     uint8_t Base[RING_SIZE];
 
     DT_ASSERT_OK(DtRing_Init(&Ring, Base, RING_SIZE, 8));
 
-    DT_ASSERT_EQ(DtRing_SetWriteOffset(&Ring, RING_SIZE - 7), -1);
+    DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, RING_SIZE - 7));
+    DT_ASSERT_EQ(DtRing_Load(&Ring), RING_SIZE - 7);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
+    DT_ASSERT_OK(DtRing_Skip(&Ring, RING_SIZE - 7));
     DT_ASSERT_EQ(DtRing_Load(&Ring), 0);
 
-    // Also when the offending offset has wrapped past the read offset.
-    DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, 6));
-    DT_ASSERT_OK(DtRing_Skip(&Ring, 6));
-    DT_ASSERT_EQ(DtRing_SetWriteOffset(&Ring, 5), -1);
-    DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, 14));
+    // Also when the offset has wrapped round to just before the read offset.
+    DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, 5));
+    DT_ASSERT_OK(DtRing_Skip(&Ring, 12));
+    DT_ASSERT_OK(DtRing_SetWriteOffset(&Ring, 4));
+    DT_ASSERT_EQ(DtRing_Load(&Ring), RING_SIZE - 1);
+    DT_ASSERT_EQ(DtRing_Room(&Ring), 0);
 }
 
 // Peeking further on: the offset counts from the read offset, the wrap is handled, and
@@ -391,6 +396,6 @@ DT_TEST_MAIN("Ring", DT_RUN(InitRejectsUnusableBuffers), DT_RUN(StartsEmpty),
              DT_RUN(FullRingHoldsSizeMinusOne), DT_RUN(ClearDropsEverythingAvailable),
              DT_RUN(ManyLapsStayConsistent), DT_RUN(NullIsAcceptedEverywhere),
              DT_RUN(PeekRejectsNullDestination), DT_RUN(ZeroedStructIsTreatedAsEmpty),
-             DT_RUN(ReserveOfOneDataWord), DT_RUN(LoadBeyondTheReserveIsRefused),
+             DT_RUN(ReserveOfOneDataWord), DT_RUN(LoadIntoTheReserveIsAccepted),
              DT_RUN(PeekAtAnOffset), DT_RUN(SpanInOnePiece),
              DT_RUN(RestartEmptiesAtAnOffset))

@@ -32,6 +32,10 @@
 // The words the card reads the buffer in.
 #define SIM_TX_WORD (SIM_TX_PCIE_DATA_WIDTH / 8)
 
+// The card fills a receive buffer up to 16 bytes short of the read offset, less than the
+// data word the driver reports as kept free, as a DTA-2178 was seen to.
+#define SIM_TX_RX_KEPT_FREE 16
+
 // The header's size before padding: five 32-bit words.
 #define SIM_TX_HEADER_BYTES 20
 
@@ -1353,7 +1357,7 @@ bool SimSdiTx_RxRuns(int PortIndex)
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RxFreeBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// The driver keeps one data word of the buffer free to tell full from empty.
+// The card keeps SIM_TX_RX_KEPT_FREE bytes of the buffer free to tell full from empty.
 //
 size_t SimSdiTx_RxFreeBytes(int PortIndex)
 {
@@ -1362,15 +1366,17 @@ size_t SimSdiTx_RxFreeBytes(int PortIndex)
     const SimTxPort* Port = &g_Tx.Ports[PortIndex];
     size_t Load = ((size_t)Port->WriteOffset + Port->BufferSize - Port->ReadOffset) %
                   Port->BufferSize;
-    return Port->BufferSize - SIM_TX_WORD - Load;
+    const size_t Max = Port->BufferSize - SIM_TX_RX_KEPT_FREE;
+    return Load >= Max ? 0 : Max - Load;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SimSdiTx_RxWrite -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 void SimSdiTx_RxWrite(int PortIndex, const uint8_t* Data, size_t Size)
 {
-    if (SimSdiTx_RxFreeBytes(PortIndex) < Size)
-        return;
+    const size_t Free = SimSdiTx_RxFreeBytes(PortIndex);
+    if (Size > Free)
+        Size = Free;
     SimTxPort* Port = &g_Tx.Ports[PortIndex];
     for (size_t i = 0; i < Size; i++)
         Port->Buffer[(Port->WriteOffset + i) % Port->BufferSize] = Data[i];

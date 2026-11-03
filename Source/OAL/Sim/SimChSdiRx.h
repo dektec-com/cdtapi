@@ -23,8 +23,13 @@
 //   ring        Configuring the channel allocates the ring. Its size is rounded up to a
 //               whole multiple of the prefetch size in pages, and lies between that size
 //               and 256 MB. A size outside that range is refused, and the channel stays
-//               unconfigured. The last data word (SIM_RX_PCIE_DATA_WIDTH bits) is kept
-//               free, so the load is at most the size less one data word.
+//               unconfigured. The maximum load reported keeps the last data word
+//               (SIM_RX_PCIE_DATA_WIDTH bits) free, but the card fills the ring up to
+//               16 bytes short of the channel's read offset, as a DTA-2178 does.
+//   read offset The channel's read offset is that of the running user furthest behind.
+//               A user whose read offset is the write offset is passed over, as by the
+//               driver, so a full ring stays full when every user skips to the write
+//               offset. A channel that starts running starts both offsets at 0.
 //   mapping     As on Windows, the command returns the ring's address. As on Linux, it
 //               returns 0 until the handle has mapped the ring from its port's segment.
 //   events      While a user runs the channel, each wait for a format event brings the
@@ -36,8 +41,8 @@
 // describes it, with the symbols SimChSdiRx_Line() gives. It is in sync only when its
 // video standard has the geometry the channel is configured for. Otherwise nothing is
 // written, and the events say that it is out of sync. When a frame does not fit in the
-// ring, the rest of it is dropped from where it stopped fitting, and the events of its
-// remaining quarters are out of sync.
+// ring, it is written up to where the ring is full, and the rest of it is dropped; the
+// events of its remaining quarters are out of sync.
 //
 // One lock serialises the emulator's commands, so a wait on one thread and a command on
 // another do not interleave. The test controls are meant for one test at a time.

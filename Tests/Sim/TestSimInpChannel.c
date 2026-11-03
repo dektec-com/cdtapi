@@ -816,6 +816,58 @@ DT_TEST(FullRingSetsOverflow)
     FINISH(Fix);
 }
 
+// The card fills the ring to 16 bytes short of the read offset, past the maximum load the
+// driver reports. Reading goes on from the full ring, frame after frame, with the
+// overflow flag set.
+DT_TEST(ReceivesOnAfterTheCardFillsTheRing)
+{
+    Fixture Fix;
+    int Flags = -1;
+    int Latched = -1;
+
+    if (!Start(&Fix, DtFailures))
+        return;
+    DtSdiFrameLayout Layout;
+    DT_ASSERT(
+        DtSdiFrame_LayoutInit(&Layout, DTAPI_VIDSTD_625I50, SIM_RX_STREAM_ALIGNMENT));
+    SimDtPcie_LimitRxRing(5 * DtSdiFrame_RxCodedSize(&Layout) / 2);
+    if (!Receive(&Fix, DTAPI_VIDSTD_625I50, DTAPI_RXMODE_SDI_FULL | DTAPI_RXMODE_SDI_16B,
+                 DtFailures))
+        return;
+
+    // Frame 0 is read while frame 1 waits, so the card writes up to the read offset after
+    // frame 0. Then the reader stops, and the card fills the ring to the brim.
+    SimDtPcie_RunRxEvents(PORT - 1, 8);
+    DT_ASSERT(ReadsFrame(&Fix, DTAPI_VIDSTD_625I50, 0, 16, DtFailures));
+    SimDtPcie_RunRxEvents(PORT - 1, 40);
+
+    // Whole frames come again, each a later one than the one before.
+    uint32_t Last = 0;
+    for (int i = 0; i < 6; i++)
+    {
+        int Size = BUFFER_SIZE;
+        bool Whole = false;
+
+        DT_ASSERT_OK(DtInpChannel_ReadFrame(Fix.Channel, Fix.Buffer, &Size, 2000));
+        for (uint32_t Number = Last + 1; Number < Last + 40 && !Whole; Number++)
+        {
+            size_t Expected;
+            uint8_t* Frame = ExpectedFrame(DTAPI_VIDSTD_625I50, Number, 16, &Expected);
+
+            Whole = Frame != NULL && (size_t)Size == Expected &&
+                    memcmp(Fix.Buffer, Frame, Expected) == 0;
+            if (Whole)
+                Last = Number;
+            free(Frame);
+        }
+        DT_ASSERT(Whole);
+    }
+
+    DT_ASSERT_OK(DtInpChannel_GetFlags(Fix.Channel, &Flags, &Latched));
+    DT_ASSERT_EQ(Latched, DTAPI_RX_FIFO_OVF);
+    FINISH(Fix);
+}
+
 // A full ring cuts a frame short and the source goes on with later frames after it. That
 // frame is not delivered: the next frame read is a whole later one.
 DT_TEST(SkipsAFrameThatLostLines)
@@ -1348,9 +1400,10 @@ DT_TEST_MAIN("SimInpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(ReceivesFourKFrames), DT_RUN(OwnHandle), DT_RUN(ReadsFramesBitForBit),
              DT_RUN(ReadFrame2GivesTheArrivalTime), DT_RUN(ReadsAcrossTheEndOfTheRing),
              DT_RUN(RecoversFromFaults), DT_RUN(FullRingSetsOverflow),
-             DT_RUN(SkipsAFrameThatLostLines), DT_RUN(FifoLoadBeforeTheFirstRead),
-             DT_RUN(ReadFrameChecks), DT_RUN(ReadFrameTimesOut),
-             DT_RUN(DetachCancelsARead), DT_RUN(SecondReadIsRefused),
+             DT_RUN(ReceivesOnAfterTheCardFillsTheRing), DT_RUN(SkipsAFrameThatLostLines),
+             DT_RUN(FifoLoadBeforeTheFirstRead), DT_RUN(ReadFrameChecks),
+             DT_RUN(ReadFrameTimesOut), DT_RUN(DetachCancelsARead),
+             DT_RUN(SecondReadIsRefused),
              DT_RUN(DetachThatTimesOutLeavesTheChannelUsable), DT_RUN(FreeWaitsForARead),
              DT_RUN(ReadAfterAModeChangeChecksTheBuffer), DT_RUN(ReceiveModes),
              DT_RUN(IoConfiguration), DT_RUN(DetectsTheIoStandard))

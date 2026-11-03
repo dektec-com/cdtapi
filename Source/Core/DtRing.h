@@ -27,9 +27,11 @@
 // The load is the number of bytes between the two: (write + size - read) % size.
 //
 // A completely full ring and an empty one would both have equal offsets, so part of the
-// buffer always stays free. The card keeps one data word free, not one byte: eight
-// bytes for a PCIe data width of 64 bits. The driver reports that reserve, and the
-// ring holds at most Size - ReservedBytes bytes.
+// buffer always stays free. The driver reports one data word as that reserve: 32 bytes
+// for a PCIe data width of 256 bits. A ring with a load of Size - ReservedBytes or more
+// is full. The card keeps less free than the driver reports: a DTA-2178 with a data
+// width of 256 bits fills its ring to 16 bytes short of the read offset. So the load can
+// be more than Size - ReservedBytes, and is still a load the ring holds.
 //
 // A read that runs past the end of the buffer continues at its start; the functions
 // here handle that, so that their callers need not.
@@ -41,7 +43,7 @@ typedef struct DtRing
 {
     uint8_t* Base;      // The start of the buffer
     size_t Size;        // The size of the buffer, in bytes
-    size_t MaxLoad;     // The most bytes the ring holds: Size - ReservedBytes
+    size_t MaxLoad;     // The load at which the ring is full: Size - ReservedBytes
     size_t ReadOffset;  // Where the library reads next, in bytes from Base
     size_t WriteOffset; // Where the card writes next, in bytes from Base
 } DtRing;
@@ -52,10 +54,10 @@ typedef struct DtRing
 // is not less than Size.
 int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t ReservedBytes);
 
-// Sets where the card has written up to, as the driver reports it. Returns 0, or -1
-// when Offset is outside the buffer or would make the load more than Size -
-// ReservedBytes. Either means the driver and the library disagree about the ring, and
-// reading on would read garbage.
+// Sets where the card has written up to, as the driver reports it. Any offset in the
+// buffer is one the card can have written up to, also one that makes the load more than
+// Size - ReservedBytes. Returns 0, or -1 when Offset is outside the buffer, which means
+// the driver and the library disagree about the ring, and reading on would read garbage.
 int DtRing_SetWriteOffset(DtRing* Ring, size_t Offset);
 
 // Empties the ring and sets both offsets to Offset, where reading and writing start
@@ -66,7 +68,7 @@ int DtRing_Restart(DtRing* Ring, size_t Offset);
 size_t DtRing_Load(const DtRing* Ring);
 
 // Returns how many more bytes the card can write before the ring is full: Size -
-// ReservedBytes - Load.
+// ReservedBytes - Load, or 0 when the ring is full.
 size_t DtRing_Room(const DtRing* Ring);
 
 // Copies the next Length bytes to Dst, without reading them: the read offset stays.

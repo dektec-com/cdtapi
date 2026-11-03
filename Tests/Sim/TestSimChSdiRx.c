@@ -522,8 +522,10 @@ DT_TEST(InjectsFaults)
     FINISH(Fix);
 }
 
-// A frame that does not fit is cut off and out of sync; reading makes room again, and the
-// ring wraps.
+// A frame that does not fit is written up to 16 bytes short of the read offset, past the
+// maximum load, and is out of sync. A read offset at the write offset leaves the ring
+// full, as the driver passes it over; one short of it makes room again, and the ring
+// wraps.
 DT_TEST(FullRingDropsAndWraps)
 {
     Fixture Fix;
@@ -554,14 +556,24 @@ DT_TEST(FullRingDropsAndWraps)
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(!Event.InSync);
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Offset));
-    DT_ASSERT((size_t)Offset <= (size_t)MaxLoad);
+    DT_ASSERT_EQ((size_t)Offset, (size_t)Size - 16);
+    DT_ASSERT((size_t)Offset > (size_t)MaxLoad);
 
-    // Read everything, and the third frame wraps around the end.
+    // Read everything: the driver passes that over, and the third frame does not fit.
     DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetReadOffset(Fix.Drv, Fix.Ch, Offset));
     for (i = 0; i < 4; i++)
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
+    DT_ASSERT(!Event.InSync);
+    uint32_t Still = 0;
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &Still));
+    DT_ASSERT_EQ(Still, Offset);
+
+    // Read all but the last 16 bytes, and the fourth frame wraps around the end.
+    DT_ASSERT_OK(DtPcieCmd_ChSdiRxSetReadOffset(Fix.Drv, Fix.Ch, Offset - 16));
+    for (i = 0; i < 4; i++)
+        DT_ASSERT_OK(DtPcieCmd_ChSdiRxWaitForFmtEvent(Fix.Drv, Fix.Ch, 1, &Event));
     DT_ASSERT(Event.InSync);
-    DT_ASSERT_EQ(Event.FrameId, 2);
+    DT_ASSERT_EQ(Event.FrameId, 3);
     {
         uint32_t End = 0;
         DT_ASSERT_OK(DtPcieCmd_ChSdiRxGetWriteOffset(Fix.Drv, Fix.Ch, &End));

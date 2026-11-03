@@ -32,6 +32,10 @@
 // The largest ring the driver allocates.
 #define SIM_RX_MAX_RING (256 * 1024 * 1024)
 
+// The card fills its ring up to 16 bytes short of the read offset, less than the data
+// word the driver reports as kept free, as a DTA-2178 was seen to.
+#define SIM_RX_CARD_KEPT_FREE 16
+
 // The faults SimRxFault numbers.
 #define SIM_RX_FAULT_COUNT 4
 
@@ -59,6 +63,7 @@ typedef struct SimRxChannel
     size_t RingSize;
     size_t MaxLoad;
     uint32_t WriteOffset;
+    uint32_t ReadOffset; // The driver's, which the card writes up to
     bool Running;
 
     int SourceVidStd;
@@ -129,6 +134,7 @@ static void Unconfigure(SimRxChannel* Channel)
     Channel->RingSize = 0;
     Channel->MaxLoad = 0;
     Channel->WriteOffset = 0;
+    Channel->ReadOffset = 0;
     Channel->Configured = false;
     Channel->Running = false;
     Channel->InFrame = false;
@@ -376,49 +382,71 @@ static uint8_t* PicturesOfLevelB(SimLevelB* LevelB, const uint8_t* Frames,
     return Pictures;
 }
 
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingFreeBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- UpdateReadOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// What can still be written: the ring less the data word kept free, less the load of the
-// running user that is furthest behind.
+// Moves the channel's read offset to that of the running user furthest behind, as the
+// driver does when a user sets its read offset or detaches. A user whose read offset is
+// the write offset has nothing to read and is passed over, so when every user has read
+// all, the channel's read offset stays where it was: a full ring then stays full.
 //
-static size_t RingFreeBytes(const SimRxChannel* Channel)
+static void UpdateReadOffset(SimRxChannel* Channel)
 {
-    size_t Load = 0;
+    size_t Furthest = 0;
 
+    if (!Channel->Configured)
+        return;
     for (int i = 0; i < SIM_RX_MAX_USERS; i++)
     {
         const SimRxUser* User = &Channel->Users[i];
 
         if (User->Handle == NULL || User->OpMode != DT_FUNC_OPMODE_RUN)
             continue;
-        size_t UserLoad = ((size_t)Channel->WriteOffset + Channel->RingSize -
-                           (size_t)User->ReadOffset % Channel->RingSize) %
-                          Channel->RingSize;
-        if (UserLoad > Load)
-            Load = UserLoad;
+        const size_t Size = Channel->RingSize;
+        const size_t Offset = (size_t)User->ReadOffset % Size;
+        const size_t Load = ((size_t)Channel->WriteOffset + Size - Offset) % Size;
+        if (Load > Furthest)
+        {
+            Furthest = Load;
+            Channel->ReadOffset = (uint32_t)Offset;
+        }
     }
-    return Load >= Channel->MaxLoad ? 0 : Channel->MaxLoad - Load;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingFreeBytes -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// What the card can still write: up to SIM_RX_CARD_KEPT_FREE bytes short of the
+// channel's read offset.
+//
+static size_t RingFreeBytes(const SimRxChannel* Channel)
+{
+    if (!Channel->Configured)
+        return 0;
+    const size_t Load =
+        ((size_t)Channel->WriteOffset + Channel->RingSize - Channel->ReadOffset) %
+        Channel->RingSize;
+    const size_t Max = Channel->RingSize - SIM_RX_CARD_KEPT_FREE;
+    return Load >= Max ? 0 : Max - Load;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RingWrite -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Writes Size bytes at the write offset, across the end of the ring where needed. Returns
-// false, writing nothing, when they do not fit.
+// Writes Size bytes at the write offset, across the end of the ring where needed, or as
+// many of them as fit, as the card fills the ring to the brim and drops the rest. Returns
+// false when they did not all fit.
 //
 static bool RingWrite(SimRxChannel* Channel, const uint8_t* Data, size_t Size)
 {
-    size_t Offset = Channel->WriteOffset;
+    const size_t Offset = Channel->WriteOffset;
+    const size_t Free = RingFreeBytes(Channel);
+    const size_t Written = Size < Free ? Size : Free;
     size_t First = Channel->RingSize - Offset;
 
-    if (Size > RingFreeBytes(Channel))
-        return false;
-
-    if (First > Size)
-        First = Size;
+    if (First > Written)
+        First = Written;
     memcpy(Channel->Ring + Offset, Data, First);
-    memcpy(Channel->Ring, Data + First, Size - First);
-    Channel->WriteOffset = (uint32_t)((Offset + Size) % Channel->RingSize);
-    return true;
+    memcpy(Channel->Ring, Data + First, Written - First);
+    Channel->WriteOffset = (uint32_t)((Offset + Written) % Channel->RingSize);
+    return Written == Size;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- StartFrame -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -675,6 +703,7 @@ static void Detach(SimRxChannel* Channel, SimRxUser* User)
             Channel->Running = true;
         }
     }
+    UpdateReadOffset(Channel);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- Configure -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -728,7 +757,7 @@ static uint32_t Configure(SimRxChannel* Channel,
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetOpMode -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // A channel that starts running writes from the start of its ring, at the start of a
-// frame.
+// frame, up to a read offset back at the start too.
 //
 static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
 {
@@ -756,6 +785,7 @@ static uint32_t SetOpMode(SimRxChannel* Channel, SimRxUser* User, int OpMode)
     if (Channel->Running && !WasRunning)
     {
         Channel->WriteOffset = 0;
+        Channel->ReadOffset = 0;
         Channel->InFrame = false;
         Channel->NextEventMs = 0;
     }
@@ -957,6 +987,7 @@ static uint32_t DispatchCmd(void* Handle, int PortIndex, int Cmd, const void* In
         if (!Fits(InSize, sizeof(DtIoctlChSdiRxCmdSetRdOffsetInput), NULL, NULL, 0))
             return DT_STATUS_INVALID_PARAMETER;
         User->ReadOffset = ((const DtIoctlChSdiRxCmdSetRdOffsetInput*)In)->m_ReadOffset;
+        UpdateReadOffset(Channel);
         return DT_STATUS_OK;
 
     default: // DT_CHSDIRX_CMD_MAP_DMA_BUF_TO_USER

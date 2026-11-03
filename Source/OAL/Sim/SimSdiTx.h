@@ -117,11 +117,12 @@ bool SimSdiTx_SetFileSink(int PortIndex, const char* Path);
 bool SimSdiTx_RxRuns(int PortIndex);
 
 // Returns the number of bytes the card can still write into the receive buffer, 0 when
-// it does not receive.
+// it does not receive. The card fills the buffer up to 16 bytes short of the read
+// offset, less than the data word the driver reports as kept free, as a DTA-2178 does.
 size_t SimSdiTx_RxFreeBytes(int PortIndex);
 
-// Writes Size bytes at the receive buffer's write offset, and advances the offset. Writes
-// nothing when they do not fit.
+// Writes Size bytes at the receive buffer's write offset, and advances the offset. When
+// they do not all fit, writes as many as fit, as the card fills the buffer to the brim.
 void SimSdiTx_RxWrite(int PortIndex, const uint8_t* Data, size_t Size);
 
 // Adds one to the burst FIFO's overflow/underflow count. It counts data the card could

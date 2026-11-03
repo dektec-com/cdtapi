@@ -421,39 +421,27 @@ static DtapiResult ConfigureChannel(DtSdiRx* Sdi)
 //
 // Moves the read offset on by Bytes, which the ring holds, and tells the driver.
 //
+// A read offset that is the write offset is told one alignment back. The driver passes
+// over a user whose read offset is the write offset, and leaves the card at the read
+// offset it was told before: a card that had filled the ring up to there would never
+// write again, and one that had not would not reuse what was read since. The card
+// keeps the piece told back, which has been read, until the next read moves on.
+//
 static DtapiResult AdvanceReadOffset(DtSdiRx* Sdi, size_t Bytes)
 {
     if (DtRing_Skip(&Sdi->Ring, Bytes) != 0)
         return DTAPI_E_INTERNAL;
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->ChSdiRx,
-                                          (uint32_t)DtRing_ReadOffset(&Sdi->Ring));
-}
-
-// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardTo -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
-//
-// Skips everything written up to WriteOffset, rounded down to the alignment, so that
-// the next read searches for a header again.
-//
-static DtapiResult DiscardTo(DtSdiRx* Sdi, uint32_t WriteOffset)
-{
-    size_t Alignment = (size_t)Sdi->FrameLayout.AlignmentInBytes;
-    size_t Aligned = (size_t)WriteOffset / Alignment * Alignment;
-
-    Sdi->InSync = false;
-    Sdi->HeldField1 = false;
-    if (DtRing_Restart(&Sdi->Ring, Aligned) != 0 ||
-        DtRing_SetWriteOffset(&Sdi->Ring, WriteOffset) != 0)
-    {
-        return DTAPI_E_DEV_DRIVER;
-    }
-    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->ChSdiRx, (uint32_t)Aligned);
+    size_t Offset = DtRing_ReadOffset(&Sdi->Ring);
+    if (DtRing_Load(&Sdi->Ring) == 0)
+        Offset = (Offset + Sdi->Ring.Size - (size_t)Sdi->FrameLayout.AlignmentInBytes) %
+                 Sdi->Ring.Size;
+    return DtPcieCmd_ChSdiRxSetReadOffset(DrvOf(Sdi), Sdi->ChSdiRx, (uint32_t)Offset);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SyncWriteOffset -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
-// Brings the ring up to how far the channel has written. A write offset that would put
-// more in the ring than the driver allows means the two disagree about where reading
-// starts, and what the ring holds is discarded; one outside the ring is a driver fault.
+// Brings the ring up to how far the channel has written. A write offset outside the ring
+// is a driver fault.
 //
 static DtapiResult SyncWriteOffset(DtSdiRx* Sdi)
 {
@@ -463,28 +451,27 @@ static DtapiResult SyncWriteOffset(DtSdiRx* Sdi)
 
     if (Result != DTAPI_OK)
         return Result;
-    if (WriteOffset >= Sdi->Ring.Size)
-        return DTAPI_E_DEV_DRIVER;
     if (DtRing_SetWriteOffset(&Sdi->Ring, WriteOffset) != 0)
-        return DiscardTo(Sdi, WriteOffset);
+        return DTAPI_E_DEV_DRIVER;
     return DTAPI_OK;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- DiscardAll -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
-// Everything written so far is skipped, after an out-of-sync event.
+// Skips what was written so far, rounded down to the alignment, after an out-of-sync
+// event, so that the next read searches for a header again.
 //
 static DtapiResult DiscardAll(DtSdiRx* Sdi)
 {
-    uint32_t WriteOffset = 0;
-    DtapiResult Result =
-        DtPcieCmd_ChSdiRxGetWriteOffset(DrvOf(Sdi), Sdi->ChSdiRx, &WriteOffset);
+    const size_t Alignment = (size_t)Sdi->FrameLayout.AlignmentInBytes;
 
-    if (Result != DTAPI_OK)
+    Sdi->InSync = false;
+    Sdi->HeldField1 = false;
+    DtapiResult Result = SyncWriteOffset(Sdi);
+    const size_t Bytes = DtRing_Load(&Sdi->Ring) / Alignment * Alignment;
+    if (Result != DTAPI_OK || Bytes == 0)
         return Result;
-    if (WriteOffset >= Sdi->Ring.Size)
-        return DTAPI_E_DEV_DRIVER;
-    return DiscardTo(Sdi, WriteOffset);
+    return AdvanceReadOffset(Sdi, Bytes);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindHeader -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -644,7 +631,8 @@ static DtapiResult GetFlags(DtRx* Rx, int* Flags, int* Latched)
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- GetFifoLoad -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // The complete frames from the read offset on, in raw bytes of the receive mode, counted
-// also before a read has found the first header; 0 while not receiving.
+// also before a read has found the first header; 0 while not receiving. A card that
+// filled the ring past its maximum load holds no more than GetMaxFifoSize reports.
 //
 static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
 {
@@ -658,6 +646,8 @@ static DtapiResult GetFifoLoad(DtRx* Rx, int* FifoLoad)
     {
         size_t Frames =
             DtRing_Load(&Sdi->Ring) / DtSdiFrame_RxCodedSize(&Sdi->FrameLayout);
+        if (Frames > FramesInRing(Sdi))
+            Frames = FramesInRing(Sdi);
         *FifoLoad =
             (int)(Frames * DtSdiFrame_RawSize(&Sdi->FrameLayout, Sdi->BitsPerSymbol));
     }

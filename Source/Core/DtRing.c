@@ -39,14 +39,10 @@ int DtRing_Init(DtRing* Ring, uint8_t* Base, size_t Size, size_t ReservedBytes)
 int DtRing_SetWriteOffset(DtRing* Ring, size_t Offset)
 {
     // The offset comes from the driver. A value outside the buffer means the two sides
-    // disagree about the ring, and continuing would read arbitrary memory.
+    // disagree about the ring, and continuing would read arbitrary memory. Any load
+    // less than the buffer's size is one the card can have written: it keeps less of
+    // the ring free than the driver reports.
     if (Ring == NULL || Ring->Base == NULL || Offset >= Ring->Size)
-        return -1;
-
-    // The producer never fills the reserve, so a load beyond MaxLoad cannot come from a
-    // consistent driver either. It is refused rather than read.
-    size_t Load = (Offset + Ring->Size - Ring->ReadOffset) % Ring->Size;
-    if (Load > Ring->MaxLoad)
         return -1;
 
     Ring->WriteOffset = Offset;

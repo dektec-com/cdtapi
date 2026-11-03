@@ -392,10 +392,10 @@ static void ReceivePacket(int PortIndex, const uint8_t* Payload, int Valid, uint
     Packet[215] = (uint8_t)(Rx->NextSequence >> 8);
     Rx->NextSequence++;
 
+    // A packet that does not fit is written as far as it fits.
     if (SimSdiTx_RxFreeBytes(PortIndex) < DT_TRP_SIZE)
         SimSdiTx_CountOverflow(PortIndex);
-    else
-        SimSdiTx_RxWrite(PortIndex, Packet, DT_TRP_SIZE);
+    SimSdiTx_RxWrite(PortIndex, Packet, DT_TRP_SIZE);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- ReceiveFromSource -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
