@@ -25,6 +25,7 @@
 #include "OAL/Sim/SimChSdiRx.h"     // The symbols of the frames written.
 #include "OAL/Sim/SimDtPcie.h"      // The emulated card and its test controls.
 #include "OAL/Sim/SimSdiTx.h"       // The emulated transmit blocks.
+#include "Sdi/DtSdiView.h"          // A black picture of 3G level B.
 #include "Video/DtFrameProps.h"     // Which standards have line CRCs.
 #include "Video/DtSdiFrame.h"       // Frame sizes.
 #include "Video/DtVidStd.h"         // Which standards are 4K.
@@ -320,10 +321,13 @@ static bool SentFrameIs(int FrameId, int VidStd, uint32_t FrameNumber)
     return Same;
 }
 
-// Whether the card sent a black frame of VidStd with FrameId: the frame the builder
-// makes without an image, with its payload ID, symbol by symbol but for the CRC words of
-// HD and up, which the card writes.
-static bool SentFrameIsBlack(int FrameId, int VidStd)
+// Whether the card sent a black frame of VidStd with FrameId: the frame the builder makes
+// without an image, with its payload ID carrying Signalling, or with the standard's
+// default signalling when Signalling is NULL; symbol by symbol but for the CRC words of
+// HD and up, which the card writes. Of 3G level B it is the black picture of field Field;
+// Field is 0 for any other standard.
+static bool SentFrameIsBlackWith(int FrameId, int VidStd,
+                                 const DtSdiVideoSignalling* Signalling, int Field)
 {
     DtSdiFrameLayout Layout = {0};
     SimTxFrame Frame;
@@ -335,9 +339,12 @@ static bool SentFrameIsBlack(int FrameId, int VidStd)
     DtSdiView* View = DtSdiView_Alloc();
     DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
 
-    Same = Same && Black != NULL && View != NULL && Builder != NULL &&
-           DtSdiView_SetRawFrame(View, Black, Size, VidStd, 16) == DTAPI_OK &&
-           DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL) == DTAPI_OK;
+    Same =
+        Same && Black != NULL && View != NULL && Builder != NULL &&
+        DtSdiBuilder_SetVideoSignalling(Builder, Signalling) == DTAPI_OK &&
+        (Field != 0 ? DtSdiView_SetRawPicture(View, Black, Size, VidStd, 16, Field)
+                    : DtSdiView_SetRawFrame(View, Black, Size, VidStd, 16)) == DTAPI_OK &&
+        DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL) == DTAPI_OK;
 
     const size_t LineSyms = (size_t)(Layout.LineNumSymsHanc + Layout.LineNumSymsActive);
     // SD has a timing reference of four words and no CRC.
@@ -355,6 +362,14 @@ static bool SentFrameIsBlack(int FrameId, int VidStd)
     free(Black);
     free(Symbols);
     return Same;
+}
+
+// Whether the card sent a black frame of VidStd with FrameId: the frame the builder
+// makes without an image, with its payload ID, symbol by symbol but for the CRC words of
+// HD and up, which the card writes.
+static bool SentFrameIsBlack(int FrameId, int VidStd)
+{
+    return SentFrameIsBlackWith(FrameId, VidStd, NULL, 0);
 }
 
 // Attaches the channel to PORT for VidStd in TxMode and holds. Returns false, having
@@ -1364,6 +1379,122 @@ DT_TEST(BlackFramesWhenWritingStops)
     FINISH(Fix);
 }
 
+// Builds a frame of VidStd in Bits bits a symbol with the builder, black, with Signalling
+// in its payload ID. Returns NULL, with *Size 0, when it cannot.
+static uint8_t* BuildSignallingFrame(int VidStd, int Bits,
+                                     const DtSdiVideoSignalling* Signalling, size_t* Size)
+{
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    bool Ok = View != NULL && Builder != NULL &&
+              DtSdiView_RawFrameSize(VidStd, Bits, Size) == DTAPI_OK;
+    uint8_t* Frame = Ok ? (uint8_t*)calloc(*Size, 1) : NULL;
+    Ok = Ok && Frame != NULL &&
+         DtSdiView_SetRawFrame(View, Frame, *Size, VidStd, Bits) == DTAPI_OK &&
+         DtSdiView_SetVideoSignalling(View, Signalling) == DTAPI_OK &&
+         DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL) == DTAPI_OK;
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    if (!Ok)
+    {
+        free(Frame);
+        Frame = NULL;
+        *Size = 0;
+    }
+    return Frame;
+}
+
+// The black frames carry the signalling of the last frame written, by Write and by
+// WriteFrame alike: after two 1080i50 frames in HLG and BT.2020, the two black frames the
+// card sends are the builder's black frame in HLG and BT.2020, not its default one.
+DT_TEST(BlackFramesCarryTheLastSignalling)
+{
+    const int VidStd = DTAPI_VIDSTD_1080I50;
+    DtSdiVideoSignalling Hlg;
+    memset(&Hlg, 0, sizeof(Hlg));
+    Hlg.Size = (int)sizeof(Hlg);
+    Hlg.Transfer = DT_SDI_TRANSFER_HLG;
+    Hlg.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
+    size_t Size = 0;
+    uint8_t* Frame = BuildSignallingFrame(VidStd, 10, &Hlg, &Size);
+    DT_ASSERT(Frame != NULL);
+
+    for (int Whole = 0; Whole < 2; Whole++)
+    {
+        Fixture Fix;
+        if (!Start(&Fix, DtFailures))
+            break;
+        if (!Hold(&Fix, VidStd, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, DtFailures))
+        {
+            FINISH(Fix);
+            break;
+        }
+        for (int n = 0; n < 2; n++)
+            DT_ASSERT_OK(
+                Whole != 0 ? DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 100)
+                           : DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)Size));
+        DT_ASSERT_OK(SendUpTo(Fix.Channel, 4));
+        DT_ASSERT(SentAndHeld(Fix.Channel, 4));
+        DT_ASSERT(SentFrameIsBlackWith(2, VidStd, &Hlg, 0));
+        DT_ASSERT(SentFrameIsBlackWith(3, VidStd, &Hlg, 0));
+        DT_ASSERT(!SentFrameIsBlack(2, VidStd));
+        FINISH(Fix);
+    }
+    free(Frame);
+}
+
+// In 3G level B the black pictures carry the signalling of the frame written too, also
+// the one in front of its first picture. One 1080p50 level-B frame in HLG and BT.2020
+// goes to the card as a black picture of field 2 (frame ID 0, as the card starts with
+// field 2), the two pictures (IDs 1 and 2), and, when writing stops, black pictures of
+// field 1 and field 2 (IDs 3 and 4): all three black ones in HLG and BT.2020.
+DT_TEST(LevelBBlackPicturesCarryTheSignalling)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    DtSdiVideoSignalling Hlg;
+    memset(&Hlg, 0, sizeof(Hlg));
+    Hlg.Size = (int)sizeof(Hlg);
+    Hlg.Transfer = DT_SDI_TRANSFER_HLG;
+    Hlg.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(VidStd, 10, &Size));
+    uint8_t* Frame = (uint8_t*)calloc(Size, 1);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DT_ASSERT(Frame != NULL && View != NULL && Builder != NULL);
+    DT_ASSERT_OK(DtSdiBuilder_SetVideoSignalling(Builder, &Hlg));
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, VidStd, 10));
+    for (int Field = 1; Field <= 2; Field++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetLevelBField(View, Field));
+        DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL));
+    }
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+
+    Fixture Fix;
+    if (!Start(&Fix, DtFailures))
+    {
+        free(Frame);
+        return;
+    }
+    if (!Hold(&Fix, VidStd, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, DtFailures))
+    {
+        FINISH(Fix);
+        free(Frame);
+        return;
+    }
+    DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 100));
+    DT_ASSERT_OK(SendUpTo(Fix.Channel, 5));
+    DT_ASSERT(SentAndHeld(Fix.Channel, 5));
+    DT_ASSERT(SentFrameIsBlackWith(0, VidStd, &Hlg, 2));
+    DT_ASSERT(SentFrameIsBlackWith(3, VidStd, &Hlg, 1));
+    DT_ASSERT(SentFrameIsBlackWith(4, VidStd, &Hlg, 2));
+    DT_ASSERT(!SentFrameIsBlackWith(0, VidStd, NULL, 2));
+    FINISH(Fix);
+    free(Frame);
+}
+
 // A frame the application has only partly written when the card runs short follows the
 // black frames whole, with the next frame ID. The card stops after two frames while the
 // rest of the frame is written, so that the frame goes out among the frames the card
@@ -1654,4 +1785,6 @@ DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(WholeFrames525i), DT_RUN(WholeFrames720p24),
              DT_RUN(WholeFrames1080p50), DT_RUN(WholeFrames2160p50),
              DT_RUN(WriteFrameTimesOut), DT_RUN(WriteFrameInUseAndCancelled),
-             DT_RUN(WholeFramesAmongBlackFrames))
+             DT_RUN(WholeFramesAmongBlackFrames),
+             DT_RUN(BlackFramesCarryTheLastSignalling),
+             DT_RUN(LevelBBlackPicturesCarryTheSignalling))

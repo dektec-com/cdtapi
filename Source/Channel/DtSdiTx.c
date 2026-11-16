@@ -19,10 +19,12 @@
 #include "DtSdiTx.h"            // Interface being implemented.
 #include "OAL/OsDmaBuffer.h"    // The DMA buffer.
 #include "OAL/OsThread.h"       // The thread, its event, sleeping.
+#include "Sdi/DtSdiAnc.h"       // Finding the payload ID of a frame written.
 #include "Sdi/DtSdiLevelB.h"    // Frames of 3G level B.
 #include "Sdi/DtSdiView.h"      // The view of a lent frame.
 #include "Video/DtFrameProps.h" // The frame rate.
 #include "Video/DtSdiFrame.h"   // The buffer's format and the raw frame.
+#include "Video/DtSmpte352.h"   // The signalling of the black frames.
 #include "Video/DtVidStd.h"     // Which standards are 4K.
 #include "cdtapi_sdi.h"         // The builder, which makes the black frames.
 
@@ -63,6 +65,10 @@
 
 // The largest header with its padding: DT_SDIFRAME_TX_HEADER_BYTES padded to 512 bits.
 #define DT_SDITX_MAX_HEADER_BYTES 64
+
+// Bounds the words of horizontal blanking that one stream of a line has between its
+// timing references. The largest number is 4125 - 1280 - 12, in 720p23.98 and 720p24.
+#define DT_SDITX_MAX_HANC_WORDS 4096
 
 // The search for the start of line 1 of an SD frame.
 typedef enum DtSdiTxSdSearchState
@@ -111,13 +117,18 @@ typedef struct DtSdiTx
     size_t RawFrameSize;   // A raw frame in the current transmit mode
     OsDmaBuffer DmaBuffer;
     bool BufferRegistered;
-    size_t MaxLoad;          // The buffer less the data word kept free
-    size_t PcieWordBytes;    // A PCIe data word, which the card reads the buffer in
-    int BurstFifoSize;       // Bytes
-    int QuarterFrameMs;      // A quarter frame period, at least 1 ms
-    uint8_t* BlackLines;     // The coded lines of a black frame, line headers included;
-                             // of 3G level B, of a black picture of field 1
-    uint8_t* BlackLines2;    // Of 3G level B, those of field 2; NULL otherwise
+    size_t MaxLoad;       // The buffer less the data word kept free
+    size_t PcieWordBytes; // A PCIe data word, which the card reads the buffer in
+    int BurstFifoSize;    // Bytes
+    int QuarterFrameMs;   // A quarter frame period, at least 1 ms
+    uint8_t* BlackLines;  // The coded lines of a black frame, line headers included;
+                          // of 3G level B, of a black picture of field 1
+    uint8_t* BlackLines2; // Of 3G level B, those of field 2; NULL otherwise
+    // The signalling of the black frames: that of the last frame written, whole; the
+    // standard's default before the first.
+    DtSdiVideoSignalling BlackSignalling;
+    DtSdiGeometry Geo;       // Where a raw line's payload ID lies; see GeoValid
+    bool GeoValid;           // Geo describes the configured standard
     uint8_t* WrapLineBuffer; // A raw line's coded lines when they run across the end
     uint8_t* PartialLine;    // The raw bytes of a line not yet complete
     uint16_t* BandSymbols;   // The working symbols of a 4K line, one set a band
@@ -146,6 +157,8 @@ typedef struct DtSdiTx
     int LineStartBit;        // The bit the next line starts at in its first byte
     size_t PartialLineBytes; // Bytes in PartialLine
     size_t FrameBytesLeft;   // Raw bytes of the frame, padding included, not yet taken
+    bool FrameVpidFound;     // The frame's lines so far held its payload ID
+    uint32_t FrameVpid;      // That payload ID, with byte 1 in the least significant bits
 
     // A program can borrow room for a frame in the buffer and build the frame there. A
     // lending run starts at the first lend and ends when the channel goes idle or its
@@ -849,7 +862,8 @@ static DtapiResult ConfigureJobRunner(DtSdiTx* Sdi)
 // Builds a black frame of the configured standard into Raw, a raw frame of Bits bits a
 // symbol in the layout of the configured standard, Size bytes: the builder's frame
 // without an image, audio or packets, so that it carries the payload ID as every frame
-// the builder makes does. Of 3G level B it is a picture of field Field.
+// the builder makes does, with the signalling of the last frame written. Of 3G level B it
+// is a picture of field Field.
 //
 static DtapiResult BuildBlack(const DtSdiTx* Sdi, int Field, int Bits, uint8_t* Raw,
                               size_t Size)
@@ -859,6 +873,8 @@ static DtapiResult BuildBlack(const DtSdiTx* Sdi, int Field, int Bits, uint8_t* 
     DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
     DtapiResult Result = View == NULL || Builder == NULL ? DTAPI_E_OUT_OF_MEM : DTAPI_OK;
 
+    if (Result == DTAPI_OK)
+        Result = DtSdiBuilder_SetVideoSignalling(Builder, &Sdi->BlackSignalling);
     if (Result == DTAPI_OK)
         Result = Sdi->LevelB != NULL
                      ? DtSdiView_SetRawPicture(View, Raw, Size, VidStd, Bits, Field)
@@ -997,6 +1013,8 @@ static void FreeStandardBuffers(DtSdiTx* Sdi)
     Sdi->BlackLines = Sdi->WrapLineBuffer = Sdi->PartialLine = NULL;
     Sdi->BandSymbols = NULL;
     FreeLevelB(Sdi);
+    DtSmpte352_TakeSignalling(NULL, &Sdi->BlackSignalling);
+    Sdi->GeoValid = false;
     memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
     Sdi->FrameLayout.VidStd = DTAPI_VIDSTD_UNKNOWN;
     Sdi->CodedFrameSize = Sdi->RawFrameSize = 0;
@@ -1089,6 +1107,8 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
         (uint8_t*)DtAlloc_Malloc(DtSdiFrame_TxCodedBytesPerLine(&Layout));
     Sdi->PartialLine = (uint8_t*)DtAlloc_Malloc(Line);
     Sdi->SymbolsPerBand = DtSdiFrame_NumBandSymbols(&Layout);
+    Sdi->GeoValid = DtSdiGeometry_Init(&Sdi->Geo, Layout.VidStd) == DTAPI_OK;
+    DtSmpte352_DefaultSignalling(Layout.VidStd, &Sdi->BlackSignalling);
     ConfigureJobRunner(Sdi);
     if (Sdi->BlackLines == NULL || Sdi->WrapLineBuffer == NULL ||
         Sdi->PartialLine == NULL || (Layout.Is4k && Sdi->BandSymbols == NULL) ||
@@ -1236,6 +1256,7 @@ static void StartFrame(DtSdiTx* Sdi, size_t BytesAlreadyHeld)
     Sdi->LineStartBit = 0;
     Sdi->PartialLineBytes = BytesAlreadyHeld;
     Sdi->FrameBytesLeft = Sdi->RawFrameSize - BytesAlreadyHeld;
+    Sdi->FrameVpidFound = false;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FindFrameBoundary -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1290,6 +1311,102 @@ static void FindFrameBoundary(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesL
     Sdi->PartialLineBytes = *BytesLeft;
     *Data += *BytesLeft;
     *BytesLeft = 0;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LineSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Symbol Index of a raw line in the transmit mode that starts at bit StartBit of Bytes.
+// Only 10-bit symbols start part-way through a byte.
+//
+static uint16_t LineSymbol(const DtSdiTx* Sdi, const uint8_t* Bytes, size_t StartBit,
+                           size_t Index)
+{
+    if (Sdi->BitsPerSymbol != 10)
+        return (uint16_t)SymbolAt(Sdi, Bytes, Index);
+    const size_t Bit = StartBit + Index * 10;
+    const uint32_t Value = (uint32_t)Bytes[Bit / 8] | (uint32_t)Bytes[Bit / 8 + 1] << 8;
+    return (uint16_t)((Value >> (Bit % 8)) & 0x3FF);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- NoteLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Looks for the payload ID of the frame being written in raw line Line, which starts at
+// bit StartBit of Bytes, and keeps it in FrameVpid. Only the lines before the picture are
+// searched, in the horizontal blanking of link 1's Y stream, and only until it is found.
+// Of 3G level B the payload ID of link A is taken, not that of link B.
+//
+static void NoteLine(DtSdiTx* Sdi, const uint8_t* Bytes, size_t StartBit, int Line)
+{
+    const DtSdiGeometry* Geo = &Sdi->Geo;
+    if (Sdi->FrameVpidFound || !Sdi->GeoValid)
+        return;
+    const int FirstActive = Geo->Is4k ? Geo->PictureFirstIndex : Geo->FieldFirstIndex[0];
+    if (Line >= FirstActive)
+        return;
+
+    const int Stream = Geo->NumStreams == 1 ? 0 : 1;
+    const int Words = Geo->StreamHancWords - Geo->StreamEavWords - Geo->StreamSavWords;
+    uint16_t Hanc[DT_SDITX_MAX_HANC_WORDS];
+    if (Words <= 0 || Words > DT_SDITX_MAX_HANC_WORDS)
+        return;
+    for (int k = 0; k < Words; k++)
+    {
+        const size_t Symbol = (size_t)Geo->StreamFirst[Stream] +
+                              (size_t)(Geo->StreamEavWords + k) * (size_t)Geo->NumStreams;
+        Hanc[k] = LineSymbol(Sdi, Bytes, StartBit, Symbol);
+    }
+
+    int Pos = 0;
+    DtSdiAncFound Found;
+    while (DtSdiAnc_Find(Hanc, Words, &Pos, &Found))
+    {
+        if (Found.Did != DT_SDIANC_DID_PAYLOAD_ID ||
+            Found.SdidOrDbn != DT_SDIANC_SDID_PAYLOAD_ID || Found.NumWords < 4)
+            continue;
+        const uint32_t Vpid = (uint32_t)(Found.Words[0] & 0xFF) |
+                              (uint32_t)(Found.Words[1] & 0xFF) << 8 |
+                              (uint32_t)(Found.Words[2] & 0xFF) << 16 |
+                              (uint32_t)(Found.Words[3] & 0xFF) << 24;
+        if (DtSmpte352_PayloadId(Vpid) == DT_S352_ID_S425_1080_B &&
+            (Vpid & DT_S352_LEVELB_LINK_B) != 0)
+            continue;
+        Sdi->FrameVpid = Vpid;
+        Sdi->FrameVpidFound = true;
+        return;
+    }
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FollowSignalling -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// After a frame the program wrote, makes the black frames carry its signalling: when the
+// frame's payload ID says something else than the black frames do, they are built again.
+// A frame without a payload ID, or with one the library cannot read, leaves them as they
+// are. So does signalling the builder does not write, such as the Color VANC packet's, or
+// a failure to build them: the black frames of before stay, with their signalling.
+//
+static void FollowSignalling(DtSdiTx* Sdi)
+{
+    DtSdiVideoSignalling Signalling;
+    if (!Sdi->FrameVpidFound || Sdi->BlackLines == NULL ||
+        !DtSmpte352_ReadSignalling(Sdi->FrameVpid, &Signalling) ||
+        memcmp(&Signalling, &Sdi->BlackSignalling, sizeof(Signalling)) == 0)
+        return;
+    const DtSdiVideoSignalling Before = Sdi->BlackSignalling;
+    Sdi->BlackSignalling = Signalling;
+    DtapiResult Result = EncodeBlack(Sdi, 1, Sdi->BlackLines);
+    if (Result == DTAPI_OK && Sdi->BlackLines2 != NULL)
+    {
+        Result = EncodeBlack(Sdi, 2, Sdi->BlackLines2);
+        if (Result != DTAPI_OK)
+        {
+            Sdi->BlackSignalling = Before;
+            EncodeBlack(Sdi, 1, Sdi->BlackLines);
+        }
+    }
+    if (Result != DTAPI_OK)
+        Sdi->BlackSignalling = Before;
+    else
+        Sdi->BlackPictureBits = 0;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- WaitForRoom -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
@@ -1403,6 +1520,7 @@ static DtapiResult EncodeOneLine(DtSdiTx* Sdi, const uint8_t** Data, size_t* Byt
         DtSdiFrame_EncodeLine(Layout, Sdi->BitsPerSymbol, Src, Sdi->LineStartBit, Dst);
     if (Dst == Sdi->WrapLineBuffer)
         CopyIntoBuffer(Sdi, Offset, Sdi->WrapLineBuffer, Coded);
+    NoteLine(Sdi, Src, (size_t)Sdi->LineStartBit, Sdi->LinesEncoded);
 
     if (Src == Sdi->PartialLine)
     {
@@ -1537,6 +1655,11 @@ static int EncodeLineBatch(DtSdiTx* Sdi, const uint8_t** Data, size_t* BytesLeft
     Band.FirstLine = Sdi->LinesEncoded;
     Band.Lines = (int)Lines;
     DtJobRunner_Run(&Sdi->JobRunner, EncodeLines, &Band);
+    for (size_t i = 0; i < Lines; i++)
+    {
+        const size_t At = LineStartBit + i * Bits;
+        NoteLine(Sdi, *Data + At / 8, At % 8, Band.FirstLine + (int)i);
+    }
 
     // The bytes the batch used up are those it has no more bits left in; a byte the next
     // line begins in is left where it is, as it is for a single line.
@@ -1593,7 +1716,10 @@ static DtapiResult Write(DtTx* Tx, const uint8_t* Data, size_t BytesLeft)
             {
                 Result = CommitFrame(Sdi);
                 if (Result == DTAPI_OK)
+                {
                     Sdi->FifoUfl = false;
+                    FollowSignalling(Sdi);
+                }
                 Sdi->WriteStage = DT_SDITX_STAGE_SEARCH;
                 Sdi->FrameRoomReserved = false;
                 Sdi->PartialLineBytes = 0;
@@ -1675,7 +1801,10 @@ static DtapiResult WriteOneFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSi
     {
         Result = CommitFrame(Sdi);
         if (Result == DTAPI_OK)
+        {
             Sdi->FifoUfl = false;
+            FollowSignalling(Sdi);
+        }
     }
     ForgetPartialFrame(Sdi);
     return Result;
@@ -1685,10 +1814,11 @@ static DtapiResult WriteOneFrame(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSi
 //
 // Writes a frame of the interface of 3G level B: takes its two pictures out, and writes
 // them one after the other, each as WriteOneFrame writes a frame. The frame IDs count the
-// frames the card sends from the start of the run, and the first is field 2: field 1
-// must have an odd ID and field 2 an even one. When the next ID is not the picture's,
-// at the start of a run or after a black frame of the thread, a black picture goes
-// first.
+// frames the card sends from the start of the run, and the first is field 2: field 1 must
+// have an odd ID and field 2 an even one. When the next ID is not the picture's, at the
+// start of a run or after a black frame of the thread, a black picture goes first. The
+// black pictures carry the signalling of field 1's picture, which is looked for before
+// they are made, so that a black picture in front of the frame carries it too.
 //
 static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize,
                                uint64_t Deadline)
@@ -1698,6 +1828,19 @@ static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize
         return DTAPI_E_INVALID_MODE;
     if ((size_t)FrameSize != DtSdiLevelB_FrameSize(&Sdi->LevelB->Geo, Bits))
         return DTAPI_E_INVALID_SIZE;
+
+    for (int Field = 1; Field <= 2; Field++)
+        DtSdiLevelB_TakeField(Sdi->LevelB, Field, Frame, Bits, Sdi->Pictures[Field - 1],
+                              Bits, &Sdi->JobRunner);
+    const size_t LineBits = DtSdiFrame_RawLineNumBits(&Sdi->FrameLayout, Bits);
+    Sdi->FrameVpidFound = false;
+    for (int Line = 0; Line < Sdi->FrameLayout.NumLines && !Sdi->FrameVpidFound; Line++)
+    {
+        const size_t At = (size_t)Line * LineBits;
+        NoteLine(Sdi, Sdi->Pictures[0] + At / 8, At % 8, Line);
+    }
+    FollowSignalling(Sdi);
+
     if (Sdi->BlackPictureBits != Bits)
     {
         for (int Field = 1; Field <= 2; Field++)
@@ -1712,9 +1855,6 @@ static DtapiResult WriteLevelB(DtSdiTx* Sdi, const uint8_t* Frame, int FrameSize
     }
 
     const int PictureSize = (int)Sdi->RawFrameSize;
-    for (int Field = 1; Field <= 2; Field++)
-        DtSdiLevelB_TakeField(Sdi->LevelB, Field, Frame, Bits, Sdi->Pictures[Field - 1],
-                              Bits, &Sdi->JobRunner);
     DtapiResult Result = DTAPI_OK;
     for (int Field = 1; Field <= 2 && Result == DTAPI_OK; Field++)
     {
