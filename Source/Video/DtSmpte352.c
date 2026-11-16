@@ -53,9 +53,9 @@ typedef enum Layout
 #define DEPTH_10_FULL_HD 0x3u   // 10 bits, full range, in ST 292-1
 #define DEPTH_10_FULL 0x0u      // 10 bits, full range, in the others
 #define DEPTH_12_FULL 0x3u      // 12 bits, full range, in the others
-#define COLOUR_VANC_CODE                                                                 \
-    0x1u // Colorimetry code 1h: the Color VANC packet in ST                             \
-         // 2081-10, ST 2082-10 and ST 425-5; reserved elsewhere
+// Colorimetry code 1h: the Color VANC packet in ST 2081-10, ST 2082-10 and ST 425-5;
+// reserved elsewhere.
+#define COLOUR_VANC_CODE 0x1u
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- LayoutOf -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
