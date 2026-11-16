@@ -170,12 +170,16 @@ while IFS= read -r File; do
         /^\/\/ (\+=|\.-)/ { Last = ""; next }
         /^CDTAPI_API/ {
             Name = $0
+            Line = NR
+            # clang-format puts a long name on the line after its return type.
+            if (Name !~ /\(/ && (getline Next) > 0)
+                Name = Name " " Next
             sub(/\(.*/, "", Name)
             match(Name, /[A-Za-z0-9_]+$/)
             Name = substr(Name, RSTART, RLENGTH)
             Key = tolower(Name)
             if (Last != "" && Key < Last)
-                printf "%s:%d: %s after %s\n", f, NR, Name, LastName
+                printf "%s:%d: %s after %s\n", f, Line, Name, LastName
             Last = Key
             LastName = Name
         }' "$File")
