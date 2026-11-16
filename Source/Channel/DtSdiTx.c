@@ -70,6 +70,11 @@
 // timing references. The largest number is 4125 - 1280 - 12, in 720p23.98 and 720p24.
 #define DT_SDITX_MAX_HANC_WORDS 4096
 
+// The most raw lines of a black frame that carry a payload ID which the channel keeps to
+// change its signalling: a line in each field, and in 2160p the lines of the four
+// sub-images, fit with room.
+#define DT_SDITX_MAX_VPID_LINES 8
+
 // The search for the start of line 1 of an SD frame.
 typedef enum DtSdiTxSdSearchState
 {
@@ -127,6 +132,13 @@ typedef struct DtSdiTx
     // The signalling of the black frames: that of the last frame written, whole; the
     // standard's default before the first.
     DtSdiVideoSignalling BlackSignalling;
+    // The raw lines of the black frames that carry a payload ID, 16 bits a symbol, so
+    // that a change of signalling codes only those again: [0] of BlackLines, [1] of
+    // BlackLines2. NumVpidLines is -1 when they could not be kept; the black frame is
+    // then built again whole.
+    uint8_t* VpidRaw[2];
+    int NumVpidLines[2];
+    int VpidLines[2][DT_SDITX_MAX_VPID_LINES]; // Their numbers in the raw frame, from 0
     DtSdiGeometry Geo;       // Where a raw line's payload ID lies; see GeoValid
     bool GeoValid;           // Geo describes the configured standard
     uint8_t* WrapLineBuffer; // A raw line's coded lines when they run across the end
@@ -886,11 +898,125 @@ static DtapiResult BuildBlack(const DtSdiTx* Sdi, int Field, int Bits, uint8_t* 
     return Result;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- RawSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Symbol Index of a raw line of Bits bits a symbol, 10 or 16, that starts at bit StartBit
+// of Bytes. Only 10-bit symbols start part-way through a byte.
+//
+static uint16_t RawSymbol(const uint8_t* Bytes, size_t StartBit, int Bits, size_t Index)
+{
+    if (Bits == 16)
+        return (
+            uint16_t)(((uint32_t)Bytes[2 * Index] | (uint32_t)Bytes[2 * Index + 1] << 8) &
+                      0x3FF);
+    const size_t Bit = StartBit + Index * 10;
+    const uint32_t Value = (uint32_t)Bytes[Bit / 8] | (uint32_t)Bytes[Bit / 8 + 1] << 8;
+    return (uint16_t)((Value >> (Bit % 8)) & 0x3FF);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- SetRawSymbol -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Sets symbol Index of a raw line as RawSymbol reads it to Value.
+//
+static void SetRawSymbol(uint8_t* Bytes, size_t StartBit, int Bits, size_t Index,
+                         uint16_t Value)
+{
+    if (Bits == 16)
+    {
+        Bytes[2 * Index] = (uint8_t)(Value & 0xFF);
+        Bytes[2 * Index + 1] = (uint8_t)(Value >> 8);
+        return;
+    }
+    // A line's bits are a multiple of 10, so a symbol starts at an even bit and lies
+    // within two bytes.
+    const size_t Bit = StartBit + Index * 10;
+    const unsigned Shift = (unsigned)(Bit % 8);
+    uint32_t Word = (uint32_t)Bytes[Bit / 8] | (uint32_t)Bytes[Bit / 8 + 1] << 8;
+    Word = (Word & ~(0x3FFu << Shift)) | ((uint32_t)Value & 0x3FF) << Shift;
+    Bytes[Bit / 8] = (uint8_t)(Word & 0xFF);
+    Bytes[Bit / 8 + 1] = (uint8_t)(Word >> 8 & 0xFF);
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- PatchLineVpid -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Finds the payload ID packets in the horizontal blanking of every stream of a raw line
+// of Bits bits a symbol, 10 or 16, that starts at bit StartBit of Bytes, and flips the
+// bits Delta has set in their four bytes, with byte 1 in Delta's least significant bits;
+// the bytes' parity and the checksum follow. A checksum the transmitter is to fill in
+// stays so. Returns the number of packets found; a Delta of 0 only counts them.
+//
+static int PatchLineVpid(const DtSdiTx* Sdi, uint8_t* Bytes, size_t StartBit, int Bits,
+                         uint32_t Delta)
+{
+    const DtSdiGeometry* Geo = &Sdi->Geo;
+    const int Words = Geo->StreamHancWords - Geo->StreamEavWords - Geo->StreamSavWords;
+    if (!Sdi->GeoValid || Words <= 0 || Words > DT_SDITX_MAX_HANC_WORDS)
+        return 0;
+
+    int Packets = 0;
+    uint16_t Hanc[DT_SDITX_MAX_HANC_WORDS];
+    for (int Stream = 0; Stream < Geo->NumStreams; Stream++)
+    {
+        const size_t First = (size_t)Geo->StreamFirst[Stream] +
+                             (size_t)Geo->StreamEavWords * (size_t)Geo->NumStreams;
+        for (int k = 0; k < Words; k++)
+            Hanc[k] = RawSymbol(Bytes, StartBit, Bits,
+                                First + (size_t)k * (size_t)Geo->NumStreams);
+
+        bool Changed = false;
+        int Pos = 0;
+        DtSdiAncFound Found;
+        while (DtSdiAnc_Find(Hanc, Words, &Pos, &Found))
+        {
+            if (Found.Did != DT_SDIANC_DID_PAYLOAD_ID ||
+                Found.SdidOrDbn != DT_SDIANC_SDID_PAYLOAD_ID || Found.NumWords != 4)
+                continue;
+            Packets++;
+            if (Delta == 0)
+                continue;
+            uint16_t Data[4];
+            for (int b = 0; b < 4; b++)
+                Data[b] =
+                    DtSdiAnc_WithParity8((Found.Words[b] ^ Delta >> (8 * b)) & 0xFF);
+            const bool Checksum = Found.Words[4] != DT_SDIANC_NO_CHECKSUM;
+            DtSdiAnc_Put(Hanc, Found.Start, Found.Did, Found.SdidOrDbn, Data, 4,
+                         Checksum);
+            Changed = true;
+        }
+        for (int k = 0; Changed && k < Words; k++)
+            SetRawSymbol(Bytes, StartBit, Bits,
+                         First + (size_t)k * (size_t)Geo->NumStreams, Hanc[k]);
+    }
+    return Packets;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeBlackLine -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Codes raw line Line of a black frame, 16 bits a symbol at Src, into the coded lines at
+// Lines, as BlackLines holds them, line headers included.
+//
+static void EncodeBlackLine(DtSdiTx* Sdi, const uint8_t* Src, int Line, uint8_t* Lines)
+{
+    const DtSdiFrameLayout* Layout = &Sdi->FrameLayout;
+    if (!Layout->Is4k)
+    {
+        DtSdiFrame_EncodeLine(Layout, 16, Src, 0,
+                              Lines + (size_t)Line * (size_t)Layout->TxStride);
+        return;
+    }
+    uint8_t* Dst = Lines + (size_t)(2 * Line) * (size_t)Layout->TxStride;
+    DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
+    DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
+    DtSdiFrame_EncodeLine4k(Layout, 16, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
+                            Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes,
+                            Sdi->BandSymbols);
+}
+
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- EncodeBlack -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 //
 // Writes the coded lines of the black frame that BuildBlack makes at Lines, as
-// BlackLines holds them, line headers included. Of 3G level B it is a picture of field
-// Field.
+// BlackLines holds them, line headers included, and keeps its raw lines that carry a
+// payload ID. Of 3G level B it is a picture of field Field.
 //
 static DtapiResult EncodeBlack(DtSdiTx* Sdi, int Field, uint8_t* Lines)
 {
@@ -899,6 +1025,12 @@ static DtapiResult EncodeBlack(DtSdiTx* Sdi, int Field, uint8_t* Lines)
     const size_t RawLine = DtSdiFrame_RawLineNumBits(Layout, 16) / 8;
     uint8_t* Raw = (uint8_t*)DtAlloc_Malloc(Size);
     DtapiResult Result = Raw == NULL ? DTAPI_E_OUT_OF_MEM : DTAPI_OK;
+
+    const int Slot = Field - 1;
+    if (Sdi->VpidRaw[Slot] == NULL)
+        Sdi->VpidRaw[Slot] =
+            (uint8_t*)DtAlloc_Malloc((size_t)DT_SDITX_MAX_VPID_LINES * RawLine);
+    Sdi->NumVpidLines[Slot] = Sdi->VpidRaw[Slot] == NULL ? -1 : 0;
 
     if (Result == DTAPI_OK)
         Result = BuildBlack(Sdi, Field, 16, Raw, Size);
@@ -909,23 +1041,33 @@ static DtapiResult EncodeBlack(DtSdiTx* Sdi, int Field, uint8_t* Lines)
             Layout->Is4k ? Layout->NumCodedLines / 2 : Layout->NumCodedLines;
         for (int Line = 0; Line < RawLines; Line++)
         {
-            const uint8_t* Src = Raw + (size_t)Line * RawLine;
-            if (!Layout->Is4k)
+            uint8_t* Src = Raw + (size_t)Line * RawLine;
+            EncodeBlackLine(Sdi, Src, Line, Lines);
+            int* Num = &Sdi->NumVpidLines[Slot];
+            if (*Num < 0 || PatchLineVpid(Sdi, Src, 0, 16, 0) == 0)
+                continue;
+            if (*Num == DT_SDITX_MAX_VPID_LINES)
             {
-                DtSdiFrame_EncodeLine(Layout, 16, Src, 0,
-                                      Lines + (size_t)Line * (size_t)Layout->TxStride);
+                *Num = -1;
                 continue;
             }
-            uint8_t* Dst = Lines + (size_t)(2 * Line) * (size_t)Layout->TxStride;
-            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line, Dst);
-            DtSdiFrame_EncodeTxLineHeader(Layout, 2 * Line + 1, Dst + Layout->TxStride);
-            DtSdiFrame_EncodeLine4k(
-                Layout, 16, Src, Line, Dst + Layout->TxLineHeaderNumBytes,
-                Dst + Layout->TxStride + Layout->TxLineHeaderNumBytes, Sdi->BandSymbols);
+            memcpy(Sdi->VpidRaw[Slot] + (size_t)*Num * RawLine, Src, RawLine);
+            Sdi->VpidLines[Slot][(*Num)++] = Line;
         }
     }
     DtAlloc_Free(Raw);
     return Result;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeVpidLines -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+// Frees the raw lines with a payload ID that EncodeBlack kept for black frame Slot.
+//
+static void FreeVpidLines(DtSdiTx* Sdi, int Slot)
+{
+    DtAlloc_Free(Sdi->VpidRaw[Slot]);
+    Sdi->VpidRaw[Slot] = NULL;
+    Sdi->NumVpidLines[Slot] = -1;
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FreeLevelB -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
@@ -943,6 +1085,7 @@ static void FreeLevelB(DtSdiTx* Sdi)
     DtAlloc_Free(Sdi->BlackPictures[1]);
     DtAlloc_Free(Sdi->BlackLines2);
     Sdi->BlackLines2 = NULL;
+    FreeVpidLines(Sdi, 1);
     Sdi->LevelB = NULL;
     Sdi->Pictures[0] = Sdi->Pictures[1] = NULL;
     Sdi->BlackPictures[0] = Sdi->BlackPictures[1] = NULL;
@@ -1013,6 +1156,7 @@ static void FreeStandardBuffers(DtSdiTx* Sdi)
     Sdi->BlackLines = Sdi->WrapLineBuffer = Sdi->PartialLine = NULL;
     Sdi->BandSymbols = NULL;
     FreeLevelB(Sdi);
+    FreeVpidLines(Sdi, 0);
     DtSmpte352_TakeSignalling(NULL, &Sdi->BlackSignalling);
     Sdi->GeoValid = false;
     memset(&Sdi->FrameLayout, 0, sizeof(Sdi->FrameLayout));
@@ -1096,6 +1240,7 @@ static DtapiResult ConfigureChannel(DtSdiTx* Sdi)
 
     // The standard's black frame and the buffers of a write.
     size_t Line = DtSdiFrame_RawLineNumBits(&Layout, 16) / 8 + 2;
+    FreeVpidLines(Sdi, 0);
     DtAlloc_Free(Sdi->BlackLines);
     DtAlloc_Free(Sdi->WrapLineBuffer);
     DtAlloc_Free(Sdi->PartialLine);
@@ -1379,18 +1524,68 @@ static void NoteLine(DtSdiTx* Sdi, const uint8_t* Bytes, size_t StartBit, int Li
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.- FollowSignalling -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 //
 // After a frame the program wrote, makes the black frames carry its signalling: when the
-// frame's payload ID says something else than the black frames do, they are built again.
-// A frame without a payload ID, or with one the library cannot read, leaves them as they
-// are. So does signalling the builder does not write, such as the Color VANC packet's, or
-// a failure to build them: the black frames of before stay, with their signalling.
+// frame's payload ID says something else than the black frames do, the payload ID
+// packets of the black frames change. Only the lines that carry them are coded again, as
+// a black frame is sent when the program is already late. Where those lines could not be
+// kept, the black frames are built again whole.
+//
+// A frame without a payload ID, or with one the library cannot read, leaves the black
+// frames as they are. So does signalling the builder does not write, such as the Color
+// VANC packet's. A field the standard cannot carry gets the standard's default, as on the
+// builder.
 //
 static void FollowSignalling(DtSdiTx* Sdi)
 {
     DtSdiVideoSignalling Signalling;
     if (!Sdi->FrameVpidFound || Sdi->BlackLines == NULL ||
         !DtSmpte352_ReadSignalling(Sdi->FrameVpid, &Signalling) ||
+        Signalling.Colorimetry == DT_SDI_COLORIMETRY_COLOR_VANC ||
         memcmp(&Signalling, &Sdi->BlackSignalling, sizeof(Signalling)) == 0)
         return;
+
+    // What the builder writes for the two, and the bits in which they differ.
+    const int VidStd = Sdi->FrameLayout.VidStd;
+    DtSdiVideoSignalling NoFrame, Old, New;
+    DtSmpte352_TakeSignalling(NULL, &NoFrame);
+    const bool Resolved =
+        DtSmpte352_ResolveSignalling(VidStd, &NoFrame, &Sdi->BlackSignalling, &Old) ==
+            DTAPI_OK &&
+        DtSmpte352_ResolveSignalling(VidStd, &NoFrame, &Signalling, &New) == DTAPI_OK;
+    const int NumSlots = Sdi->BlackLines2 != NULL ? 2 : 1;
+    bool Kept = Resolved;
+    for (int Slot = 0; Slot < NumSlots; Slot++)
+        Kept = Kept && Sdi->NumVpidLines[Slot] >= 0;
+    if (Kept)
+    {
+        const uint32_t Delta = DtSmpte352_MakeSignalling(VidStd, &Old) ^
+                               DtSmpte352_MakeSignalling(VidStd, &New);
+        const size_t RawLine = DtSdiFrame_RawLineNumBits(&Sdi->FrameLayout, 16) / 8;
+        const size_t PictureLine =
+            Sdi->BlackPictureBits == 0
+                ? 0
+                : DtSdiFrame_RawLineNumBits(&Sdi->FrameLayout, Sdi->BlackPictureBits);
+        for (int Slot = 0; Slot < NumSlots && Delta != 0; Slot++)
+        {
+            uint8_t* Lines = Slot == 0 ? Sdi->BlackLines : Sdi->BlackLines2;
+            for (int i = 0; i < Sdi->NumVpidLines[Slot]; i++)
+            {
+                const int Line = Sdi->VpidLines[Slot][i];
+                uint8_t* Raw = Sdi->VpidRaw[Slot] + (size_t)i * RawLine;
+                PatchLineVpid(Sdi, Raw, 0, 16, Delta);
+                EncodeBlackLine(Sdi, Raw, Line, Lines);
+                // The black pictures of 3G level B, when made, have the same lines.
+                if (Sdi->BlackPictureBits != 0)
+                {
+                    const size_t At = (size_t)Line * PictureLine;
+                    PatchLineVpid(Sdi, Sdi->BlackPictures[Slot] + At / 8, At % 8,
+                                  Sdi->BlackPictureBits, Delta);
+                }
+            }
+        }
+        Sdi->BlackSignalling = Signalling;
+        return;
+    }
+
     const DtSdiVideoSignalling Before = Sdi->BlackSignalling;
     Sdi->BlackSignalling = Signalling;
     DtapiResult Result = EncodeBlack(Sdi, 1, Sdi->BlackLines);

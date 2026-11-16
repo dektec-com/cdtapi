@@ -1404,19 +1404,16 @@ static uint8_t* BuildSignallingFrame(int VidStd, int Bits,
     return Frame;
 }
 
-// The black frames carry the signalling of the last frame written, by Write and by
-// WriteFrame alike: after two 1080i50 frames in HLG and BT.2020, the two black frames the
-// card sends are the builder's black frame in HLG and BT.2020, not its default one.
-DT_TEST(BlackFramesCarryTheLastSignalling)
+// Checks that the black frames of VidStd carry the signalling of the last frame written,
+// by Write and by WriteFrame alike: after two frames with Signalling in their payload ID,
+// the two black frames the card sends are the builder's black frame with Signalling, not
+// its default one. The channel codes only the payload ID's lines of its black frame
+// again, so this also checks that the result is the frame the builder makes.
+static void BlackFramesFollow(int VidStd, const DtSdiVideoSignalling* Signalling,
+                              int* DtFailures)
 {
-    const int VidStd = DTAPI_VIDSTD_1080I50;
-    DtSdiVideoSignalling Hlg;
-    memset(&Hlg, 0, sizeof(Hlg));
-    Hlg.Size = (int)sizeof(Hlg);
-    Hlg.Transfer = DT_SDI_TRANSFER_HLG;
-    Hlg.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
     size_t Size = 0;
-    uint8_t* Frame = BuildSignallingFrame(VidStd, 10, &Hlg, &Size);
+    uint8_t* Frame = BuildSignallingFrame(VidStd, 10, Signalling, &Size);
     DT_ASSERT(Frame != NULL);
 
     for (int Whole = 0; Whole < 2; Whole++)
@@ -1435,12 +1432,34 @@ DT_TEST(BlackFramesCarryTheLastSignalling)
                            : DtOutpChannel_Write(Fix.Channel, (char*)Frame, (int)Size));
         DT_ASSERT_OK(SendUpTo(Fix.Channel, 4));
         DT_ASSERT(SentAndHeld(Fix.Channel, 4));
-        DT_ASSERT(SentFrameIsBlackWith(2, VidStd, &Hlg, 0));
-        DT_ASSERT(SentFrameIsBlackWith(3, VidStd, &Hlg, 0));
+        DT_ASSERT(SentFrameIsBlackWith(2, VidStd, Signalling, 0));
+        DT_ASSERT(SentFrameIsBlackWith(3, VidStd, Signalling, 0));
         DT_ASSERT(!SentFrameIsBlack(2, VidStd));
         FINISH(Fix);
     }
     free(Frame);
+}
+
+// The black frames follow the signalling of the last frame written: in 525i59.94, which
+// carries only the aspect ratio, a frame of 16:9; in 1080i50 on HD and 1080p50 on 3G
+// level A, whose payload IDs put the colorimetry on other bits, HLG and BT.2020 in full
+// range.
+DT_TEST(BlackFramesCarryTheLastSignalling)
+{
+    DtSdiVideoSignalling Wide;
+    memset(&Wide, 0, sizeof(Wide));
+    Wide.Size = (int)sizeof(Wide);
+    Wide.Aspect = DT_SDI_ASPECT_16X9;
+    BlackFramesFollow(DTAPI_VIDSTD_525I59_94, &Wide, DtFailures);
+
+    DtSdiVideoSignalling Hlg;
+    memset(&Hlg, 0, sizeof(Hlg));
+    Hlg.Size = (int)sizeof(Hlg);
+    Hlg.Transfer = DT_SDI_TRANSFER_HLG;
+    Hlg.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
+    Hlg.Range = DT_SDI_RANGE_FULL;
+    BlackFramesFollow(DTAPI_VIDSTD_1080I50, &Hlg, DtFailures);
+    BlackFramesFollow(DTAPI_VIDSTD_1080P50, &Hlg, DtFailures);
 }
 
 // In 3G level B the black pictures carry the signalling of the frame written too, also
@@ -1492,6 +1511,77 @@ DT_TEST(LevelBBlackPicturesCarryTheSignalling)
     DT_ASSERT(SentFrameIsBlackWith(4, VidStd, &Hlg, 2));
     DT_ASSERT(!SentFrameIsBlackWith(0, VidStd, NULL, 2));
     FINISH(Fix);
+    free(Frame);
+}
+
+// Builds a frame of the interface of 3G level B in 10 bits a symbol, black, with
+// Signalling in the payload IDs of both pictures. Returns NULL, with *Size 0, when it
+// cannot.
+static uint8_t* BuildLevelBFrame(int VidStd, const DtSdiVideoSignalling* Signalling,
+                                 size_t* Size)
+{
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    bool Ok = View != NULL && Builder != NULL &&
+              DtSdiView_RawFrameSize(VidStd, 10, Size) == DTAPI_OK;
+    uint8_t* Frame = Ok ? (uint8_t*)calloc(*Size, 1) : NULL;
+    Ok = Ok && Frame != NULL &&
+         DtSdiBuilder_SetVideoSignalling(Builder, Signalling) == DTAPI_OK &&
+         DtSdiView_SetRawFrame(View, Frame, *Size, VidStd, 10) == DTAPI_OK;
+    for (int Field = 1; Ok && Field <= 2; Field++)
+        Ok = DtSdiView_SetLevelBField(View, Field) == DTAPI_OK &&
+             DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL) == DTAPI_OK;
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    if (!Ok)
+    {
+        free(Frame);
+        Frame = NULL;
+        *Size = 0;
+    }
+    return Frame;
+}
+
+// In 3G level B a black picture that goes in front of a frame after a change of
+// signalling carries the new signalling. A 1080p50 level-B frame of the default
+// signalling goes out as a black picture of field 2 (ID 0) and its pictures (IDs 1 and
+// 2). The card stops after three frames, with the thread's black picture of field 1 (ID
+// 3) in the buffer, still the default. A frame in HLG and BT.2020 follows; ID 4 is even,
+// so a black picture of field 2 goes in front of its pictures (IDs 5 and 6), and it is in
+// HLG and BT.2020, as are the black pictures after them (IDs 7 and 8).
+DT_TEST(LevelBBlackPicturesFollowAChange)
+{
+    const int VidStd = DTAPI_VIDSTD_1080P50B;
+    DtSdiVideoSignalling Hlg;
+    memset(&Hlg, 0, sizeof(Hlg));
+    Hlg.Size = (int)sizeof(Hlg);
+    Hlg.Transfer = DT_SDI_TRANSFER_HLG;
+    Hlg.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
+    size_t Size = 0;
+    size_t HlgSize = 0;
+    uint8_t* Default = BuildLevelBFrame(VidStd, NULL, &Size);
+    uint8_t* Frame = BuildLevelBFrame(VidStd, &Hlg, &HlgSize);
+    DT_ASSERT(Default != NULL && Frame != NULL && Size == HlgSize);
+
+    Fixture Fix;
+    if (Default != NULL && Frame != NULL && Start(&Fix, DtFailures))
+    {
+        if (Hold(&Fix, VidStd, DTAPI_TXMODE_SDI_FULL | DTAPI_TXMODE_SDI_10B, DtFailures))
+        {
+            DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Default, (int)Size, 100));
+            DT_ASSERT_OK(SendUpTo(Fix.Channel, 3));
+            DT_ASSERT(SentAndHeld(Fix.Channel, 3));
+            DT_ASSERT_OK(DtOutpChannel_WriteFrame(Fix.Channel, Frame, (int)Size, 100));
+            DT_ASSERT_OK(SendUpTo(Fix.Channel, 9));
+            DT_ASSERT(SentAndHeld(Fix.Channel, 9));
+            DT_ASSERT(SentFrameIsBlackWith(3, VidStd, NULL, 1));
+            DT_ASSERT(SentFrameIsBlackWith(4, VidStd, &Hlg, 2));
+            DT_ASSERT(SentFrameIsBlackWith(7, VidStd, &Hlg, 1));
+            DT_ASSERT(SentFrameIsBlackWith(8, VidStd, &Hlg, 2));
+        }
+        FINISH(Fix);
+    }
+    free(Default);
     free(Frame);
 }
 
@@ -1787,4 +1877,5 @@ DT_TEST_MAIN("SimOutpChannel", DT_RUN(NullAndDetached), DT_RUN(AttachChecks),
              DT_RUN(WriteFrameTimesOut), DT_RUN(WriteFrameInUseAndCancelled),
              DT_RUN(WholeFramesAmongBlackFrames),
              DT_RUN(BlackFramesCarryTheLastSignalling),
-             DT_RUN(LevelBBlackPicturesCarryTheSignalling))
+             DT_RUN(LevelBBlackPicturesCarryTheSignalling),
+             DT_RUN(LevelBBlackPicturesFollowAChange))
