@@ -96,9 +96,12 @@ typedef struct DtSdiBuilderBand
 
 struct DtSdiBuilder
 {
-    int VidStd;          // The standard of the frame built last; 0 before the first
-    bool Checksums;      // True to work out line CRCs and packet checksums. False leaves
-                         // them to the transmitter.
+    int VidStd;     // The standard of the frame built last; 0 before the first
+    bool Checksums; // True to work out line CRCs and packet checksums. False leaves
+                    // them to the transmitter.
+    // The signalling of every frame, whole, as DtSdiBuilder_SetVideoSignalling set it;
+    // every field _DEFAULT until then.
+    DtSdiVideoSignalling Signalling;
     uint32_t LastCrc[8]; // Per stream: the CRC over the active part of the last line of
                          // that frame. The next frame's first line CRC starts from it.
     uint32_t CrcTable[1024]; // The CRC-18 of each 10-bit word, from a CRC of 0
@@ -729,6 +732,7 @@ DtSdiBuilder* DtSdiBuilder_Alloc(void)
     if (Builder == NULL)
         return NULL;
     memset(Builder, 0, sizeof(*Builder));
+    DtSmpte352_TakeSignalling(NULL, &Builder->Signalling);
     Builder->Conv = DtSdiConv_Best();
     DtJobRunner_Init(&Builder->Runner);
     for (uint32_t i = 0; i < 1024; i++)
@@ -764,6 +768,7 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
         DtSdiView* Picture = DtSdiView_PictureOf(Frame, false, NULL);
         if (Picture == NULL)
             return DTAPI_E_OUT_OF_MEM;
+        Picture->Signalling = Frame->Signalling;
         const DtapiResult Result =
             DtSdiBuilder_Build(Builder, Picture, Image, Audio, Anc);
         if (Result == DTAPI_OK)
@@ -775,8 +780,10 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     const DtSdiGeometry* Geo = &Frame->Geo;
     const int Field = Frame->LevelBField;
 
-    DtapiResult Result = DTAPI_OK;
-    if (Image != NULL)
+    DtSdiVideoSignalling Signalling;
+    DtapiResult Result = DtSmpte352_ResolveSignalling(Geo->VidStd, &Frame->Signalling,
+                                                      &Builder->Signalling, &Signalling);
+    if (Result == DTAPI_OK && Image != NULL)
         Result = DtSdiImage_Check(Image, Geo);
     if (Result == DTAPI_OK)
     {
@@ -806,7 +813,7 @@ DtapiResult DtSdiBuilder_Build(DtSdiBuilder* Builder, DtSdiView* Frame,
     int Unit = 1;
     while (!Frame->IsTx && (LineBits * (size_t)Unit) % 8 != 0)
         Unit++;
-    const uint32_t Vpid = DtSmpte352_Make(Geo->VidStd);
+    const uint32_t Vpid = DtSmpte352_MakeSignalling(Geo->VidStd, &Signalling);
     const bool MakeRaw = !(Frame->IsTx && Geo->Is4k) || Builder->Checksums;
     BuildJob Job = {Builder, Frame,     Image, Anc,         Vpid,
                     Field,   PayloadId, Unit,  Frame->IsTx, MakeRaw};
@@ -877,6 +884,16 @@ DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute)
         memset(Builder->LastCrc, 0, sizeof(Builder->LastCrc));
     Builder->Checksums = Compute;
     return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetVideoSignalling -.-.-.-.-.-.-.-.-.-.-.-.-.-.
+//
+DtapiResult DtSdiBuilder_SetVideoSignalling(DtSdiBuilder* Builder,
+                                            const DtSdiVideoSignalling* Signalling)
+{
+    if (Builder == NULL)
+        return DTAPI_E_INVALID_ARG;
+    return DtSmpte352_TakeSignalling(Signalling, &Builder->Signalling);
 }
 
 // .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiBuilder_SetWorkerPool -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-

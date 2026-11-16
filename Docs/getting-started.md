@@ -284,6 +284,26 @@ of `ReadFrame` and `WriteFrame`, and of an `.sdi` file, is the frame of the inte
 with both pictures: `DtSdiView_SetLevelBField` chooses the picture that the parser
 reads or the builder builds.
 
+### HDR: video signalling in the payload ID
+
+Every frame the builder makes carries a payload ID (SMPTE ST 352), which tells a
+receiver what the samples mean: the transfer characteristic (SDR, HLG or PQ), the
+colorimetry (BT.709 or BT.2020), the aspect ratio, Y'CbCr or ICtCp, and narrow or full
+range. `DtSdiVideoSignalling` holds these. Without one, a frame gets the defaults of its
+standard: SDR, BT.709 up to 3G-SDI, BT.2020 in 2160p. A program that sends HDR says so
+once for every frame, or for one frame:
+
+    DtSdiVideoSignalling Signalling = {sizeof(DtSdiVideoSignalling), DT_SDI_TRANSFER_HLG,
+                          DT_SDI_COLORIMETRY_BT2020};
+    DtSdiBuilder_SetVideoSignalling(Builder, &Signalling);  // Every frame from now on
+    DtSdiView_SetVideoSignalling(View, &Signalling);        // Only the frame View describes
+
+A receiver reads it from each frame with `DtSdiView_GetVideoSignalling`, or from the `Vpid` of
+`DtDetVidStd` with `DtSdiVideoSignalling_FromVpid` before frames come. SD carries only the aspect
+ratio and 720p none of these fields, so there a builder set to HDR uses the standard's
+defaults, and a frame set to HDR is refused. The black frames an output channel sends
+when a program writing frames falls behind carry the signalling of the last frame written.
+
 ## DVB-ASI
 
 A port that carries ASI has `IsAsi` set in its `DtHwFuncDesc`. The same channels carry

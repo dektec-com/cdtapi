@@ -136,7 +136,7 @@ DtapiResult DtAvInput_DetectVidStd(const DtAvInput* Input, DtDetVidStd* Info)
     if (Info->Vpid != 0)
     {
         Info->LinkNr = DtSmpte352_LinkNumber(Info->Vpid) + 1;
-        Info->AspectRatio = DtSmpte352_Is16x9(Info->Vpid) ? DT_AR_16_9 : DT_AR_4_3;
+        Info->AspectRatio = DtSmpte352_AspectRatio(Info->Vpid);
     }
 
     if (IsDownscaled && DtVidStd_Is4k(Props.VidStd) &&

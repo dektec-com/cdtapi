@@ -124,6 +124,7 @@ set(CDTAPI_SOURCES
     Source/Sdi/DtSdiImage.c
     Source/Sdi/DtSdiLevelB.c
     Source/Sdi/DtSdiParser.c
+    Source/Sdi/DtSdiVideoSignalling.c
     Source/Sdi/DtSdiSymbols.c
     Source/Sdi/DtSdiConv.c
     Source/Sdi/DtSdiCrc.c

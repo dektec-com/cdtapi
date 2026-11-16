@@ -160,21 +160,31 @@ static bool IsPayloadIdLine(const SdiFormat* F, int Line)
     return Line == 10 || (F->Scan != SDI_SCAN_P && Line == 572);
 }
 
-// Returns the VPID that the reference frames carry, which is the one the DekTec matrix
-// sends. Byte 1 is in the lowest bits. The bytes are:
+// Returns the VPID that the reference frames carry, the builder's with its default
+// signalling. Byte 1 is in the lowest bits. The bytes are:
 // - byte 1, the payload;
 // - byte 2, the picture rate, with bit 7 set for a progressive transport except in
-//   720p, and bit 6 set for a progressive picture;
-// - byte 3, zero;
+//   720p, and bit 6 set for a progressive picture; SDR is 0 in bits 5..4;
+// - byte 3, 16:9 above SD and 720p, in bit 5 in 1080 lines on HD (SMPTE ST 292-1
+//   section 9.5.2) and bit 7 on 3G level A, 6G and 12G (ST 425-1 section 4.1.6.2.2, ST
+//   2081-10 and ST 2082-10 section 4.3.3); and in 2160p BT.2020, 2h in bits 5..4.
+//   DekTec's matrix leaves byte 3 at zero;
 // - byte 4, one for 10 bits.
-static uint32_t MatrixVpid(const SdiFormat* F)
+static uint32_t RefVpid(const SdiFormat* F)
 {
     uint32_t Byte2 = SdiFormat_RateCode(F);
     if (F->Scan == SDI_SCAN_P && F->Lines != 750)
         Byte2 |= 0x80;
     if (F->Scan != SDI_SCAN_I)
         Byte2 |= 0x40;
-    return (uint32_t)F->Payload | Byte2 << 8 | 0x01000000u;
+    uint32_t Byte3 = 0;
+    if (F->Payload == 0x85)
+        Byte3 = 0x20;
+    else if (F->Payload == 0x89)
+        Byte3 = 0x80;
+    else if (F->Payload == 0xC0 || F->Payload == 0xCE)
+        Byte3 = 0xA0;
+    return (uint32_t)F->Payload | Byte2 << 8 | Byte3 << 16 | 0x01000000u;
 }
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Words +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -373,7 +383,7 @@ static void RefLine(const SdiFormat* F, int Line, Pattern Value,
         int Pos = EavWords(F);
         if (IsPayloadIdLine(F, Line) && (IsSd(F) || !C))
         {
-            const uint32_t Vpid = MatrixVpid(F);
+            const uint32_t Vpid = RefVpid(F);
             const uint16_t Bytes[4] = {Parity8(Vpid & 0xFF), Parity8(Vpid >> 8 & 0xFF),
                                        Parity8(Vpid >> 16 & 0xFF), Parity8(Vpid >> 24)};
             Pos = RefPacket(W, Pos, 0x41, 0x01, Bytes, 4, Crc != NULL);
@@ -2099,8 +2109,208 @@ DT_TEST(FramesOfTheSdiMuxer)
     printf("    %d standards checked\n", Checked);
 }
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Signalling +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+// Returns signalling with every field default but the transfer and the colorimetry.
+static DtSdiVideoSignalling SignallingOf(DtSdiTransfer Transfer,
+                                         DtSdiColorimetry Colorimetry)
+{
+    DtSdiVideoSignalling Signalling;
+    memset(&Signalling, 0, sizeof(Signalling));
+    Signalling.Size = (int)sizeof(Signalling);
+    Signalling.Transfer = Transfer;
+    Signalling.Colorimetry = Colorimetry;
+    return Signalling;
+}
+
+// Builds the frame View describes without an image, and reads its signalling back into
+// *Read. Returns the builder's result.
+static DtapiResult BuildAndRead(DtSdiBuilder* Builder, DtSdiView* View,
+                                DtSdiVideoSignalling* Read)
+{
+    const DtapiResult Result = DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL);
+    memset(Read, 0, sizeof(*Read));
+    Read->Size = (int)sizeof(*Read);
+    if (Result == DTAPI_OK && DtSdiView_GetVideoSignalling(View, Read) != DTAPI_OK)
+        Read->Transfer = DT_SDI_TRANSFER_DEFAULT;
+    return Result;
+}
+
+// The signalling of a frame, in 1080i50 and 625i50:
+// - The builder's default, HLG, is written; a field the view sets, PQ and BT.2020,
+//   replaces it for that frame only, and pointing the view at the frame again clears it.
+// - In SD the builder's HLG gives way to SDR and BT.601; the same set on the view is
+//   refused, and the frame stays as it was.
+// - The view refuses Color VANC, a value outside its enum, a Size that does not end at a
+//   field, and signalling set before it describes a frame.
+DT_TEST(SignallingOfTheFrame)
+{
+    size_t HdSize = 0;
+    size_t SdSize = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080I50, 10, &HdSize));
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_625I50, 10, &SdSize));
+    uint8_t* Hd = (uint8_t*)calloc(HdSize, 1);
+    uint8_t* Sd = (uint8_t*)malloc(SdSize);
+    uint8_t* SdCopy = (uint8_t*)malloc(SdSize);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DT_ASSERT(Hd != NULL && Sd != NULL && SdCopy != NULL && View != NULL &&
+              Builder != NULL);
+
+    const DtSdiVideoSignalling Hlg =
+        SignallingOf(DT_SDI_TRANSFER_HLG, DT_SDI_COLORIMETRY_DEFAULT);
+    const DtSdiVideoSignalling Pq =
+        SignallingOf(DT_SDI_TRANSFER_PQ, DT_SDI_COLORIMETRY_BT2020);
+    DtSdiVideoSignalling Read;
+
+    // Before the view describes a frame.
+    DT_ASSERT_EQ(DtSdiView_SetVideoSignalling(View, &Pq), DTAPI_E_STATE);
+
+    DT_ASSERT_OK(DtSdiBuilder_SetVideoSignalling(Builder, &Hlg));
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Hd, HdSize, DTAPI_VIDSTD_1080I50, 10));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_HLG);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT709);
+    DT_ASSERT_EQ(Read.Aspect, DT_SDI_ASPECT_16X9);
+
+    DT_ASSERT_OK(DtSdiView_SetVideoSignalling(View, &Pq));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_PQ);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT2020);
+
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Hd, HdSize, DTAPI_VIDSTD_1080I50, 10));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_HLG);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT709);
+
+    // SD: the builder's HLG gives way; the view's is refused before anything is written.
+    memset(Sd, 0xA5, SdSize);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Sd, SdSize, DTAPI_VIDSTD_625I50, 10));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_SDR);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT601);
+    DT_ASSERT_EQ(Read.Aspect, DT_SDI_ASPECT_4X3);
+    memcpy(SdCopy, Sd, SdSize);
+    DT_ASSERT_OK(DtSdiView_SetVideoSignalling(View, &Hlg));
+    DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL),
+                 DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT(memcmp(Sd, SdCopy, SdSize) == 0);
+
+    // What the view and the builder refuse.
+    DtSdiVideoSignalling Bad =
+        SignallingOf(DT_SDI_TRANSFER_DEFAULT, DT_SDI_COLORIMETRY_COLOR_VANC);
+    DT_ASSERT_EQ(DtSdiView_SetVideoSignalling(View, &Bad), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(DtSdiBuilder_SetVideoSignalling(Builder, &Bad), DTAPI_E_NOT_SUPPORTED);
+    Bad = SignallingOf((DtSdiTransfer)9, DT_SDI_COLORIMETRY_DEFAULT);
+    DT_ASSERT_EQ(DtSdiView_SetVideoSignalling(View, &Bad), DTAPI_E_INVALID_ARG);
+    Bad = SignallingOf(DT_SDI_TRANSFER_HLG, DT_SDI_COLORIMETRY_DEFAULT);
+    Bad.Size = 6;
+    DT_ASSERT_EQ(DtSdiView_SetVideoSignalling(View, &Bad), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiView_SetVideoSignalling(View, NULL), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiBuilder_SetVideoSignalling(NULL, &Hlg), DTAPI_E_INVALID_ARG);
+    Read.Size = 0;
+    DT_ASSERT_EQ(DtSdiView_GetVideoSignalling(View, &Read), DTAPI_E_INVALID_ARG);
+
+    // A builder set back to its defaults, with NULL, builds SDR again.
+    DT_ASSERT_OK(DtSdiBuilder_SetVideoSignalling(Builder, NULL));
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Hd, HdSize, DTAPI_VIDSTD_1080I50, 10));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_SDR);
+
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(SdCopy);
+    free(Sd);
+    free(Hd);
+}
+
+// Counts the payload IDs of picture View whose byte 2 has transfer code Transfer in bits
+// 5..4, as the parser lists them.
+static int PayloadIdsWithTransfer(DtSdiView* View, uint32_t Transfer)
+{
+    DtSdiParser* Parser = DtSdiParser_Alloc();
+    DtSdiAncPacket Packets[16];
+    uint16_t Words[256];
+    DtSdiAncData Anc;
+    memset(&Anc, 0, sizeof(Anc));
+    Anc.Packets = Packets;
+    Anc.MaxPackets = 16;
+    Anc.Words = Words;
+    Anc.MaxWords = 256;
+    DtSdiAncFilter Filter;
+    memset(&Filter, 0, sizeof(Filter));
+    Filter.Did = 0x41;
+    Filter.Sdid = 0x01;
+    Filter.Space = DT_SDI_ANC_SPACE_BOTH;
+    int Count = -1;
+    if (Parser != NULL && DtSdiParser_SetAncFilter(Parser, &Filter, 1) == DTAPI_OK &&
+        DtSdiParser_Parse(Parser, View, NULL, NULL, &Anc) == DTAPI_OK)
+    {
+        Count = 0;
+        for (int i = 0; i < Anc.NumPackets; i++)
+            if (Packets[i].NumWords == 4 &&
+                (uint32_t)((Packets[i].Words[1] >> 4) & 0x3) == Transfer)
+                Count++;
+    }
+    DtSdiParser_Free(Parser);
+    return Count;
+}
+
+// In a frame of the interface of 3G level B, the signalling the view sets goes into both
+// pictures, each with the payload IDs of its two links, and reads back. 2160p50 on 12G
+// reads back its default BT.2020, and a VPID of an unknown payload, or signalling of Size
+// 0, is not read.
+DT_TEST(SignallingOfLevelBAnd2160p)
+{
+    size_t Size = 0;
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_1080P50B, 10, &Size));
+    uint8_t* Frame = (uint8_t*)calloc(Size, 1);
+    DtSdiView* View = DtSdiView_Alloc();
+    DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
+    DT_ASSERT(Frame != NULL && View != NULL && Builder != NULL);
+
+    const DtSdiVideoSignalling Hlg =
+        SignallingOf(DT_SDI_TRANSFER_HLG, DT_SDI_COLORIMETRY_BT2020);
+    DtSdiVideoSignalling Read;
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_1080P50B, 10));
+    for (int Field = 1; Field <= 2; Field++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetLevelBField(View, Field));
+        DT_ASSERT_OK(DtSdiView_SetVideoSignalling(View, &Hlg));
+        DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+        DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_HLG);
+        DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT2020);
+    }
+    for (int Field = 1; Field <= 2; Field++)
+    {
+        DT_ASSERT_OK(DtSdiView_SetLevelBField(View, Field));
+        DT_ASSERT_EQ(PayloadIdsWithTransfer(View, 1), 2);
+    }
+    free(Frame);
+
+    DT_ASSERT_OK(DtSdiView_RawFrameSize(DTAPI_VIDSTD_2160P50, 10, &Size));
+    Frame = (uint8_t*)calloc(Size, 1);
+    DT_ASSERT(Frame != NULL);
+    DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, DTAPI_VIDSTD_2160P50, 10));
+    DT_ASSERT_OK(BuildAndRead(Builder, View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_SDR);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT2020);
+    DT_ASSERT_EQ(Read.Aspect, DT_SDI_ASPECT_16X9);
+
+    DT_ASSERT_EQ(DtSdiVideoSignalling_FromVpid(0x01000042, &Read), DTAPI_E_NOT_SUPPORTED);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_UNKNOWN);
+    Read.Size = 0;
+    DT_ASSERT_EQ(DtSdiVideoSignalling_FromVpid(0x01200585, &Read), DTAPI_E_INVALID_ARG);
+    DT_ASSERT_EQ(DtSdiVideoSignalling_FromVpid(0x01200585, NULL), DTAPI_E_INVALID_ARG);
+
+    DtSdiBuilder_Free(Builder);
+    DtSdiView_Free(View);
+    free(Frame);
+}
+
 DT_TEST_MAIN("SdiBuilder", DT_RUN(EveryStandard), DT_RUN(BlackWithoutImage),
              DT_RUN(AncPackets), DT_RUN(EveryPixelFormat), DT_RUN(Refusals),
              DT_RUN(AudioEveryKind), DT_RUN(AudioCadence), DT_RUN(ReservedChannels),
              DT_RUN(Aes3RoundTrip), DT_RUN(WorkerPool), DT_RUN(OwnAudioAndPayloadId),
-             DT_RUN(SdAudioControlOfTheProgram), DT_RUN(FramesOfTheSdiMuxer))
+             DT_RUN(SdAudioControlOfTheProgram), DT_RUN(FramesOfTheSdiMuxer),
+             DT_RUN(SignallingOfTheFrame), DT_RUN(SignallingOfLevelBAnd2160p))

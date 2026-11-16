@@ -659,7 +659,8 @@ DT_TEST(ScaledPortReportsOneLink)
     FINISH(Device, Live);
 }
 
-// The link number is the VPID's plus one, and the aspect ratio its byte 3 bit 7.
+// The link number is the VPID's plus one. The aspect ratio of four level-A links is byte
+// 3 bit 7, where 0 means unknown (SMPTE ST 425-5 section 6.2.3.4).
 DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
 {
     const SdiFormat* Format = FormatOf(DTAPI_VIDSTD_2160P50);
@@ -669,7 +670,7 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     if (!StartSim(DtFailures, &Live) || !Attach(DtFailures, &Device))
         return;
 
-    // The second of four level-A links at 50 frames, 4:3.
+    // The second of four level-A links at 50 frames, of an unknown aspect ratio.
     SimSdiSignal Signal = SignalOf(Format, false);
     Signal.SdiRate = DT_DRV_SDIRATE_3G;
     Signal.PayloadId = 0x4000C997;
@@ -679,7 +680,7 @@ DT_TEST(LinkNumberAndAspectRatioFromTheVpid)
     DT_ASSERT_EQ(Info.VidStd, DTAPI_VIDSTD_2160P50);
     DT_ASSERT_EQ(Info.LinkStd, 0);
     DT_ASSERT_EQ(Info.LinkNr, 2);
-    DT_ASSERT_EQ(Info.AspectRatio, DT_AR_4_3);
+    DT_ASSERT_EQ(Info.AspectRatio, DT_AR_UNKNOWN);
     DT_ASSERT_EQ(Info.Vpid, 0x4000C997);
 
     FINISH(Device, Live);

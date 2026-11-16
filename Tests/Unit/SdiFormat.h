@@ -128,8 +128,12 @@ static inline uint32_t SdiFormat_RateCode(const SdiFormat* Format)
 }
 
 // The VPID a transmitter puts on the format: the payload identifier; the picture rate
-// with bit 7 set for a progressive transport and bit 6 for a progressive picture; and for
-// HD a 16:9 aspect ratio, byte 3 bit 7.
+// with bit 7 set for a progressive transport and bit 6 for a progressive picture; and
+// above SD a 16:9 aspect ratio, on the bit of the payload's standard: byte 3 bit 5 in
+// 1080 lines on HD and on level-B links (SMPTE ST 292-1 section 9.5.2, ST 372 section
+// 7.1, ST 425-5 section 7.2.3.4), bit 7 on level-A links, 6G and 12G (ST 425-1 section
+// 4.1.6.2.2, ST 425-5 section 6.2.3.4, ST 2081-10 and ST 2082-10 section 4.3.3). 720p
+// has no such bit (ST 292-1 section 9.4).
 static inline uint32_t SdiFormat_Vpid(const SdiFormat* Format)
 {
     uint32_t Byte2 = SdiFormat_RateCode(Format);
@@ -139,6 +143,10 @@ static inline uint32_t SdiFormat_Vpid(const SdiFormat* Format)
     if (Format->Scan != SDI_SCAN_I)
         Byte2 |= 0x40;
 
-    return (uint32_t)Format->Payload | (Byte2 << 8) |
-           (Format->Lines > 625 ? 0x800000u : 0u);
+    uint32_t Byte3 = 0;
+    if (Format->Payload == 0x85 || Format->Payload == 0x8A || Format->Payload == 0x98)
+        Byte3 = 0x20;
+    else if (Format->Payload != 0x81 && Format->Payload != 0x84)
+        Byte3 = 0x80;
+    return (uint32_t)Format->Payload | (Byte2 << 8) | (Byte3 << 16);
 }

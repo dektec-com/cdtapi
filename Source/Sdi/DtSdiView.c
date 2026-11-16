@@ -76,6 +76,7 @@ void DtSdiLineScratch_Free(DtSdiLineScratch* Scratch)
 //
 void DtSdiView_Forget(DtSdiView* View)
 {
+    DtSmpte352_TakeSignalling(NULL, &View->Signalling);
     View->HasFrame = false;
     View->IsInterfaceFrame = false;
     View->LevelBField = 0;
@@ -161,6 +162,7 @@ DtSdiView* DtSdiView_Alloc(void)
         return NULL;
     memset(View, 0, sizeof(*View));
     View->WrapLineIndex = -1;
+    DtSmpte352_TakeSignalling(NULL, &View->Signalling);
     return View;
 }
 
@@ -342,6 +344,36 @@ DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId)
     return Found ? DTAPI_OK : DTAPI_E_NOT_FOUND;
 }
 
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_GetVideoSignalling -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+// Reads the payload ID as DtSdiView_GetPayloadId gives it, with byte 1 in the most
+// significant bits, and turns it round for DtSmpte352, which takes byte 1 in the least.
+//
+DtapiResult DtSdiView_GetVideoSignalling(const DtSdiView* View,
+                                         DtSdiVideoSignalling* Signalling)
+{
+    if (View == NULL || Signalling == NULL ||
+        !DtSmpte352_IsSignallingSize(Signalling->Size))
+        return DTAPI_E_INVALID_ARG;
+
+    uint32_t PayloadId = 0;
+    DtapiResult Result = DtSdiView_GetPayloadId(View, &PayloadId);
+    DtSdiVideoSignalling Whole;
+    if (Result == DTAPI_OK)
+    {
+        const uint32_t Vpid = PayloadId >> 24 | (PayloadId >> 8 & 0xFF00) |
+                              (PayloadId << 8 & 0xFF0000) | PayloadId << 24;
+        if (!DtSmpte352_ReadSignalling(Vpid, &Whole))
+            Result = DTAPI_E_NOT_SUPPORTED;
+    }
+    else if (Result == DTAPI_E_NOT_FOUND)
+        DtSmpte352_DefaultSignalling(View->Geo.VidStd, &Whole);
+    else
+        return Result;
+    DtSmpte352_GiveSignalling(&Whole, Signalling);
+    return Result;
+}
+
 static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
                           int BitsPerSymbol, bool Picture, int Field);
 
@@ -435,6 +467,7 @@ static DtapiResult SetRaw(DtSdiView* View, void* Frame, size_t Size, int VidStd,
         return DTAPI_E_IN_USE;
     View->HasFrame = false;
     View->IsInterfaceFrame = false;
+    DtSmpte352_TakeSignalling(NULL, &View->Signalling);
 
     DtSdiGeometry Geo;
     DtapiResult Result = DtSdiGeometry_Init(&Geo, VidStd);
@@ -585,6 +618,23 @@ DtapiResult DtSdiView_SetTxFrame(DtSdiView* View, const DtSdiFrameLayout* Layout
     View->IsBuilt = false;
     View->Holder = Holder;
     View->HasFrame = true;
+    return DTAPI_OK;
+}
+
+// .-.-.-.-.-.-.-.-.-.-.-.-.-.- DtSdiView_SetVideoSignalling -.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+//
+DtapiResult DtSdiView_SetVideoSignalling(DtSdiView* View,
+                                         const DtSdiVideoSignalling* Signalling)
+{
+    if (View == NULL || Signalling == NULL)
+        return DTAPI_E_INVALID_ARG;
+    DtSdiVideoSignalling Whole;
+    const DtapiResult Result = DtSmpte352_TakeSignalling(Signalling, &Whole);
+    if (Result != DTAPI_OK)
+        return Result;
+    if (!View->HasFrame)
+        return DTAPI_E_STATE;
+    View->Signalling = Whole;
     return DTAPI_OK;
 }
 

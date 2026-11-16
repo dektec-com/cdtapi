@@ -44,6 +44,9 @@ struct DtSdiView
     size_t FrameSize;   // Bytes in Frame
     size_t LineNumBits; // Bits of one raw line
     void* Holder;       // The channel that lent the frame; NULL for a raw frame
+    // The signalling the builder writes into this frame, whole, as
+    // DtSdiView_SetVideoSignalling set it; every field _DEFAULT until then.
+    DtSdiVideoSignalling Signalling;
 
     // For a frame in a ring only.
     uint8_t* RingBase;        // The ring

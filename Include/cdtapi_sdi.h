@@ -64,6 +64,127 @@ extern "C"
 {
 #endif
 
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Video signalling +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+//
+// Every SDI frame the builder makes carries a payload ID (SMPTE ST 352). Besides the
+// video standard, the payload ID says what the picture's samples mean: the transfer
+// characteristic (SDR, HLG or PQ), the colorimetry (BT.709 or BT.2020), the aspect ratio,
+// Y'CbCr or ICtCp, and narrow or full range. DtSdiVideoSignalling holds these five
+// fields.
+//
+// A program that sends HDR tells the builder so, either once for every frame with
+// DtSdiBuilder_SetVideoSignalling(), or for one frame with
+// DtSdiView_SetVideoSignalling(). A program that receives reads the signalling of each
+// frame with DtSdiView_GetVideoSignalling(). Before frames arrive, it reads it with
+// DtSdiVideoSignalling_FromVpid() from the Vpid of the DtDetVidStd that
+// DtDevice_WaitForSignal() gives.
+//
+// Each field has a _DEFAULT value, which stands for the default of the frame's standard:
+//
+//   Standard                Transfer  Colorimetry  Aspect ratio  Y'CbCr/ICtCp  Range
+//   SD                      SDR       BT.601       4:3           Y'CbCr        narrow
+//   720p                    SDR       BT.709       16:9          Y'CbCr        narrow
+//   1080 lines, HD and 3G   SDR       BT.709       16:9          Y'CbCr        narrow
+//   2160p, 6G and 12G       SDR       BT.2020      16:9          Y'CbCr        narrow
+//
+// Not every standard can carry every value. The payload ID of SD carries only the aspect
+// ratio, 4:3 or 16:9, and that of 720p carries none of the fields. Their other fields
+// always have the values in the table. From 1080 lines up the payload ID carries all
+// five fields, with an aspect ratio of 16:9 or unknown. BT.601 exists only in SD.
+//
+// The builder chooses each field of a frame's signalling in this order:
+// 1. A payload ID among the program's own ancillary packets replaces the builder's
+//    whole payload ID, signalling included.
+// 2. The field as DtSdiView_SetVideoSignalling() set it for this frame. A value the
+//    frame's standard cannot carry makes DtSdiBuilder_Build() fail.
+// 3. The field as DtSdiBuilder_SetVideoSignalling() set it for every frame. A value the
+//    frame's standard cannot carry gives way to the standard's default, so that a builder
+//    set to HDR can still build SD.
+// 4. The default of the frame's standard.
+//
+// An output channel's black frames, which it sends when a program that writes frames
+// falls behind, carry the signalling of the last frame written.
+//
+
+// The transfer characteristic: how the samples' values map to light.
+typedef enum DtSdiTransfer
+{
+    DT_SDI_TRANSFER_DEFAULT,    // The default of the frame's standard; never read
+    DT_SDI_TRANSFER_SDR,        // SDR-TV
+    DT_SDI_TRANSFER_HLG,        // HLG, as ITU-R BT.2100 defines it
+    DT_SDI_TRANSFER_PQ,         // PQ, as ITU-R BT.2100 and SMPTE ST 2084 define it
+    DT_SDI_TRANSFER_UNSPECIFIED // Not specified
+} DtSdiTransfer;
+
+// The colorimetry: the primaries and the white point.
+typedef enum DtSdiColorimetry
+{
+    DT_SDI_COLORIMETRY_DEFAULT,    // The default of the frame's standard; never read
+    DT_SDI_COLORIMETRY_BT601,      // ITU-R BT.601, in SD only
+    DT_SDI_COLORIMETRY_BT709,      // ITU-R BT.709
+    DT_SDI_COLORIMETRY_BT2020,     // ITU-R BT.2020, as BT.2100 uses it
+    DT_SDI_COLORIMETRY_COLOR_VANC, // Read only: the frame's Color VANC packet (SMPTE ST
+                                   // 2048-1, DID 41h and SDID 02h) describes the colour
+                                   // and the transfer characteristic. Only 2160p
+                                   // carries it
+    DT_SDI_COLORIMETRY_UNKNOWN     // Not known
+} DtSdiColorimetry;
+
+// The aspect ratio of the picture.
+typedef enum DtSdiAspect
+{
+    DT_SDI_ASPECT_DEFAULT, // The default of the frame's standard; never read
+    DT_SDI_ASPECT_4X3,     // 4:3, in SD only
+    DT_SDI_ASPECT_16X9,    // 16:9
+    DT_SDI_ASPECT_UNKNOWN  // Not known; from 1080 lines up only
+} DtSdiAspect;
+
+// How the three components of a sample are to be read.
+typedef enum DtSdiLumaChroma
+{
+    DT_SDI_LUMACHROMA_DEFAULT, // The default of the frame's standard; never read
+    DT_SDI_LUMACHROMA_YCBCR,   // Y'CbCr
+    DT_SDI_LUMACHROMA_ICTCP    // ICtCp, as ITU-R BT.2100 defines it
+} DtSdiLumaChroma;
+
+// The range of the samples' values.
+typedef enum DtSdiRange
+{
+    DT_SDI_RANGE_DEFAULT, // The default of the frame's standard; never read
+    DT_SDI_RANGE_NARROW,  // Narrow range, the usual one: Y' from 64 to 940 in 10 bits
+    DT_SDI_RANGE_FULL     // Full range, as ITU-R BT.2100 defines it
+} DtSdiRange;
+
+// What the samples of a frame mean, as its payload ID says.
+//
+// Size lets later versions add fields without breaking programs. A program sets it to
+// sizeof(DtSdiVideoSignalling), and the library then reads or writes only the fields that
+// Size covers. Signalling set with Size 0, as a structure filled with zeros has, sets
+// every field to its default.
+typedef struct DtSdiVideoSignalling
+{
+    int Size;               // sizeof(DtSdiVideoSignalling); 0 for every field default
+    DtSdiTransfer Transfer; // The transfer characteristic
+    DtSdiColorimetry Colorimetry; // The colorimetry
+    DtSdiAspect Aspect;           // The aspect ratio
+    DtSdiLumaChroma LumaChroma;   // Y'CbCr or ICtCp
+    DtSdiRange Range;             // Narrow or full range
+} DtSdiVideoSignalling;
+
+// Reads the signalling from a VPID with byte 1 of the payload ID in the least significant
+// bits, as DtDetVidStd's Vpid holds it. A program reads the signalling this way when it
+// detects the standard, before any frame arrives. Signalling->Size says which fields to
+// fill in. A field the payload ID does not carry gets the value its standard implies, as
+// in the table above.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG    Signalling is NULL, or Signalling->Size does not end at one of
+//                          its fields; 0 does not
+//   DTAPI_E_NOT_SUPPORTED  byte 1 of Vpid is not a payload the library knows; the
+//                          fields are then unspecified and unknown
+CDTAPI_API DtapiResult DtSdiVideoSignalling_FromVpid(uint32_t Vpid,
+                                                     DtSdiVideoSignalling* Signalling);
+
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Views +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 //
 // A view describes where an SDI frame lies in memory. It holds the frame's video
@@ -187,6 +308,21 @@ CDTAPI_API DtapiResult DtSdiView_GetLevelBField(const DtSdiView* View, int* Fiel
 //   DTAPI_E_OUT_OF_MEM      no memory to read the frame's lines with
 CDTAPI_API DtapiResult DtSdiView_GetPayloadId(const DtSdiView* View, uint32_t* PayloadId);
 
+// Reads the signalling of the frame from its payload ID: the transfer characteristic, the
+// colorimetry and the rest; see DtSdiVideoSignalling. Signalling->Size says which fields
+// to fill in. In 3G level B it is the signalling of link A, and in 2160p that of the
+// first link.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG    Signalling->Size does not end at one of its fields; 0 does not
+//   DTAPI_E_NOT_FOUND      the frame carries no payload ID. *Signalling then holds the
+//                          defaults of the frame's standard
+//   DTAPI_E_NOT_SUPPORTED  the payload ID is of a payload the library does not know.
+//                          The fields are then unspecified and unknown
+//   and the other errors of DtSdiView_GetPayloadId()
+CDTAPI_API DtapiResult DtSdiView_GetVideoSignalling(const DtSdiView* View,
+                                                    DtSdiVideoSignalling* Signalling);
+
 // Computes the size in bytes of a raw frame, as DtInpChannel_ReadFrame() delivers it.
 // The frame has video standard VidStd and BitsPerSymbol bits per symbol. The size
 // includes the padding at the end of the frame and is returned in *Size. For 3G level B
@@ -238,6 +374,26 @@ CDTAPI_API DtapiResult DtSdiView_SetLevelBField(DtSdiView* View, int Field);
 // After any failure except DTAPI_E_IN_USE, the view does not describe a frame.
 CDTAPI_API DtapiResult DtSdiView_SetRawFrame(DtSdiView* View, void* Frame, size_t Size,
                                              int VidStd, int BitsPerSymbol);
+
+// Sets the signalling the builder writes into the payload ID of the frame View describes:
+// the transfer characteristic, the colorimetry and the rest; see DtSdiVideoSignalling. A
+// field left at its _DEFAULT value takes the builder's own signalling, set with
+// DtSdiBuilder_SetVideoSignalling(). The signalling holds for this frame only: pointing
+// the view at another frame, also by lending it from an output channel, sets every field
+// back to _DEFAULT.
+//
+// The function checks only that each value is one of its enum. Whether the frame's
+// standard can carry it is checked by DtSdiBuilder_Build().
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG    Signalling is NULL, Signalling->Size does not end at one of
+//                          its fields and is not 0, or a field is not a value of its
+//                          enum
+//   DTAPI_E_STATE          the view does not describe a frame
+//   DTAPI_E_NOT_SUPPORTED  Colorimetry is DT_SDI_COLORIMETRY_COLOR_VANC, which the
+//                          builder does not write
+CDTAPI_API DtapiResult
+DtSdiView_SetVideoSignalling(DtSdiView* View, const DtSdiVideoSignalling* Signalling);
 
 // +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+= Images +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 //
@@ -609,7 +765,8 @@ CDTAPI_API DtapiResult DtSdiParser_SetWorkerPool(DtSdiParser* Parser, DtWorkerPo
 // A builder puts frames together from an image, audio and ancillary packets. It writes
 // the whole frame, which includes:
 //   - the timing references, line numbers and CRCs
-//   - the payload ID
+//   - the payload ID, with the signalling of DtSdiView_SetVideoSignalling() and
+//     DtSdiBuilder_SetVideoSignalling()
 //   - the audio with its control packets
 //   - the program's ancillary packets
 //
@@ -683,7 +840,9 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //   DTAPI_E_BUF_TOO_SMALL   an audio channel offers fewer samples than the frame takes.
 //                           Audio->NumSamplesUsed is then set to the number it takes
 //   DTAPI_E_NOT_SUPPORTED   a channel from 17 to 32 has samples; see
-//                           DT_SDI_AUDIO_MAX_CHANNELS
+//                           DT_SDI_AUDIO_MAX_CHANNELS. Also when the signalling that
+//                           DtSdiView_SetVideoSignalling() set has a value the frame's
+//                           standard cannot carry; see DtSdiVideoSignalling
 //   DTAPI_E_INVALID_LINE    a packet's line is not in the blanking that it names
 //   DTAPI_E_TOO_LONG        the packets of a line do not fit in its blanking
 //   DTAPI_E_OUT_OF_MEM      there is no memory for the buffers of even one band of
@@ -736,6 +895,21 @@ CDTAPI_API DtapiResult DtSdiBuilder_GetNumAudioSamples(const DtSdiBuilder* Build
 //
 // Returns DTAPI_OK, or DTAPI_E_INVALID_ARG for a NULL Builder.
 CDTAPI_API DtapiResult DtSdiBuilder_SetChecksums(DtSdiBuilder* Builder, bool Compute);
+
+// Sets the signalling the builder writes into the payload ID of every frame it builds
+// after this call: the transfer characteristic, the colorimetry and the rest; see
+// DtSdiVideoSignalling. DtSdiView_SetVideoSignalling() overrides it field by field for
+// one frame. A field that a frame's standard cannot carry takes that standard's default
+// in that frame. NULL, or signalling with Size 0, sets every field back to _DEFAULT,
+// which is how a builder starts.
+//
+// Returns DTAPI_OK, or:
+//   DTAPI_E_INVALID_ARG    Builder is NULL, Signalling->Size does not end at one of its
+//                          fields and is not 0, or a field is not a value of its enum
+//   DTAPI_E_NOT_SUPPORTED  Colorimetry is DT_SDI_COLORIMETRY_COLOR_VANC, which the
+//                          builder does not write
+CDTAPI_API DtapiResult DtSdiBuilder_SetVideoSignalling(
+    DtSdiBuilder* Builder, const DtSdiVideoSignalling* Signalling);
 
 // Makes the builder divide the lines of a frame over the threads of Pool, at most
 // NumThreads at once. With NumThreads 0, the builder chooses the number by the video

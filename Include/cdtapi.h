@@ -276,7 +276,8 @@ typedef struct DtDetVidStd
     uint32_t Vpid;             // The VPID as received; 0 without one
     uint32_t Vpid2;            // Always 0: the VPID of a level-B link's second channel,
                                // which is not received
-    DtAspectRatio AspectRatio; // From the VPID; DT_AR_UNKNOWN without one
+    DtAspectRatio AspectRatio; // From the VPID; DT_AR_UNKNOWN without one, and when
+                               // the VPID says it is not known
 
     // The signal as it arrives at the port, before the card converts it. E.g. 4K on one
     // 12G link that the port scales down to 3G is VidStd 1080p and LinkStd -1, but 2160p

@@ -698,8 +698,27 @@ DT_TEST(SdiCalls)
     DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, true));
     DT_ASSERT_OK(DtSdiBuilder_SetChecksums(Builder, false));
     DT_ASSERT_OK(DtSdiBuilder_SetWorkerPool(Builder, NULL, 0));
+    // HLG in BT.2020: the transfer for every frame of the builder, the colorimetry for
+    // this frame on the view; both come back from the payload ID the builder wrote.
+    DtSdiVideoSignalling Signalling;
+    memset(&Signalling, 0, sizeof(Signalling));
+    Signalling.Size = (int)sizeof(Signalling);
+    Signalling.Transfer = DT_SDI_TRANSFER_HLG;
+    DT_ASSERT_OK(DtSdiBuilder_SetVideoSignalling(Builder, &Signalling));
+    Signalling.Transfer = DT_SDI_TRANSFER_DEFAULT;
+    Signalling.Colorimetry = DT_SDI_COLORIMETRY_BT2020;
+    DT_ASSERT_OK(DtSdiView_SetVideoSignalling(View, &Signalling));
     DT_ASSERT(IsOneOf(DtSdiBuilder_Build(Builder, View, NULL, NULL, NULL), DTAPI_OK,
                       DTAPI_E_NOT_SUPPORTED));
+    DtSdiVideoSignalling Read;
+    memset(&Read, 0, sizeof(Read));
+    Read.Size = (int)sizeof(Read);
+    DT_ASSERT_OK(DtSdiView_GetVideoSignalling(View, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_HLG);
+    DT_ASSERT_EQ(Read.Colorimetry, DT_SDI_COLORIMETRY_BT2020);
+    // The same from a VPID of 1080i50 in PQ, as DtDetVidStd's Vpid holds it.
+    DT_ASSERT_OK(DtSdiVideoSignalling_FromVpid(0x01202585, &Read));
+    DT_ASSERT_EQ(Read.Transfer, DT_SDI_TRANSFER_PQ);
     DtSdiBuilder_Freep(&Builder);
     DT_ASSERT(Builder == NULL);
     DtSdiBuilder_Free(NULL);

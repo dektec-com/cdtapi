@@ -164,9 +164,9 @@ DT_TEST(LinesAndPayloadId)
     DT_ASSERT_EQ(DtSdiGeometry_LevelBInterfaceLine(2, 1124), 1125);
     DT_ASSERT_EQ(DtSdiGeometry_LevelBLink(2, 1124), 1);
 
-    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P50B), 0x0100498Au);
-    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P59_94B), 0x01004A8Au);
-    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P60B), 0x01004B8Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P50B), 0x0120498Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P59_94B), 0x01204A8Au);
+    DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_1080P60B), 0x01204B8Au);
     DT_ASSERT_EQ(DtSmpte352_Make(DTAPI_VIDSTD_2160P50B), 0u);
 
     DtSdiGeometry Geo;
@@ -679,7 +679,7 @@ DT_TEST(InterfaceFrameThroughAView)
         DT_ASSERT_EQ(Q->Out[1][Used[f] - 1], Q->In[1][Used[f] - 1]);
         uint32_t PayloadId = 0;
         DT_ASSERT_OK(DtSdiView_GetPayloadId(View, &PayloadId));
-        DT_ASSERT_EQ(PayloadId, 0x8A490001u);
+        DT_ASSERT_EQ(PayloadId, 0x8A492001u);
     }
 
     DtSdiLevelB_Free(Converter);
