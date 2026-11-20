@@ -322,6 +322,21 @@ DT_TEST(Layout)
             DT_ASSERT_EQ(P->Out[1][s], P->In[1][s]);
         }
 
+        // Every packet lies packed, from the start of its blanking: in the HANC past the
+        // 1920 words of the active part, EAV, the line number and the CRC.
+        for (int i = 0; i < P->Anc.NumPackets; i++)
+        {
+            const DtSdiAncPacket* Q = &P->Packets[i];
+            const DtSdiAncPacket* B = i > 0 ? &P->Packets[i - 1] : NULL;
+            const bool Follows = B != NULL && B->Line == Q->Line &&
+                                 B->InHanc == Q->InHanc && B->OnChroma == Q->OnChroma &&
+                                 B->VirtualInterface == Q->VirtualInterface;
+            DT_ASSERT_EQ(Q->HorizontalOffset, Follows
+                                                  ? B->HorizontalOffset + 7 + B->NumWords
+                                              : Q->InHanc ? 1920 + 8
+                                                          : 0);
+        }
+
         // The program's packets, back on their links.
         DT_ASSERT_EQ(CountPackets(P, 0x50, 0), 2);
         for (int i = 0; i < P->Anc.NumPackets; i++)

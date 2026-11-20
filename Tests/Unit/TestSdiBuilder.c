@@ -656,6 +656,37 @@ static void FillPacketWords(void)
             g_PacketWords[n][i] = Parity8((unsigned)(n * 53 + i * 37));
 }
 
+// Checks that the packets the parser listed in List lie packed, as the builder writes
+// them: the first of each blanking of a line and stream at its start, each next one right
+// after the one before. The HANC starts past the active part, after EAV, the line number
+// and the CRC. List holds every packet of the frame, the builder's own too. Returns NULL,
+// or a message that says what differs.
+static const char* CheckPacked(const SdiFormat* F, const DtSdiAncData* List,
+                               char* Message, size_t Size)
+{
+    const bool Sd = IsSd(F);
+    const int HancStart = F->Active * (Sd ? 2 : 1) + (Sd ? 4 : 8);
+    for (int p = 0; p < List->NumPackets; p++)
+    {
+        const DtSdiAncPacket* P = &List->Packets[p];
+        const DtSdiAncPacket* Before = p > 0 ? &List->Packets[p - 1] : NULL;
+        const bool Follows = Before != NULL && Before->Line == P->Line &&
+                             Before->InHanc == P->InHanc &&
+                             Before->OnChroma == P->OnChroma &&
+                             Before->VirtualInterface == P->VirtualInterface;
+        const int Expected = Follows     ? Before->HorizontalOffset + 7 + Before->NumWords
+                             : P->InHanc ? HancStart
+                                         : 0;
+        if (P->HorizontalOffset != Expected)
+        {
+            snprintf(Message, Size, "packet %02X on line %d lies at %d, not %d", P->Did,
+                     P->Line, P->HorizontalOffset, Expected);
+            return Message;
+        }
+    }
+    return NULL;
+}
+
 // Checks that the builder writes the program's packets where the reference frame has
 // them, with their checksums worked out. The packets go:
 // - in the horizontal blanking, after the payload ID and on a line without one;
@@ -679,13 +710,13 @@ DT_TEST(AncPackets)
         const bool Sd = IsSd(F);
         const int Link = Is4k(F) ? 3 : F->SdiRate == DT_SDIRATE_3G ? 1 : 0;
         DtSdiAncPacket Packets[6] = {
-            {PidLine, true, false, 0, 0x60, 0x60, 16, g_PacketWords[0], false},
-            {12, false, !Sd, 0, 0x61, 0x01, 30, g_PacketWords[1], false},
-            {12, false, !Sd, 0, 0x61, 0x02, 0, NULL, false},
-            {12, false, false, Link, 0x41, 0x05, 255, g_PacketWords[2], false},
-            {100, true, !Sd, Link, 0x50, 0x03, 7, g_PacketWords[3], false},
+            {PidLine, true, false, 0, 0x60, 0x60, 16, g_PacketWords[0], false, 0},
+            {12, false, !Sd, 0, 0x61, 0x01, 30, g_PacketWords[1], false, 0},
+            {12, false, !Sd, 0, 0x61, 0x02, 0, NULL, false, 0},
+            {12, false, false, Link, 0x41, 0x05, 255, g_PacketWords[2], false, 0},
+            {100, true, !Sd, Link, 0x50, 0x03, 7, g_PacketWords[3], false, 0},
             {F->Lines, true, false, Is4k(F) ? 4 : 0, 0x88, 0x17, 1, g_PacketWords[4],
-             false}};
+             false, 0}};
         const int NumPackets = 6;
         DtSdiAncData Anc;
         memset(&Anc, 0, sizeof(Anc));
@@ -751,6 +782,20 @@ DT_TEST(AncPackets)
                 Failure = Message;
             }
         }
+
+        // Checks that every packet, the payload ID's included, lies where the builder
+        // packed it.
+        DtSdiAncFilter All;
+        memset(&All, 0, sizeof(All));
+        All.AnyDid = true;
+        All.Space = DT_SDI_ANC_SPACE_BOTH;
+        DtSdiAncData Everything = {Found, 16, 0, Words, 2048, 0, 0};
+        if (Failure == NULL &&
+            (DtSdiParser_SetAncFilter(Parser, &All, 1) != DTAPI_OK ||
+             DtSdiParser_Parse(Parser, View, NULL, NULL, &Everything) != DTAPI_OK))
+            Failure = "the parser refused the frame with every packet";
+        if (Failure == NULL)
+            Failure = CheckPacked(F, &Everything, Message, sizeof(Message));
 
         TestImage_Free(&T);
         DtSdiParser_Free(Parser);
@@ -889,19 +934,19 @@ DT_TEST(Refusals)
         DtSdiAncPacket Packet;
         DtapiResult Result;
     } Cases[] = {
-        {{0, true, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false},
+        {{0, true, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_LINE},
-        {{1126, true, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false},
+        {{1126, true, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_LINE},
-        {{100, false, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false},
+        {{100, false, false, 0, 0x60, 0x60, 1, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_LINE},
-        {{12, false, false, 2, 0x60, 0x60, 1, g_PacketWords[0], false},
+        {{12, false, false, 2, 0x60, 0x60, 1, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_ARG},
-        {{12, false, false, 0, 0x160, 0x60, 1, g_PacketWords[0], false},
+        {{12, false, false, 0, 0x160, 0x60, 1, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_ARG},
-        {{12, false, false, 0, 0x60, 0x60, 256, g_PacketWords[0], false},
+        {{12, false, false, 0, 0x60, 0x60, 256, g_PacketWords[0], false, 0},
          DTAPI_E_INVALID_ARG},
-        {{12, false, false, 0, 0x60, 0x60, 3, NULL, false}, DTAPI_E_INVALID_ARG},
+        {{12, false, false, 0, 0x60, 0x60, 3, NULL, false, 0}, DTAPI_E_INVALID_ARG},
     };
     for (size_t c = 0; c < sizeof(Cases) / sizeof(Cases[0]); c++)
     {
@@ -916,8 +961,8 @@ DT_TEST(Refusals)
     // has 708 words for packets there, and three packets of 255 words take 786.
     DtSdiAncPacket Three[3];
     for (int p = 0; p < 3; p++)
-        Three[p] =
-            (DtSdiAncPacket){50, true, true, 0, 0x60, 0x60, 255, g_PacketWords[p], false};
+        Three[p] = (DtSdiAncPacket){
+            50, true, true, 0, 0x60, 0x60, 255, g_PacketWords[p], false, 0};
     DtSdiAncData Full = {Three, 0, 3, NULL, 0, 0, 0};
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, &Full), DTAPI_E_TOO_LONG);
     Full.NumPackets = 2;
@@ -932,8 +977,8 @@ DT_TEST(Refusals)
     Embedded.Channels[0].Samples = Own;
     Embedded.Channels[0].Stride = 1;
     Embedded.Channels[0].NumSamples = 1920;
-    DtSdiAncPacket AudioPacket = {12,   true, false, 0, 0xE7, 0x00, 24, g_PacketWords[0],
-                                  false};
+    DtSdiAncPacket AudioPacket = {12,    true, false, 0, 0xE7, 0x00, 24, g_PacketWords[0],
+                                  false, 0};
     DtSdiAncData WithAudio = {&AudioPacket, 0, 1, NULL, 0, 0, 0};
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Embedded, &WithAudio),
                  DTAPI_E_INVALID_ARG);
@@ -976,7 +1021,7 @@ DT_TEST(Refusals)
     DtSdiAncPacket Fill[3];
     for (int p = 0; p < 3; p++)
         Fill[p] = (DtSdiAncPacket){
-            50, true, true, 0, 0x60, 0x60, p < 2 ? 255 : 177, g_PacketWords[p], false};
+            50, true, true, 0, 0x60, 0x60, p < 2 ? 255 : 177, g_PacketWords[p], false, 0};
     DtSdiAncData Filled = {Fill, 0, 3, NULL, 0, 0, 0};
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Filled),
                  DTAPI_E_TOO_LONG);
@@ -990,7 +1035,7 @@ DT_TEST(Refusals)
     DT_ASSERT_EQ(DtSdiView_RawFrameSize(Sd->VidStd, 10, &SdSize), DTAPI_OK);
     DT_ASSERT(SdSize <= Size);
     DT_ASSERT_EQ(DtSdiView_SetRawFrame(View, Frame, SdSize, Sd->VidStd, 10), DTAPI_OK);
-    DtSdiAncPacket OnC = {12, false, true, 0, 0x60, 0x60, 1, g_PacketWords[0], false};
+    DtSdiAncPacket OnC = {12, false, true, 0, 0x60, 0x60, 1, g_PacketWords[0], false, 0};
     DtSdiAncData Anc = {&OnC, 0, 1, NULL, 0, 0, 0};
     DT_ASSERT_EQ(DtSdiBuilder_Build(Builder, View, NULL, NULL, &Anc),
                  DTAPI_E_INVALID_ARG);
@@ -1707,8 +1752,8 @@ DT_TEST(WorkerPool)
         DT_ASSERT(One != NULL && Many != NULL && View != NULL &&
                   TestImage_Alloc(&T, F, FullPattern));
         DtSdiAncPacket Packets[2] = {
-            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false},
-            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false}};
+            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false, 0},
+            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false, 0}};
         DtSdiAncData Anc = {Packets, 0, 2, NULL, 0, 0, 0};
 
         for (int Threads = 0; Threads <= 5; Threads += Threads == 0 ? 3 : 2)
@@ -1814,8 +1859,8 @@ DT_TEST(OwnAudioAndPayloadId)
             Audio.Channels[c].NumSamples = AUDIO_MAX;
         }
         DtSdiAncPacket Program[2] = {
-            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false},
-            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false}};
+            {12, false, false, 0, 0x61, 0x01, 30, g_PacketWords[1], false, 0},
+            {600, true, !IsSd(F), 0, 0x60, 0x60, 16, g_PacketWords[0], false, 0}};
         DtSdiAncData Anc = {Program, 0, 2, NULL, 0, 0, 0};
         DtSdiBuilder* Builder = DtSdiBuilder_Alloc();
         DT_ASSERT(Builder != NULL);
@@ -1935,7 +1980,7 @@ DT_TEST(SdAudioControlOfTheProgram)
     Words[0] = 0x200 | (3 << 3 | 4);
     Words[1] = Words[0];
     Words[3] = 0x200 | 0x3;
-    DtSdiAncPacket Control = {Line, true, false, 0, 0xEF, 0x00, 18, Words, false};
+    DtSdiAncPacket Control = {Line, true, false, 0, 0xEF, 0x00, 18, Words, false, 0};
     DtSdiAncData Anc = {&Control, 0, 1, NULL, 0, 0, 0};
     DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
     DT_ASSERT_OK(DtSdiBuilder_Build(Builder, View, NULL, &Audio, &Anc));

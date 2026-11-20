@@ -1080,6 +1080,86 @@ DT_TEST(AncPacketsSdAnd4k)
     }
 }
 
+// Checks each packet's HorizontalOffset: its words in its stream from SAV. A packet in
+// the vertical blanking lies from 0. One in the horizontal blanking lies past the active
+// part, after EAV, the line number and the CRC. The packets go at the start of their
+// blanking and after a gap, on Y and C, and on link 3 of 2160p.
+DT_TEST(AncHorizontalOffsets)
+{
+    typedef struct
+    {
+        int Line;
+        bool InHanc;
+        int Link;
+        bool Chroma;
+        int Word; // From the start of the blanking: after EAV in the HANC, after SAV in
+                  // the VANC
+    } Place;
+    static const Place Places[] = {
+        {14, false, 1, false, 0}, {14, false, 1, false, 100}, {40, true, 1, false, 0},
+        {40, true, 1, false, 30}, {41, true, 1, true, 12},    {14, false, 3, true, 7},
+        {42, true, 3, false, 0},
+    };
+    static const char* Names[] = {"525I59_94", "625I50",  "720P50",
+                                  "1080I50",   "1080P50", "2160P50"};
+    uint16_t Data[8];
+    for (int i = 0; i < 8; i++)
+        Data[i] = WithParity((uint8_t)(i + 1));
+
+    for (size_t n = 0; n < sizeof(Names) / sizeof(Names[0]); n++)
+    {
+        const SdiFormat* F = FindFormat(Names[n]);
+        DT_ASSERT(F != NULL);
+        const bool Sd = F->Lines <= 625;
+        const int Active = F->Active * (Sd ? 2 : 1);
+        size_t Size = 0;
+        uint8_t* Frame = BuildFrame(F, 10, &Size);
+        DtSdiView* View = DtSdiView_Alloc();
+        DtSdiParser* Parser = DtSdiParser_Alloc();
+        TestAnc* Anc = (TestAnc*)malloc(sizeof(TestAnc));
+        DT_ASSERT(Frame != NULL && View != NULL && Parser != NULL && Anc != NULL);
+
+        // The places this standard has: no C stream in SD, links 3 and 4 only in 2160p.
+        // Each packet's SDID is the index of its place, and -1 marks a place left out.
+        enum
+        {
+            NUM_PLACES = (int)(sizeof(Places) / sizeof(Places[0]))
+        };
+        int Expected[NUM_PLACES];
+        int Got[NUM_PLACES];
+        for (int p = 0; p < NUM_PLACES; p++)
+        {
+            const Place* P = &Places[p];
+            Got[p] = -1;
+            Expected[p] = -1;
+            if ((Sd && P->Chroma) || (!Is4k(F) && P->Link != 1))
+                continue;
+            const int Start = P->InHanc ? StreamHancStart(F) : StreamHancWords(F);
+            PutPacket(Frame, 10, F, P->Line, StreamOf(F, P->Link, P->Chroma),
+                      Start + P->Word, 0x50, (uint8_t)p, Data, 8, false);
+            Expected[p] = P->InHanc ? Active + StreamHancStart(F) + P->Word : P->Word;
+        }
+        DT_ASSERT_OK(DtSdiView_SetRawFrame(View, Frame, Size, F->VidStd, 10));
+        TestAnc_Init(Anc, TEST_MAX_PACKETS, TEST_MAX_WORDS, true);
+        const DtapiResult Result =
+            DtSdiParser_Parse(Parser, View, NULL, NULL, &Anc->Data);
+        for (int p = 0; p < Anc->Data.NumPackets; p++)
+        {
+            const DtSdiAncPacket* Q = &Anc->Data.Packets[p];
+            if (Q->Did == 0x50 && Q->SdidOrDbn < NUM_PLACES)
+                Got[Q->SdidOrDbn] = Q->HorizontalOffset;
+        }
+
+        free(Anc);
+        DtSdiParser_Free(Parser);
+        DtSdiView_Free(View);
+        free(Frame);
+        DT_ASSERT_OK(Result);
+        for (int p = 0; p < NUM_PLACES; p++)
+            SDI_ASSERT_EQ(F, Got[p], Expected[p]);
+    }
+}
+
 // Checks that DtSdiView_GetPayloadId() returns DTAPI_E_NOT_FOUND and sets the ID to 0
 // for a frame without a payload ID.
 DT_TEST(NoPayloadId)
@@ -1803,6 +1883,6 @@ DT_TEST_MAIN("SdiParser", DT_RUN(SizesEveryStandard), DT_RUN(LeastStrides),
              DT_RUN(ActiveLinesWhereTheyLie), DT_RUN(Refusals),
              DT_RUN(FramesOfTheSdiMuxer), DT_RUN(AncPacketsHd),
              DT_RUN(ImageWhenPacketsAreLost), DT_RUN(AncPacketsSdAnd4k),
-             DT_RUN(NoPayloadId), DT_RUN(AudioHd), DT_RUN(AudioSd),
-             DT_RUN(AudioOfTheOtherKind), DT_RUN(AudioRefusals),
+             DT_RUN(AncHorizontalOffsets), DT_RUN(NoPayloadId), DT_RUN(AudioHd),
+             DT_RUN(AudioSd), DT_RUN(AudioOfTheOtherKind), DT_RUN(AudioRefusals),
              DT_RUN(MaxSamplesPerRate), DT_RUN(ImageOverWorkerPool))

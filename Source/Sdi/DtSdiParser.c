@@ -225,6 +225,11 @@ static void ListPacket(const DtSdiGeometry* Geo, const Section* Where, int Strea
     Packet->SdidOrDbn = Found->SdidOrDbn;
     Packet->NumWords = Found->NumWords;
     Packet->ChecksumOk = Found->ChecksumOk;
+    // Counted from SAV round the line: the active part, then EAV and the horizontal
+    // blanking, whose search starts after EAV.
+    Packet->HorizontalOffset =
+        Where->InHanc ? Geo->StreamActiveWords + Geo->StreamEavWords + Found->Start
+                      : Found->Start;
     if (Anc->Words != NULL)
     {
         uint16_t* Words = Anc->Words + Anc->NumWords;

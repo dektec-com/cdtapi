@@ -638,6 +638,11 @@ typedef struct DtSdiAncPacket
     int NumWords;          // The number of user data words, 0 to 255
     const uint16_t* Words; // The user data words
     bool ChecksumOk;       // Parser: true when the packet's checksum is correct
+    int HorizontalOffset;  // Parser: where on its line the packet lies, in words of its
+                           // stream from SAV, as SMPTE ST 2038 counts it. 0 when the
+                           // packet starts right after SAV. A packet in the horizontal
+                           // blanking lies past the active part. The builder does not
+                           // use it (see DtSdiBuilder_Build())
 } DtSdiAncPacket;
 
 // The ancillary packets of a frame.
@@ -813,6 +818,12 @@ CDTAPI_API DtSdiBuilder* DtSdiBuilder_Alloc(void);
 //     the audio.
 //   - The builder keeps audio off the line after the switching point. The program's
 //     packets may go on any line.
+//   - In each blanking of a line and stream, the builder writes the packets one after
+//     the other from the start, in the order the program gives them, as SMPTE ST 291-1
+//     requires. It does not use their HorizontalOffset. To send a line as it came in, a
+//     program passes the packets on in the order the parser listed them, or sorted by
+//     HorizontalOffset when they come from elsewhere. Gaps between a source's packets
+//     are closed.
 //
 // A program can also supply the payload ID and the audio packets itself, for example to
 // pass on all the packets that the parser listed:
